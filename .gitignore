@@ -1,0 +1,26 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+coverage/
+.nyc_output/
+
+# Prisma
+apps/api/prisma/migrations/
+
+# Angular
+apps/web/.angular/
+apps/web/dist/
+
+# Docker volumes (if mounted locally)
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

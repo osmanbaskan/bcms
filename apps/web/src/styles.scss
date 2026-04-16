@@ -1,0 +1,70 @@
+@use '@angular/material' as mat;
+
+@include mat.core();
+
+// Angular Material 21 — M3 tema tanımı
+$bcms-theme: mat.define-theme((
+  color: (
+    theme-type: dark,
+    primary:   mat.$azure-palette,
+    tertiary:  mat.$cyan-palette,
+  ),
+  typography: (
+    plain-family: Roboto,
+    brand-family: Roboto,
+  ),
+  density: (
+    scale: 0,
+  ),
+));
+
+:root {
+  @include mat.all-component-themes($bcms-theme);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background-color: #121212;
+  color: #e0e0e0;
+  font-family: 'Roboto', sans-serif;
+}
+
+.page-container {
+  padding: 24px;
+}
+
+.mat-card-title {
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+// Status badge colors
+.status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+
+  &.DRAFT      { background: #424242; color: #bdbdbd; }
+  &.CONFIRMED  { background: #1565c0; color: #fff; }
+  &.ON_AIR     { background: #b71c1c; color: #fff; animation: pulse 1.5s infinite; }
+  &.COMPLETED  { background: #2e7d32; color: #fff; }
+  &.CANCELLED  { background: #616161; color: #bdbdbd; }
+  &.PENDING    { background: #e65100; color: #fff; }
+  &.APPROVED   { background: #1b5e20; color: #fff; }
+  &.REJECTED   { background: #b71c1c; color: #fff; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}

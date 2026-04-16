@@ -1,0 +1,77 @@
+{
+  "realm": "bcms",
+  "enabled": true,
+  "displayName": "BCMS",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 1800,
+  "roles": {
+    "realm": [
+      { "name": "admin",            "description": "Full system access" },
+      { "name": "planner",          "description": "Create/edit schedules and bookings" },
+      { "name": "scheduler",        "description": "Manage broadcast schedule" },
+      { "name": "ingest_operator",  "description": "Manage ingest jobs" },
+      { "name": "monitoring",       "description": "View monitoring dashboards" },
+      { "name": "viewer",           "description": "Read-only access" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "bcms-api",
+      "name": "BCMS API",
+      "enabled": true,
+      "bearerOnly": true,
+      "publicClient": false,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "bcms-web",
+      "name": "BCMS Web",
+      "enabled": true,
+      "publicClient": true,
+      "redirectUris": [
+        "http://localhost:4200/*",
+        "http://localhost/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4200",
+        "http://localhost"
+      ],
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "defaultClientScopes": ["openid", "profile", "email", "roles"]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@bcms.local",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "admin123", "temporary": true }],
+      "realmRoles": ["admin"]
+    },
+    {
+      "username": "planner1",
+      "email": "planner1@bcms.local",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "planner123", "temporary": true }],
+      "realmRoles": ["planner"]
+    },
+    {
+      "username": "viewer1",
+      "email": "viewer1@bcms.local",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "viewer123", "temporary": true }],
+      "realmRoles": ["viewer"]
+    }
+  ]
+}
