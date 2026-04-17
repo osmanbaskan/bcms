@@ -6,9 +6,6 @@ dist/
 coverage/
 .nyc_output/
 
-# Prisma
-apps/api/prisma/migrations/
-
 # Angular
 apps/web/.angular/
 apps/web/dist/
