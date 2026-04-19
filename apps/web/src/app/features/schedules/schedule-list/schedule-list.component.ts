@@ -620,6 +620,189 @@ export class ScheduleAddDialogComponent {
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
 
+// ── Düzenle Dialog ────────────────────────────────────────────────────────────
+@Component({
+  selector: 'app-schedule-edit-dialog',
+  standalone: true,
+  imports: [
+    CommonModule, FormsModule,
+    MatFormFieldModule, MatInputModule, MatSelectModule,
+    MatButtonModule, MatIconModule, MatDialogModule,
+    MatProgressSpinnerModule, MatDividerModule,
+  ],
+  template: `
+    <h2 mat-dialog-title>Kaydı Düzenle</h2>
+    <mat-dialog-content>
+      <div class="edit-body">
+        <div class="eform-row">
+          <mat-form-field class="ef-wide">
+            <mat-label>Yayın Adı *</mat-label>
+            <input matInput [(ngModel)]="f.contentName" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Lig</mat-label>
+            <input matInput [(ngModel)]="f.league" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+        </div>
+        <div class="eform-row">
+          <mat-form-field>
+            <mat-label>Kanal *</mat-label>
+            <mat-select [(ngModel)]="f.channelId" [ngModelOptions]="{standalone:true}">
+              @for (ch of data.channels; track ch.id) {
+                <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Tarih *</mat-label>
+            <input matInput type="date" [(ngModel)]="f.date" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Başlangıç *</mat-label>
+            <input matInput type="time" step="1" [(ngModel)]="f.startTime" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Bitiş *</mat-label>
+            <input matInput type="time" step="1" [(ngModel)]="f.endTime" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+        </div>
+        <div class="eform-row">
+          <mat-form-field>
+            <mat-label>Trans. Başlangıç</mat-label>
+            <input matInput type="time" step="1" [(ngModel)]="f.transStart" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Trans. Bitiş</mat-label>
+            <input matInput type="time" step="1" [(ngModel)]="f.transEnd" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>HDVG</mat-label>
+            <mat-select [(ngModel)]="f.houseNumber" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (n of hdvgOptions; track n) {
+                <mat-option [value]="n">{{ n }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Int</mat-label>
+            <input matInput [(ngModel)]="f.intField" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Off Tube</mat-label>
+            <input matInput [(ngModel)]="f.offTube" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+        </div>
+        <div class="eform-row">
+          <mat-form-field>
+            <mat-label>Dil</mat-label>
+            <mat-select [(ngModel)]="f.language" [ngModelOptions]="{standalone:true}">
+              <mat-option value="Yok">Yok</mat-option>
+              <mat-option value="TR">Türkçe</mat-option>
+              <mat-option value="Eng">İngilizce</mat-option>
+              <mat-option value="FR">Fransızca</mat-option>
+              <mat-option value="ES">İspanyolca</mat-option>
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field class="ef-wide">
+            <mat-label>Açıklama ve Notlar</mat-label>
+            <textarea matInput rows="2" [(ngModel)]="f.notes" [ngModelOptions]="{standalone:true}"></textarea>
+          </mat-form-field>
+        </div>
+      </div>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>İptal</button>
+      <button mat-raised-button color="primary"
+              [disabled]="!canSave() || saving()"
+              (click)="save()">
+        @if (saving()) {
+          <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
+          Kaydediliyor…
+        } @else {
+          Kaydet
+        }
+      </button>
+    </mat-dialog-actions>
+  `,
+  styles: [`
+    .edit-body { min-width: 680px; }
+    .eform-row { display:flex; gap:12px; margin-bottom:4px; flex-wrap:wrap; }
+    .eform-row mat-form-field { flex:1; min-width:120px; }
+    .ef-wide { flex:2 !important; }
+  `],
+})
+export class ScheduleEditDialogComponent {
+  data      = inject<{ schedule: Schedule & { channel?: { id: number; name: string } }; channels: Channel[] }>(MAT_DIALOG_DATA);
+  dialogRef = inject(MatDialogRef<ScheduleEditDialogComponent>);
+  api       = inject(ApiService);
+  saving    = signal(false);
+
+  readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => `HDVG${i + 1}`);
+
+  f: {
+    contentName: string; league: string; channelId: number | null;
+    date: string; startTime: string; endTime: string;
+    transStart: string; transEnd: string; houseNumber: string;
+    intField: string; offTube: string; language: string; notes: string;
+  };
+
+  constructor() {
+    const s   = this.data.schedule;
+    const m   = (s.metadata ?? {}) as Record<string, string>;
+    const st  = new Date(s.startTime);
+    const et  = new Date(s.endTime);
+
+    this.f = {
+      contentName: m['contentName'] || s.title || '',
+      league:      m['league']      || '',
+      channelId:   s.channel?.id ?? null,
+      date:        st.toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' }),
+      startTime:   `${pad(st.getHours())}:${pad(st.getMinutes())}:${pad(st.getSeconds())}`,
+      endTime:     `${pad(et.getHours())}:${pad(et.getMinutes())}:${pad(et.getSeconds())}`,
+      transStart:  m['transStart']  || '',
+      transEnd:    m['transEnd']    || '',
+      houseNumber: m['houseNumber'] || '',
+      intField:    m['intField']    || '',
+      offTube:     m['offTube']     || '',
+      language:    m['language']    || 'Yok',
+      notes:       m['description'] || '',
+    };
+  }
+
+  canSave = () => !!(this.f.contentName && this.f.channelId && this.f.date && this.f.startTime && this.f.endTime);
+
+  save() {
+    if (!this.canSave()) return;
+    const f   = this.f;
+    const toISO = (t: string) => new Date(`${f.date}T${t}+03:00`).toISOString();
+    const s   = this.data.schedule;
+
+    this.saving.set(true);
+    this.api.patch<Schedule>(`/schedules/${s.id}`, {
+      channelId: f.channelId!,
+      startTime: toISO(f.startTime),
+      endTime:   toISO(f.endTime),
+      title:     f.contentName,
+      metadata: {
+        ...(s.metadata ?? {}),
+        contentName:  f.contentName,
+        league:       f.league      || undefined,
+        language:     f.language    || 'Yok',
+        transStart:   f.transStart  || undefined,
+        transEnd:     f.transEnd    || undefined,
+        houseNumber:  f.houseNumber || undefined,
+        intField:     f.intField    || undefined,
+        offTube:      f.offTube     || undefined,
+        description:  f.notes      || undefined,
+      },
+    }, s.version).subscribe({
+      next:  (updated) => { this.saving.set(false); this.dialogRef.close(updated); },
+      error: (e)       => { this.saving.set(false); console.error(e); },
+    });
+  }
+}
+
 // ── Ana Liste Bileşeni ────────────────────────────────────────────────────────
 @Component({
   selector: 'app-schedule-list',
@@ -630,6 +813,7 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
     MatInputModule, MatSelectModule, MatFormFieldModule,
     MatProgressSpinnerModule, MatSnackBarModule, MatTooltipModule,
     MatDialogModule, MatChipsModule, MatCardModule, MatPaginatorModule,
+    MatDividerModule,
   ],
   template: `
     <div class="page-container">
@@ -714,6 +898,11 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
                   </td>
                   <td class="td-notes">{{ s.metadata?.['description'] || s.title }}</td>
                   <td class="td-actions">
+                    <button mat-icon-button
+                            matTooltip="Düzenle"
+                            (click)="openEditDialog(s)">
+                      <mat-icon>edit</mat-icon>
+                    </button>
                     <button mat-icon-button color="warn"
                             matTooltip="Sil"
                             (click)="deleteSchedule(s)">
@@ -807,7 +996,7 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
     .td-league  { color:#aaa; white-space:nowrap; }
     .week-badge { display:inline-block; margin-left:4px; padding:0 5px; border-radius:3px; background:#1976d2; color:#fff; font-size:0.72rem; vertical-align:middle; }
     .td-notes   { max-width:260px; color:#bdbdbd; font-size:0.78rem; }
-    .td-actions { width:40px; padding:2px 4px; text-align:center; }
+    .td-actions { width:80px; padding:2px 4px; text-align:center; white-space:nowrap; }
 
     /* ── Footer ── */
     .table-footer {
@@ -889,6 +1078,21 @@ export class ScheduleListComponent implements OnInit {
     ref.afterClosed().subscribe((result) => {
       if (result) {
         this.snack.open('Kayıt eklendi', 'Kapat', { duration: 3000 });
+        this.load();
+      }
+    });
+  }
+
+  openEditDialog(s: Schedule) {
+    const ref = this.dialog.open(ScheduleEditDialogComponent, {
+      data: { schedule: s, channels: this.channels() },
+      width: '860px',
+      maxWidth: '98vw',
+      panelClass: 'dark-dialog',
+    });
+    ref.afterClosed().subscribe((result) => {
+      if (result) {
+        this.snack.open('Kayıt güncellendi', 'Kapat', { duration: 3000 });
         this.load();
       }
     });
