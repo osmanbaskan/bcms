@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { buildCompetitionList, loadMatches, clearOptaCache, buildFixtureCompetitions, loadFixtures } from './opta.parser.js';
+import { getOptaWatcherStatus } from './opta.watcher.js';
 import { PERMISSIONS } from '@bcms/shared';
 
 export async function optaRoutes(app: FastifyInstance) {
@@ -89,5 +90,14 @@ export async function optaRoutes(app: FastifyInstance) {
   }, async () => {
     clearOptaCache();
     return { ok: true };
+  });
+
+  // GET /api/v1/opta/status — watcher bağlantı durumu
+  app.get('/status', {
+    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    schema: { tags: ['OPTA'], summary: 'OPTA watcher bağlantı durumu' },
+  }, async () => {
+    const status = getOptaWatcherStatus();
+    return { ...status, timestamp: new Date().toISOString() };
   });
 }
