@@ -17,10 +17,11 @@ import { MatDialogModule, MatDialog, MAT_DIALOG_DATA, MatDialogRef } from '@angu
 import { MatChipsModule } from '@angular/material/chips';
 import { MatCardModule } from '@angular/material/card';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatDividerModule } from '@angular/material/divider';
 
 import { ScheduleService } from '../../../core/services/schedule.service';
 import { ApiService } from '../../../core/services/api.service';
-import type { Schedule } from '@bcms/shared';
+import type { Schedule, OptaCompetition, OptaMatch } from '@bcms/shared';
 
 interface Channel { id: number; name: string; type: string; }
 
@@ -32,11 +33,71 @@ interface Channel { id: number; name: string; type: string; }
     CommonModule, FormsModule, ReactiveFormsModule,
     MatFormFieldModule, MatInputModule, MatSelectModule,
     MatButtonModule, MatIconModule, MatDialogModule,
+    MatProgressSpinnerModule, MatDividerModule,
   ],
   template: `
     <h2 mat-dialog-title>Yeni Yayın Kaydı Ekle</h2>
     <mat-dialog-content>
       <form [formGroup]="form" class="dialog-form">
+
+        <!-- ── OPTA Fikstür Seçimi ──────────────────────────────────────── -->
+        <div class="section-header">
+          <mat-icon>sports_soccer</mat-icon>
+          <span>OPTA Fikstüründen Seç <em>(opsiyonel)</em></span>
+        </div>
+        <div class="form-row">
+          <mat-form-field>
+            <mat-label>Lig / Turnuva</mat-label>
+            <mat-select [value]="optaCompId()"
+                        (selectionChange)="onOptaCompChange($event.value)"
+                        [disabled]="optaCompsLoading()">
+              <mat-option [value]="null">— Seçin —</mat-option>
+              @for (c of optaComps(); track c.id) {
+                <mat-option [value]="c.id">{{ c.name }}</mat-option>
+              }
+            </mat-select>
+            @if (optaCompsLoading()) { <mat-hint>Yükleniyor…</mat-hint> }
+          </mat-form-field>
+
+          <mat-form-field>
+            <mat-label>Sezon</mat-label>
+            <mat-select [value]="optaSeason()"
+                        (selectionChange)="onOptaSeasonChange($event.value)"
+                        [disabled]="optaSeasons().length === 0">
+              <mat-option [value]="null">— Seçin —</mat-option>
+              @for (s of optaSeasons(); track s) {
+                <mat-option [value]="s">{{ s }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        @if (optaMatchesLoading()) {
+          <div class="loading-row">
+            <mat-spinner diameter="18"></mat-spinner><span>Maçlar yükleniyor…</span>
+          </div>
+        }
+        @if (optaMatches().length > 0) {
+          <div class="form-row">
+            <mat-form-field class="full-width">
+              <mat-label>Maç</mat-label>
+              <mat-select [value]="selectedOptaMatchId()"
+                          (selectionChange)="onOptaMatchSelect($event.value)">
+                <mat-option [value]="null">— Maç seçin —</mat-option>
+                @for (m of optaMatches(); track m.matchId) {
+                  <mat-option [value]="m.matchId">
+                    {{ m.homeTeamName }} - {{ m.awayTeamName }}
+                    &nbsp;({{ m.matchDate | date:'dd MMM yyyy HH:mm' }})
+                  </mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          </div>
+        }
+
+        <mat-divider style="margin:8px 0 12px"></mat-divider>
+
+        <!-- ── Temel Alanlar ─────────────────────────────────────────────── -->
         <div class="form-row">
           <mat-form-field>
             <mat-label>Kanal *</mat-label>
@@ -131,18 +192,35 @@ interface Channel { id: number; name: string; type: string; }
     </mat-dialog-actions>
   `,
   styles: [`
-    .dialog-form { display:flex; flex-direction:column; gap:0; min-width:520px; }
-    .form-row    { display:flex; gap:12px; }
+    .dialog-form  { display:flex; flex-direction:column; gap:0; min-width:540px; }
+    .form-row     { display:flex; gap:12px; }
     .form-row mat-form-field { flex:1; }
-    .full-width  { width:100%; }
+    .full-width   { width:100%; }
+    .section-header {
+      display:flex; align-items:center; gap:6px;
+      font-size:13px; color:#aaa; margin-bottom:4px;
+    }
+    .section-header em { color:#666; font-style:normal; }
+    .section-header mat-icon { font-size:18px; height:18px; width:18px; }
+    .loading-row { display:flex; align-items:center; gap:8px; color:#aaa; font-size:12px; margin-bottom:8px; }
   `],
 })
 export class ScheduleAddDialogComponent {
-  data       = inject<{ channels: Channel[] }>(MAT_DIALOG_DATA);
-  dialogRef  = inject(MatDialogRef<ScheduleAddDialogComponent>);
-  api        = inject(ApiService);
-  fb         = inject(FormBuilder);
-  saving     = signal(false);
+  data      = inject<{ channels: Channel[] }>(MAT_DIALOG_DATA);
+  dialogRef = inject(MatDialogRef<ScheduleAddDialogComponent>);
+  api       = inject(ApiService);
+  fb        = inject(FormBuilder);
+  saving    = signal(false);
+
+  // OPTA sinyalleri
+  optaComps           = signal<OptaCompetition[]>([]);
+  optaCompsLoading    = signal(false);
+  optaCompId          = signal<string | null>(null);
+  optaSeasons         = signal<string[]>([]);
+  optaSeason          = signal<string | null>(null);
+  optaMatches         = signal<OptaMatch[]>([]);
+  optaMatchesLoading  = signal(false);
+  selectedOptaMatchId = signal<string | null>(null);
 
   form = this.fb.group({
     channelId:   [null as number | null, Validators.required],
@@ -161,11 +239,62 @@ export class ScheduleAddDialogComponent {
     notes:       [''],
   });
 
+  constructor() {
+    // Dialog açılınca OPTA competition listesini yükle
+    this.optaCompsLoading.set(true);
+    this.api.get<OptaCompetition[]>('/opta/competitions').subscribe({
+      next:  (c) => { this.optaComps.set(c); this.optaCompsLoading.set(false); },
+      error: ()  => { this.optaCompsLoading.set(false); },
+    });
+  }
+
+  onOptaCompChange(compId: string | null) {
+    this.optaCompId.set(compId);
+    this.optaSeason.set(null);
+    this.optaMatches.set([]);
+    this.selectedOptaMatchId.set(null);
+    if (!compId) { this.optaSeasons.set([]); return; }
+
+    const seasons = [...(this.optaComps().find((c) => c.id === compId)?.seasons ?? [])].sort().reverse();
+    this.optaSeasons.set(seasons);
+    if (seasons.length === 1) this.onOptaSeasonChange(seasons[0]);
+  }
+
+  onOptaSeasonChange(season: string | null) {
+    this.optaSeason.set(season);
+    this.optaMatches.set([]);
+    this.selectedOptaMatchId.set(null);
+    if (!season || !this.optaCompId()) return;
+
+    this.optaMatchesLoading.set(true);
+    this.api.get<OptaMatch[]>(`/opta/matches?competitionId=${this.optaCompId()}&season=${season}`).subscribe({
+      next:  (ms) => { this.optaMatches.set(ms); this.optaMatchesLoading.set(false); },
+      error: ()   => { this.optaMatchesLoading.set(false); },
+    });
+  }
+
+  onOptaMatchSelect(matchId: string | null) {
+    this.selectedOptaMatchId.set(matchId);
+    const match = this.optaMatches().find((m) => m.matchId === matchId);
+    if (!match) return;
+
+    // Yayın Adı: "HomeTeam - AwayTeam"
+    this.form.patchValue({ contentName: `${match.homeTeamName} - ${match.awayTeamName}` });
+    // Lig: competition adı
+    this.form.patchValue({ league: match.competitionName });
+    // Tarih ve başlangıç saatini doldur
+    const dt = new Date(match.matchDate);
+    this.form.patchValue({
+      date:      dt.toISOString().slice(0, 10),
+      startTime: `${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`,
+      endTime:   `${pad((dt.getHours() + 2) % 24)}:${pad(dt.getMinutes())}:00`,
+    });
+  }
+
   save() {
     if (this.form.invalid) return;
     const v = this.form.value;
-    const toISO = (time: string) =>
-      new Date(`${v.date}T${time}:00+03:00`).toISOString();
+    const toISO = (time: string) => new Date(`${v.date}T${time}+03:00`).toISOString();
 
     const body = {
       channelId: v.channelId!,
@@ -173,15 +302,16 @@ export class ScheduleAddDialogComponent {
       endTime:   toISO(v.endTime!),
       title:     v.contentName!,
       metadata: {
-        contentName: v.contentName,
-        transStart:  v.transStart || undefined,
-        transEnd:    v.transEnd   || undefined,
-        houseNumber: v.houseNumber || undefined,
-        intField:    v.intField    || undefined,
-        offTube:     v.offTube     || undefined,
-        language:    v.language    || 'Yok',
-        league:      v.league      || undefined,
-        description: v.notes       || undefined,
+        contentName:    v.contentName,
+        transStart:     v.transStart  || undefined,
+        transEnd:       v.transEnd    || undefined,
+        houseNumber:    v.houseNumber || undefined,
+        intField:       v.intField    || undefined,
+        offTube:        v.offTube     || undefined,
+        language:       v.language    || 'Yok',
+        league:         v.league      || undefined,
+        description:    v.notes       || undefined,
+        optaMatchId:    this.selectedOptaMatchId() || undefined,
       },
     };
 
@@ -192,6 +322,8 @@ export class ScheduleAddDialogComponent {
     });
   }
 }
+
+function pad(n: number) { return String(n).padStart(2, '0'); }
 
 // ── Ana Liste Bileşeni ────────────────────────────────────────────────────────
 @Component({
