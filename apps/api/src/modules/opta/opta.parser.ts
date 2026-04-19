@@ -11,6 +11,17 @@ const ALLOWED_COMPETITIONS: Record<string, string> = {
   '24':  'Fransa Ligue 1',
 };
 
+// F1 session kodları → Türkçe etiket
+const F1_SESSION_LABELS: Record<string, string> = {
+  RACE:          'Yarış',
+  QUALI:         'Sıralama',
+  SPRINTRACE:    'Sprint Yarış',
+  SPRINTSHOOTOUT:'Sprint Sıralama',
+  FP1:           'Antrenman 1',
+  FP2:           'Antrenman 2',
+  FP3:           'Antrenman 3',
+};
+
 export interface OptaCompetition {
   id: string;
   name: string;
@@ -183,6 +194,16 @@ export function buildFixtureCompetitions(): FixtureCompetition[] {
     results.push({ id: compId, name: ALLOWED_COMPETITIONS[compId], season });
   }
 
+  // F1 takvimi varsa ekle
+  const f1Path = path.join(OPTA_DIR, 'F1_CALENDAR_2026.xml');
+  if (fs.existsSync(f1Path)) {
+    const f1Fixtures = loadF1Fixtures();
+    const now = new Date();
+    if (f1Fixtures.some((f) => new Date(f.matchDate) >= now)) {
+      results.push({ id: 'f1', name: 'Formula 1', season: '2026' });
+    }
+  }
+
   results.sort((a, b) => a.name.localeCompare(b.name));
   fixtureCompCache = results;
   return results;
@@ -190,6 +211,12 @@ export function buildFixtureCompetitions(): FixtureCompetition[] {
 
 // ── Belirli bir comp+season için gelecek fikstürleri yükle ───────────────────
 export function loadFixtures(compId: string, season: string, afterDate?: Date): OptaFixture[] {
+  // F1 özel durumu
+  if (compId === 'f1') {
+    const fixtures = loadF1Fixtures();
+    return afterDate ? fixtures.filter((f) => new Date(f.matchDate) >= afterDate) : fixtures;
+  }
+
   const cacheKey = `${compId}-${season}`;
   let cached = fixtureCache.get(cacheKey);
 
@@ -342,6 +369,77 @@ export function loadMatches(competitionId: string, season: string): OptaMatch[] 
   return matches;
 }
 
+// ── Formula 1 ─────────────────────────────────────────────────────────────────
+
+let f1FixtureCache: OptaFixture[] | null = null;
+
+function parseF1Date(dateStr: string, startStr: string, utcOffset: number): Date | null {
+  // date = "DD.MM.YYYY", start = "HH:MM", utcOffset = local hours ahead of UTC
+  const dm = dateStr.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  const tm = startStr.match(/^(\d{2}):(\d{2})$/);
+  if (!dm || !tm) return null;
+  const [, dd, mm, yyyy] = dm;
+  const [, hh, min]      = tm;
+  // Local time → UTC: subtract utcOffset
+  const localMs = Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min));
+  return new Date(localMs - utcOffset * 60 * 60 * 1000);
+}
+
+function loadF1Fixtures(): OptaFixture[] {
+  if (f1FixtureCache) return f1FixtureCache;
+
+  const filePath = path.join(OPTA_DIR, 'F1_CALENDAR_2026.xml');
+  f1FixtureCache = [];
+
+  try {
+    const xml    = fs.readFileSync(filePath, 'utf-8');
+    const parser = new XMLParser({
+      ignoreAttributes:    false,
+      attributeNamePrefix: '@_',
+      isArray: (name) => ['schedule'].includes(name),
+    });
+    const parsed   = parser.parse(xml);
+    const sessions = (parsed?.block?.schedule ?? []) as any[];
+
+    for (const s of sessions) {
+      const session: string  = s.session ?? '';
+      const eventname: string = s.eventname ?? '';
+      const dateStr: string  = s.date ?? '';
+      const startStr: string = String(s.start ?? '');
+      const utcOffset        = Number(s.utc ?? 0);
+      const gpno             = Number(s.gpno ?? 0);
+      const schedId: string  = String(s['@_id'] ?? '');
+
+      if (!dateStr || !startStr || !session || !eventname) continue;
+
+      // Tamamlanmış session'ları dahil et (filtreleme afterDate ile yapılır)
+      const matchDate = parseF1Date(dateStr, startStr, utcOffset);
+      if (!matchDate) continue;
+
+      const sessionLabel = F1_SESSION_LABELS[session] ?? session;
+      const label = `${eventname} — ${sessionLabel} (${matchDate.getUTCDate().toString().padStart(2,'0')}.${(matchDate.getUTCMonth()+1).toString().padStart(2,'0')}.${matchDate.getUTCFullYear()} ${matchDate.getUTCHours().toString().padStart(2,'0')}:${matchDate.getUTCMinutes().toString().padStart(2,'0')})`;
+
+      f1FixtureCache.push({
+        matchId:         `f1-${schedId}`,
+        competitionId:   'f1',
+        competitionName: 'Formula 1',
+        season:          '2026',
+        homeTeamName:    eventname,
+        awayTeamName:    sessionLabel,
+        matchDate:       matchDate.toISOString(),
+        weekNumber:      gpno || null,
+        label,
+      });
+    }
+
+    f1FixtureCache.sort((a, b) => a.matchDate.localeCompare(b.matchDate));
+  } catch {
+    // dosya yoksa boş döner
+  }
+
+  return f1FixtureCache;
+}
+
 // ── Cache temizle ─────────────────────────────────────────────────────────────
 export function clearOptaCache() {
   competitionCache.clear();
@@ -349,4 +447,5 @@ export function clearOptaCache() {
   fixtureCache.clear();
   teamNameCache.clear();
   fixtureCompCache = null;
+  f1FixtureCache   = null;
 }
