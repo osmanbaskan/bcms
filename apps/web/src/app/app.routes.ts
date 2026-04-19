@@ -49,5 +49,12 @@ export const routes: Routes = [
     canActivate: [AuthGuard],
     data: { roles: ['admin', 'monitoring'] },
   },
+  {
+    path: 'users',
+    loadChildren: () =>
+      import('./features/users/users.routes').then((m) => m.usersRoutes),
+    canActivate: [AuthGuard],
+    data: { roles: ['admin'] },
+  },
   { path: '**', redirectTo: '/schedules' },
 ];
