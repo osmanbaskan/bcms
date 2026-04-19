@@ -20,6 +20,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatTabsModule } from '@angular/material/tabs';
 
 import { ScheduleService } from '../../../core/services/schedule.service';
 import { ApiService } from '../../../core/services/api.service';
@@ -47,14 +48,18 @@ interface MatchFormData {
     MatFormFieldModule, MatInputModule, MatSelectModule,
     MatButtonModule, MatIconModule, MatDialogModule,
     MatProgressSpinnerModule, MatDividerModule,
-    MatCheckboxModule,
+    MatCheckboxModule, MatTabsModule,
   ],
   template: `
     <h2 mat-dialog-title>Yeni Yayın Kaydı Ekle</h2>
     <mat-dialog-content>
       <div class="dialog-body">
+      <mat-tab-group [(selectedIndex)]="activeTab" animationDuration="150ms">
 
-        <!-- ── Adım 1: İçerik Seçimi ──────────────────────────────────── -->
+        <!-- ══ Sekme 1: Fikstürden Seç ══════════════════════════════════ -->
+        <mat-tab label="Fikstürden Seç">
+        <div class="tab-body">
+
         <div class="step-header">
           <span class="step-num">1</span>
           <span>İçerik Seçimi</span>
@@ -210,21 +215,127 @@ interface MatchFormData {
           </div>
         }
 
+        </div><!-- /tab-body -->
+        </mat-tab>
+
+        <!-- ══ Sekme 2: Manuel Giriş ═════════════════════════════════════ -->
+        <mat-tab label="Manuel Giriş">
+        <div class="tab-body">
+
+          <div class="step-header" style="margin-top:8px">
+            <span class="step-num">M</span>
+            <span>Manuel İçerik Girişi</span>
+          </div>
+
+          <div class="mform-row">
+            <mat-form-field class="mf-wide">
+              <mat-label>Yayın Adı *</mat-label>
+              <input matInput [(ngModel)]="mf.contentName" [ngModelOptions]="{standalone:true}">
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>Lig</mat-label>
+              <input matInput [(ngModel)]="mf.league" [ngModelOptions]="{standalone:true}" placeholder="Premier League…">
+            </mat-form-field>
+          </div>
+          <div class="mform-row">
+            <mat-form-field>
+              <mat-label>Kanal *</mat-label>
+              <mat-select [(ngModel)]="mf.channelId" [ngModelOptions]="{standalone:true}">
+                @for (ch of data.channels; track ch.id) {
+                  <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>Tarih *</mat-label>
+              <input matInput type="date" [(ngModel)]="mf.date" [ngModelOptions]="{standalone:true}">
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>Başlangıç *</mat-label>
+              <input matInput type="time" step="1" [(ngModel)]="mf.startTime" [ngModelOptions]="{standalone:true}">
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>Bitiş *</mat-label>
+              <input matInput type="time" step="1" [(ngModel)]="mf.endTime" [ngModelOptions]="{standalone:true}">
+            </mat-form-field>
+          </div>
+          <div class="mform-row">
+            <mat-form-field>
+              <mat-label>Trans. Başlangıç</mat-label>
+              <input matInput type="time" step="1" [(ngModel)]="mf.transStart" [ngModelOptions]="{standalone:true}">
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>Trans. Bitiş</mat-label>
+              <input matInput type="time" step="1" [(ngModel)]="mf.transEnd" [ngModelOptions]="{standalone:true}">
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>HDVG</mat-label>
+              <mat-select [(ngModel)]="mf.houseNumber" [ngModelOptions]="{standalone:true}">
+                <mat-option value="">—</mat-option>
+                @for (n of hdvgOptions; track n) {
+                  <mat-option [value]="n">{{ n }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>Int</mat-label>
+              <input matInput [(ngModel)]="mf.intField" [ngModelOptions]="{standalone:true}">
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>Off Tube</mat-label>
+              <input matInput [(ngModel)]="mf.offTube" [ngModelOptions]="{standalone:true}">
+            </mat-form-field>
+          </div>
+          <div class="mform-row">
+            <mat-form-field>
+              <mat-label>Dil</mat-label>
+              <mat-select [(ngModel)]="mf.language" [ngModelOptions]="{standalone:true}">
+                <mat-option value="Yok">Yok</mat-option>
+                <mat-option value="TR">Türkçe</mat-option>
+                <mat-option value="Eng">İngilizce</mat-option>
+                <mat-option value="FR">Fransızca</mat-option>
+                <mat-option value="ES">İspanyolca</mat-option>
+              </mat-select>
+            </mat-form-field>
+            <mat-form-field class="mf-wide">
+              <mat-label>Açıklama ve Notlar</mat-label>
+              <textarea matInput rows="2" [(ngModel)]="mf.notes" [ngModelOptions]="{standalone:true}"></textarea>
+            </mat-form-field>
+          </div>
+
+        </div><!-- /tab-body -->
+        </mat-tab>
+
+      </mat-tab-group>
+
       </div>
     </mat-dialog-content>
 
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>İptal</button>
-      <button mat-raised-button color="primary"
-              [disabled]="!canSave() || saving()"
-              (click)="save()">
-        @if (saving()) {
-          <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
-          Kaydediliyor…
-        } @else {
-          Kaydet ({{ checkedIds().size }})
-        }
-      </button>
+      @if (activeTab === 0) {
+        <button mat-raised-button color="primary"
+                [disabled]="!canSave() || saving()"
+                (click)="save()">
+          @if (saving()) {
+            <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
+            Kaydediliyor…
+          } @else {
+            Kaydet ({{ checkedIds().size }})
+          }
+        </button>
+      } @else {
+        <button mat-raised-button color="primary"
+                [disabled]="!canSaveManual() || saving()"
+                (click)="saveManual()">
+          @if (saving()) {
+            <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
+            Kaydediliyor…
+          } @else {
+            Kaydet
+          }
+        </button>
+      }
     </mat-dialog-actions>
   `,
   styles: [`
@@ -294,6 +405,14 @@ interface MatchFormData {
     .col-trans   { min-width:150px; display:table-cell; }
     .col-trans input { display:block; margin-bottom:2px; }
     .col-lang    { min-width:70px; }
+
+    /* ── Tab body ── */
+    .tab-body { padding: 12px 0 4px; }
+
+    /* ── Manuel form ── */
+    .mform-row { display:flex; gap:12px; margin-bottom:2px; flex-wrap:wrap; }
+    .mform-row mat-form-field { flex:1; min-width:130px; }
+    .mf-wide { flex:2 !important; }
   `],
 })
 export class ScheduleAddDialogComponent {
@@ -301,6 +420,17 @@ export class ScheduleAddDialogComponent {
   dialogRef = inject(MatDialogRef<ScheduleAddDialogComponent>);
   api       = inject(ApiService);
   saving    = signal(false);
+  activeTab = 0;
+
+  // Manuel form verisi
+  mf = {
+    contentName: '', league: '', channelId: null as number | null,
+    date: new Date().toISOString().slice(0, 10),
+    startTime: '', endTime: '', transStart: '', transEnd: '',
+    houseNumber: '', intField: '', offTube: '', language: 'Yok', notes: '',
+  };
+
+  canSaveManual = () => !!(this.mf.contentName && this.mf.channelId && this.mf.date && this.mf.startTime && this.mf.endTime);
 
   // Fikstür sinyalleri
   leagues          = signal<League[]>([]);
@@ -440,6 +570,33 @@ export class ScheduleAddDialogComponent {
     forkJoin(requests).subscribe({
       next:  (saved) => { this.saving.set(false); this.dialogRef.close(saved); },
       error: (e)     => { this.saving.set(false); console.error(e); },
+    });
+  }
+
+  saveManual() {
+    if (!this.canSaveManual()) return;
+    const f = this.mf;
+    const toISO = (t: string) => new Date(`${f.date}T${t}+03:00`).toISOString();
+    this.saving.set(true);
+    this.api.post<Schedule>('/schedules', {
+      channelId: f.channelId!,
+      startTime: toISO(f.startTime),
+      endTime:   toISO(f.endTime),
+      title:     f.contentName,
+      metadata: {
+        contentName:  f.contentName,
+        league:       f.league      || undefined,
+        language:     f.language    || 'Yok',
+        transStart:   f.transStart  || undefined,
+        transEnd:     f.transEnd    || undefined,
+        houseNumber:  f.houseNumber || undefined,
+        intField:     f.intField    || undefined,
+        offTube:      f.offTube     || undefined,
+        description:  f.notes      || undefined,
+      },
+    }).subscribe({
+      next:  (s) => { this.saving.set(false); this.dialogRef.close(s); },
+      error: (e) => { this.saving.set(false); console.error(e); },
     });
   }
 }
@@ -702,8 +859,8 @@ export class ScheduleListComponent implements OnInit {
   openAddDialog() {
     const ref = this.dialog.open(ScheduleAddDialogComponent, {
       data: { channels: this.channels() },
-      width: '1100px',
-      maxWidth: '96vw',
+      width: '1300px',
+      maxWidth: '98vw',
       panelClass: 'dark-dialog',
     });
     ref.afterClosed().subscribe((result) => {
