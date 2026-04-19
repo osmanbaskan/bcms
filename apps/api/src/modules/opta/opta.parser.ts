@@ -4,6 +4,13 @@ import { XMLParser } from 'fast-xml-parser';
 
 export const OPTA_DIR = process.env.OPTA_DIR ?? '/home/ubuntu/opta';
 
+// Yayın hakkı olan ligler (srml competition_id → görünen ad override)
+const ALLOWED_COMPETITIONS: Record<string, string> = {
+  '115': 'Trendyol Süper Lig',
+  '8':   'İngiltere Premier Lig',
+  '24':  'Fransa Ligue 1',
+};
+
 export interface OptaCompetition {
   id: string;
   name: string;
@@ -154,6 +161,10 @@ export function buildFixtureCompetitions(): FixtureCompetition[] {
     const m = file.match(/^srml-(\d+)-(\d+)-results\.xml$/);
     if (!m) continue;
     const [, compId, season] = m;
+
+    // Sadece izin verilen ligler
+    if (!ALLOWED_COMPETITIONS[compId]) continue;
+
     const key = `${compId}-${season}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -161,8 +172,6 @@ export function buildFixtureCompetitions(): FixtureCompetition[] {
     const header = readSrmlHeader(path.join(OPTA_DIR, file));
     if (!header) continue;
 
-    // Sadece PreMatch kaydı olan dosyaları listele
-    // (Küçük kontrol: dosyada "PreMatch" geçiyor mu?)
     try {
       const content = fs.readFileSync(path.join(OPTA_DIR, file), 'utf-8');
       if (!content.includes('Period="PreMatch"')) continue;
@@ -170,7 +179,8 @@ export function buildFixtureCompetitions(): FixtureCompetition[] {
       continue;
     }
 
-    results.push({ id: compId, name: header.name, season });
+    // OPTA'nın İngilizce adı yerine Türkçe adı kullan
+    results.push({ id: compId, name: ALLOWED_COMPETITIONS[compId], season });
   }
 
   results.sort((a, b) => a.name.localeCompare(b.name));
