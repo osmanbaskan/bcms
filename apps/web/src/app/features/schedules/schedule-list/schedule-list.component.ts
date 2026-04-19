@@ -19,6 +19,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatCardModule } from '@angular/material/card';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 
 import { ScheduleService } from '../../../core/services/schedule.service';
 import { ApiService } from '../../../core/services/api.service';
@@ -34,18 +35,20 @@ interface Channel { id: number; name: string; type: string; }
     CommonModule, FormsModule, ReactiveFormsModule,
     MatFormFieldModule, MatInputModule, MatSelectModule,
     MatButtonModule, MatIconModule, MatDialogModule,
-    MatProgressSpinnerModule, MatDividerModule, MatTooltipModule,
+    MatProgressSpinnerModule, MatDividerModule,
+    MatCheckboxModule,
   ],
   template: `
     <h2 mat-dialog-title>Yeni Yayın Kaydı Ekle</h2>
     <mat-dialog-content>
-      <form [formGroup]="form" class="dialog-form">
+      <div class="dialog-body">
 
-        <!-- ── Fikstür Seçimi ──────────────────────────────────────────── -->
-        <div class="section-header">
-          <mat-icon>sports_soccer</mat-icon>
-          <span>Fikstürden Seç <em>(opsiyonel)</em></span>
+        <!-- ── Adım 1: İçerik Seçimi ──────────────────────────────────── -->
+        <div class="step-header">
+          <span class="step-num">1</span>
+          <span>İçerik Seçimi</span>
         </div>
+
         <div class="form-row">
           <mat-form-field>
             <mat-label>Lig / Turnuva</mat-label>
@@ -75,157 +78,162 @@ interface Channel { id: number; name: string; type: string; }
         </div>
 
         @if (matchesLoading()) {
-          <div class="loading-row">
-            <mat-spinner diameter="18"></mat-spinner><span>Maçlar yükleniyor…</span>
+          <div class="info-row">
+            <mat-spinner diameter="16"></mat-spinner><span>Maçlar yükleniyor…</span>
           </div>
         }
         @if (!matchesLoading() && selectedLeagueId() && allMatches().length === 0) {
-          <div class="loading-row">
-            <mat-icon style="font-size:16px;height:16px;width:16px;color:#888">info</mat-icon>
+          <div class="info-row">
+            <mat-icon class="info-icon">info</mat-icon>
             <span>Bu lig için planlanmış maç bulunamadı.</span>
           </div>
         }
+
         @if (filteredMatches().length > 0) {
-          <div class="form-row">
-            <mat-form-field class="full-width">
-              <mat-label>Maç</mat-label>
-              <mat-select [value]="selectedMatchId()"
-                          (selectionChange)="onMatchSelect($event.value)">
-                <mat-option [value]="null">— Maç seçin —</mat-option>
-                @for (m of filteredMatches(); track m.id) {
-                  <mat-option [value]="m.id">{{ m.label }}</mat-option>
-                }
-              </mat-select>
-            </mat-form-field>
+          <!-- Tümünü seç satırı -->
+          <div class="select-all-row">
+            <mat-checkbox
+              [checked]="allChecked()"
+              [indeterminate]="someChecked()"
+              (change)="toggleAll($event.checked)">
+              Tümünü seç
+            </mat-checkbox>
+            @if (checkedIds().size > 0) {
+              <span class="badge">{{ checkedIds().size }} seçildi</span>
+            }
           </div>
 
-          @if (selectedWeek() !== null) {
-            <div class="bulk-row">
-              <button mat-stroked-button color="accent"
-                      [disabled]="bulkSaving() || !form.get('channelId')!.value"
-                      (click)="saveWeek()"
-                      [matTooltip]="form.get('channelId')!.value ? '' : 'Önce kanal seçin'">
-                @if (bulkSaving()) {
-                  <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
-                } @else {
-                  <mat-icon>playlist_add</mat-icon>
-                }
-                Tüm Haftayı Ekle ({{ filteredMatches().length }} maç)
-              </button>
-            </div>
-          }
+          <!-- Maç listesi -->
+          <div class="match-list">
+            @for (m of filteredMatches(); track m.id) {
+              <div class="match-item" [class.checked]="checkedIds().has(m.id)"
+                   (click)="toggle(m.id)">
+                <mat-checkbox [checked]="checkedIds().has(m.id)"
+                              (click)="$event.stopPropagation()"
+                              (change)="toggle(m.id)">
+                </mat-checkbox>
+                <span class="match-label">{{ m.label }}</span>
+              </div>
+            }
+          </div>
         }
 
-        <mat-divider style="margin:8px 0 12px"></mat-divider>
+        <!-- ── Adım 2: Ortak Bilgiler ─────────────────────────────────── -->
+        @if (checkedIds().size > 0) {
+          <mat-divider style="margin:12px 0"></mat-divider>
 
-        <!-- ── Temel Alanlar ─────────────────────────────────────────────── -->
-        <div class="form-row">
-          <mat-form-field>
-            <mat-label>Kanal *</mat-label>
-            <mat-select formControlName="channelId">
-              @for (ch of data.channels; track ch.id) {
-                <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-          <mat-form-field>
-            <mat-label>Tarih *</mat-label>
-            <input matInput type="date" formControlName="date">
-          </mat-form-field>
-        </div>
-        <div class="form-row">
-          <mat-form-field>
-            <mat-label>Saat (Başlangıç) *</mat-label>
-            <input matInput type="time" formControlName="startTime" step="1">
-          </mat-form-field>
-          <mat-form-field>
-            <mat-label>Saat (Bitiş) *</mat-label>
-            <input matInput type="time" formControlName="endTime" step="1">
-          </mat-form-field>
-        </div>
-        <div class="form-row">
-          <mat-form-field>
-            <mat-label>Trans. Başlangıç</mat-label>
-            <input matInput type="time" formControlName="transStart" step="1">
-          </mat-form-field>
-          <mat-form-field>
-            <mat-label>Trans. Bitiş</mat-label>
-            <input matInput type="time" formControlName="transEnd" step="1">
-          </mat-form-field>
-        </div>
-        <div class="form-row">
-          <mat-form-field class="full-width">
-            <mat-label>Yayın Adı *</mat-label>
-            <input matInput formControlName="contentName" placeholder="İçerik adı">
-          </mat-form-field>
-        </div>
-        <div class="form-row">
-          <mat-form-field class="full-width">
-            <mat-label>Başlık (Opsiyonel)</mat-label>
-            <input matInput formControlName="title" placeholder="Başlık">
-          </mat-form-field>
-        </div>
-        <div class="form-row">
-          <mat-form-field>
-            <mat-label>HDVG</mat-label>
-            <input matInput formControlName="houseNumber">
-          </mat-form-field>
-          <mat-form-field>
-            <mat-label>Int</mat-label>
-            <input matInput formControlName="intField">
-          </mat-form-field>
-          <mat-form-field>
-            <mat-label>Off Tube</mat-label>
-            <input matInput formControlName="offTube">
-          </mat-form-field>
-        </div>
-        <div class="form-row">
-          <mat-form-field>
-            <mat-label>Dil</mat-label>
-            <mat-select formControlName="language">
-              <mat-option value="Yok">Yok</mat-option>
-              <mat-option value="TR">Türkçe</mat-option>
-              <mat-option value="Eng">İngilizce</mat-option>
-              <mat-option value="FR">Fransızca</mat-option>
-              <mat-option value="ES">İspanyolca</mat-option>
-            </mat-select>
-          </mat-form-field>
-          <mat-form-field>
-            <mat-label>Lig</mat-label>
-            <input matInput formControlName="league" placeholder="Premier League, TSL...">
-          </mat-form-field>
-        </div>
-        <div class="form-row">
-          <mat-form-field class="full-width">
-            <mat-label>Açıklama ve Notlar</mat-label>
-            <textarea matInput formControlName="notes" rows="2"></textarea>
-          </mat-form-field>
-        </div>
-      </form>
+          <div class="step-header">
+            <span class="step-num">2</span>
+            <span>Ortak Bilgiler</span>
+          </div>
+
+          <form [formGroup]="form">
+            <div class="form-row">
+              <mat-form-field>
+                <mat-label>Kanal *</mat-label>
+                <mat-select formControlName="channelId">
+                  @for (ch of data.channels; track ch.id) {
+                    <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+              <mat-form-field>
+                <mat-label>Dil</mat-label>
+                <mat-select formControlName="language">
+                  <mat-option value="Yok">Yok</mat-option>
+                  <mat-option value="TR">Türkçe</mat-option>
+                  <mat-option value="Eng">İngilizce</mat-option>
+                  <mat-option value="FR">Fransızca</mat-option>
+                  <mat-option value="ES">İspanyolca</mat-option>
+                </mat-select>
+              </mat-form-field>
+            </div>
+            <div class="form-row">
+              <mat-form-field>
+                <mat-label>Trans. Başlangıç</mat-label>
+                <input matInput type="time" formControlName="transStart" step="1">
+              </mat-form-field>
+              <mat-form-field>
+                <mat-label>Trans. Bitiş</mat-label>
+                <input matInput type="time" formControlName="transEnd" step="1">
+              </mat-form-field>
+            </div>
+            <div class="form-row">
+              <mat-form-field>
+                <mat-label>HDVG</mat-label>
+                <input matInput formControlName="houseNumber">
+              </mat-form-field>
+              <mat-form-field>
+                <mat-label>Int</mat-label>
+                <input matInput formControlName="intField">
+              </mat-form-field>
+              <mat-form-field>
+                <mat-label>Off Tube</mat-label>
+                <input matInput formControlName="offTube">
+              </mat-form-field>
+            </div>
+            <div class="form-row">
+              <mat-form-field class="full-width">
+                <mat-label>Açıklama ve Notlar</mat-label>
+                <textarea matInput formControlName="notes" rows="2"></textarea>
+              </mat-form-field>
+            </div>
+          </form>
+        }
+
+      </div>
     </mat-dialog-content>
+
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>İptal</button>
       <button mat-raised-button color="primary"
-              [disabled]="form.invalid || saving()"
+              [disabled]="checkedIds().size === 0 || form.invalid || saving()"
               (click)="save()">
-        {{ saving() ? 'Kaydediliyor…' : 'Kaydet' }}
+        @if (saving()) {
+          <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
+          Kaydediliyor…
+        } @else {
+          Seçilenleri Ekle ({{ checkedIds().size }})
+        }
       </button>
     </mat-dialog-actions>
   `,
   styles: [`
-    .dialog-form  { display:flex; flex-direction:column; gap:0; min-width:540px; }
-    .form-row     { display:flex; gap:12px; }
+    .dialog-body  { min-width: 560px; }
+    .form-row     { display:flex; gap:12px; margin-bottom:4px; }
     .form-row mat-form-field { flex:1; }
     .full-width   { width:100%; }
-    .section-header {
-      display:flex; align-items:center; gap:6px;
-      font-size:13px; color:#aaa; margin-bottom:4px;
+
+    .step-header  {
+      display:flex; align-items:center; gap:8px;
+      font-weight:500; font-size:13px; margin:4px 0 10px;
     }
-    .section-header em { color:#666; font-style:normal; }
-    .section-header mat-icon { font-size:18px; height:18px; width:18px; }
-    .loading-row { display:flex; align-items:center; gap:8px; color:#aaa; font-size:12px; margin-bottom:8px; }
-    .bulk-row    { display:flex; justify-content:flex-end; margin-bottom:8px; }
-    .bulk-row button mat-icon { font-size:18px; height:18px; width:18px; margin-right:4px; }
+    .step-num {
+      display:inline-flex; align-items:center; justify-content:center;
+      width:20px; height:20px; border-radius:50%;
+      background:#1976d2; color:#fff; font-size:11px; font-weight:700; flex-shrink:0;
+    }
+
+    .info-row  { display:flex; align-items:center; gap:6px; color:#888; font-size:12px; margin-bottom:8px; }
+    .info-icon { font-size:16px; height:16px; width:16px; }
+
+    .select-all-row {
+      display:flex; align-items:center; gap:12px;
+      padding: 4px 8px; margin-bottom:4px;
+    }
+    .badge {
+      background:#1976d2; color:#fff; border-radius:10px;
+      padding:1px 8px; font-size:11px;
+    }
+
+    .match-list   { max-height:220px; overflow-y:auto; border:1px solid #333; border-radius:4px; margin-bottom:8px; }
+    .match-item   {
+      display:flex; align-items:center; gap:10px;
+      padding:6px 10px; cursor:pointer; transition:background .15s;
+    }
+    .match-item:hover  { background:rgba(255,255,255,.05); }
+    .match-item.checked { background:rgba(25,118,210,.12); }
+    .match-label  { font-size:13px; }
   `],
 })
 export class ScheduleAddDialogComponent {
@@ -233,8 +241,7 @@ export class ScheduleAddDialogComponent {
   dialogRef = inject(MatDialogRef<ScheduleAddDialogComponent>);
   api       = inject(ApiService);
   fb        = inject(FormBuilder);
-  saving     = signal(false);
-  bulkSaving = signal(false);
+  saving    = signal(false);
 
   // Fikstür sinyalleri
   leagues          = signal<League[]>([]);
@@ -244,7 +251,7 @@ export class ScheduleAddDialogComponent {
   matchesLoading   = signal(false);
   weeks            = signal<number[]>([]);
   selectedWeek     = signal<number | null>(null);
-  selectedMatchId  = signal<number | null>(null);
+  checkedIds       = signal<Set<number>>(new Set());
 
   filteredMatches = (): MatchListItem[] => {
     const w = this.selectedWeek();
@@ -253,21 +260,18 @@ export class ScheduleAddDialogComponent {
     return this.allMatches().filter((m) => m.weekNumber === w);
   };
 
+  allChecked  = () => this.filteredMatches().length > 0 && this.filteredMatches().every((m) => this.checkedIds().has(m.id));
+  someChecked = () => this.filteredMatches().some((m) => this.checkedIds().has(m.id));
+
   form = this.fb.group({
-    channelId:   [null as number | null, Validators.required],
-    date:        [new Date().toISOString().slice(0, 10), Validators.required],
-    startTime:   ['', Validators.required],
-    endTime:     ['', Validators.required],
-    transStart:  [''],
-    transEnd:    [''],
-    contentName: ['', Validators.required],
-    title:       [''],
-    houseNumber: [''],
-    intField:    [''],
-    offTube:     [''],
-    language:    ['Yok'],
-    league:      [''],
-    notes:       [''],
+    channelId:  [null as number | null, Validators.required],
+    language:   ['Yok'],
+    transStart: [''],
+    transEnd:   [''],
+    houseNumber:[''],
+    intField:   [''],
+    offTube:    [''],
+    notes:      [''],
   });
 
   constructor() {
@@ -283,18 +287,17 @@ export class ScheduleAddDialogComponent {
     this.allMatches.set([]);
     this.weeks.set([]);
     this.selectedWeek.set(null);
-    this.selectedMatchId.set(null);
+    this.checkedIds.set(new Set());
     if (!leagueId) return;
 
-    const from = new Date().toISOString();
     this.matchesLoading.set(true);
+    const from = new Date().toISOString();
     this.api.get<MatchListItem[]>(`/matches?leagueId=${leagueId}&from=${encodeURIComponent(from)}`).subscribe({
       next: (ms) => {
         this.allMatches.set(ms);
-        // Benzersiz hafta numaralarını çıkar (null → -1)
         const wSet = new Set(ms.map((m) => m.weekNumber ?? -1));
         const wList = [...wSet].sort((a, b) => a - b);
-        this.weeks.set(wList.length > 1 ? wList : []); // tek hafta varsa dropdown gösterme
+        this.weeks.set(wList.length > 1 ? wList : []);
         this.matchesLoading.set(false);
       },
       error: () => { this.matchesLoading.set(false); },
@@ -303,84 +306,53 @@ export class ScheduleAddDialogComponent {
 
   onWeekChange(week: number | null) {
     this.selectedWeek.set(week);
-    this.selectedMatchId.set(null);
+    this.checkedIds.set(new Set());
   }
 
-  onMatchSelect(matchId: number | null) {
-    this.selectedMatchId.set(matchId);
-    const match = this.allMatches().find((m) => m.id === matchId);
-    if (!match) return;
-
-    const league = this.leagues().find((l) => l.id === match.leagueId);
-    const dt = new Date(match.matchDate);
-    this.form.patchValue({
-      contentName: `${match.homeTeamName} - ${match.awayTeamName}`,
-      league:      league?.name ?? '',
-      date:        dt.toISOString().slice(0, 10),
-      startTime:   `${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`,
-      endTime:     `${pad((dt.getHours() + 2) % 24)}:${pad(dt.getMinutes())}:00`,
-    });
+  toggle(id: number) {
+    const s = new Set(this.checkedIds());
+    s.has(id) ? s.delete(id) : s.add(id);
+    this.checkedIds.set(s);
   }
 
-  saveWeek() {
-    const channelId = this.form.get('channelId')!.value as number | null;
-    if (!channelId) return;
+  toggleAll(checked: boolean) {
+    this.checkedIds.set(checked ? new Set(this.filteredMatches().map((m) => m.id)) : new Set());
+  }
 
-    const requests = this.filteredMatches().map((m) => {
+  save() {
+    if (this.form.invalid || this.checkedIds().size === 0) return;
+    const v = this.form.value;
+    const leagueName = this.leagues().find((l) => l.id === this.selectedLeagueId())?.name;
+    const selected = this.allMatches().filter((m) => this.checkedIds().has(m.id));
+
+    const requests = selected.map((m) => {
       const dt = new Date(m.matchDate);
-      const league = this.leagues().find((l) => l.id === m.leagueId);
-      const startTime = new Date(`${dt.toISOString().slice(0, 10)}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:00+03:00`).toISOString();
-      const endDt = new Date(dt.getTime() + 2 * 60 * 60 * 1000);
-      const endTime = new Date(`${endDt.toISOString().slice(0, 10)}T${pad(endDt.getHours())}:${pad(endDt.getMinutes())}:00+03:00`).toISOString();
+      const startTime = dt.toISOString();
+      const endTime   = new Date(dt.getTime() + 2 * 60 * 60 * 1000).toISOString();
       return this.api.post<Schedule>('/schedules', {
-        channelId,
+        channelId: v.channelId!,
         startTime,
         endTime,
         title: `${m.homeTeamName} - ${m.awayTeamName}`,
         metadata: {
-          contentName: `${m.homeTeamName} - ${m.awayTeamName}`,
-          league:      league?.name ?? undefined,
-          language:    'Yok',
-          matchId:     m.id,
+          contentName:  `${m.homeTeamName} - ${m.awayTeamName}`,
+          league:        leagueName ?? undefined,
+          language:      v.language   || 'Yok',
+          transStart:    v.transStart || undefined,
+          transEnd:      v.transEnd   || undefined,
+          houseNumber:   v.houseNumber || undefined,
+          intField:      v.intField   || undefined,
+          offTube:       v.offTube    || undefined,
+          description:   v.notes     || undefined,
+          matchId:       m.id,
         },
       });
     });
 
-    this.bulkSaving.set(true);
-    forkJoin(requests).subscribe({
-      next:  (saved) => { this.bulkSaving.set(false); this.dialogRef.close(saved); },
-      error: (e)     => { this.bulkSaving.set(false); console.error(e); },
-    });
-  }
-
-  save() {
-    if (this.form.invalid) return;
-    const v = this.form.value;
-    const toISO = (time: string) => new Date(`${v.date}T${time}+03:00`).toISOString();
-
-    const body = {
-      channelId: v.channelId!,
-      startTime: toISO(v.startTime!),
-      endTime:   toISO(v.endTime!),
-      title:     v.contentName!,
-      metadata: {
-        contentName:  v.contentName,
-        transStart:   v.transStart  || undefined,
-        transEnd:     v.transEnd    || undefined,
-        houseNumber:  v.houseNumber || undefined,
-        intField:     v.intField    || undefined,
-        offTube:      v.offTube     || undefined,
-        language:     v.language    || 'Yok',
-        league:       v.league      || undefined,
-        description:  v.notes       || undefined,
-        matchId:      this.selectedMatchId() || undefined,
-      },
-    };
-
     this.saving.set(true);
-    this.api.post<Schedule>('/schedules', body).subscribe({
-      next:  (s) => { this.saving.set(false); this.dialogRef.close(s); },
-      error: (e) => { this.saving.set(false); console.error(e); },
+    forkJoin(requests).subscribe({
+      next:  (saved) => { this.saving.set(false); this.dialogRef.close(saved); },
+      error: (e)     => { this.saving.set(false); console.error(e); },
     });
   }
 }
