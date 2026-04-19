@@ -21,9 +21,10 @@ function initKeycloak(keycloak: KeycloakService) {
       initOptions: {
         onLoad: 'login-required',
         checkLoginIframe: false,
+        scope: 'openid profile email',
         silentCheckSsoRedirectUri: window.location.origin + '/assets/silent-check-sso.html',
       },
-      loadUserProfileAtStartUp: true,
+      loadUserProfileAtStartUp: false,
     });
   };
 }

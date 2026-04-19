@@ -29,8 +29,9 @@ export const scheduleQuerySchema = z.object({
   from:     z.string().datetime({ offset: true }).optional(),
   to:       z.string().datetime({ offset: true }).optional(),
   status:   ScheduleStatusEnum.optional(),
+  source:   z.enum(['manual', 'bxf']).optional(),
   page:     z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
 
 export type CreateScheduleDto = z.infer<typeof createScheduleSchema>;

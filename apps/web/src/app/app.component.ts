@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal, computed, ChangeDetectorRef } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -10,10 +10,12 @@ import { KeycloakService } from 'keycloak-angular';
 import { environment } from '../environments/environment';
 
 interface NavItem {
-  label: string;
-  icon:  string;
-  route: string;
-  roles: string[];
+  label:      string;
+  icon:       string;
+  route:      string;
+  roles:      string[];
+  exactMatch?: boolean;
+  children?:  NavItem[];
 }
 
 @Component({
@@ -38,11 +40,25 @@ interface NavItem {
           <span>BCMS</span>
         </div>
         <mat-nav-list>
-          @for (item of visibleNavItems; track item.route) {
-            <a mat-list-item [routerLink]="item.route" routerLinkActive="active-link">
-              <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
-              <span matListItemTitle>{{ item.label }}</span>
-            </a>
+          @for (item of visibleNavItems(); track item.route) {
+            @if (item.children?.length) {
+              <div class="nav-group-label">
+                <mat-icon class="nav-group-icon">{{ item.icon }}</mat-icon>
+                <span>{{ item.label }}</span>
+              </div>
+              @for (child of item.children; track child.route) {
+                <a mat-list-item [routerLink]="child.route" routerLinkActive="active-link"
+                   [routerLinkActiveOptions]="{ exact: !!child.exactMatch }">
+                  <mat-icon matListItemIcon class="child-icon">{{ child.icon }}</mat-icon>
+                  <span matListItemTitle>{{ child.label }}</span>
+                </a>
+              }
+            } @else {
+              <a mat-list-item [routerLink]="item.route" routerLinkActive="active-link">
+                <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
+                <span matListItemTitle>{{ item.label }}</span>
+              </a>
+            }
           }
         </mat-nav-list>
       </mat-sidenav>
@@ -68,13 +84,23 @@ interface NavItem {
   `,
   styles: [`
     .sidenav-container { height: 100%; }
-    .sidenav { width: 220px; background: #1e1e2e; }
+    .sidenav { width: 220px; background: #1e1e2e; color: rgba(255,255,255,0.87); }
     .sidenav-header {
       display: flex; align-items: center; gap: 8px;
       padding: 16px; font-size: 1.2rem; font-weight: 600;
+      color: #fff;
       border-bottom: 1px solid rgba(255,255,255,0.1);
     }
+    .sidenav a { color: rgba(255,255,255,0.87) !important; }
     .active-link { background: rgba(255,255,255,0.1) !important; }
+    .nav-group-label {
+      display:flex; align-items:center; gap:8px;
+      padding:10px 16px 4px;
+      font-size:0.72rem; font-weight:700; letter-spacing:0.08em;
+      text-transform:uppercase; color:rgba(255,255,255,0.4);
+    }
+    .nav-group-icon { font-size:16px; width:16px; height:16px; }
+    .child-icon { font-size:18px !important; }
     .toolbar-title { margin-left: 8px; }
     .spacer { flex: 1; }
     .user-name { font-size: 0.85rem; opacity: 0.8; margin-right: 8px; }
@@ -83,10 +109,17 @@ interface NavItem {
 })
 export class AppComponent implements OnInit {
   username = '';
-  userRoles: string[] = [];
+  userRoles = signal<string[]>([]);
 
   readonly navItems: NavItem[] = [
-    { label: 'Yayın Planı',    icon: 'calendar_today',     route: '/schedules',  roles: ['admin','planner','scheduler','viewer'] },
+    {
+      label: 'Yayın Planı', icon: 'calendar_today', route: '/schedules',
+      roles: ['admin','planner','scheduler','viewer'],
+      children: [
+        { label: 'Canlı Yayın Plan Listesi', icon: 'list', route: '/schedules', roles: ['admin','planner','scheduler','viewer'], exactMatch: true },
+        { label: 'Günlük Yayın Raporu', icon: 'bar_chart',        route: '/schedules/daily-report', roles: ['admin','planner','scheduler','viewer'] },
+      ],
+    },
     { label: 'Rezervasyonlar', icon: 'book_online',         route: '/bookings',   roles: ['admin','planner','scheduler','viewer'] },
     { label: 'Kanallar',       icon: 'live_tv',             route: '/channels',   roles: ['admin'] },
     { label: 'Ingest',         icon: 'cloud_upload',        route: '/ingest',     roles: ['admin','ingest_operator'] },
@@ -94,23 +127,29 @@ export class AppComponent implements OnInit {
     { label: 'MCR',            icon: 'videocam',            route: '/mcr',        roles: ['admin','monitoring'] },
   ];
 
-  get visibleNavItems(): NavItem[] {
-    return this.navItems.filter((item) =>
-      item.roles.some((r) => this.userRoles.includes(r)),
-    );
-  }
+  visibleNavItems = computed(() =>
+    this.navItems.filter((item) =>
+      item.roles.some((r) => this.userRoles().includes(r)),
+    ),
+  );
 
-  constructor(private keycloak: KeycloakService) {}
+  constructor(private keycloak: KeycloakService, private cdr: ChangeDetectorRef) {}
 
   async ngOnInit() {
     if (environment.skipAuth) {
       this.username  = 'dev-admin';
-      this.userRoles = ['admin'];
+      this.userRoles.set(['admin']);
       return;
     }
-    const profile = await this.keycloak.loadUserProfile();
-    this.username  = profile.username ?? '';
-    this.userRoles = this.keycloak.getUserRoles();
+    // tokenParsed'dan username ve rolleri oku — network çağrısı gerektirmez
+    const kc = this.keycloak.getKeycloakInstance();
+    const parsed: any = kc?.tokenParsed ?? {};
+    this.username = parsed['preferred_username'] ?? '';
+    const realmRoles: string[]    = parsed?.realm_access?.roles ?? [];
+    const resourceRoles: string[] = Object.values(parsed?.resource_access ?? {})
+      .flatMap((r: any) => r?.roles ?? []);
+    this.userRoles.set([...new Set([...realmRoles, ...resourceRoles])]);
+    this.cdr.detectChanges();
   }
 
   logout() {

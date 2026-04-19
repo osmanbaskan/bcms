@@ -36,6 +36,11 @@ html, body {
   font-family: 'Roboto', sans-serif;
 }
 
+app-root {
+  display: block;
+  height: 100%;
+}
+
 .page-container {
   padding: 24px;
 }

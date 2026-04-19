@@ -7,6 +7,11 @@ export const schedulesRoutes: Routes = [
       import('./schedule-list/schedule-list.component').then((m) => m.ScheduleListComponent),
   },
   {
+    path: 'daily-report',
+    loadComponent: () =>
+      import('./daily-report/daily-report.component').then((m) => m.DailyReportComponent),
+  },
+  {
     path: 'new',
     loadComponent: () =>
       import('./schedule-form/schedule-form.component').then((m) => m.ScheduleFormComponent),

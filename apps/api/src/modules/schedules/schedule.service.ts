@@ -8,20 +8,16 @@ export class ScheduleService {
   constructor(private readonly app: FastifyInstance) {}
 
   async findAll(query: ScheduleQuery) {
-    const { channel, from, to, status, page, pageSize } = query;
+    const { channel, from, to, status, source, page, pageSize } = query;
     const skip = (page - 1) * pageSize;
 
     const where = {
       ...(channel  && { channelId: channel }),
       ...(status   && { status }),
-      ...(from || to
-        ? {
-            startTime: {
-              ...(from && { gte: new Date(from) }),
-              ...(to   && { lte: new Date(to) }),
-            },
-          }
-        : {}),
+      ...(from && { endTime:   { gte: new Date(from) } }),
+      ...(to   && { startTime: { lte: new Date(to)   } }),
+      ...(source === 'manual' && { createdBy: { not: 'bxf-importer' } }),
+      ...(source === 'bxf'    && { createdBy: 'bxf-importer' }),
     };
 
     const [data, total] = await Promise.all([

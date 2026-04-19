@@ -13,6 +13,9 @@ apps/web/dist/
 # Docker volumes (if mounted locally)
 .docker/
 
+# Ingest temp files
+apps/api/tmp/
+
 # IDE
 .vscode/
 .idea/

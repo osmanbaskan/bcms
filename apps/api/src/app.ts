@@ -22,6 +22,7 @@ import { matchRoutes } from './modules/matches/match.routes.js';
 import { startNotificationConsumer } from './modules/notifications/notification.consumer.js';
 import { startIngestWorker } from './modules/ingest/ingest.worker.js';
 import { startIngestWatcher } from './modules/ingest/ingest.watcher.js';
+import { startBxfWatcher } from './modules/bxf/bxf.watcher.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -81,6 +82,7 @@ export async function buildApp() {
   await startNotificationConsumer(app);
   await startIngestWorker(app);
   startIngestWatcher(app);
+  await startBxfWatcher(app);
 
   // ── Routes ────────────────────────────────────────────────────────────────────
   await app.register(scheduleRoutes, { prefix: '/api/v1/schedules' });
