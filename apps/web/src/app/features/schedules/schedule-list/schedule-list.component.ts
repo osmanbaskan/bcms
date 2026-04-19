@@ -1,6 +1,7 @@
 import {
   Component, OnInit, signal, inject,
 } from '@angular/core';
+import { forkJoin } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 
@@ -33,7 +34,7 @@ interface Channel { id: number; name: string; type: string; }
     CommonModule, FormsModule, ReactiveFormsModule,
     MatFormFieldModule, MatInputModule, MatSelectModule,
     MatButtonModule, MatIconModule, MatDialogModule,
-    MatProgressSpinnerModule, MatDividerModule,
+    MatProgressSpinnerModule, MatDividerModule, MatTooltipModule,
   ],
   template: `
     <h2 mat-dialog-title>Yeni Yayın Kaydı Ekle</h2>
@@ -97,6 +98,22 @@ interface Channel { id: number; name: string; type: string; }
               </mat-select>
             </mat-form-field>
           </div>
+
+          @if (selectedWeek() !== null) {
+            <div class="bulk-row">
+              <button mat-stroked-button color="accent"
+                      [disabled]="bulkSaving() || !form.get('channelId')!.value"
+                      (click)="saveWeek()"
+                      [matTooltip]="form.get('channelId')!.value ? '' : 'Önce kanal seçin'">
+                @if (bulkSaving()) {
+                  <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
+                } @else {
+                  <mat-icon>playlist_add</mat-icon>
+                }
+                Tüm Haftayı Ekle ({{ filteredMatches().length }} maç)
+              </button>
+            </div>
+          }
         }
 
         <mat-divider style="margin:8px 0 12px"></mat-divider>
@@ -207,6 +224,8 @@ interface Channel { id: number; name: string; type: string; }
     .section-header em { color:#666; font-style:normal; }
     .section-header mat-icon { font-size:18px; height:18px; width:18px; }
     .loading-row { display:flex; align-items:center; gap:8px; color:#aaa; font-size:12px; margin-bottom:8px; }
+    .bulk-row    { display:flex; justify-content:flex-end; margin-bottom:8px; }
+    .bulk-row button mat-icon { font-size:18px; height:18px; width:18px; margin-right:4px; }
   `],
 })
 export class ScheduleAddDialogComponent {
@@ -214,7 +233,8 @@ export class ScheduleAddDialogComponent {
   dialogRef = inject(MatDialogRef<ScheduleAddDialogComponent>);
   api       = inject(ApiService);
   fb        = inject(FormBuilder);
-  saving    = signal(false);
+  saving     = signal(false);
+  bulkSaving = signal(false);
 
   // Fikstür sinyalleri
   leagues          = signal<League[]>([]);
@@ -299,6 +319,37 @@ export class ScheduleAddDialogComponent {
       date:        dt.toISOString().slice(0, 10),
       startTime:   `${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`,
       endTime:     `${pad((dt.getHours() + 2) % 24)}:${pad(dt.getMinutes())}:00`,
+    });
+  }
+
+  saveWeek() {
+    const channelId = this.form.get('channelId')!.value as number | null;
+    if (!channelId) return;
+
+    const requests = this.filteredMatches().map((m) => {
+      const dt = new Date(m.matchDate);
+      const league = this.leagues().find((l) => l.id === m.leagueId);
+      const startTime = new Date(`${dt.toISOString().slice(0, 10)}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:00+03:00`).toISOString();
+      const endDt = new Date(dt.getTime() + 2 * 60 * 60 * 1000);
+      const endTime = new Date(`${endDt.toISOString().slice(0, 10)}T${pad(endDt.getHours())}:${pad(endDt.getMinutes())}:00+03:00`).toISOString();
+      return this.api.post<Schedule>('/schedules', {
+        channelId,
+        startTime,
+        endTime,
+        title: `${m.homeTeamName} - ${m.awayTeamName}`,
+        metadata: {
+          contentName: `${m.homeTeamName} - ${m.awayTeamName}`,
+          league:      league?.name ?? undefined,
+          language:    'Yok',
+          matchId:     m.id,
+        },
+      });
+    });
+
+    this.bulkSaving.set(true);
+    forkJoin(requests).subscribe({
+      next:  (saved) => { this.bulkSaving.set(false); this.dialogRef.close(saved); },
+      error: (e)     => { this.bulkSaving.set(false); console.error(e); },
     });
   }
 
