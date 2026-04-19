@@ -15,8 +15,8 @@ export async function optaRoutes(app: FastifyInstance) {
     return buildCompetitionList();
   });
 
-  // GET /api/v1/opta/matches?competitionId=X&season=Y
-  app.get<{ Querystring: { competitionId: string; season: string } }>('/matches', {
+  // GET /api/v1/opta/matches?competitionId=X&season=Y[&upcoming=false]
+  app.get<{ Querystring: { competitionId: string; season: string; upcoming?: string } }>('/matches', {
     preHandler: app.requireRole(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['OPTA'],
@@ -27,12 +27,16 @@ export async function optaRoutes(app: FastifyInstance) {
         properties: {
           competitionId: { type: 'string' },
           season:        { type: 'string' },
+          upcoming:      { type: 'string', enum: ['true', 'false'], default: 'true' },
         },
       },
     },
   }, async (request) => {
-    const { competitionId, season } = request.query;
-    return loadMatches(competitionId, season);
+    const { competitionId, season, upcoming = 'true' } = request.query;
+    const matches = loadMatches(competitionId, season);
+    if (upcoming === 'false') return matches;
+    const now = Date.now();
+    return matches.filter((m) => new Date(m.matchDate).getTime() >= now);
   });
 
   // POST /api/v1/opta/cache/clear — cache'i zorla yenile
