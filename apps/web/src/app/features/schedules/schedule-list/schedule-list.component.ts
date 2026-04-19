@@ -129,7 +129,7 @@ interface MatchFormData {
           </div>
         }
 
-        <!-- ── Adım 2: Maç Bazlı Bilgi Girişi ──────────────────────────── -->
+        <!-- ── Adım 2: Maç Bazlı Bilgi Girişi (Tablo) ──────────────────── -->
         @if (checkedIds().size > 0) {
           <mat-divider style="margin:12px 0"></mat-divider>
 
@@ -138,75 +138,67 @@ interface MatchFormData {
             <span>Maç Bilgileri</span>
           </div>
 
-          @for (m of selectedMatches(); track m.id) {
-            <div class="match-form-card">
-              <div class="match-form-title">
-                <mat-icon>sports_soccer</mat-icon>
-                <span>{{ m.label }}</span>
-              </div>
-              <div class="form-row">
-                <mat-form-field>
-                  <mat-label>Kanal *</mat-label>
-                  <mat-select [(ngModel)]="getForm(m.id).channelId"
+          <div class="entry-table-wrap">
+            <table class="entry-table">
+              <thead>
+                <tr>
+                  <th>Yayın Adı</th>
+                  <th>Saat</th>
+                  <th>Kanal *</th>
+                  <th>Trans. Saati</th>
+                  <th>HDVG</th>
+                  <th>Int</th>
+                  <th>Off Tube</th>
+                  <th>Dil</th>
+                  <th>Açıklama ve Notlar</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (m of selectedMatches(); track m.id) {
+                  <tr>
+                    <td class="col-title">{{ m.homeTeamName }} - {{ m.awayTeamName }}</td>
+                    <td class="col-time">{{ m.matchDate | date:'dd.MM HH:mm' }}</td>
+                    <td class="col-channel">
+                      <select class="cell-select"
+                              [(ngModel)]="getForm(m.id).channelId"
+                              [ngModelOptions]="{standalone:true}"
+                              [class.empty]="!getForm(m.id).channelId">
+                        <option [ngValue]="null">— Seçin —</option>
+                        @for (ch of data.channels; track ch.id) {
+                          <option [ngValue]="ch.id">{{ ch.name }}</option>
+                        }
+                      </select>
+                    </td>
+                    <td class="col-trans">
+                      <input class="cell-input" type="time" step="1"
+                             [(ngModel)]="getForm(m.id).transStart"
+                             [ngModelOptions]="{standalone:true}"
+                             placeholder="Baş.">
+                      <input class="cell-input" type="time" step="1"
+                             [(ngModel)]="getForm(m.id).transEnd"
+                             [ngModelOptions]="{standalone:true}"
+                             placeholder="Bit.">
+                    </td>
+                    <td><input class="cell-input" [(ngModel)]="getForm(m.id).houseNumber" [ngModelOptions]="{standalone:true}"></td>
+                    <td><input class="cell-input" [(ngModel)]="getForm(m.id).intField"    [ngModelOptions]="{standalone:true}"></td>
+                    <td><input class="cell-input" [(ngModel)]="getForm(m.id).offTube"     [ngModelOptions]="{standalone:true}"></td>
+                    <td class="col-lang">
+                      <select class="cell-select"
+                              [(ngModel)]="getForm(m.id).language"
                               [ngModelOptions]="{standalone:true}">
-                    @for (ch of data.channels; track ch.id) {
-                      <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
-                <mat-form-field>
-                  <mat-label>Dil</mat-label>
-                  <mat-select [(ngModel)]="getForm(m.id).language"
-                              [ngModelOptions]="{standalone:true}">
-                    <mat-option value="Yok">Yok</mat-option>
-                    <mat-option value="TR">Türkçe</mat-option>
-                    <mat-option value="Eng">İngilizce</mat-option>
-                    <mat-option value="FR">Fransızca</mat-option>
-                    <mat-option value="ES">İspanyolca</mat-option>
-                  </mat-select>
-                </mat-form-field>
-              </div>
-              <div class="form-row">
-                <mat-form-field>
-                  <mat-label>Trans. Başlangıç</mat-label>
-                  <input matInput type="time" step="1"
-                         [(ngModel)]="getForm(m.id).transStart"
-                         [ngModelOptions]="{standalone:true}">
-                </mat-form-field>
-                <mat-form-field>
-                  <mat-label>Trans. Bitiş</mat-label>
-                  <input matInput type="time" step="1"
-                         [(ngModel)]="getForm(m.id).transEnd"
-                         [ngModelOptions]="{standalone:true}">
-                </mat-form-field>
-              </div>
-              <div class="form-row">
-                <mat-form-field>
-                  <mat-label>HDVG</mat-label>
-                  <input matInput [(ngModel)]="getForm(m.id).houseNumber"
-                         [ngModelOptions]="{standalone:true}">
-                </mat-form-field>
-                <mat-form-field>
-                  <mat-label>Int</mat-label>
-                  <input matInput [(ngModel)]="getForm(m.id).intField"
-                         [ngModelOptions]="{standalone:true}">
-                </mat-form-field>
-                <mat-form-field>
-                  <mat-label>Off Tube</mat-label>
-                  <input matInput [(ngModel)]="getForm(m.id).offTube"
-                         [ngModelOptions]="{standalone:true}">
-                </mat-form-field>
-              </div>
-              <div class="form-row">
-                <mat-form-field class="full-width">
-                  <mat-label>Notlar</mat-label>
-                  <textarea matInput rows="2"
-                            [(ngModel)]="getForm(m.id).notes"
-                            [ngModelOptions]="{standalone:true}"></textarea>
-                </mat-form-field>
-              </div>
-            </div>
-          }
+                        <option value="Yok">Yok</option>
+                        <option value="TR">TR</option>
+                        <option value="Eng">Eng</option>
+                        <option value="FR">FR</option>
+                        <option value="ES">ES</option>
+                      </select>
+                    </td>
+                    <td><input class="cell-input full" [(ngModel)]="getForm(m.id).notes" [ngModelOptions]="{standalone:true}"></td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
         }
 
       </div>
@@ -227,12 +219,12 @@ interface MatchFormData {
     </mat-dialog-actions>
   `,
   styles: [`
-    .dialog-body  { min-width: 600px; }
-    .form-row     { display:flex; gap:12px; margin-bottom:2px; }
-    .form-row mat-form-field { flex:1; }
-    .full-width   { width:100%; }
+    .dialog-body { min-width: 700px; }
 
-    .step-header  {
+    .form-row { display:flex; gap:12px; margin-bottom:4px; }
+    .form-row mat-form-field { flex:1; }
+
+    .step-header {
       display:flex; align-items:center; gap:8px;
       font-weight:500; font-size:13px; margin:4px 0 10px;
     }
@@ -245,17 +237,11 @@ interface MatchFormData {
     .info-row  { display:flex; align-items:center; gap:6px; color:#888; font-size:12px; margin-bottom:8px; }
     .info-icon { font-size:16px; height:16px; width:16px; }
 
-    .select-all-row {
-      display:flex; align-items:center; gap:12px;
-      padding: 4px 8px; margin-bottom:4px;
-    }
-    .badge {
-      background:#1976d2; color:#fff; border-radius:10px;
-      padding:1px 8px; font-size:11px;
-    }
+    .select-all-row { display:flex; align-items:center; gap:12px; padding:4px 8px; margin-bottom:4px; }
+    .badge { background:#1976d2; color:#fff; border-radius:10px; padding:1px 8px; font-size:11px; }
 
-    .match-list  { max-height:200px; overflow-y:auto; border:1px solid #333; border-radius:4px; margin-bottom:8px; }
-    .match-item  {
+    .match-list { max-height:180px; overflow-y:auto; border:1px solid #333; border-radius:4px; margin-bottom:8px; }
+    .match-item {
       display:flex; align-items:center; gap:10px;
       padding:6px 10px; cursor:pointer; transition:background .15s;
     }
@@ -263,15 +249,42 @@ interface MatchFormData {
     .match-item.checked { background:rgba(25,118,210,.12); }
     .match-label { font-size:13px; }
 
-    .match-form-card {
-      border:1px solid #333; border-radius:6px;
-      padding:10px 12px 4px; margin-bottom:10px;
+    /* ── Entry table ── */
+    .entry-table-wrap { overflow-x:auto; }
+    .entry-table {
+      width:100%; border-collapse:collapse; font-size:12px;
     }
-    .match-form-title {
-      display:flex; align-items:center; gap:6px;
-      font-size:13px; font-weight:500; margin-bottom:8px; color:#90caf9;
+    .entry-table thead tr {
+      background:#b71c1c; color:#fff;
     }
-    .match-form-title mat-icon { font-size:16px; height:16px; width:16px; }
+    .entry-table th {
+      padding:6px 8px; text-align:left; font-weight:600;
+      white-space:nowrap; border-right:1px solid rgba(255,255,255,.15);
+    }
+    .entry-table tbody tr { border-bottom:1px solid #333; }
+    .entry-table tbody tr:hover { background:rgba(255,255,255,.04); }
+    .entry-table td { padding:4px 6px; vertical-align:middle; }
+
+    .cell-input {
+      background:transparent; border:none; border-bottom:1px solid #555;
+      color:inherit; font-size:12px; width:100%; outline:none; padding:2px 4px;
+      min-width:60px;
+    }
+    .cell-input:focus { border-bottom-color:#90caf9; }
+    .cell-input.full  { min-width:140px; }
+    .cell-select {
+      background:#1e1e1e; border:1px solid #555; color:inherit;
+      font-size:12px; padding:2px 4px; border-radius:3px; width:100%; outline:none;
+    }
+    .cell-select.empty { color:#888; }
+    .cell-select:focus { border-color:#90caf9; }
+
+    .col-title   { min-width:180px; font-weight:500; }
+    .col-time    { white-space:nowrap; color:#aaa; }
+    .col-channel { min-width:120px; }
+    .col-trans   { min-width:150px; display:table-cell; }
+    .col-trans input { display:block; margin-bottom:2px; }
+    .col-lang    { min-width:70px; }
   `],
 })
 export class ScheduleAddDialogComponent {
@@ -650,7 +663,8 @@ export class ScheduleListComponent implements OnInit {
   openAddDialog() {
     const ref = this.dialog.open(ScheduleAddDialogComponent, {
       data: { channels: this.channels() },
-      width: '600px',
+      width: '1100px',
+      maxWidth: '96vw',
       panelClass: 'dark-dialog',
     });
     ref.afterClosed().subscribe((result) => {
