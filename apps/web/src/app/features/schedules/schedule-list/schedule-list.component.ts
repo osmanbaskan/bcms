@@ -179,7 +179,16 @@ interface MatchFormData {
                              [ngModelOptions]="{standalone:true}"
                              placeholder="Bit.">
                     </td>
-                    <td><input class="cell-input" [(ngModel)]="getForm(m.id).houseNumber" [ngModelOptions]="{standalone:true}"></td>
+                    <td class="col-hdvg">
+                      <select class="cell-select"
+                              [(ngModel)]="getForm(m.id).houseNumber"
+                              [ngModelOptions]="{standalone:true}">
+                        <option value="">—</option>
+                        @for (n of hdvgOptions; track n) {
+                          <option [value]="n">{{ n }}</option>
+                        }
+                      </select>
+                    </td>
                     <td><input class="cell-input" [(ngModel)]="getForm(m.id).intField"    [ngModelOptions]="{standalone:true}"></td>
                     <td><input class="cell-input" [(ngModel)]="getForm(m.id).offTube"     [ngModelOptions]="{standalone:true}"></td>
                     <td class="col-lang">
@@ -314,6 +323,8 @@ export class ScheduleAddDialogComponent {
   someChecked    = () => this.filteredMatches().some((m) => this.checkedIds().has(m.id));
   selectedMatches = () => this.allMatches().filter((m) => this.checkedIds().has(m.id));
   canSave        = () => this.checkedIds().size > 0 && this.selectedMatches().every((m) => !!this.getForm(m.id).channelId);
+
+  readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => `HDVG${i + 1}`);
 
   // Her maç için ayrı form verisi (plain Map — save anında okunur)
   private matchForms = new Map<number, MatchFormData>();
