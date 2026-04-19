@@ -14,7 +14,19 @@ declare module 'fastify' {
   }
 }
 
+const DEV_USER: JwtPayload = {
+  sub:                'dev-admin',
+  preferred_username: 'dev-admin',
+  email:              'dev@bcms.local',
+  realm_access:       { roles: ['admin', 'planner', 'scheduler', 'ingest_operator', 'monitoring', 'viewer'] },
+  resource_access:    {},
+  iat: 0,
+  exp: 9999999999,
+};
+
 export const authPlugin = fp(async (app: FastifyInstance) => {
+  const skipAuth = process.env.SKIP_AUTH === 'true' || process.env.NODE_ENV === 'development';
+
   const keycloakUrl  = process.env.KEYCLOAK_URL ?? 'http://localhost:8080';
   const realm        = process.env.KEYCLOAK_REALM ?? 'bcms';
   const jwksUri      = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/certs`;
@@ -36,8 +48,16 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
     },
   });
 
+  if (skipAuth) {
+    app.log.warn('Auth bypass aktif — tüm istekler dev-admin olarak işleniyor');
+  }
+
   // ── Decorators ──────────────────────────────────────────────────────────────
   app.decorate('authenticate', async (request: FastifyRequest) => {
+    if (skipAuth && !request.headers.authorization) {
+      request.user = DEV_USER;
+      return;
+    }
     try {
       await request.jwtVerify();
     } catch {
