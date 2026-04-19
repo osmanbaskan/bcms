@@ -15,8 +15,8 @@ export async function optaRoutes(app: FastifyInstance) {
     return buildCompetitionList();
   });
 
-  // GET /api/v1/opta/matches?competitionId=X&season=Y[&upcoming=false]
-  app.get<{ Querystring: { competitionId: string; season: string; upcoming?: string } }>('/matches', {
+  // GET /api/v1/opta/matches?competitionId=X&season=Y[&unscheduled=false]
+  app.get<{ Querystring: { competitionId: string; season: string; unscheduled?: string } }>('/matches', {
     preHandler: app.requireRole(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['OPTA'],
@@ -27,16 +27,25 @@ export async function optaRoutes(app: FastifyInstance) {
         properties: {
           competitionId: { type: 'string' },
           season:        { type: 'string' },
-          upcoming:      { type: 'string', enum: ['true', 'false'], default: 'true' },
+          unscheduled:   { type: 'string', enum: ['true', 'false'], default: 'true' },
         },
       },
     },
   }, async (request) => {
-    const { competitionId, season, upcoming = 'true' } = request.query;
+    const { competitionId, season, unscheduled = 'true' } = request.query;
     const matches = loadMatches(competitionId, season);
-    if (upcoming === 'false') return matches;
-    const now = Date.now();
-    return matches.filter((m) => new Date(m.matchDate).getTime() >= now);
+    if (unscheduled === 'false') return matches;
+
+    // Zaten yayın planına eklenmiş optaMatchId'leri çek
+    const scheduled = await app.prisma.schedule.findMany({
+      where: { metadata: { path: ['optaMatchId'], not: null } },
+      select: { metadata: true },
+    });
+    const scheduledIds = new Set(
+      scheduled.map((s) => (s.metadata as Record<string, unknown>)?.optaMatchId).filter(Boolean),
+    );
+
+    return matches.filter((m) => !scheduledIds.has(m.matchId));
   });
 
   // POST /api/v1/opta/cache/clear — cache'i zorla yenile
