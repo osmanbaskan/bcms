@@ -25,6 +25,7 @@ import { startNotificationConsumer } from './modules/notifications/notification.
 import { startIngestWorker } from './modules/ingest/ingest.worker.js';
 import { startIngestWatcher } from './modules/ingest/ingest.watcher.js';
 import { startBxfWatcher } from './modules/bxf/bxf.watcher.js';
+import { startOptaWatcher } from './modules/opta/opta.watcher.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -85,6 +86,7 @@ export async function buildApp() {
   await startIngestWorker(app);
   startIngestWatcher(app);
   await startBxfWatcher(app);
+  startOptaWatcher(app);
 
   // ── Routes ────────────────────────────────────────────────────────────────────
   await app.register(scheduleRoutes, { prefix: '/api/v1/schedules' });
