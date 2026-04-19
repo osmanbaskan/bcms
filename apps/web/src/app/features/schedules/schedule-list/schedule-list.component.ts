@@ -3,7 +3,7 @@ import {
 } from '@angular/core';
 import { forkJoin } from 'rxjs';
 import { CommonModule } from '@angular/common';
-import { FormsModule, ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
@@ -26,6 +26,17 @@ import { ApiService } from '../../../core/services/api.service';
 import type { Schedule, League, MatchListItem } from '@bcms/shared';
 
 interface Channel { id: number; name: string; type: string; }
+
+interface MatchFormData {
+  channelId:   number | null;
+  language:    string;
+  transStart:  string;
+  transEnd:    string;
+  houseNumber: string;
+  intField:    string;
+  offTube:     string;
+  notes:       string;
+}
 
 // ── Kayıt Ekle Dialog ─────────────────────────────────────────────────────────
 @Component({
@@ -118,67 +129,84 @@ interface Channel { id: number; name: string; type: string; }
           </div>
         }
 
-        <!-- ── Adım 2: Ortak Bilgiler ─────────────────────────────────── -->
+        <!-- ── Adım 2: Maç Bazlı Bilgi Girişi ──────────────────────────── -->
         @if (checkedIds().size > 0) {
           <mat-divider style="margin:12px 0"></mat-divider>
 
           <div class="step-header">
             <span class="step-num">2</span>
-            <span>Ortak Bilgiler</span>
+            <span>Maç Bilgileri</span>
           </div>
 
-          <form [formGroup]="form">
-            <div class="form-row">
-              <mat-form-field>
-                <mat-label>Kanal *</mat-label>
-                <mat-select formControlName="channelId">
-                  @for (ch of data.channels; track ch.id) {
-                    <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
-                  }
-                </mat-select>
-              </mat-form-field>
-              <mat-form-field>
-                <mat-label>Dil</mat-label>
-                <mat-select formControlName="language">
-                  <mat-option value="Yok">Yok</mat-option>
-                  <mat-option value="TR">Türkçe</mat-option>
-                  <mat-option value="Eng">İngilizce</mat-option>
-                  <mat-option value="FR">Fransızca</mat-option>
-                  <mat-option value="ES">İspanyolca</mat-option>
-                </mat-select>
-              </mat-form-field>
+          @for (m of selectedMatches(); track m.id) {
+            <div class="match-form-card">
+              <div class="match-form-title">
+                <mat-icon>sports_soccer</mat-icon>
+                <span>{{ m.label }}</span>
+              </div>
+              <div class="form-row">
+                <mat-form-field>
+                  <mat-label>Kanal *</mat-label>
+                  <mat-select [(ngModel)]="getForm(m.id).channelId"
+                              [ngModelOptions]="{standalone:true}">
+                    @for (ch of data.channels; track ch.id) {
+                      <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+                <mat-form-field>
+                  <mat-label>Dil</mat-label>
+                  <mat-select [(ngModel)]="getForm(m.id).language"
+                              [ngModelOptions]="{standalone:true}">
+                    <mat-option value="Yok">Yok</mat-option>
+                    <mat-option value="TR">Türkçe</mat-option>
+                    <mat-option value="Eng">İngilizce</mat-option>
+                    <mat-option value="FR">Fransızca</mat-option>
+                    <mat-option value="ES">İspanyolca</mat-option>
+                  </mat-select>
+                </mat-form-field>
+              </div>
+              <div class="form-row">
+                <mat-form-field>
+                  <mat-label>Trans. Başlangıç</mat-label>
+                  <input matInput type="time" step="1"
+                         [(ngModel)]="getForm(m.id).transStart"
+                         [ngModelOptions]="{standalone:true}">
+                </mat-form-field>
+                <mat-form-field>
+                  <mat-label>Trans. Bitiş</mat-label>
+                  <input matInput type="time" step="1"
+                         [(ngModel)]="getForm(m.id).transEnd"
+                         [ngModelOptions]="{standalone:true}">
+                </mat-form-field>
+              </div>
+              <div class="form-row">
+                <mat-form-field>
+                  <mat-label>HDVG</mat-label>
+                  <input matInput [(ngModel)]="getForm(m.id).houseNumber"
+                         [ngModelOptions]="{standalone:true}">
+                </mat-form-field>
+                <mat-form-field>
+                  <mat-label>Int</mat-label>
+                  <input matInput [(ngModel)]="getForm(m.id).intField"
+                         [ngModelOptions]="{standalone:true}">
+                </mat-form-field>
+                <mat-form-field>
+                  <mat-label>Off Tube</mat-label>
+                  <input matInput [(ngModel)]="getForm(m.id).offTube"
+                         [ngModelOptions]="{standalone:true}">
+                </mat-form-field>
+              </div>
+              <div class="form-row">
+                <mat-form-field class="full-width">
+                  <mat-label>Notlar</mat-label>
+                  <textarea matInput rows="2"
+                            [(ngModel)]="getForm(m.id).notes"
+                            [ngModelOptions]="{standalone:true}"></textarea>
+                </mat-form-field>
+              </div>
             </div>
-            <div class="form-row">
-              <mat-form-field>
-                <mat-label>Trans. Başlangıç</mat-label>
-                <input matInput type="time" formControlName="transStart" step="1">
-              </mat-form-field>
-              <mat-form-field>
-                <mat-label>Trans. Bitiş</mat-label>
-                <input matInput type="time" formControlName="transEnd" step="1">
-              </mat-form-field>
-            </div>
-            <div class="form-row">
-              <mat-form-field>
-                <mat-label>HDVG</mat-label>
-                <input matInput formControlName="houseNumber">
-              </mat-form-field>
-              <mat-form-field>
-                <mat-label>Int</mat-label>
-                <input matInput formControlName="intField">
-              </mat-form-field>
-              <mat-form-field>
-                <mat-label>Off Tube</mat-label>
-                <input matInput formControlName="offTube">
-              </mat-form-field>
-            </div>
-            <div class="form-row">
-              <mat-form-field class="full-width">
-                <mat-label>Açıklama ve Notlar</mat-label>
-                <textarea matInput formControlName="notes" rows="2"></textarea>
-              </mat-form-field>
-            </div>
-          </form>
+          }
         }
 
       </div>
@@ -187,20 +215,20 @@ interface Channel { id: number; name: string; type: string; }
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>İptal</button>
       <button mat-raised-button color="primary"
-              [disabled]="checkedIds().size === 0 || form.invalid || saving()"
+              [disabled]="!canSave() || saving()"
               (click)="save()">
         @if (saving()) {
           <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
           Kaydediliyor…
         } @else {
-          Seçilenleri Ekle ({{ checkedIds().size }})
+          Kaydet ({{ checkedIds().size }})
         }
       </button>
     </mat-dialog-actions>
   `,
   styles: [`
-    .dialog-body  { min-width: 560px; }
-    .form-row     { display:flex; gap:12px; margin-bottom:4px; }
+    .dialog-body  { min-width: 600px; }
+    .form-row     { display:flex; gap:12px; margin-bottom:2px; }
     .form-row mat-form-field { flex:1; }
     .full-width   { width:100%; }
 
@@ -226,21 +254,30 @@ interface Channel { id: number; name: string; type: string; }
       padding:1px 8px; font-size:11px;
     }
 
-    .match-list   { max-height:220px; overflow-y:auto; border:1px solid #333; border-radius:4px; margin-bottom:8px; }
-    .match-item   {
+    .match-list  { max-height:200px; overflow-y:auto; border:1px solid #333; border-radius:4px; margin-bottom:8px; }
+    .match-item  {
       display:flex; align-items:center; gap:10px;
       padding:6px 10px; cursor:pointer; transition:background .15s;
     }
-    .match-item:hover  { background:rgba(255,255,255,.05); }
+    .match-item:hover   { background:rgba(255,255,255,.05); }
     .match-item.checked { background:rgba(25,118,210,.12); }
-    .match-label  { font-size:13px; }
+    .match-label { font-size:13px; }
+
+    .match-form-card {
+      border:1px solid #333; border-radius:6px;
+      padding:10px 12px 4px; margin-bottom:10px;
+    }
+    .match-form-title {
+      display:flex; align-items:center; gap:6px;
+      font-size:13px; font-weight:500; margin-bottom:8px; color:#90caf9;
+    }
+    .match-form-title mat-icon { font-size:16px; height:16px; width:16px; }
   `],
 })
 export class ScheduleAddDialogComponent {
   data      = inject<{ channels: Channel[] }>(MAT_DIALOG_DATA);
   dialogRef = inject(MatDialogRef<ScheduleAddDialogComponent>);
   api       = inject(ApiService);
-  fb        = inject(FormBuilder);
   saving    = signal(false);
 
   // Fikstür sinyalleri
@@ -260,19 +297,20 @@ export class ScheduleAddDialogComponent {
     return this.allMatches().filter((m) => m.weekNumber === w);
   };
 
-  allChecked  = () => this.filteredMatches().length > 0 && this.filteredMatches().every((m) => this.checkedIds().has(m.id));
-  someChecked = () => this.filteredMatches().some((m) => this.checkedIds().has(m.id));
+  allChecked     = () => this.filteredMatches().length > 0 && this.filteredMatches().every((m) => this.checkedIds().has(m.id));
+  someChecked    = () => this.filteredMatches().some((m) => this.checkedIds().has(m.id));
+  selectedMatches = () => this.allMatches().filter((m) => this.checkedIds().has(m.id));
+  canSave        = () => this.checkedIds().size > 0 && this.selectedMatches().every((m) => !!this.getForm(m.id).channelId);
 
-  form = this.fb.group({
-    channelId:  [null as number | null, Validators.required],
-    language:   ['Yok'],
-    transStart: [''],
-    transEnd:   [''],
-    houseNumber:[''],
-    intField:   [''],
-    offTube:    [''],
-    notes:      [''],
-  });
+  // Her maç için ayrı form verisi (plain Map — save anında okunur)
+  private matchForms = new Map<number, MatchFormData>();
+
+  getForm(id: number): MatchFormData {
+    if (!this.matchForms.has(id)) {
+      this.matchForms.set(id, { channelId: null, language: 'Yok', transStart: '', transEnd: '', houseNumber: '', intField: '', offTube: '', notes: '' });
+    }
+    return this.matchForms.get(id)!;
+  }
 
   constructor() {
     this.leaguesLoading.set(true);
@@ -320,31 +358,28 @@ export class ScheduleAddDialogComponent {
   }
 
   save() {
-    if (this.form.invalid || this.checkedIds().size === 0) return;
-    const v = this.form.value;
+    if (!this.canSave()) return;
     const leagueName = this.leagues().find((l) => l.id === this.selectedLeagueId())?.name;
-    const selected = this.allMatches().filter((m) => this.checkedIds().has(m.id));
 
-    const requests = selected.map((m) => {
+    const requests = this.selectedMatches().map((m) => {
+      const f  = this.getForm(m.id);
       const dt = new Date(m.matchDate);
-      const startTime = dt.toISOString();
-      const endTime   = new Date(dt.getTime() + 2 * 60 * 60 * 1000).toISOString();
       return this.api.post<Schedule>('/schedules', {
-        channelId: v.channelId!,
-        startTime,
-        endTime,
-        title: `${m.homeTeamName} - ${m.awayTeamName}`,
+        channelId: f.channelId!,
+        startTime: dt.toISOString(),
+        endTime:   new Date(dt.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+        title:     `${m.homeTeamName} - ${m.awayTeamName}`,
         metadata: {
           contentName:  `${m.homeTeamName} - ${m.awayTeamName}`,
-          league:        leagueName ?? undefined,
-          language:      v.language   || 'Yok',
-          transStart:    v.transStart || undefined,
-          transEnd:      v.transEnd   || undefined,
-          houseNumber:   v.houseNumber || undefined,
-          intField:      v.intField   || undefined,
-          offTube:       v.offTube    || undefined,
-          description:   v.notes     || undefined,
-          matchId:       m.id,
+          league:       leagueName    ?? undefined,
+          language:     f.language    || 'Yok',
+          transStart:   f.transStart  || undefined,
+          transEnd:     f.transEnd    || undefined,
+          houseNumber:  f.houseNumber || undefined,
+          intField:     f.intField    || undefined,
+          offTube:      f.offTube     || undefined,
+          description:  f.notes      || undefined,
+          matchId:      m.id,
         },
       });
     });
