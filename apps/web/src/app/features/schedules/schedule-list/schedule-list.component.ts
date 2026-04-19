@@ -58,6 +58,19 @@ interface Channel { id: number; name: string; type: string; }
             </mat-select>
             @if (leaguesLoading()) { <mat-hint>Yükleniyor…</mat-hint> }
           </mat-form-field>
+
+          @if (weeks().length > 0) {
+            <mat-form-field>
+              <mat-label>Hafta</mat-label>
+              <mat-select [value]="selectedWeek()"
+                          (selectionChange)="onWeekChange($event.value)">
+                <mat-option [value]="null">— Tümü —</mat-option>
+                @for (w of weeks(); track w) {
+                  <mat-option [value]="w">{{ w === -1 ? 'Hafta bilgisi yok' : 'Hafta ' + w }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          }
         </div>
 
         @if (matchesLoading()) {
@@ -65,20 +78,20 @@ interface Channel { id: number; name: string; type: string; }
             <mat-spinner diameter="18"></mat-spinner><span>Maçlar yükleniyor…</span>
           </div>
         }
-        @if (!matchesLoading() && selectedLeagueId() && matches().length === 0) {
+        @if (!matchesLoading() && selectedLeagueId() && allMatches().length === 0) {
           <div class="loading-row">
             <mat-icon style="font-size:16px;height:16px;width:16px;color:#888">info</mat-icon>
             <span>Bu lig için planlanmış maç bulunamadı.</span>
           </div>
         }
-        @if (matches().length > 0) {
+        @if (filteredMatches().length > 0) {
           <div class="form-row">
             <mat-form-field class="full-width">
               <mat-label>Maç</mat-label>
               <mat-select [value]="selectedMatchId()"
                           (selectionChange)="onMatchSelect($event.value)">
                 <mat-option [value]="null">— Maç seçin —</mat-option>
-                @for (m of matches(); track m.id) {
+                @for (m of filteredMatches(); track m.id) {
                   <mat-option [value]="m.id">{{ m.label }}</mat-option>
                 }
               </mat-select>
@@ -204,12 +217,21 @@ export class ScheduleAddDialogComponent {
   saving    = signal(false);
 
   // Fikstür sinyalleri
-  leagues         = signal<League[]>([]);
-  leaguesLoading  = signal(false);
+  leagues          = signal<League[]>([]);
+  leaguesLoading   = signal(false);
   selectedLeagueId = signal<number | null>(null);
-  matches         = signal<MatchListItem[]>([]);
-  matchesLoading  = signal(false);
-  selectedMatchId = signal<number | null>(null);
+  allMatches       = signal<MatchListItem[]>([]);
+  matchesLoading   = signal(false);
+  weeks            = signal<number[]>([]);
+  selectedWeek     = signal<number | null>(null);
+  selectedMatchId  = signal<number | null>(null);
+
+  filteredMatches = (): MatchListItem[] => {
+    const w = this.selectedWeek();
+    if (w === null) return this.allMatches();
+    if (w === -1)   return this.allMatches().filter((m) => m.weekNumber == null);
+    return this.allMatches().filter((m) => m.weekNumber === w);
+  };
 
   form = this.fb.group({
     channelId:   [null as number | null, Validators.required],
@@ -238,21 +260,35 @@ export class ScheduleAddDialogComponent {
 
   onLeagueChange(leagueId: number | null) {
     this.selectedLeagueId.set(leagueId);
-    this.matches.set([]);
+    this.allMatches.set([]);
+    this.weeks.set([]);
+    this.selectedWeek.set(null);
     this.selectedMatchId.set(null);
     if (!leagueId) return;
 
     const from = new Date().toISOString();
     this.matchesLoading.set(true);
     this.api.get<MatchListItem[]>(`/matches?leagueId=${leagueId}&from=${encodeURIComponent(from)}`).subscribe({
-      next:  (ms) => { this.matches.set(ms); this.matchesLoading.set(false); },
-      error: ()   => { this.matchesLoading.set(false); },
+      next: (ms) => {
+        this.allMatches.set(ms);
+        // Benzersiz hafta numaralarını çıkar (null → -1)
+        const wSet = new Set(ms.map((m) => m.weekNumber ?? -1));
+        const wList = [...wSet].sort((a, b) => a - b);
+        this.weeks.set(wList.length > 1 ? wList : []); // tek hafta varsa dropdown gösterme
+        this.matchesLoading.set(false);
+      },
+      error: () => { this.matchesLoading.set(false); },
     });
+  }
+
+  onWeekChange(week: number | null) {
+    this.selectedWeek.set(week);
+    this.selectedMatchId.set(null);
   }
 
   onMatchSelect(matchId: number | null) {
     this.selectedMatchId.set(matchId);
-    const match = this.matches().find((m) => m.id === matchId);
+    const match = this.allMatches().find((m) => m.id === matchId);
     if (!match) return;
 
     const league = this.leagues().find((l) => l.id === match.leagueId);
