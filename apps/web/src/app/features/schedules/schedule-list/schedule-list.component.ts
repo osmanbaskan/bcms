@@ -24,9 +24,23 @@ import { MatTabsModule } from '@angular/material/tabs';
 
 import { ScheduleService } from '../../../core/services/schedule.service';
 import { ApiService } from '../../../core/services/api.service';
-import type { Schedule, League, MatchListItem } from '@bcms/shared';
+import type { Schedule } from '@bcms/shared';
 
 interface Channel { id: number; name: string; type: string; }
+
+interface FixtureCompetition { id: string; name: string; season: string; }
+
+interface OptaFixture {
+  matchId:         string;
+  competitionId:   string;
+  competitionName: string;
+  season:          string;
+  homeTeamName:    string;
+  awayTeamName:    string;
+  matchDate:       string;
+  weekNumber:      number | null;
+  label:           string;
+}
 
 interface MatchFormData {
   channelId:   number | null;
@@ -68,15 +82,16 @@ interface MatchFormData {
         <div class="form-row">
           <mat-form-field>
             <mat-label>Lig / Turnuva</mat-label>
-            <mat-select [value]="selectedLeagueId()"
-                        (selectionChange)="onLeagueChange($event.value)"
-                        [disabled]="leaguesLoading()">
+            <mat-select [value]="selectedComp()"
+                        (selectionChange)="onCompChange($event.value)"
+                        [disabled]="compsLoading()"
+                        [compareWith]="compById">
               <mat-option [value]="null">— Seçin —</mat-option>
-              @for (l of leagues(); track l.id) {
-                <mat-option [value]="l.id">{{ l.name }}</mat-option>
+              @for (c of competitions(); track c.id + c.season) {
+                <mat-option [value]="c">{{ c.name }}</mat-option>
               }
             </mat-select>
-            @if (leaguesLoading()) { <mat-hint>Yükleniyor…</mat-hint> }
+            @if (compsLoading()) { <mat-hint>Yükleniyor…</mat-hint> }
           </mat-form-field>
 
           @if (weeks().length > 0) {
@@ -98,7 +113,7 @@ interface MatchFormData {
             <mat-spinner diameter="16"></mat-spinner><span>Maçlar yükleniyor…</span>
           </div>
         }
-        @if (!matchesLoading() && selectedLeagueId() && allMatches().length === 0) {
+        @if (!matchesLoading() && selectedComp() && allMatches().length === 0) {
           <div class="info-row">
             <mat-icon class="info-icon">info</mat-icon>
             <span>Bu lig için planlanmış maç bulunamadı.</span>
@@ -121,12 +136,12 @@ interface MatchFormData {
 
           <!-- Maç listesi -->
           <div class="match-list">
-            @for (m of filteredMatches(); track m.id) {
-              <div class="match-item" [class.checked]="checkedIds().has(m.id)"
-                   (click)="toggle(m.id)">
-                <mat-checkbox [checked]="checkedIds().has(m.id)"
+            @for (m of filteredMatches(); track m.matchId) {
+              <div class="match-item" [class.checked]="checkedIds().has(m.matchId)"
+                   (click)="toggle(m.matchId)">
+                <mat-checkbox [checked]="checkedIds().has(m.matchId)"
                               (click)="$event.stopPropagation()"
-                              (change)="toggle(m.id)">
+                              (change)="toggle(m.matchId)">
                 </mat-checkbox>
                 <span class="match-label">{{ m.label }}</span>
               </div>
@@ -159,15 +174,15 @@ interface MatchFormData {
                 </tr>
               </thead>
               <tbody>
-                @for (m of selectedMatches(); track m.id) {
+                @for (m of selectedMatches(); track m.matchId) {
                   <tr>
                     <td class="col-title">{{ m.homeTeamName }} - {{ m.awayTeamName }}</td>
                     <td class="col-time">{{ m.matchDate | date:'dd.MM HH:mm' }}</td>
                     <td class="col-channel">
                       <select class="cell-select"
-                              [(ngModel)]="getForm(m.id).channelId"
+                              [(ngModel)]="getForm(m.matchId).channelId"
                               [ngModelOptions]="{standalone:true}"
-                              [class.empty]="!getForm(m.id).channelId">
+                              [class.empty]="!getForm(m.matchId).channelId">
                         <option [ngValue]="null">— Seçin —</option>
                         @for (ch of data.channels; track ch.id) {
                           <option [ngValue]="ch.id">{{ ch.name }}</option>
@@ -176,17 +191,17 @@ interface MatchFormData {
                     </td>
                     <td class="col-trans">
                       <input class="cell-input" type="time" step="1"
-                             [(ngModel)]="getForm(m.id).transStart"
+                             [(ngModel)]="getForm(m.matchId).transStart"
                              [ngModelOptions]="{standalone:true}"
                              placeholder="Baş.">
                       <input class="cell-input" type="time" step="1"
-                             [(ngModel)]="getForm(m.id).transEnd"
+                             [(ngModel)]="getForm(m.matchId).transEnd"
                              [ngModelOptions]="{standalone:true}"
                              placeholder="Bit.">
                     </td>
                     <td class="col-hdvg">
                       <select class="cell-select"
-                              [(ngModel)]="getForm(m.id).houseNumber"
+                              [(ngModel)]="getForm(m.matchId).houseNumber"
                               [ngModelOptions]="{standalone:true}">
                         <option value="">—</option>
                         @for (n of hdvgOptions; track n) {
@@ -194,11 +209,11 @@ interface MatchFormData {
                         }
                       </select>
                     </td>
-                    <td><input class="cell-input" [(ngModel)]="getForm(m.id).intField"    [ngModelOptions]="{standalone:true}"></td>
-                    <td><input class="cell-input" [(ngModel)]="getForm(m.id).offTube"     [ngModelOptions]="{standalone:true}"></td>
+                    <td><input class="cell-input" [(ngModel)]="getForm(m.matchId).intField"    [ngModelOptions]="{standalone:true}"></td>
+                    <td><input class="cell-input" [(ngModel)]="getForm(m.matchId).offTube"     [ngModelOptions]="{standalone:true}"></td>
                     <td class="col-lang">
                       <select class="cell-select"
-                              [(ngModel)]="getForm(m.id).language"
+                              [(ngModel)]="getForm(m.matchId).language"
                               [ngModelOptions]="{standalone:true}">
                         <option value="Yok">Yok</option>
                         <option value="TR">TR</option>
@@ -207,7 +222,7 @@ interface MatchFormData {
                         <option value="ES">ES</option>
                       </select>
                     </td>
-                    <td><input class="cell-input full" [(ngModel)]="getForm(m.id).notes" [ngModelOptions]="{standalone:true}"></td>
+                    <td><input class="cell-input full" [(ngModel)]="getForm(m.matchId).notes" [ngModelOptions]="{standalone:true}"></td>
                   </tr>
                 }
               </tbody>
@@ -433,33 +448,35 @@ export class ScheduleAddDialogComponent {
   canSaveManual = () => !!(this.mf.contentName && this.mf.channelId && this.mf.date && this.mf.startTime && this.mf.endTime);
 
   // Fikstür sinyalleri
-  leagues          = signal<League[]>([]);
-  leaguesLoading   = signal(false);
-  selectedLeagueId = signal<number | null>(null);
-  allMatches       = signal<MatchListItem[]>([]);
-  matchesLoading   = signal(false);
-  weeks            = signal<number[]>([]);
-  selectedWeek     = signal<number | null>(null);
-  checkedIds       = signal<Set<number>>(new Set());
+  competitions      = signal<FixtureCompetition[]>([]);
+  compsLoading      = signal(false);
+  selectedComp      = signal<FixtureCompetition | null>(null);
+  allMatches        = signal<OptaFixture[]>([]);
+  matchesLoading    = signal(false);
+  weeks             = signal<number[]>([]);
+  selectedWeek      = signal<number | null>(null);
+  checkedIds        = signal<Set<string>>(new Set());
 
-  filteredMatches = (): MatchListItem[] => {
+  filteredMatches = (): OptaFixture[] => {
     const w = this.selectedWeek();
     if (w === null) return this.allMatches();
     if (w === -1)   return this.allMatches().filter((m) => m.weekNumber == null);
     return this.allMatches().filter((m) => m.weekNumber === w);
   };
 
-  allChecked     = () => this.filteredMatches().length > 0 && this.filteredMatches().every((m) => this.checkedIds().has(m.id));
-  someChecked    = () => this.filteredMatches().some((m) => this.checkedIds().has(m.id));
-  selectedMatches = () => this.allMatches().filter((m) => this.checkedIds().has(m.id));
-  canSave        = () => this.checkedIds().size > 0 && this.selectedMatches().every((m) => !!this.getForm(m.id).channelId);
+  allChecked      = () => this.filteredMatches().length > 0 && this.filteredMatches().every((m) => this.checkedIds().has(m.matchId));
+  someChecked     = () => this.filteredMatches().some((m) => this.checkedIds().has(m.matchId));
+  selectedMatches = () => this.allMatches().filter((m) => this.checkedIds().has(m.matchId));
+  canSave         = () => this.checkedIds().size > 0 && this.selectedMatches().every((m) => !!this.getForm(m.matchId).channelId);
 
   readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => `HDVG${i + 1}`);
+  compById = (a: FixtureCompetition | null, b: FixtureCompetition | null) =>
+    a?.id === b?.id && a?.season === b?.season;
 
   // Her maç için ayrı form verisi (plain Map — save anında okunur)
-  private matchForms = new Map<number, MatchFormData>();
+  private matchForms = new Map<string, MatchFormData>();
 
-  getForm(id: number): MatchFormData {
+  getForm(id: string): MatchFormData {
     if (!this.matchForms.has(id)) {
       this.matchForms.set(id, { channelId: null, language: 'Yok', transStart: '', transEnd: '', houseNumber: '', intField: '', offTube: '', notes: '' });
     }
@@ -467,27 +484,27 @@ export class ScheduleAddDialogComponent {
   }
 
   constructor() {
-    this.leaguesLoading.set(true);
-    this.api.get<League[]>('/matches/leagues').subscribe({
-      next:  (l) => { this.leagues.set(l); this.leaguesLoading.set(false); },
-      error: ()  => { this.leaguesLoading.set(false); },
+    this.compsLoading.set(true);
+    this.api.get<FixtureCompetition[]>('/opta/fixture-competitions').subscribe({
+      next:  (c) => { this.competitions.set(c); this.compsLoading.set(false); },
+      error: ()  => { this.compsLoading.set(false); },
     });
   }
 
-  onLeagueChange(leagueId: number | null) {
-    this.selectedLeagueId.set(leagueId);
+  onCompChange(comp: FixtureCompetition | null) {
+    this.selectedComp.set(comp);
     this.allMatches.set([]);
     this.weeks.set([]);
     this.selectedWeek.set(null);
     this.checkedIds.set(new Set());
-    if (!leagueId) return;
+    if (!comp) return;
 
     this.matchesLoading.set(true);
-    const from = new Date().toISOString();
-    this.api.get<MatchListItem[]>(`/matches?leagueId=${leagueId}&from=${encodeURIComponent(from)}`).subscribe({
+    const from = encodeURIComponent(new Date().toISOString());
+    this.api.get<OptaFixture[]>(`/opta/fixtures?competitionId=${comp.id}&season=${comp.season}&from=${from}`).subscribe({
       next: (ms) => {
         this.allMatches.set(ms);
-        const wSet = new Set(ms.map((m) => m.weekNumber ?? -1));
+        const wSet  = new Set(ms.map((m) => m.weekNumber ?? -1));
         const wList = [...wSet].sort((a, b) => a - b);
         this.weeks.set(wList.length > 1 ? wList : []);
         this.matchesLoading.set(false);
@@ -501,7 +518,7 @@ export class ScheduleAddDialogComponent {
     this.checkedIds.set(new Set());
   }
 
-  toggle(id: number) {
+  toggle(id: string) {
     const s = new Set(this.checkedIds());
     if (s.has(id)) {
       s.delete(id);
@@ -514,16 +531,16 @@ export class ScheduleAddDialogComponent {
 
   toggleAll(checked: boolean) {
     if (checked) {
-      this.filteredMatches().forEach((m) => this.initForm(m.id));
-      this.checkedIds.set(new Set(this.filteredMatches().map((m) => m.id)));
+      this.filteredMatches().forEach((m) => this.initForm(m.matchId));
+      this.checkedIds.set(new Set(this.filteredMatches().map((m) => m.matchId)));
     } else {
       this.checkedIds.set(new Set());
     }
   }
 
-  private initForm(id: number) {
+  private initForm(id: string) {
     if (this.matchForms.has(id)) return;
-    const match = this.allMatches().find((m) => m.id === id);
+    const match = this.allMatches().find((m) => m.matchId === id);
     const dt = match ? new Date(match.matchDate) : new Date();
     const transStartDt = new Date(dt.getTime() - 60 * 60 * 1000);
     const transEndDt   = new Date(dt.getTime() + 3 * 60 * 60 * 1000);
@@ -541,10 +558,9 @@ export class ScheduleAddDialogComponent {
 
   save() {
     if (!this.canSave()) return;
-    const leagueName = this.leagues().find((l) => l.id === this.selectedLeagueId())?.name;
 
     const requests = this.selectedMatches().map((m) => {
-      const f  = this.getForm(m.id);
+      const f  = this.getForm(m.matchId);
       const dt = new Date(m.matchDate);
       return this.api.post<Schedule>('/schedules', {
         channelId: f.channelId!,
@@ -553,8 +569,8 @@ export class ScheduleAddDialogComponent {
         title:     `${m.homeTeamName} - ${m.awayTeamName}`,
         metadata: {
           contentName:  `${m.homeTeamName} - ${m.awayTeamName}`,
-          league:       m.league?.name ?? leagueName ?? undefined,
-          weekNumber:   m.weekNumber   ?? undefined,
+          league:       m.competitionName || undefined,
+          weekNumber:   m.weekNumber      ?? undefined,
           language:     f.language    || 'Yok',
           transStart:   f.transStart  || undefined,
           transEnd:     f.transEnd    || undefined,
@@ -562,7 +578,7 @@ export class ScheduleAddDialogComponent {
           intField:     f.intField    || undefined,
           offTube:      f.offTube     || undefined,
           description:  f.notes      || undefined,
-          matchId:      m.id,
+          optaMatchId:  m.matchId,
         },
       });
     });
