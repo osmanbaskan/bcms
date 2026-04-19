@@ -553,7 +553,8 @@ export class ScheduleAddDialogComponent {
         title:     `${m.homeTeamName} - ${m.awayTeamName}`,
         metadata: {
           contentName:  `${m.homeTeamName} - ${m.awayTeamName}`,
-          league:       leagueName    ?? undefined,
+          league:       m.league?.name ?? leagueName ?? undefined,
+          weekNumber:   m.weekNumber   ?? undefined,
           language:     f.language    || 'Yok',
           transStart:   f.transStart  || undefined,
           transEnd:     f.transEnd    || undefined,
@@ -665,7 +666,7 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
                 <th>Off Tube</th>
                 <th>Dil</th>
                 <th>Kanal</th>
-                <th>Lig</th>
+                <th>Lig / Hafta</th>
                 <th>Açıklama ve Notlar</th>
                 <th></th>
               </tr>
@@ -682,14 +683,19 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
                   <td class="td-title">
                     <span class="content-main">{{ s.metadata?.['contentName'] || s.title }}</span>
                   </td>
-                  <td class="td-trans">{{ s.startTime | date:'HH:mm' }}</td>
-                  <td class="td-trans">{{ s.endTime | date:'HH:mm' }}</td>
+                  <td class="td-trans">{{ s.metadata?.['transStart'] || (s.startTime | date:'HH:mm') }}</td>
+                  <td class="td-trans">{{ s.metadata?.['transEnd']   || (s.endTime   | date:'HH:mm') }}</td>
                   <td class="td-mono">{{ s.metadata?.['houseNumber'] ?? '' }}</td>
                   <td class="td-mono">{{ s.metadata?.['intField'] ?? '' }}</td>
                   <td class="td-mono">{{ s.metadata?.['offTube'] ?? '' }}</td>
                   <td class="td-lang">{{ s.metadata?.['language'] ?? 'Yok' }}</td>
                   <td class="td-channel">{{ s.channel?.name ?? '—' }}</td>
-                  <td class="td-league">{{ s.metadata?.['league'] ?? '' }}</td>
+                  <td class="td-league">
+                    {{ s.metadata?.['league'] ?? '' }}
+                    @if (s.metadata?.['weekNumber']) {
+                      <span class="week-badge">H{{ s.metadata?.['weekNumber'] }}</span>
+                    }
+                  </td>
                   <td class="td-notes">{{ s.metadata?.['description'] || s.title }}</td>
                   <td class="td-actions">
                     <button mat-icon-button color="warn"
@@ -783,6 +789,7 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
     .td-lang    { text-align:center; color:#bdbdbd; white-space:nowrap; }
     .td-channel { color:#ffd600; font-weight:600; white-space:nowrap; min-width:110px; }
     .td-league  { color:#aaa; white-space:nowrap; }
+    .week-badge { display:inline-block; margin-left:4px; padding:0 5px; border-radius:3px; background:#1976d2; color:#fff; font-size:0.72rem; vertical-align:middle; }
     .td-notes   { max-width:260px; color:#bdbdbd; font-size:0.78rem; }
     .td-actions { width:40px; padding:2px 4px; text-align:center; }
 
