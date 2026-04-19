@@ -21,7 +21,7 @@ import { MatDividerModule } from '@angular/material/divider';
 
 import { ScheduleService } from '../../../core/services/schedule.service';
 import { ApiService } from '../../../core/services/api.service';
-import type { Schedule, OptaCompetition, OptaMatch } from '@bcms/shared';
+import type { Schedule, League, MatchListItem } from '@bcms/shared';
 
 interface Channel { id: number; name: string; type: string; }
 
@@ -40,55 +40,46 @@ interface Channel { id: number; name: string; type: string; }
     <mat-dialog-content>
       <form [formGroup]="form" class="dialog-form">
 
-        <!-- ── OPTA Fikstür Seçimi ──────────────────────────────────────── -->
+        <!-- ── Fikstür Seçimi ──────────────────────────────────────────── -->
         <div class="section-header">
           <mat-icon>sports_soccer</mat-icon>
-          <span>OPTA Fikstüründen Seç <em>(opsiyonel)</em></span>
+          <span>Fikstürden Seç <em>(opsiyonel)</em></span>
         </div>
         <div class="form-row">
           <mat-form-field>
             <mat-label>Lig / Turnuva</mat-label>
-            <mat-select [value]="optaCompId()"
-                        (selectionChange)="onOptaCompChange($event.value)"
-                        [disabled]="optaCompsLoading()">
+            <mat-select [value]="selectedLeagueId()"
+                        (selectionChange)="onLeagueChange($event.value)"
+                        [disabled]="leaguesLoading()">
               <mat-option [value]="null">— Seçin —</mat-option>
-              @for (c of optaComps(); track c.id) {
-                <mat-option [value]="c.id">{{ c.name }}</mat-option>
+              @for (l of leagues(); track l.id) {
+                <mat-option [value]="l.id">{{ l.name }}</mat-option>
               }
             </mat-select>
-            @if (optaCompsLoading()) { <mat-hint>Yükleniyor…</mat-hint> }
-          </mat-form-field>
-
-          <mat-form-field>
-            <mat-label>Sezon</mat-label>
-            <mat-select [value]="optaSeason()"
-                        (selectionChange)="onOptaSeasonChange($event.value)"
-                        [disabled]="optaSeasons().length === 0">
-              <mat-option [value]="null">— Seçin —</mat-option>
-              @for (s of optaSeasons(); track s) {
-                <mat-option [value]="s">{{ s }}</mat-option>
-              }
-            </mat-select>
+            @if (leaguesLoading()) { <mat-hint>Yükleniyor…</mat-hint> }
           </mat-form-field>
         </div>
 
-        @if (optaMatchesLoading()) {
+        @if (matchesLoading()) {
           <div class="loading-row">
             <mat-spinner diameter="18"></mat-spinner><span>Maçlar yükleniyor…</span>
           </div>
         }
-        @if (optaMatches().length > 0) {
+        @if (!matchesLoading() && selectedLeagueId() && matches().length === 0) {
+          <div class="loading-row">
+            <mat-icon style="font-size:16px;height:16px;width:16px;color:#888">info</mat-icon>
+            <span>Bu lig için planlanmış maç bulunamadı.</span>
+          </div>
+        }
+        @if (matches().length > 0) {
           <div class="form-row">
             <mat-form-field class="full-width">
               <mat-label>Maç</mat-label>
-              <mat-select [value]="selectedOptaMatchId()"
-                          (selectionChange)="onOptaMatchSelect($event.value)">
+              <mat-select [value]="selectedMatchId()"
+                          (selectionChange)="onMatchSelect($event.value)">
                 <mat-option [value]="null">— Maç seçin —</mat-option>
-                @for (m of optaMatches(); track m.matchId) {
-                  <mat-option [value]="m.matchId">
-                    {{ m.homeTeamName }} - {{ m.awayTeamName }}
-                    &nbsp;({{ m.matchDate | date:'dd MMM yyyy HH:mm' }})
-                  </mat-option>
+                @for (m of matches(); track m.id) {
+                  <mat-option [value]="m.id">{{ m.label }}</mat-option>
                 }
               </mat-select>
             </mat-form-field>
@@ -212,15 +203,13 @@ export class ScheduleAddDialogComponent {
   fb        = inject(FormBuilder);
   saving    = signal(false);
 
-  // OPTA sinyalleri
-  optaComps           = signal<OptaCompetition[]>([]);
-  optaCompsLoading    = signal(false);
-  optaCompId          = signal<string | null>(null);
-  optaSeasons         = signal<string[]>([]);
-  optaSeason          = signal<string | null>(null);
-  optaMatches         = signal<OptaMatch[]>([]);
-  optaMatchesLoading  = signal(false);
-  selectedOptaMatchId = signal<string | null>(null);
+  // Fikstür sinyalleri
+  leagues         = signal<League[]>([]);
+  leaguesLoading  = signal(false);
+  selectedLeagueId = signal<number | null>(null);
+  matches         = signal<MatchListItem[]>([]);
+  matchesLoading  = signal(false);
+  selectedMatchId = signal<number | null>(null);
 
   form = this.fb.group({
     channelId:   [null as number | null, Validators.required],
@@ -240,54 +229,40 @@ export class ScheduleAddDialogComponent {
   });
 
   constructor() {
-    // Dialog açılınca OPTA competition listesini yükle
-    this.optaCompsLoading.set(true);
-    this.api.get<OptaCompetition[]>('/opta/competitions').subscribe({
-      next:  (c) => { this.optaComps.set(c); this.optaCompsLoading.set(false); },
-      error: ()  => { this.optaCompsLoading.set(false); },
+    this.leaguesLoading.set(true);
+    this.api.get<League[]>('/matches/leagues').subscribe({
+      next:  (l) => { this.leagues.set(l); this.leaguesLoading.set(false); },
+      error: ()  => { this.leaguesLoading.set(false); },
     });
   }
 
-  onOptaCompChange(compId: string | null) {
-    this.optaCompId.set(compId);
-    this.optaSeason.set(null);
-    this.optaMatches.set([]);
-    this.selectedOptaMatchId.set(null);
-    if (!compId) { this.optaSeasons.set([]); return; }
+  onLeagueChange(leagueId: number | null) {
+    this.selectedLeagueId.set(leagueId);
+    this.matches.set([]);
+    this.selectedMatchId.set(null);
+    if (!leagueId) return;
 
-    const seasons = [...(this.optaComps().find((c) => c.id === compId)?.seasons ?? [])].sort().reverse();
-    this.optaSeasons.set(seasons);
-    if (seasons.length === 1) this.onOptaSeasonChange(seasons[0]);
-  }
-
-  onOptaSeasonChange(season: string | null) {
-    this.optaSeason.set(season);
-    this.optaMatches.set([]);
-    this.selectedOptaMatchId.set(null);
-    if (!season || !this.optaCompId()) return;
-
-    this.optaMatchesLoading.set(true);
-    this.api.get<OptaMatch[]>(`/opta/matches?competitionId=${this.optaCompId()}&season=${season}`).subscribe({
-      next:  (ms) => { this.optaMatches.set(ms); this.optaMatchesLoading.set(false); },
-      error: ()   => { this.optaMatchesLoading.set(false); },
+    const from = new Date().toISOString();
+    this.matchesLoading.set(true);
+    this.api.get<MatchListItem[]>(`/matches?leagueId=${leagueId}&from=${encodeURIComponent(from)}`).subscribe({
+      next:  (ms) => { this.matches.set(ms); this.matchesLoading.set(false); },
+      error: ()   => { this.matchesLoading.set(false); },
     });
   }
 
-  onOptaMatchSelect(matchId: string | null) {
-    this.selectedOptaMatchId.set(matchId);
-    const match = this.optaMatches().find((m) => m.matchId === matchId);
+  onMatchSelect(matchId: number | null) {
+    this.selectedMatchId.set(matchId);
+    const match = this.matches().find((m) => m.id === matchId);
     if (!match) return;
 
-    // Yayın Adı: "HomeTeam - AwayTeam"
-    this.form.patchValue({ contentName: `${match.homeTeamName} - ${match.awayTeamName}` });
-    // Lig: competition adı
-    this.form.patchValue({ league: match.competitionName });
-    // Tarih ve başlangıç saatini doldur
+    const league = this.leagues().find((l) => l.id === match.leagueId);
     const dt = new Date(match.matchDate);
     this.form.patchValue({
-      date:      dt.toISOString().slice(0, 10),
-      startTime: `${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`,
-      endTime:   `${pad((dt.getHours() + 2) % 24)}:${pad(dt.getMinutes())}:00`,
+      contentName: `${match.homeTeamName} - ${match.awayTeamName}`,
+      league:      league?.name ?? '',
+      date:        dt.toISOString().slice(0, 10),
+      startTime:   `${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`,
+      endTime:     `${pad((dt.getHours() + 2) % 24)}:${pad(dt.getMinutes())}:00`,
     });
   }
 
@@ -302,16 +277,16 @@ export class ScheduleAddDialogComponent {
       endTime:   toISO(v.endTime!),
       title:     v.contentName!,
       metadata: {
-        contentName:    v.contentName,
-        transStart:     v.transStart  || undefined,
-        transEnd:       v.transEnd    || undefined,
-        houseNumber:    v.houseNumber || undefined,
-        intField:       v.intField    || undefined,
-        offTube:        v.offTube     || undefined,
-        language:       v.language    || 'Yok',
-        league:         v.league      || undefined,
-        description:    v.notes       || undefined,
-        optaMatchId:    this.selectedOptaMatchId() || undefined,
+        contentName:  v.contentName,
+        transStart:   v.transStart  || undefined,
+        transEnd:     v.transEnd    || undefined,
+        houseNumber:  v.houseNumber || undefined,
+        intField:     v.intField    || undefined,
+        offTube:      v.offTube     || undefined,
+        language:     v.language    || 'Yok',
+        league:       v.league      || undefined,
+        description:  v.notes       || undefined,
+        matchId:      this.selectedMatchId() || undefined,
       },
     };
 
