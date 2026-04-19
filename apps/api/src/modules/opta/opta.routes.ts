@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { buildCompetitionList, loadMatches, clearOptaCache, buildFixtureCompetitions, loadFixtures } from './opta.parser.js';
 import { getOptaWatcherStatus } from './opta.watcher.js';
+import { readSmbConfig, writeSmbConfig, type SmbConfig } from './opta.smb-config.js';
 import { PERMISSIONS } from '@bcms/shared';
 
 export async function optaRoutes(app: FastifyInstance) {
@@ -99,5 +100,55 @@ export async function optaRoutes(app: FastifyInstance) {
   }, async () => {
     const status = getOptaWatcherStatus();
     return { ...status, timestamp: new Date().toISOString() };
+  });
+
+  // GET /api/v1/opta/smb-config — SMB bağlantı ayarlarını getir (şifre maskelenmiş)
+  app.get('/smb-config', {
+    preHandler: app.requireRole(...PERMISSIONS.channels.write),
+    schema: { tags: ['OPTA'], summary: 'SMB bağlantı ayarlarını getir' },
+  }, async () => {
+    const cfg = readSmbConfig();
+    return { ...cfg, password: cfg.password ? '********' : '' };
+  });
+
+  // POST /api/v1/opta/smb-config — SMB bağlantı ayarlarını kaydet
+  app.post<{ Body: Partial<SmbConfig> }>('/smb-config', {
+    preHandler: app.requireRole(...PERMISSIONS.channels.write),
+    schema: {
+      tags: ['OPTA'],
+      summary: 'SMB bağlantı ayarlarını kaydet ve cred dosyasını güncelle',
+      body: {
+        type: 'object',
+        properties: {
+          share:      { type: 'string' },
+          mountPoint: { type: 'string' },
+          subdir:     { type: 'string' },
+          username:   { type: 'string' },
+          password:   { type: 'string' },
+          domain:     { type: 'string' },
+        },
+      },
+    },
+  }, async (request) => {
+    const current = readSmbConfig();
+    const incoming = request.body;
+
+    // Maskelenmemiş şifre geldiyse kullan; '********' geldiyse eskisini koru
+    const password = (incoming.password && incoming.password !== '********')
+      ? incoming.password
+      : current.password;
+
+    const updated: SmbConfig = {
+      share:      incoming.share      ?? current.share,
+      mountPoint: incoming.mountPoint ?? current.mountPoint,
+      subdir:     incoming.subdir     ?? current.subdir,
+      username:   incoming.username   ?? current.username,
+      domain:     incoming.domain     ?? current.domain,
+      password,
+    };
+
+    writeSmbConfig(updated);
+    app.log.info({ share: updated.share, username: updated.username }, 'OPTA SMB config güncellendi');
+    return { ok: true };
   });
 }

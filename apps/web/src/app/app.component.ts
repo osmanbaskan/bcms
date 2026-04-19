@@ -126,6 +126,7 @@ export class AppComponent implements OnInit {
     { label: 'Monitoring',     icon: 'monitor_heart',       route: '/monitoring', roles: ['admin','monitoring','viewer'] },
     { label: 'MCR',            icon: 'videocam',            route: '/mcr',        roles: ['admin','monitoring'] },
     { label: 'Kullanıcılar',  icon: 'manage_accounts',     route: '/users',      roles: ['admin'] },
+    { label: 'Ayarlar',       icon: 'settings',            route: '/settings',   roles: ['admin'] },
   ];
 
   visibleNavItems = computed(() =>
