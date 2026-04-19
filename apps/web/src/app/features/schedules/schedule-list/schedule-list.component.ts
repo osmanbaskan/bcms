@@ -362,12 +362,40 @@ export class ScheduleAddDialogComponent {
 
   toggle(id: number) {
     const s = new Set(this.checkedIds());
-    s.has(id) ? s.delete(id) : s.add(id);
+    if (s.has(id)) {
+      s.delete(id);
+    } else {
+      s.add(id);
+      this.initForm(id);
+    }
     this.checkedIds.set(s);
   }
 
   toggleAll(checked: boolean) {
-    this.checkedIds.set(checked ? new Set(this.filteredMatches().map((m) => m.id)) : new Set());
+    if (checked) {
+      this.filteredMatches().forEach((m) => this.initForm(m.id));
+      this.checkedIds.set(new Set(this.filteredMatches().map((m) => m.id)));
+    } else {
+      this.checkedIds.set(new Set());
+    }
+  }
+
+  private initForm(id: number) {
+    if (this.matchForms.has(id)) return;
+    const match = this.allMatches().find((m) => m.id === id);
+    const dt = match ? new Date(match.matchDate) : new Date();
+    const transStartDt = new Date(dt.getTime() - 60 * 60 * 1000);
+    const transEndDt   = new Date(dt.getTime() + 3 * 60 * 60 * 1000);
+    this.matchForms.set(id, {
+      channelId:   null,
+      language:    'Yok',
+      transStart:  `${pad(transStartDt.getHours())}:${pad(transStartDt.getMinutes())}`,
+      transEnd:    `${pad(transEndDt.getHours())}:${pad(transEndDt.getMinutes())}`,
+      houseNumber: '',
+      intField:    '',
+      offTube:     '',
+      notes:       '',
+    });
   }
 
   save() {
