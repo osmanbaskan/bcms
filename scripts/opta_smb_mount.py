@@ -24,18 +24,20 @@ from fuse import FUSE, FuseOSError, Operations
 CONFIG_PATH = Path.home() / ".bcms-opta-config.json"
 log = logging.getLogger("opta-smb-mount")
 
+_DEFAULT_CONFIG = {
+    "share":    os.getenv("OPTA_SMB_SHARE", ""),
+    "subdir":   os.getenv("OPTA_SMB_SUBDIR", ""),
+    "username": os.getenv("OPTA_SMB_USERNAME", ""),
+    "password": os.getenv("OPTA_SMB_PASSWORD", ""),
+    "domain":   os.getenv("OPTA_SMB_DOMAIN", ""),
+}
+
 
 def load_config() -> dict:
     try:
-        return json.loads(CONFIG_PATH.read_text())
+        return {**_DEFAULT_CONFIG, **json.loads(CONFIG_PATH.read_text())}
     except Exception:
-        return {
-            "share":    "//beinfilesrv/BACKUPS",
-            "subdir":   "OPTAfromFTP20511",
-            "username": "OPTA_SMB_USER",
-            "password": "OPTA_SMB_PASS",
-            "domain":   "OPTA_SMB_DOMAIN",
-        }
+        return _DEFAULT_CONFIG.copy()
 
 
 def smb_unc(cfg: dict, posix_path: str = "") -> str:

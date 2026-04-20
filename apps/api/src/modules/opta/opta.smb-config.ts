@@ -15,12 +15,12 @@ export interface SmbConfig {
 }
 
 const DEFAULTS: SmbConfig = {
-  share:      '//beinfilesrv/BACKUPS',
-  mountPoint: '/mnt/opta-backups',
-  subdir:     'OPTAfromFTP20511',
-  username:   '',
-  password:   '',
-  domain:     'OPTA_SMB_DOMAIN',
+  share:      process.env.OPTA_SMB_SHARE      ?? '',
+  mountPoint: process.env.OPTA_SMB_MOUNT_POINT ?? '/mnt/opta-backups',
+  subdir:     process.env.OPTA_SMB_SUBDIR      ?? '',
+  username:   process.env.OPTA_SMB_USERNAME    ?? '',
+  password:   process.env.OPTA_SMB_PASSWORD    ?? '',
+  domain:     process.env.OPTA_SMB_DOMAIN      ?? '',
 };
 
 export function readSmbConfig(): SmbConfig {

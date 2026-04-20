@@ -55,7 +55,8 @@ export class ScheduleService {
   async create(dto: CreateScheduleDto, request: FastifyRequest) {
     const user = (request.user as { preferred_username: string }).preferred_username;
 
-    // ── Conflict check ──────────────────────────────────────────────────────────
+    // ── Conflict check (kanal seçilmemişse atla) ────────────────────────────────
+    if (dto.channelId != null) {
     const conflicts = await this.checkConflicts(
       dto.channelId,
       new Date(dto.startTime),
@@ -67,6 +68,7 @@ export class ScheduleService {
         { statusCode: 409, conflicts },
       );
       throw err;
+    }
     }
 
     const schedule = await this.app.prisma.schedule.create({
@@ -114,8 +116,8 @@ export class ScheduleService {
       throw err;
     }
 
-    // ── Conflict check on time change ───────────────────────────────────────────
-    if (dto.startTime || dto.endTime) {
+    // ── Conflict check on time change (kanal yoksa atla) ───────────────────────
+    if ((dto.startTime || dto.endTime) && existing.channelId != null) {
       const start = dto.startTime ? new Date(dto.startTime) : existing.startTime;
       const end   = dto.endTime   ? new Date(dto.endTime)   : existing.endTime;
       const conflicts = await this.checkConflicts(existing.channelId, start, end, id);

@@ -13,11 +13,11 @@ const total = allMissing.length;
 console.log('Toplam indirilecek:', total);
 
 const client = new SMB2({
-  share: '\\\\172.26.33.248\\BACKUPS',
-  domain: 'OPTA_SMB_DOMAIN',
-  username: 'OPTA_SMB_USER',
-  password: 'OPTA_SMB_PASS',
-  autoCloseTimeout: 0,  // manuel kapat
+  share:    process.env.OPTA_SMB_SHARE    ?? '',
+  domain:   process.env.OPTA_SMB_DOMAIN   ?? '',
+  username: process.env.OPTA_SMB_USERNAME ?? '',
+  password: process.env.OPTA_SMB_PASSWORD ?? '',
+  autoCloseTimeout: 0,
   packetConcurrency: 8,
 });
 

@@ -55,16 +55,9 @@ log = logging.getLogger("opta-watcher")
 
 def load_smb_config() -> dict:
     try:
-        return json.loads(CONFIG_PATH.read_text())
+        return {**DEFAULT_SMB_CONFIG, **json.loads(CONFIG_PATH.read_text())}
     except Exception:
-        return {
-            "share":      "//beinfilesrv/BACKUPS",
-            "mountPoint": "/mnt/opta-backups",
-            "subdir":     "OPTAfromFTP20511",
-            "username":   "OPTA_SMB_USER",
-            "password":   "OPTA_SMB_PASS",
-            "domain":     "OPTA_SMB_DOMAIN",
-        }
+        return DEFAULT_SMB_CONFIG.copy()
 
 
 def smb_connect(cfg: dict):
