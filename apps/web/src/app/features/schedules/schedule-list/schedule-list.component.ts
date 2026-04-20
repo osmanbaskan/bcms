@@ -56,6 +56,39 @@ interface MatchFormData {
   notes:       string;
 }
 
+const LEAGUE_COLORS = new Map<string, string>([
+  ['turkish super lig', '#244b35'],
+  ['turkish 1. lig', '#574024'],
+  ['english premier league', '#432a64'],
+  ['french ligue 1', '#1f4a62'],
+  ['formula 1', '#682332'],
+  ['turkiye basketbol ligi', '#4d4a24'],
+  ['türkiye basketbol ligi', '#4d4a24'],
+]);
+
+const FALLBACK_LEAGUE_COLORS = [
+  '#25445f', '#3f3f68', '#5a324d', '#31513c',
+  '#5b432c', '#4a385f', '#225050', '#5c3333',
+];
+
+function normalizeLeagueName(name: unknown): string {
+  return String(name ?? '').trim().toLocaleLowerCase('tr-TR');
+}
+
+function leagueBackground(name: unknown): string {
+  const normalized = normalizeLeagueName(name);
+  if (!normalized) return '';
+
+  const explicit = LEAGUE_COLORS.get(normalized);
+  if (explicit) return explicit;
+
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i += 1) {
+    hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  }
+  return FALLBACK_LEAGUE_COLORS[hash % FALLBACK_LEAGUE_COLORS.length];
+}
+
 // ── Kayıt Ekle Dialog ─────────────────────────────────────────────────────────
 @Component({
   selector: 'app-schedule-add-dialog',
@@ -91,7 +124,10 @@ interface MatchFormData {
                         [compareWith]="compById">
               <mat-option [value]="null">— Seçin —</mat-option>
               @for (c of competitions(); track c.id + c.season) {
-                <mat-option [value]="c">{{ c.name }}</mat-option>
+                <mat-option [value]="c" [style.background]="leagueColor(c.name)" class="league-option">
+                  <span class="league-swatch" [style.background]="leagueColor(c.name)"></span>
+                  {{ c.name }}
+                </mat-option>
               }
             </mat-select>
             @if (compsLoading()) { <mat-hint>Yükleniyor…</mat-hint> }
@@ -187,6 +223,7 @@ interface MatchFormData {
           <div class="match-list">
             @for (m of filteredMatches(); track m.matchId) {
               <div class="match-item" [class.checked]="checkedIds().has(m.matchId)"
+                   [style.background]="fixtureLeagueColor(m)"
                    (click)="toggle(m.matchId)">
                 <mat-checkbox [checked]="checkedIds().has(m.matchId)"
                               (click)="$event.stopPropagation()"
@@ -224,7 +261,7 @@ interface MatchFormData {
               </thead>
               <tbody>
                 @for (m of selectedMatches(); track m.matchId) {
-                  <tr>
+                  <tr [style.background]="fixtureLeagueColor(m)">
                     <td class="col-title">
                       <input class="cell-input team-input" [(ngModel)]="getForm(m.matchId).homeTeamName" [ngModelOptions]="{standalone:true}" placeholder="Ev sahibi">
                       <span class="team-sep">-</span>
@@ -424,6 +461,12 @@ interface MatchFormData {
 
     .info-row  { display:flex; align-items:center; gap:6px; color:#888; font-size:12px; margin-bottom:8px; }
     .info-icon { font-size:16px; height:16px; width:16px; }
+    .league-option { color:#fff; }
+    .league-swatch {
+      display:inline-block; width:10px; height:10px; border-radius:2px;
+      margin-right:8px; border:1px solid rgba(255,255,255,.45);
+      vertical-align:-1px;
+    }
 
     .select-all-row { display:flex; align-items:center; gap:12px; padding:4px 8px; margin-bottom:4px; }
     .badge { background:#1976d2; color:#fff; border-radius:10px; padding:1px 8px; font-size:11px; }
@@ -431,10 +474,10 @@ interface MatchFormData {
     .match-list { max-height:180px; overflow-y:auto; border:1px solid #333; border-radius:4px; margin-bottom:8px; }
     .match-item {
       display:flex; align-items:center; gap:10px;
-      padding:6px 10px; cursor:pointer; transition:background .15s;
+      padding:6px 10px; cursor:pointer; transition:filter .15s, box-shadow .15s;
     }
-    .match-item:hover   { background:rgba(255,255,255,.05); }
-    .match-item.checked { background:rgba(25,118,210,.12); }
+    .match-item:hover   { filter:brightness(1.12); }
+    .match-item.checked { box-shadow:inset 3px 0 0 #90caf9; }
     .match-label { font-size:13px; }
 
     /* ── Entry table ── */
@@ -450,7 +493,7 @@ interface MatchFormData {
       white-space:nowrap; border-right:1px solid rgba(255,255,255,.15);
     }
     .entry-table tbody tr { border-bottom:1px solid #333; }
-    .entry-table tbody tr:hover { background:rgba(255,255,255,.04); }
+    .entry-table tbody tr:hover { filter:brightness(1.12); }
     .entry-table td { padding:4px 6px; vertical-align:middle; }
 
     .cell-input {
@@ -540,6 +583,14 @@ export class ScheduleAddDialogComponent {
   readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => String(i + 1));
   compById = (a: FixtureCompetition | null, b: FixtureCompetition | null) =>
     a?.id === b?.id && a?.season === b?.season;
+
+  leagueColor(name: unknown) {
+    return leagueBackground(name);
+  }
+
+  fixtureLeagueColor(match: OptaFixture) {
+    return leagueBackground(match.competitionName);
+  }
 
   // Her maç için ayrı form verisi (plain Map — save anında okunur)
   private matchForms = new Map<string, MatchFormData>();
@@ -981,7 +1032,9 @@ export class ScheduleEditDialogComponent {
                 </tr>
               }
               @for (s of schedules(); track s.id; let odd = $odd) {
-                <tr [class.row-odd]="odd" [class.row-even]="!odd">
+                <tr [class.row-odd]="odd" [class.row-even]="!odd"
+                    [class.has-league-color]="scheduleLeagueName(s)"
+                    [style.background]="scheduleLeagueColor(s)">
                   <td class="td-time">{{ s.startTime | date:'HH:mm' }}</td>
                   <td class="td-title">
                     <span class="content-main">{{ s.metadata?.['contentName'] || s.title }}</span>
@@ -1078,7 +1131,8 @@ export class ScheduleEditDialogComponent {
       border-bottom:1px solid rgba(255,255,255,0.06);
       transition:background 0.15s;
     }
-    .broadcast-table tbody tr:hover { background:rgba(255,255,255,0.06) !important; }
+    .broadcast-table tbody tr:hover { filter:brightness(1.12); }
+    .broadcast-table tbody tr.has-league-color:hover { filter:brightness(1.15); }
     .row-even { background:#1e1e2e; }
     .row-odd  { background:#242436; }
 
@@ -1132,6 +1186,14 @@ export class ScheduleListComponent implements OnInit {
       next: (res) => this.channels.set(Array.isArray(res) ? res : []),
     });
     this.load();
+  }
+
+  scheduleLeagueName(s: Schedule) {
+    return String(s.metadata?.['league'] ?? '');
+  }
+
+  scheduleLeagueColor(s: Schedule) {
+    return leagueBackground(s.metadata?.['league']);
   }
 
   load() {
