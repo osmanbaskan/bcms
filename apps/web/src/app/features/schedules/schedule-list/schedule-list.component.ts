@@ -478,7 +478,7 @@ export class ScheduleAddDialogComponent {
   selectedMatches = () => this.allMatches().filter((m) => this.checkedIds().has(m.matchId));
   canSave         = () => this.checkedIds().size > 0;
 
-  readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => `HDVG${i + 1}`);
+  readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => String(i + 1));
   compById = (a: FixtureCompetition | null, b: FixtureCompetition | null) =>
     a?.id === b?.id && a?.season === b?.season;
 
@@ -751,7 +751,7 @@ export class ScheduleEditDialogComponent {
   api       = inject(ApiService);
   saving    = signal(false);
 
-  readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => `HDVG${i + 1}`);
+  readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => String(i + 1));
 
   f: {
     contentName: string; league: string; channelId: number | null;
