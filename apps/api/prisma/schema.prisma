@@ -44,6 +44,7 @@ model Team {
 model Match {
   id           Int      @id @default(autoincrement())
   leagueId     Int      @map("league_id")
+  optaUid      String?  @unique @map("opta_uid") @db.VarChar(50)
   homeTeamName String   @map("home_team_name") @db.VarChar(100)
   awayTeamName String   @map("away_team_name") @db.VarChar(100)
   matchDate    DateTime @map("match_date") @db.Timestamptz
