@@ -1,18 +1,27 @@
 # ── Development ───────────────────────────────────────────────────────────────
 FROM node:20-alpine AS development
+WORKDIR /app
+COPY package.json package-lock.json* ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/web/package.json ./apps/web/
+RUN npm ci --workspaces --if-present
+COPY packages/shared ./packages/shared
+COPY apps/web ./apps/web
 WORKDIR /app/apps/web
-COPY apps/web/package.json apps/web/package-lock.json* ./
-RUN npm ci
-COPY apps/web .
 EXPOSE 4200
 CMD ["npm", "run", "start", "--", "--host", "0.0.0.0", "--poll", "2000"]
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package.json package-lock.json* ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/web/package.json ./apps/web/
+RUN npm ci --workspaces --if-present
+COPY packages/shared ./packages/shared
+COPY apps/web ./apps/web
+COPY tsconfig.base.json ./
 WORKDIR /app/apps/web
-COPY apps/web/package.json apps/web/package-lock.json* ./
-RUN npm ci
-COPY apps/web .
 RUN npm run build
 
 # ── Production (nginx) ────────────────────────────────────────────────────────

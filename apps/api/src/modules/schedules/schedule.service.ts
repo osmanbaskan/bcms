@@ -1,8 +1,8 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import type { CreateScheduleDto, UpdateScheduleDto, ScheduleQuery } from './schedule.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { writeAuditLog } from '../../middleware/audit.js';
-import type { FastifyRequest } from 'fastify';
 
 export class ScheduleService {
   constructor(private readonly app: FastifyInstance) {}
@@ -77,7 +77,7 @@ export class ScheduleService {
         title:           dto.title,
         contentId:       dto.contentId,
         broadcastTypeId: dto.broadcastTypeId,
-        metadata:        dto.metadata,
+        metadata:        dto.metadata as Prisma.InputJsonValue,
         createdBy:       user,
       },
       include: { channel: true },
@@ -133,7 +133,7 @@ export class ScheduleService {
         ...(dto.title     && { title:     dto.title }),
         ...(dto.status    && { status:    dto.status }),
         ...(dto.contentId !== undefined && { contentId: dto.contentId }),
-        ...(dto.metadata  && { metadata: dto.metadata }),
+        ...(dto.metadata  && { metadata: dto.metadata as Prisma.InputJsonValue }),
         version: { increment: 1 },
       },
       include: { channel: true },

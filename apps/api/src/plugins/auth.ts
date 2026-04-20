@@ -4,13 +4,16 @@ import jwksRsa from 'jwks-rsa';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { JwtPayload, Role } from '@bcms/shared';
 
+declare module '@fastify/jwt' {
+  interface FastifyJWT {
+    user: JwtPayload;
+  }
+}
+
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate: (request: FastifyRequest) => Promise<void>;
     requireRole: (...roles: Role[]) => (request: FastifyRequest) => Promise<void>;
-  }
-  interface FastifyRequest {
-    user: JwtPayload;
   }
 }
 
@@ -35,9 +38,10 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
 
   await app.register(jwt, {
     decode: { complete: true },
-    secret: (_req, token) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    secret: (_req: FastifyRequest, token: any) =>
       new Promise<string>((resolve, reject) => {
-        const header = (token as { header: { kid: string } }).header;
+        const header = token.header as { kid: string };
         jwksClient.getSigningKey(header.kid, (err, key) => {
           if (err || !key) return reject(err ?? new Error('No signing key found'));
           resolve(key.getPublicKey());
@@ -61,14 +65,13 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
     try {
       await request.jwtVerify();
     } catch {
-      throw app.httpErrors?.unauthorized('Invalid or expired token') ??
-        Object.assign(new Error('Unauthorized'), { statusCode: 401 });
+      throw Object.assign(new Error('Invalid or expired token'), { statusCode: 401 });
     }
   });
 
   app.decorate('requireRole', (...roles: Role[]) => async (request: FastifyRequest) => {
     await app.authenticate(request);
-    const userRoles: string[] = request.user?.realm_access?.roles ?? [];
+    const userRoles: string[] = (request.user as JwtPayload)?.realm_access?.roles ?? [];
     const hasRole = roles.some((r) => userRoles.includes(r));
     if (!hasRole) {
       const err = Object.assign(new Error('Insufficient permissions'), { statusCode: 403 });

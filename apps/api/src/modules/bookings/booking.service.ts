@@ -1,5 +1,6 @@
 import * as xlsx from 'xlsx';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import type { CreateBookingDto, UpdateBookingDto } from './booking.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { writeAuditLog } from '../../middleware/audit.js';
@@ -57,7 +58,7 @@ export class BookingService {
         teamId:      dto.teamId,
         matchId:     dto.matchId,
         notes:       dto.notes,
-        metadata:    dto.metadata,
+        metadata:    dto.metadata as Prisma.InputJsonValue,
       },
       include: { team: true },
     });
@@ -83,7 +84,7 @@ export class BookingService {
       data: {
         ...(dto.status   && { status: dto.status }),
         ...(dto.notes    !== undefined && { notes: dto.notes }),
-        ...(dto.metadata && { metadata: dto.metadata }),
+        ...(dto.metadata && { metadata: dto.metadata as Prisma.InputJsonValue }),
         version: { increment: 1 },
       },
       include: { team: true },

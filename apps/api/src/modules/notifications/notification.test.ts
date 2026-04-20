@@ -38,7 +38,7 @@ console.log('\nTest 2: REJECTED bildirim payload');
 {
   const bookingId = 7;
   const requestedBy = 'viewer1';
-  const status = 'REJECTED';
+  const status: string = 'REJECTED';
   const label = status === 'APPROVED' ? 'onaylandı' : 'reddedildi';
 
   const payload: EmailPayload = {

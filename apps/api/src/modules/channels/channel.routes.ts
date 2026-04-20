@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { PERMISSIONS } from '@bcms/shared';
 
 const createChannelSchema = z.object({
@@ -34,7 +35,7 @@ export async function channelRoutes(app: FastifyInstance) {
     schema: { tags: ['Channels'] },
   }, async (request, reply) => {
     const dto = createChannelSchema.parse(request.body);
-    const channel = await app.prisma.channel.create({ data: dto });
+    const channel = await app.prisma.channel.create({ data: { ...dto, muxInfo: dto.muxInfo as Prisma.InputJsonValue } });
     reply.status(201).send(channel);
   });
 
@@ -43,7 +44,7 @@ export async function channelRoutes(app: FastifyInstance) {
     schema: { tags: ['Channels'] },
   }, async (request) => {
     const dto = createChannelSchema.partial().parse(request.body);
-    return app.prisma.channel.update({ where: { id: Number(request.params.id) }, data: dto });
+    return app.prisma.channel.update({ where: { id: Number(request.params.id) }, data: dto as Parameters<typeof app.prisma.channel.update>[0]['data'] });
   });
 
   app.delete<{ Params: { id: string } }>('/:id', {

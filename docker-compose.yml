@@ -15,7 +15,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
     ports:
-      - "5433:5432"
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -37,7 +37,7 @@ services:
       - ./infra/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
     ports:
       - "5672:5672"
-      - "15672:15672"   # Management UI
+      - "15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 30s
@@ -76,7 +76,7 @@ services:
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
-      target: development
+      target: production
     container_name: bcms_api
     restart: unless-stopped
     environment:
@@ -86,14 +86,17 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
       PORT: 3000
-      NODE_ENV: development
-      LOG_LEVEL: debug
+      NODE_ENV: production
+      LOG_LEVEL: info
       CORS_ORIGIN: http://localhost:4200
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_SECURE: "false"
+      SMTP_FROM: ${SMTP_FROM:-noreply@bcms.local}
+      STORAGE_HOST: ${STORAGE_HOST}
+      OPTA_DIR: /opta
     volumes:
-      - ./apps/api:/app/apps/api
-      - ./packages/shared:/app/packages/shared
-      - /app/node_modules
-      - /app/apps/api/node_modules
+      - opta_data:/opta
     ports:
       - "3000:3000"
     depends_on:
@@ -104,21 +107,43 @@ services:
     networks:
       - bcms_net
 
-  # ── Angular Dev Server ────────────────────────────────────────────────────────
+  # ── Angular (nginx) ───────────────────────────────────────────────────────────
   web:
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile
-      target: development
+      target: production
     container_name: bcms_web
     restart: unless-stopped
-    volumes:
-      - ./apps/web:/app/apps/web
-      - /app/apps/web/node_modules
     ports:
-      - "4200:4200"
+      - "4200:80"
     depends_on:
       - api
+    networks:
+      - bcms_net
+
+  # ── OPTA SMB Watcher ─────────────────────────────────────────────────────────
+  opta-watcher:
+    build:
+      context: .
+      dockerfile: infra/docker/opta-watcher.Dockerfile
+    container_name: bcms_opta_watcher
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      OPTA_SMB_SHARE: ${OPTA_SMB_SHARE}
+      OPTA_SMB_SUBDIR: ${OPTA_SMB_SUBDIR}
+      OPTA_SMB_USERNAME: ${OPTA_SMB_USERNAME}
+      OPTA_SMB_PASSWORD: ${OPTA_SMB_PASSWORD}
+      OPTA_SMB_DOMAIN: ${OPTA_SMB_DOMAIN}
+      OPTA_POLL_INTERVAL: ${OPTA_POLL_INTERVAL:-3600}
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - bcms_net
 
@@ -128,8 +153,8 @@ services:
     container_name: bcms_mailhog
     restart: unless-stopped
     ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # Web UI
+      - "1025:1025"
+      - "8025:8025"
     networks:
       - bcms_net
 
@@ -172,6 +197,7 @@ volumes:
   rabbitmq_data:
   prometheus_data:
   grafana_data:
+  opta_data:
 
 networks:
   bcms_net:

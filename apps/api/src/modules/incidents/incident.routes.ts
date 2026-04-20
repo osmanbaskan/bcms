@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { PERMISSIONS } from '@bcms/shared';
 
 const createIncidentSchema = z.object({
@@ -40,7 +41,7 @@ export async function incidentRoutes(app: FastifyInstance) {
     schema: { tags: ['Incidents'] },
   }, async (request, reply) => {
     const dto = createIncidentSchema.parse(request.body);
-    const incident = await app.prisma.incident.create({ data: dto });
+    const incident = await app.prisma.incident.create({ data: { ...dto, metadata: dto.metadata as Prisma.InputJsonValue } });
     reply.status(201).send(incident);
   });
 

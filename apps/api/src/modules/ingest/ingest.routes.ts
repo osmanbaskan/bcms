@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { PERMISSIONS } from '@bcms/shared';
 
@@ -71,7 +72,7 @@ export async function ingestRoutes(app: FastifyInstance) {
       data: {
         sourcePath: dto.sourcePath,
         targetId:   dto.targetId,
-        metadata:   dto.metadata,
+        metadata:   dto.metadata as Prisma.InputJsonValue,
       },
     });
 
@@ -119,8 +120,8 @@ export async function ingestRoutes(app: FastifyInstance) {
     if (dto.qcReport) {
       await app.prisma.qcReport.upsert({
         where:  { jobId: dto.jobId },
-        create: { jobId: dto.jobId, ...dto.qcReport },
-        update: dto.qcReport,
+        create: { jobId: dto.jobId, ...dto.qcReport, errors: dto.qcReport.errors as Prisma.InputJsonValue, warnings: dto.qcReport.warnings as Prisma.InputJsonValue },
+        update: { ...dto.qcReport, errors: dto.qcReport.errors as Prisma.InputJsonValue, warnings: dto.qcReport.warnings as Prisma.InputJsonValue },
       });
     }
 
