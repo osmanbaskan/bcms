@@ -35,7 +35,7 @@ DB_PARAMS = dict(
     password=os.getenv("POSTGRES_PASSWORD", "changeme"),
 )
 
-DEFAULT_INTERVAL = int(os.getenv("OPTA_POLL_INTERVAL", "300"))
+DEFAULT_INTERVAL = int(os.getenv("OPTA_POLL_INTERVAL", "3600"))
 STATE_PATH = Path.home() / ".bcms-opta-watcher-state.json"
 
 _RESULTS_RE = re.compile(r"^srml-(\d+)-(2025|2026)-results\.xml$")
