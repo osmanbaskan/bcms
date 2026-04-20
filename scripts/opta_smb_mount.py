@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 OPTA SMB FUSE mount (read-only)
-//beinfilesrv/BACKUPS/OPTAfromFTP20511 → /home/ubuntu/opta
+$OPTA_SMB_SHARE/$OPTA_SMB_SUBDIR → $OPTA_SMB_MOUNT_POINT
 
 Çalıştırma:
     python3 opta_smb_mount.py [--mountpoint /home/ubuntu/opta]
