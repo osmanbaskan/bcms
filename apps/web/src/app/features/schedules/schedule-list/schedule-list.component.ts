@@ -1144,9 +1144,8 @@ export class ScheduleListComponent implements OnInit {
 
     this.scheduleSvc.getSchedules(params as any).subscribe({
       next: (res) => {
-        const sorted = [...res.data].sort((a, b) =>
-          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-        );
+        const localMins = (iso: string) => { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes(); };
+        const sorted = [...res.data].sort((a, b) => localMins(a.startTime) - localMins(b.startTime));
         this.schedules.set(sorted);
         this.total.set(res.total);
         this.loading.set(false);
