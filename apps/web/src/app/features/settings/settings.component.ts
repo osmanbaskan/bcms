@@ -101,7 +101,9 @@ interface SmbConfig {
               <mat-spinner diameter="18" style="display:inline-block;margin-right:6px"></mat-spinner>
               Kaydediliyor…
             } @else {
-              <mat-icon>save</mat-icon> Kaydet
+              <ng-container>
+                <mat-icon>save</mat-icon> Kaydet
+              </ng-container>
             }
           </button>
         </mat-card-actions>
