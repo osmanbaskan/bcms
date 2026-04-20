@@ -1144,7 +1144,10 @@ export class ScheduleListComponent implements OnInit {
 
     this.scheduleSvc.getSchedules(params as any).subscribe({
       next: (res) => {
-        this.schedules.set(res.data);
+        const sorted = [...res.data].sort((a, b) =>
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        );
+        this.schedules.set(sorted);
         this.total.set(res.total);
         this.loading.set(false);
       },
