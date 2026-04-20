@@ -158,40 +158,33 @@ function buildFixtureLabel(home: string, away: string, dateUtc: string, week: nu
 export function buildFixtureCompetitions(): FixtureCompetition[] {
   if (fixtureCompCache) return fixtureCompCache;
 
-  let files: string[];
-  try {
-    files = fs.readdirSync(OPTA_DIR).filter((f) => /^srml-\d+-\d+-results\.xml$/.test(f));
-  } catch {
-    return [];
-  }
+  // 448K dosyayı listelemek yerine bilinen comp ID + yakın sezonlar için doğrudan dene
+  const currentYear = new Date().getFullYear();
+  const seasons = [String(currentYear + 1), String(currentYear), String(currentYear - 1)];
 
   const seen    = new Set<string>();
   const results: FixtureCompetition[] = [];
 
-  for (const file of files) {
-    const m = file.match(/^srml-(\d+)-(\d+)-results\.xml$/);
-    if (!m) continue;
-    const [, compId, season] = m;
+  for (const compId of Object.keys(ALLOWED_COMPETITIONS)) {
+    for (const season of seasons) {
+      const file = `srml-${compId}-${season}-results.xml`;
+      const fullPath = path.join(OPTA_DIR, file);
 
-    // Sadece izin verilen ligler
-    if (!ALLOWED_COMPETITIONS[compId]) continue;
+      if (!fs.existsSync(fullPath)) continue;
 
-    const key = `${compId}-${season}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+      const key = `${compId}-${season}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
 
-    const header = readSrmlHeader(path.join(OPTA_DIR, file));
-    if (!header) continue;
+      try {
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        if (!content.includes('Period="PreMatch"')) continue;
+      } catch {
+        continue;
+      }
 
-    try {
-      const content = fs.readFileSync(path.join(OPTA_DIR, file), 'utf-8');
-      if (!content.includes('Period="PreMatch"')) continue;
-    } catch {
-      continue;
+      results.push({ id: compId, name: ALLOWED_COMPETITIONS[compId], season });
     }
-
-    // OPTA'nın İngilizce adı yerine Türkçe adı kullan
-    results.push({ id: compId, name: ALLOWED_COMPETITIONS[compId], season });
   }
 
   // F1 takvimi varsa ekle
@@ -337,10 +330,15 @@ export function loadMatches(competitionId: string, season: string): OptaMatch[] 
   const cacheKey = `${competitionId}-${season}`;
   if (matchCache.has(cacheKey)) return matchCache.get(cacheKey)!;
 
+  // readdirSync yerine glob benzeri yaklaşım: match ID'lerini DB'den bilmiyoruz,
+  // bu yüzden sadece matchCache doluysa kullan, yoksa boş dön (f24 maçları DB'den geliyor)
   let files: string[];
   try {
+    const prefix = `f24-${competitionId}-${season}-`;
+    const suffix = '-eventdetails.xml';
+    // Sadece ALLOWED_COMPETITIONS içinse dene, 448K dosya listeleme
     files = fs.readdirSync(OPTA_DIR).filter(
-      (f) => f.startsWith(`f24-${competitionId}-${season}-`) && f.endsWith('-eventdetails.xml'),
+      (f) => f.startsWith(prefix) && f.endsWith(suffix),
     );
   } catch {
     return [];

@@ -7,15 +7,29 @@ import { PERMISSIONS } from '@bcms/shared';
 
 export async function optaRoutes(app: FastifyInstance) {
 
-  // GET /api/v1/opta/competitions
+  // GET /api/v1/opta/competitions — DB'deki leagues tablosundan döner
   app.get('/competitions', {
     preHandler: app.requireRole(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['OPTA'],
-      summary: 'SMB arşivindeki competition listesi',
+      summary: 'DB\'deki competition listesi',
     },
-  }, async () => {
-    return buildCompetitionList();
+  }, async (): Promise<{ id: string; name: string; seasons: string[] }[]> => {
+    const rows = await app.prisma.$queryRaw<{ comp_id: string; name: string; season: string }[]>`
+      SELECT l.code AS comp_id, l.name, m.season
+      FROM leagues l
+      JOIN matches m ON m.league_id = l.id
+      GROUP BY l.code, l.name, m.season
+      ORDER BY l.name, m.season
+    `;
+
+    const map = new Map<string, { id: string; name: string; seasons: string[] }>();
+    for (const row of rows) {
+      const compId = row.comp_id.replace('opta-', '');
+      if (!map.has(compId)) map.set(compId, { id: compId, name: row.name, seasons: [] });
+      map.get(compId)!.seasons.push(row.season);
+    }
+    return Array.from(map.values());
   });
 
   // GET /api/v1/opta/matches?competitionId=X&season=Y[&unscheduled=false]
@@ -36,10 +50,29 @@ export async function optaRoutes(app: FastifyInstance) {
     },
   }, async (request) => {
     const { competitionId, season, unscheduled = 'true' } = request.query;
-    const matches = loadMatches(competitionId, season);
+
+    const rows = await app.prisma.match.findMany({
+      where: {
+        league: { code: `opta-${competitionId}` },
+        season,
+      },
+      include: { league: true },
+      orderBy: { matchDate: 'asc' },
+    });
+
+    let matches = rows.map((m) => ({
+      matchId:         m.optaUid ?? String(m.id),
+      competitionId,
+      competitionName: m.league.name,
+      season:          m.season,
+      homeTeamName:    m.homeTeamName,
+      awayTeamName:    m.awayTeamName,
+      matchDate:       m.matchDate.toISOString(),
+      venue:           m.venue ?? undefined,
+    }));
+
     if (unscheduled === 'false') return matches;
 
-    // Zaten yayın planına eklenmiş optaMatchId'leri çek
     const scheduled = await app.prisma.schedule.findMany({
       where: { metadata: { path: ['optaMatchId'], not: Prisma.JsonNull } },
       select: { metadata: true },
@@ -51,15 +84,26 @@ export async function optaRoutes(app: FastifyInstance) {
     return matches.filter((m) => !scheduledIds.has(m.matchId));
   });
 
-  // GET /api/v1/opta/fixture-competitions — srml results dosyalarından competition listesi
+  // GET /api/v1/opta/fixture-competitions — DB'den competition listesi
   app.get('/fixture-competitions', {
     preHandler: app.requireRole(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['OPTA'],
-      summary: 'Fikstür verisi olan OPTA competition listesi (srml)',
+      summary: 'Fikstür verisi olan OPTA competition listesi (DB)',
     },
-  }, async () => {
-    return buildFixtureCompetitions();
+  }, async (): Promise<{ id: string; name: string; season: string }[]> => {
+    const rows = await app.prisma.$queryRaw<{ comp_id: string; name: string; season: string }[]>`
+      SELECT l.code AS comp_id, l.name, m.season
+      FROM leagues l
+      JOIN matches m ON m.league_id = l.id
+      GROUP BY l.code, l.name, m.season
+      ORDER BY l.name, m.season
+    `;
+    return rows.map((r) => ({
+      id:     r.comp_id.replace('opta-', ''),
+      name:   r.name,
+      season: r.season,
+    }));
   });
 
   // GET /api/v1/opta/fixtures?competitionId=X&season=Y[&from=ISO]
@@ -67,7 +111,7 @@ export async function optaRoutes(app: FastifyInstance) {
     preHandler: app.requireRole(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['OPTA'],
-      summary: 'Gelecek fikstürleri srml dosyasından getir',
+      summary: 'Gelecek fikstürleri DB\'den getir',
       querystring: {
         type: 'object',
         required: ['competitionId', 'season'],
@@ -81,7 +125,28 @@ export async function optaRoutes(app: FastifyInstance) {
   }, async (request) => {
     const { competitionId, season, from } = request.query;
     const afterDate = from ? new Date(from) : undefined;
-    return loadFixtures(competitionId, season, afterDate);
+
+    const rows = await app.prisma.match.findMany({
+      where: {
+        league: { code: `opta-${competitionId}` },
+        season,
+        ...(afterDate ? { matchDate: { gte: afterDate } } : {}),
+      },
+      include: { league: true },
+      orderBy: { matchDate: 'asc' },
+    });
+
+    return rows.map((m) => ({
+      matchId:         m.optaUid ?? String(m.id),
+      competitionId,
+      competitionName: m.league.name,
+      season:          m.season,
+      homeTeamName:    m.homeTeamName,
+      awayTeamName:    m.awayTeamName,
+      matchDate:       m.matchDate.toISOString(),
+      weekNumber:      m.weekNumber,
+      label:           `${m.homeTeamName} - ${m.awayTeamName} (${m.matchDate.toLocaleDateString('tr-TR')})`,
+    }));
   });
 
   // POST /api/v1/opta/cache/clear — cache'i zorla yenile
