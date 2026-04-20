@@ -27,12 +27,16 @@ import smbclient
 
 CONFIG_PATH = Path.home() / ".bcms-opta-config.json"
 
+_pg_password = os.getenv("POSTGRES_PASSWORD")
+if not _pg_password:
+    raise RuntimeError("POSTGRES_PASSWORD env değişkeni zorunludur")
+
 DB_PARAMS = dict(
     host=os.getenv("POSTGRES_HOST", "localhost"),
     port=int(os.getenv("POSTGRES_PORT", "5432")),
     dbname=os.getenv("POSTGRES_DB", "bcms"),
     user=os.getenv("POSTGRES_USER", "bcms_user"),
-    password=os.getenv("POSTGRES_PASSWORD", "changeme"),
+    password=_pg_password,
 )
 
 DEFAULT_INTERVAL = int(os.getenv("OPTA_POLL_INTERVAL", "3600"))
@@ -52,6 +56,15 @@ logging.getLogger("smbprotocol").setLevel(logging.WARNING)
 log = logging.getLogger("opta-watcher")
 
 # ── SMB bağlantısı ────────────────────────────────────────────────────────────
+
+DEFAULT_SMB_CONFIG = {
+    "share":    os.getenv("OPTA_SMB_SHARE", ""),
+    "subdir":   os.getenv("OPTA_SMB_SUBDIR", ""),
+    "username": os.getenv("OPTA_SMB_USERNAME", ""),
+    "password": os.getenv("OPTA_SMB_PASSWORD", ""),
+    "domain":   os.getenv("OPTA_SMB_DOMAIN", ""),
+}
+
 
 def load_smb_config() -> dict:
     try:
