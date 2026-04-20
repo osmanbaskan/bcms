@@ -44,6 +44,8 @@ interface OptaFixture {
 }
 
 interface MatchFormData {
+  homeTeamName: string;
+  awayTeamName: string;
   channelId:   number | null;
   language:    string;
   transStart:  string;
@@ -177,7 +179,11 @@ interface MatchFormData {
               <tbody>
                 @for (m of selectedMatches(); track m.matchId) {
                   <tr>
-                    <td class="col-title">{{ m.homeTeamName }} - {{ m.awayTeamName }}</td>
+                    <td class="col-title">
+                      <input class="cell-input team-input" [(ngModel)]="getForm(m.matchId).homeTeamName" [ngModelOptions]="{standalone:true}" placeholder="Ev sahibi">
+                      <span class="team-sep">-</span>
+                      <input class="cell-input team-input" [(ngModel)]="getForm(m.matchId).awayTeamName" [ngModelOptions]="{standalone:true}" placeholder="Deplasman">
+                    </td>
                     <td class="col-time">{{ m.matchDate | date:'dd.MM HH:mm' }}</td>
                     <td class="col-channel">
                       <select class="cell-select"
@@ -415,7 +421,9 @@ interface MatchFormData {
     .cell-select.empty { color:#888; }
     .cell-select:focus { border-color:#90caf9; }
 
-    .col-title   { min-width:180px; font-weight:500; }
+    .col-title   { min-width:200px; font-weight:500; }
+    .team-input  { min-width:80px; width:calc(50% - 10px); }
+    .team-sep    { margin:0 4px; color:#888; }
     .col-time    { white-space:nowrap; color:#aaa; }
     .col-channel { min-width:120px; }
     .col-trans   { min-width:150px; display:table-cell; }
@@ -468,7 +476,7 @@ export class ScheduleAddDialogComponent {
   allChecked      = () => this.filteredMatches().length > 0 && this.filteredMatches().every((m) => this.checkedIds().has(m.matchId));
   someChecked     = () => this.filteredMatches().some((m) => this.checkedIds().has(m.matchId));
   selectedMatches = () => this.allMatches().filter((m) => this.checkedIds().has(m.matchId));
-  canSave         = () => this.checkedIds().size > 0 && this.selectedMatches().every((m) => !!this.getForm(m.matchId).channelId);
+  canSave         = () => this.checkedIds().size > 0;
 
   readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => `HDVG${i + 1}`);
   compById = (a: FixtureCompetition | null, b: FixtureCompetition | null) =>
@@ -479,7 +487,8 @@ export class ScheduleAddDialogComponent {
 
   getForm(id: string): MatchFormData {
     if (!this.matchForms.has(id)) {
-      this.matchForms.set(id, { channelId: null, language: 'Yok', transStart: '', transEnd: '', houseNumber: '', intField: '', offTube: '', notes: '' });
+      const match = this.allMatches().find((m) => m.matchId === id);
+      this.matchForms.set(id, { homeTeamName: match?.homeTeamName ?? '', awayTeamName: match?.awayTeamName ?? '', channelId: null, language: 'Yok', transStart: '', transEnd: '', houseNumber: '', intField: '', offTube: '', notes: '' });
     }
     return this.matchForms.get(id)!;
   }
@@ -546,6 +555,8 @@ export class ScheduleAddDialogComponent {
     const transStartDt = new Date(dt.getTime() - 60 * 60 * 1000);
     const transEndDt   = new Date(dt.getTime() + 3 * 60 * 60 * 1000);
     this.matchForms.set(id, {
+      homeTeamName: match?.homeTeamName ?? '',
+      awayTeamName: match?.awayTeamName ?? '',
       channelId:   null,
       language:    'Yok',
       transStart:  `${pad(transStartDt.getHours())}:${pad(transStartDt.getMinutes())}`,
@@ -563,13 +574,14 @@ export class ScheduleAddDialogComponent {
     const requests = this.selectedMatches().map((m) => {
       const f  = this.getForm(m.matchId);
       const dt = new Date(m.matchDate);
+      const title = `${f.homeTeamName || m.homeTeamName} - ${f.awayTeamName || m.awayTeamName}`;
       return this.api.post<Schedule>('/schedules', {
-        channelId: f.channelId!,
+        channelId: f.channelId,
         startTime: dt.toISOString(),
         endTime:   new Date(dt.getTime() + 2 * 60 * 60 * 1000).toISOString(),
-        title:     `${m.homeTeamName} - ${m.awayTeamName}`,
+        title,
         metadata: {
-          contentName:  `${m.homeTeamName} - ${m.awayTeamName}`,
+          contentName:  title,
           league:       m.competitionName || undefined,
           weekNumber:   m.weekNumber      ?? undefined,
           language:     f.language    || 'Yok',

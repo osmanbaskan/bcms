@@ -84,26 +84,39 @@ export async function optaRoutes(app: FastifyInstance) {
     return matches.filter((m) => !scheduledIds.has(m.matchId));
   });
 
-  // GET /api/v1/opta/fixture-competitions — DB'den competition listesi
+  // GET /api/v1/opta/fixture-competitions — DB'den seçili competition listesi
   app.get('/fixture-competitions', {
     preHandler: app.requireRole(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['OPTA'],
-      summary: 'Fikstür verisi olan OPTA competition listesi (DB)',
+      summary: 'Yayın planında kullanılan competition listesi',
     },
   }, async (): Promise<{ id: string; name: string; season: string }[]> => {
+    const FEATURED = ['opta-115', 'opta-388', 'opta-8', 'opta-24', 'custom-f1', 'custom-tbl', 'custom-tennis'];
+
+    // Her lig için yalnızca en güncel sezon
     const rows = await app.prisma.$queryRaw<{ comp_id: string; name: string; season: string }[]>`
-      SELECT l.code AS comp_id, l.name, m.season
+      SELECT DISTINCT ON (l.code) l.code AS comp_id, l.name, m.season
       FROM leagues l
       JOIN matches m ON m.league_id = l.id
-      GROUP BY l.code, l.name, m.season
-      ORDER BY l.name, m.season
+      WHERE l.code = ANY(${FEATURED})
+      ORDER BY l.code, m.season DESC
     `;
-    return rows.map((r) => ({
-      id:     r.comp_id.replace('opta-', ''),
-      name:   r.name,
-      season: r.season,
-    }));
+
+    // Maçsız featured ligler (F1, Basketbol, Tenis gibi — manuel giriş için)
+    const withMatches = new Set(rows.map((r) => r.comp_id));
+    const noMatchLeagues = await app.prisma.league.findMany({
+      where: { code: { in: FEATURED.filter((c) => !withMatches.has(c)) } },
+    });
+
+    const mapped = [
+      ...rows.map((r) => ({ id: r.comp_id.replace(/^(opta|custom)-/, ''), name: r.name, season: r.season, code: r.comp_id })),
+      ...noMatchLeagues.map((l) => ({ id: l.code.replace(/^(opta|custom)-/, ''), name: l.name, season: '-', code: l.code })),
+    ];
+
+    return mapped
+      .sort((a, b) => FEATURED.indexOf(a.code) - FEATURED.indexOf(b.code))
+      .map(({ code: _c, ...rest }) => rest);
   });
 
   // GET /api/v1/opta/fixtures?competitionId=X&season=Y[&from=ISO]
@@ -128,7 +141,7 @@ export async function optaRoutes(app: FastifyInstance) {
 
     const rows = await app.prisma.match.findMany({
       where: {
-        league: { code: `opta-${competitionId}` },
+        league: { code: { in: [`opta-${competitionId}`, `custom-${competitionId}`] } },
         season,
         ...(afterDate ? { matchDate: { gte: afterDate } } : {}),
       },
