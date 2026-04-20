@@ -197,11 +197,11 @@ interface MatchFormData {
                       </select>
                     </td>
                     <td class="col-trans">
-                      <input class="cell-input" type="time" step="1"
+                      <input class="cell-input" type="time"
                              [(ngModel)]="getForm(m.matchId).transStart"
                              [ngModelOptions]="{standalone:true}"
                              placeholder="Baş.">
-                      <input class="cell-input" type="time" step="1"
+                      <input class="cell-input" type="time"
                              [(ngModel)]="getForm(m.matchId).transEnd"
                              [ngModelOptions]="{standalone:true}"
                              placeholder="Bit.">
@@ -274,21 +274,21 @@ interface MatchFormData {
             </mat-form-field>
             <mat-form-field>
               <mat-label>Başlangıç *</mat-label>
-              <input matInput type="time" step="1" [(ngModel)]="mf.startTime" [ngModelOptions]="{standalone:true}">
+              <input matInput type="time" [(ngModel)]="mf.startTime" [ngModelOptions]="{standalone:true}">
             </mat-form-field>
             <mat-form-field>
               <mat-label>Bitiş *</mat-label>
-              <input matInput type="time" step="1" [(ngModel)]="mf.endTime" [ngModelOptions]="{standalone:true}">
+              <input matInput type="time" [(ngModel)]="mf.endTime" [ngModelOptions]="{standalone:true}">
             </mat-form-field>
           </div>
           <div class="mform-row">
             <mat-form-field>
               <mat-label>Trans. Başlangıç</mat-label>
-              <input matInput type="time" step="1" [(ngModel)]="mf.transStart" [ngModelOptions]="{standalone:true}">
+              <input matInput type="time" [(ngModel)]="mf.transStart" [ngModelOptions]="{standalone:true}">
             </mat-form-field>
             <mat-form-field>
               <mat-label>Trans. Bitiş</mat-label>
-              <input matInput type="time" step="1" [(ngModel)]="mf.transEnd" [ngModelOptions]="{standalone:true}">
+              <input matInput type="time" [(ngModel)]="mf.transEnd" [ngModelOptions]="{standalone:true}">
             </mat-form-field>
             <mat-form-field>
               <mat-label>HDVG</mat-label>
@@ -672,21 +672,21 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
           </mat-form-field>
           <mat-form-field>
             <mat-label>Başlangıç *</mat-label>
-            <input matInput type="time" step="1" [(ngModel)]="f.startTime" [ngModelOptions]="{standalone:true}">
+            <input matInput type="time" [(ngModel)]="f.startTime" [ngModelOptions]="{standalone:true}">
           </mat-form-field>
           <mat-form-field>
             <mat-label>Bitiş *</mat-label>
-            <input matInput type="time" step="1" [(ngModel)]="f.endTime" [ngModelOptions]="{standalone:true}">
+            <input matInput type="time" [(ngModel)]="f.endTime" [ngModelOptions]="{standalone:true}">
           </mat-form-field>
         </div>
         <div class="eform-row">
           <mat-form-field>
             <mat-label>Trans. Başlangıç</mat-label>
-            <input matInput type="time" step="1" [(ngModel)]="f.transStart" [ngModelOptions]="{standalone:true}">
+            <input matInput type="time" [(ngModel)]="f.transStart" [ngModelOptions]="{standalone:true}">
           </mat-form-field>
           <mat-form-field>
             <mat-label>Trans. Bitiş</mat-label>
-            <input matInput type="time" step="1" [(ngModel)]="f.transEnd" [ngModelOptions]="{standalone:true}">
+            <input matInput type="time" [(ngModel)]="f.transEnd" [ngModelOptions]="{standalone:true}">
           </mat-form-field>
           <mat-form-field>
             <mat-label>HDVG</mat-label>
@@ -771,8 +771,8 @@ export class ScheduleEditDialogComponent {
       league:      m['league']      || '',
       channelId:   s.channel?.id ?? null,
       date:        st.toLocaleDateString('sv-SE', { timeZone: environment.timezone }),
-      startTime:   `${pad(st.getHours())}:${pad(st.getMinutes())}:${pad(st.getSeconds())}`,
-      endTime:     `${pad(et.getHours())}:${pad(et.getMinutes())}:${pad(et.getSeconds())}`,
+      startTime:   `${pad(st.getHours())}:${pad(st.getMinutes())}`,
+      endTime:     `${pad(et.getHours())}:${pad(et.getMinutes())}`,
       transStart:  m['transStart']  || '',
       transEnd:    m['transEnd']    || '',
       houseNumber: m['houseNumber'] || '',
