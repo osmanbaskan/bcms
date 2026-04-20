@@ -909,7 +909,7 @@ export class ScheduleEditDialogComponent {
                       <span class="week-badge">H{{ s.metadata?.['weekNumber'] }}</span>
                     }
                   </td>
-                  <td class="td-notes">{{ s.metadata?.['description'] || s.title }}</td>
+                  <td class="td-notes">{{ s.metadata?.['description'] || '' }}</td>
                   <td class="td-actions">
                     <button mat-icon-button
                             matTooltip="Düzenle"
