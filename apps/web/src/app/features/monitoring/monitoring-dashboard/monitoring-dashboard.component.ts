@@ -291,17 +291,17 @@ export class MonitoringDashboardComponent implements OnInit, OnDestroy {
   load() {
     this.api.get<ChannelSignalSummary[]>('/signals/latest').subscribe({
       next: (data) => this.signals.set(data),
-      error: () => {},
+      error: (err) => this.snack.open(`Sinyal verisi yüklenemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 3000 }),
     });
 
     this.api.get<Incident[]>('/incidents', { resolved: 'false' }).subscribe({
       next: (data) => this.activeIncidents.set(data),
-      error: () => {},
+      error: (err) => this.snack.open(`Aktif arızalar yüklenemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 3000 }),
     });
 
     this.api.get<Incident[]>('/incidents', { resolved: 'true' }).subscribe({
       next: (data) => this.resolvedIncidents.set(data.slice(0, 10)),
-      error: () => {},
+      error: (err) => this.snack.open(`Çözülen arızalar yüklenemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 3000 }),
     });
   }
 

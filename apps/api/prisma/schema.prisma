@@ -32,6 +32,8 @@ model Team {
   metadata  Json?
   createdAt DateTime @default(now()) @map("created_at")
 
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   league   League    @relation(fields: [leagueId], references: [id])
   bookings Booking[]
 
@@ -50,6 +52,8 @@ model Match {
   venue        String?  @db.VarChar(200)
   createdAt    DateTime @default(now()) @map("created_at")
 
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
   league    League    @relation(fields: [leagueId], references: [id])
   bookings  Booking[]
   schedules Schedule[]
@@ -67,6 +71,7 @@ model Channel {
   muxInfo   Json?    @map("mux_info")
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   schedules  Schedule[]
   telemetry  SignalTelemetry[]
@@ -76,9 +81,11 @@ model Channel {
 
 // ── Broadcast Types ───────────────────────────────────────────────────────────
 model BroadcastType {
-  id          Int    @id @default(autoincrement())
-  code        String @unique @db.VarChar(30)
-  description String @db.VarChar(200)
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(30)
+  description String   @db.VarChar(200)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("broadcast_types")
 }
@@ -94,6 +101,7 @@ model Schedule {
   broadcastTypeId Int?           @map("broadcast_type_id")
   matchId         Int?           @map("match_id")
   status          ScheduleStatus @default(DRAFT)
+  finishedAt      DateTime?      @map("finished_at") @db.Timestamptz
   createdBy       String         @map("created_by") @db.VarChar(100)
   version         Int            @default(1)
   metadata        Json?

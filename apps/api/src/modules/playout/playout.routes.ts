@@ -118,7 +118,7 @@ export async function playoutRoutes(app: FastifyInstance) {
     const [updated] = await app.prisma.$transaction([
       app.prisma.schedule.update({
         where: { id },
-        data:  { status: 'COMPLETED', finishedAt: new Date() } as never,
+        data:  { status: 'COMPLETED', finishedAt: new Date() },
         include: { channel: true },
       }),
       app.prisma.timelineEvent.create({

@@ -372,18 +372,18 @@ export class McrPanelComponent implements OnInit, OnDestroy {
   loadLive() {
     this.api.get<Schedule[]>('/playout/current').subscribe({
       next: (d) => this.onAir.set(d),
-      error: () => {},
+      error: (err) => this.snack.open(`Yayın yüklenemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 3000 }),
     });
     this.api.get<Schedule[]>('/playout/next').subscribe({
       next: (d) => this.next.set(d),
-      error: () => {},
+      error: (err) => this.snack.open(`Yaklaşan program yüklenemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 3000 }),
     });
   }
 
   loadRundown() {
     this.api.get<Schedule[]>('/playout/rundown', { date: this.rundownDate }).subscribe({
       next: (d) => this.rundown.set(d),
-      error: () => {},
+      error: (err) => this.snack.open(`Rundown yüklenemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 3000 }),
     });
   }
 
@@ -391,7 +391,7 @@ export class McrPanelComponent implements OnInit, OnDestroy {
     this.selectedSchedule.set(s);
     this.api.get<TimelineEvent[]>(`/playout/${s.id}/timeline`).subscribe({
       next: (evs) => this.timelineEvents.set(evs),
-      error: () => {},
+      error: (err) => this.snack.open(`Timeline yüklenemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 3000 }),
     });
   }
 

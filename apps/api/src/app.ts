@@ -21,6 +21,7 @@ import { auditRoutes } from './modules/audit/audit.routes.js';
 import { matchRoutes } from './modules/matches/match.routes.js';
 import { optaRoutes }  from './modules/opta/opta.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
+import { broadcastTypeRoutes } from './modules/broadcast-types/broadcast-type.routes.js';
 import { startNotificationConsumer } from './modules/notifications/notification.consumer.js';
 import { startIngestWorker } from './modules/ingest/ingest.worker.js';
 import { startIngestWatcher } from './modules/ingest/ingest.watcher.js';
@@ -99,7 +100,8 @@ export async function buildApp() {
   await app.register(auditRoutes,    { prefix: '/api/v1/audit' });
   await app.register(matchRoutes,    { prefix: '/api/v1/matches' });
   await app.register(optaRoutes,     { prefix: '/api/v1/opta' });
-  await app.register(usersRoutes,    { prefix: '/api/v1/users' });
+  await app.register(usersRoutes,          { prefix: '/api/v1/users' });
+  await app.register(broadcastTypeRoutes,  { prefix: '/api/v1/broadcast-types' });
 
   // ── Global error handler ──────────────────────────────────────────────────────
   app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {

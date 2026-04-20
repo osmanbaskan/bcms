@@ -1,6 +1,7 @@
 import {
   Component, OnInit, signal, inject,
 } from '@angular/core';
+import { environment } from '../../../../environments/environment';
 import { forkJoin } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -593,7 +594,7 @@ export class ScheduleAddDialogComponent {
   saveManual() {
     if (!this.canSaveManual()) return;
     const f = this.mf;
-    const toISO = (t: string) => new Date(`${f.date}T${t}+03:00`).toISOString();
+    const toISO = (t: string) => new Date(`${f.date}T${t}${environment.utcOffset}`).toISOString();
     this.saving.set(true);
     this.api.post<Schedule>('/schedules', {
       channelId: f.channelId!,
@@ -757,7 +758,7 @@ export class ScheduleEditDialogComponent {
       contentName: m['contentName'] || s.title || '',
       league:      m['league']      || '',
       channelId:   s.channel?.id ?? null,
-      date:        st.toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' }),
+      date:        st.toLocaleDateString('sv-SE', { timeZone: environment.timezone }),
       startTime:   `${pad(st.getHours())}:${pad(st.getMinutes())}:${pad(st.getSeconds())}`,
       endTime:     `${pad(et.getHours())}:${pad(et.getMinutes())}:${pad(et.getSeconds())}`,
       transStart:  m['transStart']  || '',
@@ -775,7 +776,7 @@ export class ScheduleEditDialogComponent {
   save() {
     if (!this.canSave()) return;
     const f   = this.f;
-    const toISO = (t: string) => new Date(`${f.date}T${t}+03:00`).toISOString();
+    const toISO = (t: string) => new Date(`${f.date}T${t}${environment.utcOffset}`).toISOString();
     const s   = this.data.schedule;
 
     this.saving.set(true);

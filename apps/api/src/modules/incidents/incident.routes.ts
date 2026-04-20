@@ -44,6 +44,17 @@ export async function incidentRoutes(app: FastifyInstance) {
     reply.status(201).send(incident);
   });
 
+  app.delete<{ Params: { id: string } }>('/:id', {
+    preHandler: app.requireRole(...PERMISSIONS.incidents.delete),
+    schema: { tags: ['Incidents'], summary: 'Delete incident' },
+  }, async (request, reply) => {
+    const id = Number(request.params.id);
+    const existing = await app.prisma.incident.findUnique({ where: { id } });
+    if (!existing) throw Object.assign(new Error('Incident bulunamadı'), { statusCode: 404 });
+    await app.prisma.incident.delete({ where: { id } });
+    reply.status(204).send();
+  });
+
   app.patch<{ Params: { id: string } }>('/:id/resolve', {
     preHandler: app.requireRole(...PERMISSIONS.incidents.write),
     schema: { tags: ['Incidents'], summary: 'Mark incident as resolved' },

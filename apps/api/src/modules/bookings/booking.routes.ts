@@ -40,6 +40,14 @@ export async function bookingRoutes(app: FastifyInstance) {
     return svc.update(Number(request.params.id), dto, version, request);
   });
 
+  app.delete<{ Params: { id: string } }>('/:id', {
+    preHandler: app.requireRole(...PERMISSIONS.bookings.delete),
+    schema: { tags: ['Bookings'], summary: 'Delete booking' },
+  }, async (request, reply) => {
+    await svc.remove(Number(request.params.id));
+    reply.status(204).send();
+  });
+
   // ── Excel toplu import ──────────────────────────────────────────────────────
   app.post('/import', {
     preHandler: app.requireRole(...PERMISSIONS.bookings.write),

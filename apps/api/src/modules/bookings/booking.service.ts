@@ -105,6 +105,11 @@ export class BookingService {
     return updated;
   }
 
+  async remove(id: number) {
+    await this.findById(id);
+    await this.app.prisma.booking.delete({ where: { id } });
+  }
+
   // ── Excel toplu import ────────────────────────────────────────────────────────
 
   async importFromBuffer(buffer: Buffer, request: FastifyRequest): Promise<ImportResult> {

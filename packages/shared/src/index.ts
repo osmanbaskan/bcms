@@ -7,3 +7,5 @@ export * from './types/incident.js';
 export * from './types/common.js';
 export * from './types/rbac.js';
 export * from './types/match.js';
+export * from './types/monitoring.js';
+export * from './types/playout.js';

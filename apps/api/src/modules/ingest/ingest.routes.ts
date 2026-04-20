@@ -84,6 +84,21 @@ export async function ingestRoutes(app: FastifyInstance) {
     reply.status(202).send(job);
   });
 
+  // DELETE /api/v1/ingest/:id
+  app.delete<{ Params: { id: string } }>('/:id', {
+    preHandler: app.requireRole(...PERMISSIONS.ingest.delete),
+    schema: { tags: ['Ingest'], summary: 'Delete ingest job' },
+  }, async (request, reply) => {
+    const id = Number(request.params.id);
+    const job = await app.prisma.ingestJob.findUnique({ where: { id } });
+    if (!job) throw Object.assign(new Error('Ingest job not found'), { statusCode: 404 });
+    if (job.status === 'PROCESSING' || job.status === 'PROXY_GEN' || job.status === 'QC') {
+      throw Object.assign(new Error('Aktif iş silinemez'), { statusCode: 409 });
+    }
+    await app.prisma.ingestJob.delete({ where: { id } });
+    reply.status(204).send();
+  });
+
   // POST /webhooks/ingest/callback — Called by worker when job completes
   app.post('/callback', {
     schema: { tags: ['Ingest'], summary: 'Worker callback on job completion' },

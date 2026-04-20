@@ -35,35 +35,6 @@ export async function scheduleRoutes(app: FastifyInstance) {
     return svc.findAll(query);
   });
 
-  // GET /api/v1/schedules/:id
-  app.get<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
-    schema: { tags: ['Schedules'], summary: 'Get schedule by ID' },
-  }, async (request) => {
-    return svc.findById(Number(request.params.id));
-  });
-
-  // POST /api/v1/schedules
-  app.post('/', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.write),
-    schema: { tags: ['Schedules'], summary: 'Create schedule (conflict check included)' },
-  }, async (request, reply) => {
-    const dto = createScheduleSchema.parse(request.body);
-    const schedule = await svc.create(dto, request);
-    reply.status(201).send(schedule);
-  });
-
-  // PATCH /api/v1/schedules/:id
-  app.patch<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.write),
-    schema: { tags: ['Schedules'], summary: 'Update schedule (optimistic locking via If-Match)' },
-  }, async (request) => {
-    const dto = updateScheduleSchema.parse(request.body);
-    const ifMatch = request.headers['if-match'];
-    const version = ifMatch ? parseInt(ifMatch, 10) : undefined;
-    return svc.update(Number(request.params.id), dto, version, request);
-  });
-
   // POST /api/v1/schedules/import — Türkçe Excel formatından toplu import
   app.post('/import', {
     preHandler: app.requireRole(...PERMISSIONS.schedules.write),
@@ -110,6 +81,35 @@ export async function scheduleRoutes(app: FastifyInstance) {
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="${filename}"`)
       .send(buffer);
+  });
+
+  // GET /api/v1/schedules/:id
+  app.get<{ Params: { id: string } }>('/:id', {
+    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    schema: { tags: ['Schedules'], summary: 'Get schedule by ID' },
+  }, async (request) => {
+    return svc.findById(Number(request.params.id));
+  });
+
+  // POST /api/v1/schedules
+  app.post('/', {
+    preHandler: app.requireRole(...PERMISSIONS.schedules.write),
+    schema: { tags: ['Schedules'], summary: 'Create schedule (conflict check included)' },
+  }, async (request, reply) => {
+    const dto = createScheduleSchema.parse(request.body);
+    const schedule = await svc.create(dto, request);
+    reply.status(201).send(schedule);
+  });
+
+  // PATCH /api/v1/schedules/:id
+  app.patch<{ Params: { id: string } }>('/:id', {
+    preHandler: app.requireRole(...PERMISSIONS.schedules.write),
+    schema: { tags: ['Schedules'], summary: 'Update schedule (optimistic locking via If-Match)' },
+  }, async (request) => {
+    const dto = updateScheduleSchema.parse(request.body);
+    const ifMatch = request.headers['if-match'];
+    const version = ifMatch ? parseInt(ifMatch, 10) : undefined;
+    return svc.update(Number(request.params.id), dto, version, request);
   });
 
   // DELETE /api/v1/schedules/:id
