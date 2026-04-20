@@ -102,7 +102,7 @@ function leagueBackground(name: unknown): string {
   ],
   template: `
     <h2 mat-dialog-title>Yeni Yayın Kaydı Ekle</h2>
-    <mat-dialog-content>
+    <mat-dialog-content class="add-dialog-content">
       <div class="dialog-body">
       <mat-tab-group [(selectedIndex)]="activeTab" animationDuration="150ms">
 
@@ -444,6 +444,20 @@ function leagueBackground(name: unknown): string {
     </mat-dialog-actions>
   `,
   styles: [`
+    :host {
+      display:flex;
+      flex-direction:column;
+      height:100%;
+      min-height:0;
+    }
+    h2[mat-dialog-title] { flex:0 0 auto; }
+    .add-dialog-content {
+      flex:1 1 auto;
+      max-height:none;
+      overflow:auto;
+      min-height:0;
+    }
+    mat-dialog-actions { flex:0 0 auto; }
     .dialog-body { min-width: 700px; }
 
     .form-row { display:flex; gap:12px; margin-bottom:4px; }
@@ -471,7 +485,7 @@ function leagueBackground(name: unknown): string {
     .select-all-row { display:flex; align-items:center; gap:12px; padding:4px 8px; margin-bottom:4px; }
     .badge { background:#1976d2; color:#fff; border-radius:10px; padding:1px 8px; font-size:11px; }
 
-    .match-list { max-height:180px; overflow-y:auto; border:1px solid #333; border-radius:4px; margin-bottom:8px; }
+    .match-list { max-height:min(42vh, 360px); overflow-y:auto; border:1px solid #333; border-radius:4px; margin-bottom:8px; }
     .match-item {
       display:flex; align-items:center; gap:10px;
       padding:6px 10px; cursor:pointer; transition:filter .15s, box-shadow .15s;
@@ -1240,7 +1254,10 @@ export class ScheduleListComponent implements OnInit {
       data: { channels: this.channels() },
       width: '1300px',
       maxWidth: '98vw',
-      panelClass: 'dark-dialog',
+      height: 'calc(100vh - 120px)',
+      maxHeight: 'calc(100vh - 120px)',
+      position: { top: '98px' },
+      panelClass: ['dark-dialog', 'schedule-add-dialog-panel'],
     });
     ref.afterClosed().subscribe((result) => {
       if (result) {
