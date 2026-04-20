@@ -116,11 +116,57 @@ interface MatchFormData {
             <mat-spinner diameter="16"></mat-spinner><span>Maçlar yükleniyor…</span>
           </div>
         }
-        @if (!matchesLoading() && selectedComp() && allMatches().length === 0) {
-          <div class="info-row">
-            <mat-icon class="info-icon">info</mat-icon>
-            <span>Bu lig için planlanmış maç bulunamadı.</span>
-          </div>
+        @if (!matchesLoading() && selectedComp()) {
+          @if (teamsLoading()) {
+            <div class="info-row">
+              <mat-spinner diameter="16"></mat-spinner><span>Takımlar yükleniyor…</span>
+            </div>
+          } @else if (leagueTeams().length > 0) {
+            <div class="team-picker">
+              <div class="step-header">
+                <span class="step-num">2</span>
+                <span>Maç Seç</span>
+              </div>
+              <div class="form-row tp-row">
+                <mat-form-field>
+                  <mat-label>Ev Sahibi</mat-label>
+                  <mat-select [(ngModel)]="teamPickerHome" [ngModelOptions]="{standalone:true}">
+                    <mat-option value="">— Seçin —</mat-option>
+                    @for (t of leagueTeams(); track t) {
+                      <mat-option [value]="t">{{ t }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+                <mat-form-field>
+                  <mat-label>Deplasman</mat-label>
+                  <mat-select [(ngModel)]="teamPickerAway" [ngModelOptions]="{standalone:true}">
+                    <mat-option value="">— Seçin —</mat-option>
+                    @for (t of leagueTeams(); track t) {
+                      <mat-option [value]="t">{{ t }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+                <mat-form-field>
+                  <mat-label>Tarih</mat-label>
+                  <input matInput type="date" [(ngModel)]="teamPickerDate" [ngModelOptions]="{standalone:true}">
+                </mat-form-field>
+                <mat-form-field>
+                  <mat-label>Saat</mat-label>
+                  <input matInput type="time" [(ngModel)]="teamPickerTime" [ngModelOptions]="{standalone:true}">
+                </mat-form-field>
+                <button mat-stroked-button color="primary" class="tp-add-btn"
+                        [disabled]="!teamPickerHome || !teamPickerAway || !teamPickerDate"
+                        (click)="addVirtualMatch()">
+                  <mat-icon>add</mat-icon> Ekle
+                </button>
+              </div>
+            </div>
+          } @else if (allMatches().length === 0) {
+            <div class="info-row">
+              <mat-icon class="info-icon">info</mat-icon>
+              <span>Bu lig için planlanmış maç bulunamadı.</span>
+            </div>
+          }
         }
 
         @if (filteredMatches().length > 0) {
@@ -430,6 +476,12 @@ interface MatchFormData {
     .col-trans input { display:block; margin-bottom:2px; }
     .col-lang    { min-width:70px; }
 
+    /* ── Team picker ── */
+    .team-picker { margin-bottom: 8px; }
+    .tp-row { align-items: center; flex-wrap: wrap; }
+    .tp-row mat-form-field { flex: 1; min-width: 130px; }
+    .tp-add-btn { flex-shrink: 0; height: 40px; margin-top: 4px; }
+
     /* ── Tab body ── */
     .tab-body { padding: 12px 0 4px; }
 
@@ -465,6 +517,13 @@ export class ScheduleAddDialogComponent {
   weeks             = signal<number[]>([]);
   selectedWeek      = signal<number | null>(null);
   checkedIds        = signal<Set<string>>(new Set());
+
+  leagueTeams   = signal<string[]>([]);
+  teamsLoading  = signal(false);
+  teamPickerHome = '';
+  teamPickerAway = '';
+  teamPickerDate = new Date().toISOString().slice(0, 10);
+  teamPickerTime = '20:00';
 
   filteredMatches = (): OptaFixture[] => {
     const w = this.selectedWeek();
@@ -507,6 +566,9 @@ export class ScheduleAddDialogComponent {
     this.weeks.set([]);
     this.selectedWeek.set(null);
     this.checkedIds.set(new Set());
+    this.leagueTeams.set([]);
+    this.teamPickerHome = '';
+    this.teamPickerAway = '';
     if (!comp) return;
 
     this.matchesLoading.set(true);
@@ -518,9 +580,37 @@ export class ScheduleAddDialogComponent {
         const wList = [...wSet].sort((a, b) => a - b);
         this.weeks.set(wList.length > 1 ? wList : []);
         this.matchesLoading.set(false);
+        if (ms.length === 0) {
+          this.teamsLoading.set(true);
+          this.api.get<{ teams: string[] }>(`/opta/league-teams?competitionId=${comp.id}`).subscribe({
+            next:  (r) => { this.leagueTeams.set(r.teams); this.teamsLoading.set(false); },
+            error: ()  => { this.teamsLoading.set(false); },
+          });
+        }
       },
       error: () => { this.matchesLoading.set(false); },
     });
+  }
+
+  addVirtualMatch() {
+    const comp = this.selectedComp()!;
+    const dt = new Date(`${this.teamPickerDate}T${this.teamPickerTime || '00:00'}:00`);
+    const matchId = `virtual-${Date.now()}`;
+    const fixture: OptaFixture = {
+      matchId,
+      competitionId:   comp.id,
+      competitionName: comp.name,
+      season:          comp.season,
+      homeTeamName:    this.teamPickerHome,
+      awayTeamName:    this.teamPickerAway,
+      matchDate:       dt.toISOString(),
+      weekNumber:      null,
+      label:           `${this.teamPickerHome} - ${this.teamPickerAway} (${dt.toLocaleDateString('tr-TR')})`,
+    };
+    this.allMatches.update((ms) => [...ms, fixture]);
+    this.toggle(matchId);
+    this.teamPickerHome = '';
+    this.teamPickerAway = '';
   }
 
   onWeekChange(week: number | null) {

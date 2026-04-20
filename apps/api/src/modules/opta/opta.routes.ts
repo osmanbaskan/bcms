@@ -162,6 +162,28 @@ export async function optaRoutes(app: FastifyInstance) {
     }));
   });
 
+  // GET /api/v1/opta/league-teams?competitionId=X — ligin takım listesini döner (metadata.teams)
+  app.get<{ Querystring: { competitionId: string } }>('/league-teams', {
+    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    schema: {
+      tags: ['OPTA'],
+      summary: 'Ligin takımlarını getir (metadata.teams alanından)',
+      querystring: {
+        type: 'object',
+        required: ['competitionId'],
+        properties: { competitionId: { type: 'string' } },
+      },
+    },
+  }, async (request) => {
+    const { competitionId } = request.query;
+    const league = await app.prisma.league.findFirst({
+      where: { code: { in: [`opta-${competitionId}`, `custom-${competitionId}`] } },
+      select: { metadata: true },
+    });
+    const teams = (league?.metadata as Record<string, unknown>)?.teams;
+    return { teams: Array.isArray(teams) ? teams : [] };
+  });
+
   // POST /api/v1/opta/cache/clear — cache'i zorla yenile
   app.post('/cache/clear', {
     preHandler: app.requireRole(...PERMISSIONS.schedules.write),
