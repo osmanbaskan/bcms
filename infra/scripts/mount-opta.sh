@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # OPTA SMB share'ini kalıcı olarak mount eder.
-# Tek seferlik çalıştır: sudo bash infra/scripts/mount-opta.sh
+# Çalıştırmadan önce env değişkenlerini ayarla:
+#   export OPTA_SMB_SHARE=//server/share
+#   export OPTA_SMB_SUBDIR=subfolder
+#   export OPTA_SMB_DOMAIN=domain
+# Sonra: sudo -E bash infra/scripts/mount-opta.sh
 
 set -euo pipefail
 
-MOUNT_POINT="/mnt/opta-backups"
+SHARE="${OPTA_SMB_SHARE:?OPTA_SMB_SHARE env değişkeni gerekli}"
+SUBDIR="${OPTA_SMB_SUBDIR:?OPTA_SMB_SUBDIR env değişkeni gerekli}"
+DOMAIN="${OPTA_SMB_DOMAIN:-}"
+MOUNT_POINT="${OPTA_SMB_MOUNT_POINT:-/mnt/opta-backups}"
 CRED_FILE="/home/ubuntu/.bcms-opta.cred"
-SHARE="//beinfilesrv/BACKUPS"
-SUBDIR="OPTAfromFTP20511"
 UID_VAL=$(id -u ubuntu)
 GID_VAL=$(id -g ubuntu)
 
@@ -21,7 +26,8 @@ fi
 mkdir -p "$MOUNT_POINT"
 
 # fstab kaydı yoksa ekle
-FSTAB_LINE="${SHARE} ${MOUNT_POINT} cifs credentials=${CRED_FILE},domain=OPTA_SMB_DOMAIN,uid=${UID_VAL},gid=${GID_VAL},iocharset=utf8,file_mode=0755,dir_mode=0755,_netdev,x-systemd.automount,x-systemd.device-timeout=10s 0 0"
+DOMAIN_OPT="${DOMAIN:+,domain=${DOMAIN}}"
+FSTAB_LINE="${SHARE} ${MOUNT_POINT} cifs credentials=${CRED_FILE}${DOMAIN_OPT},uid=${UID_VAL},gid=${GID_VAL},iocharset=utf8,file_mode=0755,dir_mode=0755,_netdev,x-systemd.automount,x-systemd.device-timeout=10s 0 0"
 
 if ! grep -qF "$SHARE" /etc/fstab; then
   echo "[*] /etc/fstab'a mount kaydı ekleniyor..."
