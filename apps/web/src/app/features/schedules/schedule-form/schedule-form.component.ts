@@ -257,7 +257,7 @@ import type {
 })
 export class ScheduleFormComponent implements OnInit {
   form = this.fb.group({
-    channelId:  [0,   Validators.required],
+    channelId:  [0],
     title:      ['',  Validators.required],
     startTime:  ['',  Validators.required],
     endTime:    ['',  Validators.required],
