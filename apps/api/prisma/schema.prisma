@@ -94,7 +94,7 @@ model BroadcastType {
 // ── Schedules ─────────────────────────────────────────────────────────────────
 model Schedule {
   id              Int            @id @default(autoincrement())
-  channelId       Int            @map("channel_id")
+  channelId       Int?           @map("channel_id")
   startTime       DateTime       @map("start_time") @db.Timestamptz
   endTime         DateTime       @map("end_time") @db.Timestamptz
   title           String         @db.VarChar(500)
@@ -109,7 +109,7 @@ model Schedule {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
-  channel   Channel    @relation(fields: [channelId], references: [id])
+  channel   Channel?   @relation(fields: [channelId], references: [id])
   match     Match?     @relation(fields: [matchId], references: [id])
   bookings  Booking[]
   incidents Incident[]

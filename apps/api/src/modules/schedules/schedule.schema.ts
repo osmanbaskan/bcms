@@ -3,7 +3,7 @@ import { z } from 'zod';
 const ScheduleStatusEnum = z.enum(['DRAFT', 'CONFIRMED', 'ON_AIR', 'COMPLETED', 'CANCELLED']);
 
 export const createScheduleSchema = z.object({
-  channelId:       z.number().int().positive(),
+  channelId:       z.number().int().positive().nullable().optional(),
   startTime:       z.string().datetime({ offset: true }),
   endTime:         z.string().datetime({ offset: true }),
   title:           z.string().min(1).max(500),
