@@ -783,7 +783,7 @@ export class ScheduleEditDialogComponent {
     };
   }
 
-  canSave = () => !!(this.f.contentName && this.f.channelId && this.f.date && this.f.startTime && this.f.endTime);
+  canSave = () => !!(this.f.contentName && this.f.date && this.f.startTime && this.f.endTime);
 
   save() {
     if (!this.canSave()) return;
