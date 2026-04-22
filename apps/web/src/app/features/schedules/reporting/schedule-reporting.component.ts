@@ -338,16 +338,16 @@ export class ScheduleReportingComponent implements OnInit {
       .sort((a, b) => a.localeCompare(b, 'tr'))
   ));
 
-  seasonsForSelectedLeague = computed(() => {
+  seasonsForSelectedLeague(): string[] {
     if (!this.selectedLeague) return [];
     return [...new Set(
       this.filterEntries()
         .filter((entry) => entry.league === this.selectedLeague && entry.season)
         .map((entry) => entry.season as string),
     )].sort((a, b) => b.localeCompare(a, 'tr'));
-  });
+  }
 
-  weeksForSelectedFilter = computed(() => {
+  weeksForSelectedFilter(): number[] {
     if (!this.selectedLeague) return [];
     const weeks = new Set<number>();
     for (const entry of this.filterEntries()) {
@@ -356,9 +356,9 @@ export class ScheduleReportingComponent implements OnInit {
       entry.weeks.forEach((week) => weeks.add(week));
     }
     return [...weeks].sort((a, b) => a - b);
-  });
+  }
 
-  filterSummary = computed(() => {
+  filterSummary(): string {
     if (this.filterMode === 'date-range') {
       return `${this.selectedFromDate} - ${this.selectedToDate}`;
     }
@@ -369,7 +369,7 @@ export class ScheduleReportingComponent implements OnInit {
       this.selectedWeek ? `Hafta ${this.selectedWeek}` : 'Tüm haftalar',
     ].filter(Boolean);
     return parts.join(' · ');
-  });
+  }
 
   constructor(private api: ApiService, private snack: MatSnackBar, private datePipe: DatePipe) {}
 
