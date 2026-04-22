@@ -251,12 +251,18 @@ OPTA_SMB_MOUNT_POINT=/mnt/opta-backups
 KEYCLOAK_ISSUER=http://localhost:8080/realms/bcms
 KEYCLOAK_ALLOWED_CLIENTS=bcms-web,bcms-api
 INGEST_ALLOWED_ROOTS=./tmp/watch,/mnt/opta-backups/OPTAfromFTP20511
+BCMS_BACKGROUND_SERVICES=all
 ```
 
 Not: Lokal auth bypass artik `NODE_ENV=development` olmasina bagli degil; `SKIP_AUTH=true` gerekir.
 Production runtime `KEYCLOAK_CLIENT_ID`, `INGEST_CALLBACK_SECRET` ve
 `INGEST_ALLOWED_ROOTS` olmadan baslamaz. Ingest manuel kaynak yollari sadece
 `INGEST_ALLOWED_ROOTS` icindeki gercek video dosyalarini kabul eder.
+Production'da RabbitMQ baglantisi kurulamazsa API fail-fast davranir ve
+baslamaz. Sadece lokal/gelistirme icin `RABBITMQ_OPTIONAL=true` kullanilabilir.
+`BCMS_BACKGROUND_SERVICES` API process icinde hangi arka plan islerinin
+baslatilacagini belirler: `all`, `none` veya virgullu liste
+(`notifications,ingest-worker,ingest-watcher,bxf-watcher,opta-watcher`).
 
 ## OPTA
 

@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
@@ -30,6 +30,16 @@ import { startIngestWatcher } from './modules/ingest/ingest.watcher.js';
 import { startBxfWatcher } from './modules/bxf/bxf.watcher.js';
 import { startOptaWatcher } from './modules/opta/opta.watcher.js';
 
+const BACKGROUND_SERVICES = [
+  'notifications',
+  'ingest-worker',
+  'ingest-watcher',
+  'bxf-watcher',
+  'opta-watcher',
+] as const;
+
+type BackgroundService = (typeof BACKGROUND_SERVICES)[number];
+
 function validateRuntimeEnv(): void {
   const isProduction = process.env.NODE_ENV === 'production';
   if (!isProduction) return;
@@ -58,6 +68,46 @@ function corsOrigin(): string | string[] {
   const value = process.env.CORS_ORIGIN ?? 'http://localhost:4200';
   const origins = value.split(',').map((origin) => origin.trim()).filter(Boolean);
   return origins.length > 1 ? origins : origins[0] ?? 'http://localhost:4200';
+}
+
+function enabledBackgroundServices(): Set<BackgroundService> {
+  const value = process.env.BCMS_BACKGROUND_SERVICES ?? 'all';
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized === 'none') return new Set<BackgroundService>();
+  if (normalized === 'all') return new Set(BACKGROUND_SERVICES);
+
+  const valid = new Set<string>(BACKGROUND_SERVICES);
+  const requested = normalized
+    .split(',')
+    .map((service) => service.trim())
+    .filter(Boolean);
+
+  const unknown = requested.filter((service) => !valid.has(service));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown BCMS_BACKGROUND_SERVICES entries: ${unknown.join(', ')}`);
+  }
+
+  return new Set(requested as BackgroundService[]);
+}
+
+async function startBackgroundServices(app: FastifyInstance): Promise<void> {
+  const enabled = enabledBackgroundServices();
+
+  const run = async (service: BackgroundService, start: () => Promise<void> | void) => {
+    if (!enabled.has(service)) {
+      app.log.info({ service }, 'Background service disabled');
+      return;
+    }
+    await start();
+    app.log.info({ service }, 'Background service started');
+  };
+
+  await run('notifications', () => startNotificationConsumer(app));
+  await run('ingest-worker', () => startIngestWorker(app));
+  await run('ingest-watcher', () => startIngestWatcher(app));
+  await run('bxf-watcher', () => startBxfWatcher(app));
+  await run('opta-watcher', () => startOptaWatcher(app));
 }
 
 function errorResponse(error: Error & { statusCode?: number; code?: string }) {
@@ -153,11 +203,7 @@ export async function buildApp() {
   }));
 
   // ── Consumers & watchers ──────────────────────────────────────────────────────
-  await startNotificationConsumer(app);
-  await startIngestWorker(app);
-  startIngestWatcher(app);
-  await startBxfWatcher(app);
-  startOptaWatcher(app);
+  await startBackgroundServices(app);
 
   // ── Global error handler ──────────────────────────────────────────────────────
   app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {

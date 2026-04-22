@@ -90,12 +90,18 @@ async function createRabbitMQClient(url: string, logger: FastifyInstance['log'])
 
 export const rabbitmqPlugin = fp(async (app: FastifyInstance) => {
   const url = process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672';
+  const optional = process.env.RABBITMQ_OPTIONAL === 'true' || process.env.NODE_ENV !== 'production';
 
   try {
     const client = await createRabbitMQClient(url, app.log);
     app.decorate('rabbitmq', client);
     app.addHook('onClose', async () => { await client.close(); });
   } catch (err) {
+    if (!optional) {
+      app.log.error({ err }, 'Failed to connect to RabbitMQ');
+      throw err;
+    }
+
     app.log.error({ err }, 'Failed to connect to RabbitMQ — messages will be lost');
     // Provide a no-op client so the API still starts without RabbitMQ
     app.decorate('rabbitmq', {

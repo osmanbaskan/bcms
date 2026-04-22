@@ -89,6 +89,7 @@ services:
       INGEST_ALLOWED_ROOTS: ${INGEST_ALLOWED_ROOTS:-/opta,/app/tmp/watch}
       PORT: 3000
       NODE_ENV: production
+      BCMS_BACKGROUND_SERVICES: ${BCMS_BACKGROUND_SERVICES:-all}
       LOG_LEVEL: info
       CORS_ORIGIN: http://localhost:4200
       SMTP_HOST: mailhog
