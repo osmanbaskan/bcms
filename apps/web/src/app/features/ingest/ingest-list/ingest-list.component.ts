@@ -7,6 +7,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -15,7 +16,13 @@ import { interval, Subscription } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
 import { ApiService } from '../../../core/services/api.service';
-import type { IngestJob, PaginatedResponse } from '@bcms/shared';
+import type { IngestJob, PaginatedResponse, Schedule } from '@bcms/shared';
+
+interface Channel {
+  id: number;
+  name: string;
+  type: string;
+}
 
 const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING', 'PROXY_GEN', 'QC']);
 
@@ -39,6 +46,7 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
     MatTabsModule,
     MatFormFieldModule,
     MatInputModule,
+    MatSelectModule,
     MatExpansionModule,
     MatProgressBarModule,
     MatSnackBarModule,
@@ -79,6 +87,69 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
         </div>
       </mat-expansion-panel>
 
+      <mat-expansion-panel class="trigger-panel">
+        <mat-expansion-panel-header>
+          <mat-panel-title>
+            <mat-icon>event_available</mat-icon>&nbsp;Canlı Yayın Planından Ingest Başlat
+          </mat-panel-title>
+        </mat-expansion-panel-header>
+
+        <div class="live-plan-tools">
+          <mat-form-field>
+            <mat-label>Tarih</mat-label>
+            <input matInput type="date" [(ngModel)]="livePlanDate" (change)="loadLivePlanCandidates()" />
+          </mat-form-field>
+
+          <mat-form-field>
+            <mat-label>Kanal</mat-label>
+            <mat-select [(ngModel)]="livePlanChannelId" (selectionChange)="loadLivePlanCandidates()">
+              <mat-option [value]="null">Tüm kanallar</mat-option>
+              @for (channel of channels(); track channel.id) {
+                <mat-option [value]="channel.id">{{ channel.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+
+          <button mat-stroked-button (click)="loadLivePlanCandidates()" [disabled]="livePlanLoading()">
+            <mat-icon>refresh</mat-icon>
+            Planı Yenile
+          </button>
+        </div>
+
+        <div class="trigger-form">
+          <mat-form-field class="schedule-field">
+            <mat-label>Canlı Yayın Planı Kaydı</mat-label>
+            <mat-select [(ngModel)]="selectedScheduleId" [disabled]="livePlanLoading()">
+              <mat-option [value]="null">— Seçin —</mat-option>
+              @for (schedule of livePlanCandidates(); track schedule.id) {
+                <mat-option [value]="schedule.id">
+                  {{ schedule.startTime | date:'HH:mm' }} - {{ schedule.metadata?.['contentName'] || schedule.title }} · {{ schedule.channel?.name || '-' }}
+                </mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="path-field">
+            <mat-label>Kaynak Dosya Yolu</mat-label>
+            <input matInput [(ngModel)]="livePlanSourcePath" placeholder="/mnt/nas/video.mp4" />
+          </mat-form-field>
+
+          <button mat-flat-button color="primary"
+                  [disabled]="!selectedScheduleId || !livePlanSourcePath.trim() || triggering()"
+                  (click)="triggerLivePlanJob()">
+            <mat-icon>cloud_upload</mat-icon>
+            {{ triggering() ? 'Başlatılıyor…' : 'Başlat' }}
+          </button>
+        </div>
+
+        @if (livePlanLoading()) {
+          <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+        }
+        @if (!livePlanLoading() && livePlanCandidates().length === 0) {
+          <p class="empty-live-plan">Seçili tarih için canlı yayın planı kaydı bulunamadı.</p>
+        }
+      </mat-expansion-panel>
+
       <!-- Durum Sekmeleri -->
       <mat-tab-group (selectedIndexChange)="onTabChange($event)" class="status-tabs">
         @for (tab of statusTabs; track tab.value) {
@@ -104,6 +175,17 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
             <span [class]="'status-badge ' + j.status">{{ j.status }}</span>
             @if (isActive(j.status)) {
               <mat-progress-bar mode="indeterminate" class="inline-progress"></mat-progress-bar>
+            }
+          </mat-cell>
+        </ng-container>
+
+        <ng-container matColumnDef="plan">
+          <mat-header-cell *matHeaderCellDef>Plan Kaydı</mat-header-cell>
+          <mat-cell *matCellDef="let j">
+            @if (j.targetId) {
+              <span>{{ j.metadata?.['scheduleTitle'] || ('#' + j.targetId) }}</span>
+            } @else {
+              <span>—</span>
             }
           </mat-cell>
         </ng-container>
@@ -192,6 +274,9 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
     .trigger-panel   { margin-bottom: 16px; }
     .trigger-form    { display: flex; align-items: center; gap: 16px; padding-top: 8px; }
     .path-field      { flex: 1; }
+    .schedule-field  { flex: 1.4; min-width: 280px; }
+    .live-plan-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 8px; }
+    .empty-live-plan { margin: 6px 0 0; color: #9aa2b3; font-size: 0.85rem; }
     .mono            { font-family: monospace; font-size: 0.8rem; }
     .inline-progress { width: 80px; margin-left: 8px; }
     .total-label     { margin-top: 8px; font-size: 0.85rem; opacity: 0.7; }
@@ -219,15 +304,22 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
   `],
 })
 export class IngestListComponent implements OnInit, OnDestroy {
-  columns     = ['id', 'sourcePath', 'status', 'qc', 'createdAt', 'expand'];
+  columns     = ['id', 'sourcePath', 'status', 'plan', 'qc', 'createdAt', 'expand'];
   statusTabs  = STATUS_TABS;
 
   jobs        = signal<IngestJob[]>([]);
+  channels    = signal<Channel[]>([]);
+  livePlanCandidates = signal<Schedule[]>([]);
   total       = signal(0);
   selectedTab = signal(0);
   expandedId  = signal<number | null>(null);
   triggering  = signal(false);
+  livePlanLoading = signal(false);
   triggerPath = '';
+  livePlanDate = new Date().toISOString().slice(0, 10);
+  livePlanChannelId: number | null = null;
+  selectedScheduleId: number | null = null;
+  livePlanSourcePath = '';
 
   filteredJobs = computed(() => {
     const tab = STATUS_TABS[this.selectedTab()];
@@ -243,6 +335,11 @@ export class IngestListComponent implements OnInit, OnDestroy {
   constructor(private api: ApiService, private snack: MatSnackBar) {}
 
   ngOnInit() {
+    this.api.get<Channel[]>('/channels').subscribe({
+      next: (channels) => this.channels.set(Array.isArray(channels) ? channels : []),
+      error: () => this.snack.open('Kanal listesi alınamadı', 'Kapat', { duration: 4000 }),
+    });
+    this.loadLivePlanCandidates();
     this.load();
     // Poll every 5 s when there are active jobs; when no active jobs the computed signal
     // will show false and we skip the update silently (still fires but has no side-effect).
@@ -285,6 +382,65 @@ export class IngestListComponent implements OnInit, OnDestroy {
       next: (job) => {
         this.snack.open(`Ingest #${job.id} kuyruğa eklendi`, 'Kapat', { duration: 3000 });
         this.triggerPath = '';
+        this.triggering.set(false);
+        this.load();
+      },
+      error: (err) => {
+        this.snack.open(`Hata: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+        this.triggering.set(false);
+      },
+    });
+  }
+
+  loadLivePlanCandidates() {
+    const from = new Date(`${this.livePlanDate}T00:00:00+03:00`).toISOString();
+    const to = new Date(`${this.livePlanDate}T23:59:59+03:00`).toISOString();
+    const params: Record<string, string | number> = {
+      from,
+      to,
+      page: 1,
+      pageSize: 200,
+      ...(this.livePlanChannelId ? { channelId: this.livePlanChannelId } : {}),
+    };
+
+    this.livePlanLoading.set(true);
+    this.api.get<PaginatedResponse<Schedule>>('/schedules/ingest-candidates', params).subscribe({
+      next: (res) => {
+        this.livePlanCandidates.set(res.data ?? []);
+        if (this.selectedScheduleId && !res.data.some((schedule) => schedule.id === this.selectedScheduleId)) {
+          this.selectedScheduleId = null;
+        }
+        this.livePlanLoading.set(false);
+      },
+      error: (err) => {
+        this.livePlanLoading.set(false);
+        this.snack.open(`Canlı yayın planı alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+      },
+    });
+  }
+
+  triggerLivePlanJob() {
+    const sourcePath = this.livePlanSourcePath.trim();
+    const schedule = this.livePlanCandidates().find((item) => item.id === this.selectedScheduleId);
+    if (!sourcePath || !schedule) return;
+
+    this.triggering.set(true);
+    this.api.post<IngestJob>('/ingest', {
+      sourcePath,
+      targetId: schedule.id,
+      metadata: {
+        usageScope: 'live-plan',
+        source: 'live-plan',
+        scheduleId: schedule.id,
+        scheduleTitle: schedule.metadata?.['contentName'] || schedule.title,
+        channelName: schedule.channel?.name ?? null,
+        startTime: schedule.startTime,
+      },
+    }).subscribe({
+      next: (job) => {
+        this.snack.open(`Canlı yayın planı ingest #${job.id} kuyruğa eklendi`, 'Kapat', { duration: 3000 });
+        this.livePlanSourcePath = '';
+        this.selectedScheduleId = null;
         this.triggering.set(false);
         this.load();
       },

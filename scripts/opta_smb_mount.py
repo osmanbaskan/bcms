@@ -4,7 +4,7 @@ OPTA SMB FUSE mount (read-only)
 $OPTA_SMB_SHARE/$OPTA_SMB_SUBDIR → $OPTA_SMB_MOUNT_POINT
 
 Çalıştırma:
-    python3 opta_smb_mount.py [--mountpoint /home/ubuntu/opta]
+    python3 opta_smb_mount.py [--mountpoint /mnt/opta-backups]
 """
 import argparse
 import errno
@@ -140,7 +140,7 @@ class OptaSmbFS(Operations):
 
 def main():
     ap = argparse.ArgumentParser(description="OPTA SMB FUSE mount")
-    ap.add_argument("--mountpoint", default="/home/ubuntu/opta")
+    ap.add_argument("--mountpoint", default="/mnt/opta-backups")
     args = ap.parse_args()
 
     logging.basicConfig(

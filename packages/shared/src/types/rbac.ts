@@ -2,6 +2,7 @@ export type Role =
   | 'admin'
   | 'planner'
   | 'scheduler'
+  | 'expert'
   | 'ingest_operator'
   | 'monitoring'
   | 'viewer';
@@ -34,7 +35,7 @@ export const PERMISSIONS = {
     delete: ['admin'] as Role[],
   },
   channels: {
-    read:   ['admin', 'planner', 'scheduler', 'monitoring', 'viewer'] as Role[],
+    read:   ['admin', 'planner', 'scheduler', 'monitoring', 'viewer', 'expert'] as Role[],
     write:  ['admin'] as Role[],
     delete: ['admin'] as Role[],
   },
@@ -49,5 +50,9 @@ export const PERMISSIONS = {
   },
   auditLogs: {
     read:   ['admin'] as Role[],
+  },
+  reports: {
+    read:   ['admin', 'expert'] as Role[],
+    export: ['admin', 'expert'] as Role[],
   },
 } as const;

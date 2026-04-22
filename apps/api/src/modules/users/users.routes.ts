@@ -6,13 +6,22 @@ const REALM_ROLES = ['admin', 'planner', 'scheduler', 'ingest_operator', 'monito
 let adminToken: string | null = null;
 let tokenExpiry = 0;
 
+function envOrDefault(name: string, fallback: string): string {
+  const value = process.env[name];
+  if (value) return value;
+  if (process.env.NODE_ENV === 'production') {
+    throw Object.assign(new Error(`${name} is required in production`), { statusCode: 500 });
+  }
+  return fallback;
+}
+
 async function getAdminToken(): Promise<string> {
   if (adminToken && Date.now() < tokenExpiry - 10_000) return adminToken;
 
-  const url      = process.env.KEYCLOAK_URL    ?? 'http://localhost:8080';
-  const realm    = process.env.KEYCLOAK_REALM  ?? 'bcms';
-  const username = process.env.KEYCLOAK_ADMIN           ?? 'admin';
-  const password = process.env.KEYCLOAK_ADMIN_PASSWORD  ?? 'changeme_kc';
+  const url      = envOrDefault('KEYCLOAK_URL', 'http://localhost:8080');
+  const realm    = envOrDefault('KEYCLOAK_REALM', 'bcms');
+  const username = envOrDefault('KEYCLOAK_ADMIN', 'admin');
+  const password = envOrDefault('KEYCLOAK_ADMIN_PASSWORD', 'changeme_kc');
 
   const res = await fetch(`${url}/realms/master/protocol/openid-connect/token`, {
     method: 'POST',

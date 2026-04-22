@@ -1,0 +1,6 @@
+services:
+  postgres:
+    ports: !override []
+
+  rabbitmq:
+    ports: !override []

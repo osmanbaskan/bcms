@@ -1,0 +1,16 @@
+[Unit]
+Description=BCMS OPTA SMB mount guard
+After=network-online.target remote-fs.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'mkdir -p /mnt/opta-backups && /usr/bin/mountpoint -q /mnt/opta-backups || /usr/bin/mount /mnt/opta-backups'
+ExecStartPost=/bin/sh -c 'test -d /mnt/opta-backups/OPTAfromFTP20511 && test "$(find /mnt/opta-backups/OPTAfromFTP20511 -maxdepth 1 -type f -print -quit)"'
+ExecStop=/bin/true
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

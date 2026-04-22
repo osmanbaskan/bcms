@@ -1,13 +1,14 @@
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
-import type { Schedule, CreateScheduleDto, UpdateScheduleDto, PaginatedResponse } from '@bcms/shared';
+import type { Schedule, CreateScheduleDto, UpdateScheduleDto, PaginatedResponse, ScheduleUsage } from '@bcms/shared';
 
 export interface ScheduleFilter {
   channel?: number;
   from?: string;
   to?: string;
   status?: string;
+  usage?: ScheduleUsage;
   page?: number;
   pageSize?: number;
 }

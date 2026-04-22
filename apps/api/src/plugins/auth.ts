@@ -28,7 +28,11 @@ const DEV_USER: JwtPayload = {
 };
 
 export const authPlugin = fp(async (app: FastifyInstance) => {
-  const skipAuth = process.env.SKIP_AUTH === 'true' || process.env.NODE_ENV === 'development';
+  const skipAuth = process.env.SKIP_AUTH === 'true';
+
+  if (process.env.NODE_ENV === 'production' && skipAuth) {
+    throw new Error('SKIP_AUTH cannot be enabled in production');
+  }
 
   const keycloakUrl  = process.env.KEYCLOAK_URL ?? 'http://localhost:8080';
   const realm        = process.env.KEYCLOAK_REALM ?? 'bcms';

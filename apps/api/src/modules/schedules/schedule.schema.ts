@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const ScheduleStatusEnum = z.enum(['DRAFT', 'CONFIRMED', 'ON_AIR', 'COMPLETED', 'CANCELLED']);
+const ScheduleUsageScopeEnum = z.enum(['broadcast', 'live-plan']);
 
 export const createScheduleSchema = z.object({
   channelId:       z.number().int().positive().nullable().optional(),
@@ -9,6 +10,7 @@ export const createScheduleSchema = z.object({
   title:           z.string().min(1).max(500),
   contentId:       z.number().int().positive().optional(),
   broadcastTypeId: z.number().int().positive().optional(),
+  usageScope:      ScheduleUsageScopeEnum.default('broadcast'),
   metadata:        z.record(z.unknown()).optional(),
 }).refine((d) => new Date(d.endTime) > new Date(d.startTime), {
   message: 'endTime must be after startTime',
@@ -16,11 +18,13 @@ export const createScheduleSchema = z.object({
 });
 
 export const updateScheduleSchema = z.object({
+  channelId:       z.number().int().positive().nullable().optional(),
   startTime:       z.string().datetime({ offset: true }).optional(),
   endTime:         z.string().datetime({ offset: true }).optional(),
   title:           z.string().min(1).max(500).optional(),
   status:          ScheduleStatusEnum.optional(),
   contentId:       z.number().int().positive().optional(),
+  usageScope:      ScheduleUsageScopeEnum.optional(),
   metadata:        z.record(z.unknown()).optional(),
 });
 
@@ -30,6 +34,7 @@ export const scheduleQuerySchema = z.object({
   to:       z.string().datetime({ offset: true }).optional(),
   status:   ScheduleStatusEnum.optional(),
   source:   z.enum(['manual', 'bxf']).optional(),
+  usage:    z.enum(['broadcast', 'live-plan', 'all']).default('broadcast'),
   page:     z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });

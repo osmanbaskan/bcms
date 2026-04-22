@@ -4,6 +4,8 @@ import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
+import { Prisma } from '@prisma/client';
+import { ZodError } from 'zod';
 
 import { prismaPlugin } from './plugins/prisma.js';
 import { authPlugin } from './plugins/auth.js';
@@ -28,7 +30,73 @@ import { startIngestWatcher } from './modules/ingest/ingest.watcher.js';
 import { startBxfWatcher } from './modules/bxf/bxf.watcher.js';
 import { startOptaWatcher } from './modules/opta/opta.watcher.js';
 
+function validateRuntimeEnv(): void {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (!isProduction) return;
+
+  if (process.env.SKIP_AUTH === 'true') {
+    throw new Error('SKIP_AUTH cannot be enabled in production');
+  }
+
+  const required = [
+    'DATABASE_URL',
+    'RABBITMQ_URL',
+    'CORS_ORIGIN',
+    'KEYCLOAK_ADMIN_PASSWORD',
+    'INGEST_CALLBACK_SECRET',
+  ];
+
+  const missing = required.filter((name) => !process.env[name]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);
+  }
+}
+
+function corsOrigin(): string | string[] {
+  const value = process.env.CORS_ORIGIN ?? 'http://localhost:4200';
+  const origins = value.split(',').map((origin) => origin.trim()).filter(Boolean);
+  return origins.length > 1 ? origins : origins[0] ?? 'http://localhost:4200';
+}
+
+function errorResponse(error: Error & { statusCode?: number; code?: string }) {
+  if (error instanceof ZodError) {
+    return {
+      statusCode: 400,
+      body: {
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Validation failed',
+        issues: error.issues,
+      },
+    };
+  }
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    const statusCode = error.code === 'P2025' ? 404 : ['P2002', 'P2003'].includes(error.code) ? 409 : 500;
+    return {
+      statusCode,
+      body: {
+        statusCode,
+        error: statusCode >= 500 ? 'Internal Server Error' : error.code,
+        message: statusCode >= 500 ? 'Internal Server Error' : error.message,
+      },
+    };
+  }
+
+  const statusCode = error.statusCode ?? 500;
+  return {
+    statusCode,
+    body: {
+      statusCode,
+      error: statusCode >= 500 ? 'Internal Server Error' : error.name,
+      message: statusCode >= 500 ? 'Internal Server Error' : error.message,
+    },
+  };
+}
+
 export async function buildApp() {
+  validateRuntimeEnv();
+
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
@@ -43,7 +111,7 @@ export async function buildApp() {
   await app.register(helmet, { contentSecurityPolicy: false });
 
   await app.register(cors, {
-    origin: process.env.CORS_ORIGIN ?? 'http://localhost:4200',
+    origin: corsOrigin(),
     credentials: true,
   });
 
@@ -89,6 +157,18 @@ export async function buildApp() {
   await startBxfWatcher(app);
   startOptaWatcher(app);
 
+  // ── Global error handler ──────────────────────────────────────────────────────
+  app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
+    const response = errorResponse(error);
+    const logPayload = { err: error, url: request.url, statusCode: response.statusCode };
+    if (response.statusCode >= 500) {
+      app.log.error(logPayload, 'Unhandled error');
+    } else {
+      app.log.warn(logPayload, 'Request failed');
+    }
+    reply.status(response.statusCode).send(response.body);
+  });
+
   // ── Routes ────────────────────────────────────────────────────────────────────
   await app.register(scheduleRoutes, { prefix: '/api/v1/schedules' });
   await app.register(bookingRoutes,  { prefix: '/api/v1/bookings' });
@@ -102,17 +182,6 @@ export async function buildApp() {
   await app.register(optaRoutes,     { prefix: '/api/v1/opta' });
   await app.register(usersRoutes,          { prefix: '/api/v1/users' });
   await app.register(broadcastTypeRoutes,  { prefix: '/api/v1/broadcast-types' });
-
-  // ── Global error handler ──────────────────────────────────────────────────────
-  app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
-    app.log.error({ err: error, url: request.url }, 'Unhandled error');
-    const statusCode = error.statusCode ?? 500;
-    reply.status(statusCode).send({
-      statusCode,
-      error: error.name,
-      message: error.message,
-    });
-  });
 
   return app;
 }

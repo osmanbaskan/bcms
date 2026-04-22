@@ -2,7 +2,7 @@ const SMB2  = require('@marsaud/smb2');
 const fs    = require('fs');
 const path  = require('path');
 
-const LOCAL_DIR  = '/home/ubuntu/opta';
+const LOCAL_DIR  = '/mnt/opta-backups/OPTAfromFTP20511';
 const REMOTE_DIR = 'OPTAfromFTP20511';
 const CONCURRENCY = 5;
 

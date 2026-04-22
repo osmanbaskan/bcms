@@ -25,6 +25,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
           from:     { type: 'string', format: 'date-time' },
           to:       { type: 'string', format: 'date-time' },
           status:   { type: 'string', enum: ['DRAFT','CONFIRMED','ON_AIR','COMPLETED','CANCELLED'] },
+          usage:    { type: 'string', enum: ['broadcast', 'live-plan', 'all'], default: 'broadcast' },
           page:     { type: 'number', default: 1 },
           pageSize: { type: 'number', default: 50 },
         },
@@ -77,6 +78,94 @@ export async function scheduleRoutes(app: FastifyInstance) {
     });
 
     const filename = `plan_${new Date().toISOString().slice(0,10)}.xlsx`;
+    reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(buffer);
+  });
+
+  // GET /api/v1/schedules/ingest-candidates — Ingest ekranı için canlı yayın planı kayıtları
+  app.get('/ingest-candidates', {
+    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    schema: {
+      tags: ['Schedules'],
+      summary: 'Ingest için canlı yayın planı aday kayıtları',
+      querystring: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'number' },
+          from:      { type: 'string', format: 'date-time' },
+          to:        { type: 'string', format: 'date-time' },
+          page:      { type: 'number', default: 1 },
+          pageSize:  { type: 'number', default: 200 },
+        },
+      },
+    },
+  }, async (request) => {
+    const q = request.query as {
+      channelId?: string; from?: string; to?: string; page?: string; pageSize?: string;
+    };
+
+    return svc.findAll({
+      usage:    'live-plan',
+      channel:  q.channelId ? Number(q.channelId) : undefined,
+      from:     q.from,
+      to:       q.to,
+      page:     q.page ? Number(q.page) : 1,
+      pageSize: q.pageSize ? Number(q.pageSize) : 200,
+    });
+  });
+
+  // GET /api/v1/schedules/reports/live-plan — Expert raporlama önizleme verisi
+  app.get('/reports/live-plan', {
+    preHandler: app.requireRole(...PERMISSIONS.reports.read),
+    schema: {
+      tags: ['Schedules'],
+      summary: 'Canlı yayın plan raporu verisi',
+      querystring: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'number' },
+          from:      { type: 'string', format: 'date-time' },
+          to:        { type: 'string', format: 'date-time' },
+          page:      { type: 'number', default: 1 },
+          pageSize:  { type: 'number', default: 500 },
+        },
+      },
+    },
+  }, async (request) => {
+    const q = request.query as {
+      channelId?: string; from?: string; to?: string; page?: string; pageSize?: string;
+    };
+
+    return svc.findAll({
+      usage:    'live-plan',
+      channel:  q.channelId ? Number(q.channelId) : undefined,
+      from:     q.from,
+      to:       q.to,
+      page:     q.page ? Number(q.page) : 1,
+      pageSize: q.pageSize ? Number(q.pageSize) : 500,
+    });
+  });
+
+  // GET /api/v1/schedules/reports/live-plan/export — Expert Excel export
+  app.get('/reports/live-plan/export', {
+    preHandler: app.requireRole(...PERMISSIONS.reports.export),
+    schema: {
+      tags: ['Schedules'],
+      summary: 'Canlı yayın plan raporunu Excel olarak dışa aktar',
+    },
+  }, async (request, reply) => {
+    const q = request.query as { from?: string; to?: string; channelId?: string; title?: string };
+    const buffer = await exportSchedulesToBuffer(app, {
+      usage:     'live-plan',
+      from:      q.from,
+      to:        q.to,
+      channelId: q.channelId ? Number(q.channelId) : undefined,
+      title:     q.title,
+    });
+
+    const filename = `canli-yayin-plan-raporu_${new Date().toISOString().slice(0,10)}.xlsx`;
     reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="${filename}"`)

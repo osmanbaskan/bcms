@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
 
-export const OPTA_DIR = process.env.OPTA_DIR ?? '/home/ubuntu/opta';
+export const OPTA_DIR = process.env.OPTA_DIR ?? '/mnt/opta-backups/OPTAfromFTP20511';
 
 // Yayın hakkı olan ligler (srml competition_id → görünen ad override)
 const ALLOWED_COMPETITIONS: Record<string, string> = {

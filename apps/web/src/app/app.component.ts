@@ -117,6 +117,7 @@ export class AppComponent implements OnInit {
       roles: ['admin','planner','scheduler','viewer'],
       children: [
         { label: 'Canlı Yayın Plan Listesi', icon: 'list', route: '/schedules', roles: ['admin','planner','scheduler','viewer'], exactMatch: true },
+        { label: 'Raporlama', icon: 'summarize', route: '/schedules/reporting', roles: ['admin','expert'] },
         { label: 'Günlük Yayın Raporu', icon: 'bar_chart',        route: '/schedules/daily-report', roles: ['admin','planner','scheduler','viewer'] },
       ],
     },
@@ -129,11 +130,17 @@ export class AppComponent implements OnInit {
     { label: 'Ayarlar',       icon: 'settings',            route: '/settings',   roles: ['admin'] },
   ];
 
-  visibleNavItems = computed(() =>
-    this.navItems.filter((item) =>
-      item.roles.some((r) => this.userRoles().includes(r)),
-    ),
-  );
+  visibleNavItems = computed(() => {
+    const roles = this.userRoles();
+    return this.navItems
+      .map((item) => {
+        const children = item.children?.filter((child) => child.roles.some((r) => roles.includes(r)));
+        return { ...item, children };
+      })
+      .filter((item) =>
+        item.children?.length || item.roles.some((r) => roles.includes(r)),
+      );
+  });
 
   constructor(private keycloak: KeycloakService, private cdr: ChangeDetectorRef) {}
 

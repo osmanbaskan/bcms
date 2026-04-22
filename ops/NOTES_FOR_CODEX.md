@@ -1,0 +1,63 @@
+# Notes For Future Codex Sessions
+
+BCMS is intended to stay up after terminal closes and PC restarts. Do not switch it back to `ng serve` or `tsx watch` as the primary runtime unless the user explicitly asks for temporary development mode.
+
+Stable runtime:
+
+- API systemd service: `bcms-api-dev.service`
+- Web systemd service: `bcms-web-dev.service`
+- OPTA mount systemd service: `bcms-opta-mount.service`
+- API command: `node /home/ubuntu/Desktop/bcms/apps/api/dist/server.js`
+- Web command: `node /home/ubuntu/Desktop/bcms/ops/scripts/bcms-web-static-server.mjs`
+- Web serves `apps/web/dist/web/browser`
+- Web proxies `/api` and `/webhooks` to `http://127.0.0.1:3000`
+
+Daily commands:
+
+```bash
+./ops/scripts/bcms-status.sh
+./ops/scripts/bcms-restart.sh
+./ops/scripts/bcms-logs.sh
+```
+
+Expected URLs:
+
+- Web: `http://172.28.204.133:4200`
+- API: `http://172.28.204.133:3000`
+
+Reinstall services:
+
+```bash
+printf '%s\n' 'ubuntu' | sudo -S ./ops/scripts/bcms-install-system-services.sh
+```
+
+Expected healthy state:
+
+- `systemctl is-enabled bcms-api-dev.service bcms-web-dev.service` returns `enabled` for both
+- `curl -fsS http://127.0.0.1:3000/health` succeeds
+- `curl -fsS http://127.0.0.1:4200/` succeeds
+- `curl -fsS http://127.0.0.1:4200/api/v1/channels` succeeds
+- `tsx watch` and `ng serve` should not be running
+
+Important local context:
+
+- PostgreSQL is snap-managed: `snap.postgresql.postgresql.service`
+- RabbitMQ is `rabbitmq-server.service`
+- `.env` uses `SKIP_AUTH=true` for local development
+- Correct OPTA_DIR is `/mnt/opta-backups/OPTAfromFTP20511`, not `/home/ubuntu/opta`
+- API service depends on `/mnt/opta-backups` through `RequiresMountsFor` and `bcms-opta-mount.service`
+- User has provided sudo password as `ubuntu` in this environment
+
+Live plan data rule:
+
+- Records created from the Canli Yayin Plani UI are not generic broadcast schedule records.
+- They must carry `usageScope="live-plan"` in the `schedules.usage_scope` DB column.
+- `schedules.usage_scope` is the canonical decision point; do not reintroduce metadata JSON filtering for this rule.
+- Normal schedule records use `usageScope="broadcast"`.
+- DB has `schedules_usage_scope_check` allowing only `broadcast` and `live-plan`.
+- Old `metadata.usageScope` transition values were cleaned with migration `20260422000001_cleanup_live_plan_metadata_usage_scope`.
+- Generic schedule consumers should use the default `/api/v1/schedules` behavior, which excludes those records.
+- Live plan UI/reporting/ingest should query `usage=live-plan` or the dedicated endpoints:
+  - `/api/v1/schedules/ingest-candidates`
+  - `/api/v1/schedules/reports/live-plan`
+  - `/api/v1/schedules/reports/live-plan/export`

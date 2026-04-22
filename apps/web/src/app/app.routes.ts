@@ -12,7 +12,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/schedules/schedules.routes').then((m) => m.schedulesRoutes),
     canActivate: [AuthGuard],
-    data: { roles: ['admin', 'planner', 'scheduler', 'viewer'] },
+    data: { roles: ['admin', 'planner', 'scheduler', 'viewer', 'expert'] },
   },
   {
     path: 'bookings',

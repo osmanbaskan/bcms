@@ -1,5 +1,5 @@
 import {
-  Component, OnInit, signal, inject,
+  Component, OnDestroy, OnInit, signal, inject,
 } from '@angular/core';
 import { environment } from '../../../../environments/environment';
 import { forkJoin } from 'rxjs';
@@ -52,8 +52,174 @@ interface MatchFormData {
   transEnd:    string;
   houseNumber: string;
   intField:    string;
+  intField2:   string;
   offTube:     string;
   notes:       string;
+}
+
+interface LiveDetailField {
+  key: string;
+  label: string;
+  type?: 'text' | 'textarea';
+  options?: string[];
+  wide?: boolean;
+}
+
+type LiveDetails = Record<string, string>;
+const LIVE_PLAN_METADATA = {
+  source: 'live-plan',
+} as const;
+
+const numberOptions = (count: number, start = 1) => (
+  Array.from({ length: count }, (_, i) => String(i + start).padStart(2, '0'))
+);
+
+const IRD_OPTIONS = [
+  ...numberOptions(60),
+  '4,5G-1', '4,5G-2', '4,5G-3', '4,5G-4',
+  'DOHA 1', 'DOHA 2', 'Fiber1', 'Fiber2', 'Fiber3', 'Fiber4', 'Fiber8',
+  'Gbs 53', 'Gbs 54', 'Gbs 55', 'Gbs 56',
+  'IRD 01', 'IRD 02', 'IRD 03', 'IRD 04', 'IRD 05', 'IRD 06', 'IRD 07', 'IRD 08',
+  'IRD 09', 'IRD 10', 'IRD 11', 'IRD 12', 'IRD 13', 'IRD 14', 'IRD 15',
+  'Quicklink-1', 'Quicklink-2', 'STREAM1 PC', 'STREAM2 PC', 'TVU-4',
+];
+
+const LIVE_DETAIL_GROUPS: { title: string; fields: LiveDetailField[] }[] = [
+  {
+    title: 'Yayın / OB',
+    fields: [
+      { key: 'broadcastLocation', label: 'Yayın Yeri' },
+      { key: 'obVanCompany', label: 'Obvan Firma' },
+      { key: 'generatorCompany', label: 'Jeneratör Firma' },
+      { key: 'jimmyJib', label: 'Jimmy Jib' },
+      { key: 'steadicam', label: 'Stedicam' },
+      { key: 'sngCompany', label: 'Sng Firma' },
+      { key: 'carrierCompany', label: 'Taşıyıcı Firma' },
+      { key: 'ibm', label: 'Ibm' },
+      { key: 'usageLocation', label: 'Kullanım Yeri' },
+      { key: 'fixedPhone1', label: 'Sabit Tel 1' },
+      { key: 'secondObVan', label: '2. Obvan' },
+      { key: 'region', label: 'Bölge' },
+      { key: 'cameraCount', label: 'Kamera Adedi' },
+      { key: 'fixedPhone2', label: 'Sabit Tel 2' },
+    ],
+  },
+  {
+    title: 'Ana Feed / Transmisyon',
+    fields: [
+      { key: 'feedType', label: 'Feed Type', options: ['4,5G', 'DVB S', 'DVB S2', 'DVB S2 - 8PSK', 'DVB S2 QPSK', 'DVBS2 + NS3', 'DVBS-2 + NS4', 'DVB-S2X', 'FTP', 'IP Stream', 'NS3', 'NS3 + NS4', 'NS4', 'NS4 + NS4', 'Quicklink', 'Skype', 'Youtube', 'Zoom'] },
+      { key: 'satelliteName', label: 'Uydu Adı' },
+      { key: 'txp', label: 'TXP' },
+      { key: 'satChannel', label: 'Sat Chl' },
+      { key: 'uplinkFrequency', label: 'Uplink Frekansı' },
+      { key: 'uplinkPolarization', label: 'Up. Polarizasyon', options: ['H', 'V', 'R', 'L'] },
+      { key: 'downlinkFrequency', label: 'Downlink Frekansı' },
+      { key: 'downlinkPolarization', label: 'Dwn. Polarizasyon', options: ['H', 'V', 'R', 'L'] },
+      { key: 'modulationType', label: 'Mod Tipi', options: ['4,5G', 'DVB S', 'DVB S2', 'NS3', 'NS4', 'IP Stream'] },
+      { key: 'rollOff', label: 'Roll Off', options: ['% 20', '% 25', '% 35'] },
+      { key: 'videoCoding', label: 'Video Coding', options: ['H265 4:2:2', 'Mpeg 4:2:0', 'Mpeg 4:2:2', 'Mpeg 4:2:2-10 bit', 'Mpeg 4:2:2-8'] },
+      { key: 'audioConfig', label: 'Audio Config' },
+      { key: 'preMatchKey', label: 'Maç Önü Key' },
+      { key: 'matchKey', label: 'Maç Key' },
+      { key: 'postMatchKey', label: 'Maç Sonu Key' },
+      { key: 'isoFeed', label: 'Iso Feed' },
+      { key: 'keyType', label: 'Key Tipi', options: ['BISS Mode-1', 'BISS Mode-E', 'Director', 'Unencrypted'] },
+      { key: 'symbolRate', label: 'Symbol Rate' },
+      { key: 'fecRate', label: 'Fec Rate' },
+      { key: 'bandwidth', label: 'Bant Genişliği' },
+      { key: 'uplinkFixedPhone', label: 'Sabit Tel 3 (Uplink)' },
+    ],
+  },
+  {
+    title: 'Yedek Feed',
+    fields: [
+      { key: 'backupFeedType', label: 'Feed Type Yedek' },
+      { key: 'backupSatelliteName', label: 'Uydu Adı Yedek' },
+      { key: 'backupTxp', label: 'TXP Yedek' },
+      { key: 'backupSatChannel', label: 'Sat Chl Yedek' },
+      { key: 'backupUplinkFrequency', label: 'Uplink Frekansı Yedek' },
+      { key: 'backupUplinkPolarization', label: 'Up. Polarizasyon Yedek', options: ['H', 'V', 'R', 'L'] },
+      { key: 'backupDownlinkFrequency', label: 'Downlink Frekansı Yedek' },
+      { key: 'backupDownlinkPolarization', label: 'Dwn. Polarizasyon Yedek', options: ['H', 'V', 'R', 'L'] },
+      { key: 'backupModulationType', label: 'Mod Tipi Yedek' },
+      { key: 'backupRollOff', label: 'Roll Off Yedek', options: ['% 20', '% 25', '% 35'] },
+      { key: 'backupVideoCoding', label: 'Video Coding Yedek' },
+      { key: 'backupAudioConfig', label: 'Audio Config Yedek' },
+      { key: 'backupPreMatchKey', label: 'Maç Önü Key Yedek' },
+      { key: 'backupMatchKey', label: 'Maç Key Yedek' },
+      { key: 'backupPostMatchKey', label: 'Maç Sonu Key Yedek' },
+      { key: 'backupKeyType', label: 'Key Tipi Yedek' },
+      { key: 'backupSymbolRate', label: 'Symbol Rate Yedek' },
+      { key: 'backupFecRate', label: 'Fec Rate Yedek' },
+      { key: 'backupBandwidth', label: 'Bant Genişliği Yedek' },
+    ],
+  },
+  {
+    title: 'Fiber',
+    fields: [
+      { key: 'fiberCompany', label: 'Fiber Firma' },
+      { key: 'fiberAudioFormat', label: 'Fiber Audio Format' },
+      { key: 'fiberVideoFormat', label: 'Fiber Video Format' },
+      { key: 'fiberBandwidth', label: 'Fiber Bant Genişliği' },
+    ],
+  },
+  {
+    title: 'Tahta / Kaynak',
+    fields: [
+      { key: 'upConverter', label: 'Up Conv.' },
+      { key: 'offTubeResource', label: 'Off Tube' },
+      { key: 'recordLocation', label: 'Kayıt Yeri' },
+      { key: 'recordLocation3', label: 'Kayıt Yeri 3' },
+      { key: 'ird', label: 'Ird', options: IRD_OPTIONS },
+      { key: 'ird3', label: 'Ird 3', options: IRD_OPTIONS },
+      { key: 'fiberResource', label: 'Fiber' },
+      { key: 'virtualResource', label: 'Sanal' },
+      { key: 'hdvgResource', label: 'Hdvg' },
+      { key: 'intercom', label: 'Intercom' },
+      { key: 'tie', label: 'TIE' },
+      { key: 'demod', label: 'Demod', options: ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'] },
+      { key: 'dailyReportShortNotes', label: 'Günlük Yayın Raporu Kısa Notlar', wide: true },
+    ],
+  },
+  {
+    title: 'Yedek Kaynak',
+    fields: [
+      { key: 'backupUpConverter', label: 'Up.Conv Yedek' },
+      { key: 'backupOffTube', label: 'Off Tube Yedek' },
+      { key: 'backupRecordLocation', label: 'Kayıt Yeri Yedek' },
+      { key: 'backupIrd', label: 'Ird Yedek', options: IRD_OPTIONS },
+      { key: 'backupFiber', label: 'Fiber Yedek' },
+      { key: 'backupVirtual', label: 'Sanal Yedek' },
+      { key: 'backupHdvg', label: 'Hdvg Yedek' },
+      { key: 'backupIntercom', label: 'Intercom Yedek' },
+      { key: 'backupTie', label: 'TIE Yedek' },
+      { key: 'backupDemod', label: 'Demod Yedek', options: ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'] },
+    ],
+  },
+];
+
+function createLiveDetails(source?: unknown): LiveDetails {
+  const sourceRecord = (source && typeof source === 'object') ? source as Record<string, unknown> : {};
+  return LIVE_DETAIL_GROUPS
+    .flatMap((group) => group.fields)
+    .reduce<LiveDetails>((acc, field) => {
+      acc[field.key] = String(sourceRecord[field.key] ?? '');
+      return acc;
+    }, {});
+}
+
+function cleanLiveDetails(details: LiveDetails): LiveDetails | undefined {
+  const cleaned = Object.entries(details).reduce<LiveDetails>((acc, [key, value]) => {
+    const trimmed = String(value ?? '').trim();
+    if (trimmed) acc[key] = trimmed;
+    return acc;
+  }, {});
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+}
+
+function splitIntField(value: unknown): [string, string] {
+  const parts = String(value ?? '').split('/').map((part) => part.trim());
+  return [parts[0] ?? '', parts[1] ?? ''];
 }
 
 const LEAGUE_COLORS = new Map<string, string>([
@@ -87,6 +253,29 @@ function leagueBackground(name: unknown): string {
     hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
   }
   return FALLBACK_LEAGUE_COLORS[hash % FALLBACK_LEAGUE_COLORS.length];
+}
+
+function transmissionEndDate(schedule: Schedule): Date {
+  const transEnd = String(schedule.metadata?.['transEnd'] ?? '').trim();
+  const transStart = String(schedule.metadata?.['transStart'] ?? '').trim();
+  const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(transEnd);
+  if (!timeMatch) return new Date(schedule.endTime);
+
+  const endDate = new Date(schedule.startTime);
+  const endHours = Number(timeMatch[1]);
+  const endMinutes = Number(timeMatch[2]);
+  endDate.setHours(endHours, endMinutes, 0, 0);
+
+  const startMatch = /^(\d{1,2}):(\d{2})$/.exec(transStart);
+  if (startMatch) {
+    const startHours = Number(startMatch[1]);
+    const startMinutes = Number(startMatch[2]);
+    if ((endHours * 60 + endMinutes) < (startHours * 60 + startMinutes)) {
+      endDate.setDate(endDate.getDate() + 1);
+    }
+  }
+
+  return endDate;
 }
 
 // ── Kayıt Ekle Dialog ─────────────────────────────────────────────────────────
@@ -299,7 +488,24 @@ function leagueBackground(name: unknown): string {
                         }
                       </select>
                     </td>
-                    <td><input class="cell-input" [(ngModel)]="getForm(m.matchId).intField"    [ngModelOptions]="{standalone:true}"></td>
+                    <td class="col-int">
+                      <select class="cell-select"
+                              [(ngModel)]="getForm(m.matchId).intField"
+                              [ngModelOptions]="{standalone:true}">
+                        <option value="">—</option>
+                        @for (n of intOptions; track n) {
+                          <option [value]="n">{{ n }}</option>
+                        }
+                      </select>
+                      <select class="cell-select"
+                              [(ngModel)]="getForm(m.matchId).intField2"
+                              [ngModelOptions]="{standalone:true}">
+                        <option value="">—</option>
+                        @for (n of intOptions; track n) {
+                          <option [value]="n">{{ n }}</option>
+                        }
+                      </select>
+                    </td>
                     <td><input class="cell-input" [(ngModel)]="getForm(m.matchId).offTube"     [ngModelOptions]="{standalone:true}"></td>
                     <td class="col-lang">
                       <select class="cell-select"
@@ -384,7 +590,21 @@ function leagueBackground(name: unknown): string {
             </mat-form-field>
             <mat-form-field>
               <mat-label>Int</mat-label>
-              <input matInput [(ngModel)]="mf.intField" [ngModelOptions]="{standalone:true}">
+              <mat-select [(ngModel)]="mf.intField" [ngModelOptions]="{standalone:true}">
+                <mat-option value="">—</mat-option>
+                @for (n of intOptions; track n) {
+                  <mat-option [value]="n">{{ n }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>Int 2</mat-label>
+              <mat-select [(ngModel)]="mf.intField2" [ngModelOptions]="{standalone:true}">
+                <mat-option value="">—</mat-option>
+                @for (n of intOptions; track n) {
+                  <mat-option [value]="n">{{ n }}</mat-option>
+                }
+              </mat-select>
             </mat-form-field>
             <mat-form-field>
               <mat-label>Off Tube</mat-label>
@@ -411,6 +631,40 @@ function leagueBackground(name: unknown): string {
         </div><!-- /tab-body -->
         </mat-tab>
 
+        <!-- ══ Sekme 3: Teknik Detaylar ════════════════════════════════ -->
+        <mat-tab label="Teknik Detaylar">
+        <div class="tab-body technical-tab">
+          @for (group of liveDetailGroups; track group.title) {
+            <section class="technical-section">
+              <h3>{{ group.title }}</h3>
+              <div class="technical-grid">
+                @for (field of group.fields; track field.key) {
+                  <mat-form-field [class.tech-wide]="field.wide">
+                    <mat-label>{{ field.label }}</mat-label>
+                    @if (field.type === 'textarea') {
+                      <textarea matInput rows="2"
+                                [(ngModel)]="liveDetails[field.key]"
+                                [ngModelOptions]="{standalone:true}"></textarea>
+                    } @else if (field.options) {
+                      <mat-select [(ngModel)]="liveDetails[field.key]" [ngModelOptions]="{standalone:true}">
+                        <mat-option value="">—</mat-option>
+                        @for (option of field.options; track option) {
+                          <mat-option [value]="option">{{ option }}</mat-option>
+                        }
+                      </mat-select>
+                    } @else {
+                      <input matInput
+                             [(ngModel)]="liveDetails[field.key]"
+                             [ngModelOptions]="{standalone:true}">
+                    }
+                  </mat-form-field>
+                }
+              </div>
+            </section>
+          }
+        </div>
+        </mat-tab>
+
       </mat-tab-group>
 
       </div>
@@ -418,29 +672,16 @@ function leagueBackground(name: unknown): string {
 
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>İptal</button>
-      @if (activeTab === 0) {
-        <button mat-raised-button color="primary"
-                [disabled]="!canSave() || saving()"
-                (click)="save()">
-          @if (saving()) {
-            <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
-            Kaydediliyor…
-          } @else {
-            Kaydet ({{ checkedIds().size }})
-          }
-        </button>
-      } @else {
-        <button mat-raised-button color="primary"
-                [disabled]="!canSaveManual() || saving()"
-                (click)="saveManual()">
-          @if (saving()) {
-            <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
-            Kaydediliyor…
-          } @else {
-            Kaydet
-          }
-        </button>
-      }
+      <button mat-raised-button color="primary"
+              [disabled]="!canSaveActive() || saving()"
+              (click)="saveActive()">
+        @if (saving()) {
+          <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
+          Kaydediliyor…
+        } @else {
+          {{ saveButtonLabel() }}
+        }
+      </button>
     </mat-dialog-actions>
   `,
   styles: [`
@@ -531,6 +772,8 @@ function leagueBackground(name: unknown): string {
     .col-channel { min-width:120px; }
     .col-trans   { min-width:150px; display:table-cell; }
     .col-trans input { display:block; margin-bottom:2px; }
+    .col-int     { min-width:86px; }
+    .col-int select { display:block; margin-bottom:2px; }
     .col-lang    { min-width:70px; }
 
     /* ── Team picker ── */
@@ -546,6 +789,27 @@ function leagueBackground(name: unknown): string {
     .mform-row { display:flex; gap:12px; margin-bottom:2px; flex-wrap:wrap; }
     .mform-row mat-form-field { flex:1; min-width:130px; }
     .mf-wide { flex:2 !important; }
+    .technical-tab { padding-bottom:16px; }
+    .technical-section {
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:6px;
+      padding:10px 12px 0;
+      margin-bottom:12px;
+    }
+    .technical-section h3 {
+      font-size:13px;
+      font-weight:700;
+      margin:0 0 10px;
+      color:#90caf9;
+    }
+    .technical-grid {
+      display:grid;
+      grid-template-columns:repeat(4, minmax(150px, 1fr));
+      gap:8px 12px;
+      align-items:start;
+    }
+    .technical-grid mat-form-field { min-width:0; }
+    .tech-wide { grid-column:span 2; }
   `],
 })
 export class ScheduleAddDialogComponent {
@@ -554,13 +818,15 @@ export class ScheduleAddDialogComponent {
   api       = inject(ApiService);
   saving    = signal(false);
   activeTab = 0;
+  readonly liveDetailGroups = LIVE_DETAIL_GROUPS;
+  liveDetails: LiveDetails = createLiveDetails();
 
   // Manuel form verisi
   mf = {
     contentName: '', league: '', channelId: null as number | null,
     date: new Date().toISOString().slice(0, 10),
     startTime: '', endTime: '', transStart: '', transEnd: '',
-    houseNumber: '', intField: '', offTube: '', language: 'Yok', notes: '',
+    houseNumber: '', intField: '', intField2: '', offTube: '', language: 'Yok', notes: '',
   };
 
   canSaveManual = () => !!(this.mf.contentName && this.mf.channelId && this.mf.date && this.mf.startTime && this.mf.endTime);
@@ -595,8 +861,34 @@ export class ScheduleAddDialogComponent {
   canSave         = () => this.checkedIds().size > 0;
 
   readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => String(i + 1));
+  readonly intOptions = Array.from({ length: 12 }, (_, i) => String(i + 1));
   compById = (a: FixtureCompetition | null, b: FixtureCompetition | null) =>
     a?.id === b?.id && a?.season === b?.season;
+
+  canSaveActive = () => {
+    if (this.activeTab === 0) return this.canSave();
+    if (this.activeTab === 1) return this.canSaveManual();
+    return this.canSave() || this.canSaveManual();
+  };
+
+  saveButtonLabel() {
+    if (this.activeTab === 0) return `Kaydet (${this.checkedIds().size})`;
+    if (this.activeTab === 1) return 'Kaydet';
+    if (this.canSave()) return `Fikstürü Kaydet (${this.checkedIds().size})`;
+    return 'Manuel Kaydı Kaydet';
+  }
+
+  saveActive() {
+    if (this.activeTab === 0) {
+      this.save();
+    } else if (this.activeTab === 1) {
+      this.saveManual();
+    } else if (this.canSave()) {
+      this.save();
+    } else {
+      this.saveManual();
+    }
+  }
 
   leagueColor(name: unknown) {
     return leagueBackground(name);
@@ -612,7 +904,7 @@ export class ScheduleAddDialogComponent {
   getForm(id: string): MatchFormData {
     if (!this.matchForms.has(id)) {
       const match = this.allMatches().find((m) => m.matchId === id);
-      this.matchForms.set(id, { homeTeamName: match?.homeTeamName ?? '', awayTeamName: match?.awayTeamName ?? '', channelId: null, language: 'Yok', transStart: '', transEnd: '', houseNumber: '', intField: '', offTube: '', notes: '' });
+      this.matchForms.set(id, { homeTeamName: match?.homeTeamName ?? '', awayTeamName: match?.awayTeamName ?? '', channelId: null, language: 'Yok', transStart: '', transEnd: '', houseNumber: '', intField: '', intField2: '', offTube: '', notes: '' });
     }
     return this.matchForms.get(id)!;
   }
@@ -718,6 +1010,7 @@ export class ScheduleAddDialogComponent {
       transEnd:    `${pad(transEndDt.getHours())}:${pad(transEndDt.getMinutes())}`,
       houseNumber: '',
       intField:    '',
+      intField2:   '',
       offTube:     '',
       notes:       '',
     });
@@ -725,6 +1018,7 @@ export class ScheduleAddDialogComponent {
 
   save() {
     if (!this.canSave()) return;
+    const liveDetails = cleanLiveDetails(this.liveDetails);
 
     const requests = this.selectedMatches().map((m) => {
       const f  = this.getForm(m.matchId);
@@ -735,7 +1029,9 @@ export class ScheduleAddDialogComponent {
         startTime: dt.toISOString(),
         endTime:   new Date(dt.getTime() + 2 * 60 * 60 * 1000).toISOString(),
         title,
+        usageScope: 'live-plan',
         metadata: {
+          ...LIVE_PLAN_METADATA,
           contentName:  title,
           league:       m.competitionName || undefined,
           weekNumber:   m.weekNumber      ?? undefined,
@@ -743,10 +1039,12 @@ export class ScheduleAddDialogComponent {
           transStart:   f.transStart  || undefined,
           transEnd:     f.transEnd    || undefined,
           houseNumber:  f.houseNumber || undefined,
-          intField:     f.intField    || undefined,
+          intField:     f.intField || undefined,
+          intField2:    f.intField2 || undefined,
           offTube:      f.offTube     || undefined,
           description:  f.notes      || undefined,
           optaMatchId:  m.matchId,
+          liveDetails,
         },
       });
     });
@@ -762,22 +1060,27 @@ export class ScheduleAddDialogComponent {
     if (!this.canSaveManual()) return;
     const f = this.mf;
     const toISO = (t: string) => new Date(`${f.date}T${t}${environment.utcOffset}`).toISOString();
+    const liveDetails = cleanLiveDetails(this.liveDetails);
     this.saving.set(true);
     this.api.post<Schedule>('/schedules', {
       channelId: f.channelId!,
       startTime: toISO(f.startTime),
       endTime:   toISO(f.endTime),
       title:     f.contentName,
+      usageScope: 'live-plan',
       metadata: {
+        ...LIVE_PLAN_METADATA,
         contentName:  f.contentName,
         league:       f.league      || undefined,
         language:     f.language    || 'Yok',
         transStart:   f.transStart  || undefined,
         transEnd:     f.transEnd    || undefined,
         houseNumber:  f.houseNumber || undefined,
-        intField:     f.intField    || undefined,
+        intField:     f.intField || undefined,
+        intField2:    f.intField2 || undefined,
         offTube:      f.offTube     || undefined,
         description:  f.notes      || undefined,
+        liveDetails,
       },
     }).subscribe({
       next:  (s) => { this.saving.set(false); this.dialogRef.close(s); },
@@ -854,7 +1157,21 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
           </mat-form-field>
           <mat-form-field>
             <mat-label>Int</mat-label>
-            <input matInput [(ngModel)]="f.intField" [ngModelOptions]="{standalone:true}">
+            <mat-select [(ngModel)]="f.intField" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (n of intOptions; track n) {
+                <mat-option [value]="n">{{ n }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Int 2</mat-label>
+            <mat-select [(ngModel)]="f.intField2" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (n of intOptions; track n) {
+                <mat-option [value]="n">{{ n }}</mat-option>
+              }
+            </mat-select>
           </mat-form-field>
           <mat-form-field>
             <mat-label>Off Tube</mat-label>
@@ -907,34 +1224,37 @@ export class ScheduleEditDialogComponent {
   saving    = signal(false);
 
   readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => String(i + 1));
+  readonly intOptions = Array.from({ length: 12 }, (_, i) => String(i + 1));
 
   f: {
     contentName: string; league: string; channelId: number | null;
     date: string; startTime: string; endTime: string;
     transStart: string; transEnd: string; houseNumber: string;
-    intField: string; offTube: string; language: string; notes: string;
+    intField: string; intField2: string; offTube: string; language: string; notes: string;
   };
 
   constructor() {
     const s   = this.data.schedule;
-    const m   = (s.metadata ?? {}) as Record<string, string>;
+    const m   = (s.metadata ?? {}) as Record<string, unknown>;
     const st  = new Date(s.startTime);
     const et  = new Date(s.endTime);
+    const [intField, intField2] = splitIntField(m['intField']);
 
     this.f = {
-      contentName: m['contentName'] || s.title || '',
-      league:      m['league']      || '',
+      contentName: String(m['contentName'] || s.title || ''),
+      league:      String(m['league']      || ''),
       channelId:   s.channel?.id ?? null,
       date:        st.toLocaleDateString('sv-SE', { timeZone: environment.timezone }),
       startTime:   `${pad(st.getHours())}:${pad(st.getMinutes())}`,
       endTime:     `${pad(et.getHours())}:${pad(et.getMinutes())}`,
-      transStart:  m['transStart']  || '',
-      transEnd:    m['transEnd']    || '',
-      houseNumber: m['houseNumber'] || '',
-      intField:    m['intField']    || '',
-      offTube:     m['offTube']     || '',
-      language:    m['language']    || 'Yok',
-      notes:       m['description'] || '',
+      transStart:  String(m['transStart']  || ''),
+      transEnd:    String(m['transEnd']    || ''),
+      houseNumber: String(m['houseNumber'] || ''),
+      intField,
+      intField2:   String(m['intField2'] || intField2 || ''),
+      offTube:     String(m['offTube']     || ''),
+      language:    String(m['language']    || 'Yok'),
+      notes:       String(m['description'] || ''),
     };
   }
 
@@ -952,21 +1272,141 @@ export class ScheduleEditDialogComponent {
       startTime: toISO(f.startTime),
       endTime:   toISO(f.endTime),
       title:     f.contentName,
+      usageScope: 'live-plan',
       metadata: {
         ...(s.metadata ?? {}),
+        ...LIVE_PLAN_METADATA,
         contentName:  f.contentName,
         league:       f.league      || undefined,
         language:     f.language    || 'Yok',
         transStart:   f.transStart  || undefined,
         transEnd:     f.transEnd    || undefined,
         houseNumber:  f.houseNumber || undefined,
-        intField:     f.intField    || undefined,
+        intField:     f.intField || undefined,
+        intField2:    f.intField2 || undefined,
         offTube:      f.offTube     || undefined,
         description:  f.notes      || undefined,
       },
     }, s.version).subscribe({
       next:  (updated) => { this.saving.set(false); this.dialogRef.close(updated); },
       error: (e)       => { this.saving.set(false); console.error(e); },
+    });
+  }
+}
+
+// ── Teknik Detay Dialog ───────────────────────────────────────────────────────
+@Component({
+  selector: 'app-schedule-technical-dialog',
+  standalone: true,
+  imports: [
+    CommonModule, FormsModule,
+    MatFormFieldModule, MatInputModule, MatSelectModule,
+    MatButtonModule, MatIconModule, MatDialogModule,
+    MatProgressSpinnerModule, MatSnackBarModule,
+  ],
+  template: `
+    <h2 mat-dialog-title>Teknik Detaylar</h2>
+    <mat-dialog-content class="technical-content">
+      <div class="technical-title">{{ contentTitle }}</div>
+      @for (group of liveDetailGroups; track group.title) {
+        <section class="technical-section">
+          <h3>{{ group.title }}</h3>
+          <div class="technical-grid">
+            @for (field of group.fields; track field.key) {
+              <mat-form-field [class.tech-wide]="field.wide">
+                <mat-label>{{ field.label }}</mat-label>
+                @if (field.type === 'textarea') {
+                  <textarea matInput rows="2"
+                            [(ngModel)]="liveDetails[field.key]"
+                            [ngModelOptions]="{standalone:true}"></textarea>
+                } @else if (field.options) {
+                  <mat-select [(ngModel)]="liveDetails[field.key]" [ngModelOptions]="{standalone:true}">
+                    <mat-option value="">—</mat-option>
+                    @for (option of field.options; track option) {
+                      <mat-option [value]="option">{{ option }}</mat-option>
+                    }
+                  </mat-select>
+                } @else {
+                  <input matInput
+                         [(ngModel)]="liveDetails[field.key]"
+                         [ngModelOptions]="{standalone:true}">
+                }
+              </mat-form-field>
+            }
+          </div>
+        </section>
+      }
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>İptal</button>
+      <button mat-raised-button color="primary"
+              [disabled]="saving()"
+              (click)="save()">
+        @if (saving()) {
+          <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
+          Kaydediliyor…
+        } @else {
+          Kaydet
+        }
+      </button>
+    </mat-dialog-actions>
+  `,
+  styles: [`
+    .technical-content { max-height:70vh; min-width:860px; }
+    .technical-title {
+      color:#bdbdbd;
+      font-size:13px;
+      margin:0 0 12px;
+    }
+    .technical-section {
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:6px;
+      padding:10px 12px 0;
+      margin-bottom:12px;
+    }
+    .technical-section h3 {
+      font-size:13px;
+      font-weight:700;
+      margin:0 0 10px;
+      color:#90caf9;
+    }
+    .technical-grid {
+      display:grid;
+      grid-template-columns:repeat(3, minmax(150px, 1fr));
+      gap:8px 12px;
+      align-items:start;
+    }
+    .technical-grid mat-form-field { min-width:0; }
+    .tech-wide { grid-column:span 2; }
+  `],
+})
+export class ScheduleTechnicalDialogComponent {
+  data      = inject<{ schedule: Schedule }>(MAT_DIALOG_DATA);
+  dialogRef = inject(MatDialogRef<ScheduleTechnicalDialogComponent>);
+  api       = inject(ApiService);
+  snack     = inject(MatSnackBar);
+  saving    = signal(false);
+
+  readonly liveDetailGroups = LIVE_DETAIL_GROUPS;
+  readonly liveDetails = createLiveDetails(this.data.schedule.metadata?.['liveDetails']);
+  readonly contentTitle = String(this.data.schedule.metadata?.['contentName'] || this.data.schedule.title || '');
+
+  save() {
+    const s = this.data.schedule;
+    this.saving.set(true);
+    this.api.patch<Schedule>(`/schedules/${s.id}`, {
+      usageScope: 'live-plan',
+      metadata: {
+        ...(s.metadata ?? {}),
+        ...LIVE_PLAN_METADATA,
+        liveDetails: cleanLiveDetails(this.liveDetails),
+      },
+    }, s.version).subscribe({
+      next:  (updated) => { this.saving.set(false); this.dialogRef.close(updated); },
+      error: (e)       => {
+        this.saving.set(false);
+        this.snack.open(`Teknik detaylar kaydedilemedi: ${e?.error?.message ?? e.message}`, 'Kapat', { duration: 4000 });
+      },
     });
   }
 }
@@ -1047,8 +1487,9 @@ export class ScheduleEditDialogComponent {
               }
               @for (s of schedules(); track s.id; let odd = $odd) {
                 <tr [class.row-odd]="odd" [class.row-even]="!odd"
-                    [class.has-league-color]="scheduleLeagueName(s)"
-                    [style.background]="scheduleLeagueColor(s)">
+                    [class.has-league-color]="scheduleLeagueName(s) && !isTransmissionFinished(s)"
+                    [class.transmission-finished]="isTransmissionFinished(s)"
+                    [style.background]="scheduleRowColor(s)">
                   <td class="td-time">{{ s.startTime | date:'HH:mm' }}</td>
                   <td class="td-title">
                     <span class="content-main">{{ s.metadata?.['contentName'] || s.title }}</span>
@@ -1056,7 +1497,7 @@ export class ScheduleEditDialogComponent {
                   <td class="td-trans">{{ s.metadata?.['transStart'] || (s.startTime | date:'HH:mm') }}</td>
                   <td class="td-trans">{{ s.metadata?.['transEnd']   || (s.endTime   | date:'HH:mm') }}</td>
                   <td class="td-mono">{{ s.metadata?.['houseNumber'] ?? '' }}</td>
-                  <td class="td-mono">{{ s.metadata?.['intField'] ?? '' }}</td>
+                  <td class="td-mono">{{ displayInt(s) }}</td>
                   <td class="td-mono">{{ s.metadata?.['offTube'] ?? '' }}</td>
                   <td class="td-lang">{{ s.metadata?.['language'] ?? 'Yok' }}</td>
                   <td class="td-channel">{{ s.channel?.name ?? '—' }}</td>
@@ -1072,6 +1513,16 @@ export class ScheduleEditDialogComponent {
                             matTooltip="Düzenle"
                             (click)="openEditDialog(s)">
                       <mat-icon>edit</mat-icon>
+                    </button>
+                    <button mat-icon-button
+                            matTooltip="Teknik Detayları Düzenle"
+                            (click)="openTechnicalDialog(s)">
+                      <mat-icon>settings_input_component</mat-icon>
+                    </button>
+                    <button mat-icon-button
+                            matTooltip="Materyali çoğalt"
+                            (click)="duplicateSchedule(s)">
+                      <mat-icon>add</mat-icon>
                     </button>
                     <button mat-icon-button color="warn"
                             matTooltip="Sil"
@@ -1147,6 +1598,7 @@ export class ScheduleEditDialogComponent {
     }
     .broadcast-table tbody tr:hover { filter:brightness(1.12); }
     .broadcast-table tbody tr.has-league-color:hover { filter:brightness(1.15); }
+    .broadcast-table tbody tr.transmission-finished:hover { filter:brightness(1.08); }
     .row-even { background:#1e1e2e; }
     .row-odd  { background:#242436; }
 
@@ -1167,7 +1619,7 @@ export class ScheduleEditDialogComponent {
     .td-league  { color:#aaa; white-space:nowrap; }
     .week-badge { display:inline-block; margin-left:4px; padding:0 5px; border-radius:3px; background:#1976d2; color:#fff; font-size:0.72rem; vertical-align:middle; }
     .td-notes   { max-width:260px; color:#bdbdbd; font-size:0.78rem; }
-    .td-actions { width:80px; padding:2px 4px; text-align:center; white-space:nowrap; }
+    .td-actions { width:160px; padding:2px 4px; text-align:center; white-space:nowrap; }
 
     /* ── Footer ── */
     .table-footer {
@@ -1179,7 +1631,7 @@ export class ScheduleEditDialogComponent {
     .spinner-container { display:flex; justify-content:center; padding:64px; }
   `],
 })
-export class ScheduleListComponent implements OnInit {
+export class ScheduleListComponent implements OnInit, OnDestroy {
   private scheduleSvc = inject(ScheduleService);
   private api         = inject(ApiService);
   private snack       = inject(MatSnackBar);
@@ -1189,25 +1641,50 @@ export class ScheduleListComponent implements OnInit {
   schedules         = signal<Schedule[]>([]);
   total             = signal(0);
   loading           = signal(false);
+  currentTime       = signal(Date.now());
   selectedChannelId: number | null = null;
   selectedDate = new Date().toISOString().slice(0, 10);
 
   pageSize = 100;
   page     = 1;
+  private clockTimer?: ReturnType<typeof setInterval>;
 
   ngOnInit() {
+    this.clockTimer = setInterval(() => this.currentTime.set(Date.now()), 60_000);
     this.api.get<Channel[]>('/channels').subscribe({
       next: (res) => this.channels.set(Array.isArray(res) ? res : []),
     });
     this.load();
   }
 
+  ngOnDestroy() {
+    if (this.clockTimer) clearInterval(this.clockTimer);
+  }
+
   scheduleLeagueName(s: Schedule) {
     return String(s.metadata?.['league'] ?? '');
   }
 
+  scheduleRowColor(s: Schedule) {
+    return this.isTransmissionFinished(s) ? '#55595f' : leagueBackground(s.metadata?.['league']);
+  }
+
   scheduleLeagueColor(s: Schedule) {
     return leagueBackground(s.metadata?.['league']);
+  }
+
+  isTransmissionFinished(s: Schedule) {
+    return transmissionEndDate(s).getTime() <= this.currentTime();
+  }
+
+  displayInt(s: Schedule) {
+    const values = [
+      ...String(s.metadata?.['intField'] ?? '').split('/'),
+      String(s.metadata?.['intField2'] ?? ''),
+    ]
+      .map((value) => value.trim())
+      .filter(Boolean);
+    return Array.from(new Set(values)).join(' / ');
   }
 
   load() {
@@ -1215,7 +1692,7 @@ export class ScheduleListComponent implements OnInit {
     const from = new Date(`${this.selectedDate}T00:00:00+03:00`).toISOString();
     const to   = new Date(`${this.selectedDate}T23:59:59+03:00`).toISOString();
 
-    const params: Record<string, string | number> = { from, to, page: this.page, pageSize: this.pageSize, source: 'manual' };
+    const params: Record<string, string | number> = { from, to, page: this.page, pageSize: this.pageSize, usage: 'live-plan' };
     if (this.selectedChannelId) params['channel'] = this.selectedChannelId;
 
     this.scheduleSvc.getSchedules(params as any).subscribe({
@@ -1279,6 +1756,47 @@ export class ScheduleListComponent implements OnInit {
         this.snack.open('Kayıt güncellendi', 'Kapat', { duration: 3000 });
         this.load();
       }
+    });
+  }
+
+  openTechnicalDialog(s: Schedule) {
+    const ref = this.dialog.open(ScheduleTechnicalDialogComponent, {
+      data: { schedule: s },
+      width: '980px',
+      maxWidth: '98vw',
+      panelClass: 'dark-dialog',
+    });
+    ref.afterClosed().subscribe((result) => {
+      if (result) {
+        this.snack.open('Teknik detaylar güncellendi', 'Kapat', { duration: 3000 });
+        this.load();
+      }
+    });
+  }
+
+  duplicateSchedule(s: Schedule) {
+    const metadata: Record<string, unknown> = {
+      ...(s.metadata ?? {}),
+      ...LIVE_PLAN_METADATA,
+      duplicatedFromId: s.id,
+    };
+    const title = String(metadata['contentName'] || s.title || 'Kopya materyal');
+
+    this.scheduleSvc.createSchedule({
+      channelId: null,
+      startTime: s.startTime,
+      endTime:   s.endTime,
+      title,
+      usageScope: 'live-plan',
+      ...(s.contentId != null && { contentId: s.contentId }),
+      ...(s.broadcastTypeId != null && { broadcastTypeId: s.broadcastTypeId }),
+      metadata,
+    }).subscribe({
+      next: () => {
+        this.snack.open('Materyal çoğaltıldı', 'Kapat', { duration: 2500 });
+        this.load();
+      },
+      error: (e) => this.snack.open(`Kopyalama hatası: ${e?.error?.message ?? e.message}`, 'Kapat', { duration: 4000 }),
     });
   }
 

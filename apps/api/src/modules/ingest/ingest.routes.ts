@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { QUEUES } from '../../plugins/rabbitmq.js';
@@ -29,7 +30,26 @@ const callbackSchema = z.object({
   }).optional(),
 });
 
+function safeEqual(a: string, b: string): boolean {
+  const aBuffer = Buffer.from(a);
+  const bBuffer = Buffer.from(b);
+  return aBuffer.length === bBuffer.length && crypto.timingSafeEqual(aBuffer, bBuffer);
+}
+
 export async function ingestRoutes(app: FastifyInstance) {
+  const requireWorkerSecret = async (request: { headers: Record<string, string | string[] | undefined> }) => {
+    const expected = process.env.INGEST_CALLBACK_SECRET;
+    if (!expected) {
+      throw Object.assign(new Error('Ingest callback secret is not configured'), { statusCode: 503 });
+    }
+
+    const rawHeader = request.headers['x-bcms-worker-secret'];
+    const received = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+    if (!received || !safeEqual(received, expected)) {
+      throw Object.assign(new Error('Invalid ingest callback secret'), { statusCode: 401 });
+    }
+  };
+
   // GET /api/v1/ingest
   app.get('/', {
     preHandler: app.requireRole(...PERMISSIONS.ingest.read),
@@ -68,6 +88,19 @@ export async function ingestRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const dto = createIngestSchema.parse(request.body);
 
+    if (dto.targetId) {
+      const [schedule] = await app.prisma.$queryRaw<Array<{ id: number }>>`
+        SELECT "id"
+        FROM "schedules"
+        WHERE "id" = ${dto.targetId}
+          AND "usage_scope" = 'live-plan'
+        LIMIT 1
+      `;
+      if (!schedule) {
+        throw Object.assign(new Error('Ingest hedefi canlı yayın planı kaydı olmalıdır'), { statusCode: 400 });
+      }
+    }
+
     const job = await app.prisma.ingestJob.create({
       data: {
         sourcePath: dto.sourcePath,
@@ -102,6 +135,7 @@ export async function ingestRoutes(app: FastifyInstance) {
 
   // POST /webhooks/ingest/callback — Called by worker when job completes
   app.post('/callback', {
+    preHandler: requireWorkerSecret,
     schema: { tags: ['Ingest'], summary: 'Worker callback on job completion' },
   }, async (request, reply) => {
     const dto = callbackSchema.parse(request.body);

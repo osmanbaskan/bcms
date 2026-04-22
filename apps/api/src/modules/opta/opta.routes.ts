@@ -92,7 +92,7 @@ export async function optaRoutes(app: FastifyInstance) {
       summary: 'Yayın planında kullanılan competition listesi',
     },
   }, async (): Promise<{ id: string; name: string; season: string }[]> => {
-    const FEATURED = ['opta-115', 'opta-388', 'opta-8', 'opta-24', 'custom-f1', 'custom-tbl', 'custom-tennis'];
+    const FEATURED = ['opta-115', 'opta-388', 'opta-8', 'opta-24', 'opta-104', 'custom-f1', 'custom-tbl', 'custom-tennis'];
 
     // Her lig için yalnızca en güncel sezon
     const rows = await app.prisma.$queryRaw<{ comp_id: string; name: string; season: string }[]>`

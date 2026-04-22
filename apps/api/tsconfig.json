@@ -2,13 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "../..",
+    "rootDir": "./src",
     "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "paths": {
-      "@bcms/shared": ["../../packages/shared/src/index.ts"]
-    }
+    "moduleResolution": "NodeNext"
   },
-  "include": ["src", "../../packages/shared/src"],
+  "include": ["src"],
   "exclude": ["node_modules", "dist"]
 }
