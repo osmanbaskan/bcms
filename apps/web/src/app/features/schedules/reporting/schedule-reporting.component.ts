@@ -146,6 +146,16 @@ function maskDisplayDateInput(value: string): string {
                    (change)="load()"
                    (keyup.enter)="load()">
           </mat-form-field>
+
+          <mat-form-field class="league-field">
+            <mat-label>Lig</mat-label>
+            <mat-select [(ngModel)]="selectedLeague" (selectionChange)="onDateRangeLeagueChange($event.value)">
+              <mat-option [value]="null">Tüm ligler</mat-option>
+              @for (league of leagues(); track league) {
+                <mat-option [value]="league">{{ league }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
         } @else {
           <mat-form-field class="league-field">
             <mat-label>Lig</mat-label>
@@ -360,7 +370,10 @@ export class ScheduleReportingComponent implements OnInit {
 
   filterSummary(): string {
     if (this.filterMode === 'date-range') {
-      return `${this.selectedFromDate} - ${this.selectedToDate}`;
+      return [
+        `${this.selectedFromDate} - ${this.selectedToDate}`,
+        this.selectedLeague || 'Tüm ligler',
+      ].join(' · ');
     }
 
     const parts = [
@@ -462,6 +475,11 @@ export class ScheduleReportingComponent implements OnInit {
     this.load();
   }
 
+  onDateRangeLeagueChange(league: string | null): void {
+    this.selectedLeague = league;
+    this.load();
+  }
+
   onSeasonChange(season: string | null): void {
     this.selectedSeason = season;
     this.selectedWeek = null;
@@ -491,6 +509,7 @@ export class ScheduleReportingComponent implements OnInit {
       ...base,
       from: new Date(`${fromDate}T00:00:00+03:00`).toISOString(),
       to:   new Date(`${toDate}T23:59:59+03:00`).toISOString(),
+      ...(this.selectedLeague ? { league: this.selectedLeague } : {}),
     };
   }
 
