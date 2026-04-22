@@ -15,9 +15,9 @@ import { ApiService } from '../../../core/services/api.service';
 import type { Schedule } from '@bcms/shared';
 
 interface FixtureCompetition {
-  id: string;
-  name: string;
-  season: string;
+  league: string;
+  season: string | null;
+  weeks: number[];
 }
 
 interface ReportDefinition {
@@ -149,19 +149,29 @@ function maskDisplayDateInput(value: string): string {
         } @else {
           <mat-form-field class="league-field">
             <mat-label>Lig</mat-label>
-            <mat-select [(ngModel)]="selectedCompetition" (selectionChange)="onCompetitionChange($event.value)">
+            <mat-select [(ngModel)]="selectedLeague" (selectionChange)="onLeagueChange($event.value)">
               <mat-option [value]="null">Tüm ligler</mat-option>
-              @for (league of leagues(); track league.id + league.season) {
-                <mat-option [value]="league">{{ competitionLabel(league) }}</mat-option>
+              @for (league of leagues(); track league) {
+                <mat-option [value]="league">{{ league }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field class="season-field">
+            <mat-label>Sezon</mat-label>
+            <mat-select [(ngModel)]="selectedSeason" (selectionChange)="onSeasonChange($event.value)" [disabled]="!selectedLeague || !seasonsForSelectedLeague().length">
+              <mat-option [value]="null">Tüm sezonlar</mat-option>
+              @for (season of seasonsForSelectedLeague(); track season) {
+                <mat-option [value]="season">{{ season }}</mat-option>
               }
             </mat-select>
           </mat-form-field>
 
           <mat-form-field class="week-field">
             <mat-label>Hafta</mat-label>
-            <mat-select [(ngModel)]="selectedWeek" (selectionChange)="load()" [disabled]="!selectedCompetition || weeksLoading()">
+            <mat-select [(ngModel)]="selectedWeek" (selectionChange)="load()" [disabled]="!selectedLeague || !weeksForSelectedFilter().length">
               <mat-option [value]="null">Tüm haftalar</mat-option>
-              @for (week of availableWeeks(); track week) {
+              @for (week of weeksForSelectedFilter(); track week) {
                 <mat-option [value]="week">Hafta {{ week }}</mat-option>
               }
             </mat-select>
@@ -262,6 +272,7 @@ function maskDisplayDateInput(value: string): string {
     .mode-field { min-width:180px; }
     .date-field { min-width:180px; }
     .league-field { min-width:240px; }
+    .season-field { width:150px; }
     .week-field { width:120px; }
     .summary-grid {
       display:grid; grid-template-columns:repeat(3, minmax(140px, 1fr)); gap:12px;
@@ -284,7 +295,7 @@ function maskDisplayDateInput(value: string): string {
     @media (max-width: 760px) {
       .page-header { flex-direction:column; }
       .summary-grid { grid-template-columns:1fr; }
-      .report-field, .mode-field, .date-field, .league-field, .week-field { width:100%; min-width:100%; }
+      .report-field, .mode-field, .date-field, .league-field, .season-field, .week-field { width:100%; min-width:100%; }
     }
   `],
 })
@@ -301,18 +312,17 @@ export class ScheduleReportingComponent implements OnInit {
 
   readonly columns = ['startTime', 'endTime', 'channel', 'title', 'houseNumber', 'duration'];
 
-  leagues = signal<FixtureCompetition[]>([]);
-  availableWeeks = signal<number[]>([]);
+  filterEntries = signal<FixtureCompetition[]>([]);
   rows = signal<ReportRow[]>([]);
   loading = signal(false);
-  weeksLoading = signal(false);
   exporting = signal(false);
 
   selectedReportId = 'live-plan';
   filterMode: FilterMode = 'date-range';
   selectedFromDate = todayDisplayDate();
   selectedToDate = todayDisplayDate();
-  selectedCompetition: FixtureCompetition | null = null;
+  selectedLeague: string | null = null;
+  selectedSeason: string | null = null;
   selectedWeek: number | null = null;
 
   selectedReport = computed(() =>
@@ -323,13 +333,39 @@ export class ScheduleReportingComponent implements OnInit {
     this.rows().reduce((total, row) => total + row.durationMin, 0),
   );
 
+  leagues = computed(() => (
+    [...new Set(this.filterEntries().map((entry) => entry.league))]
+      .sort((a, b) => a.localeCompare(b, 'tr'))
+  ));
+
+  seasonsForSelectedLeague = computed(() => {
+    if (!this.selectedLeague) return [];
+    return [...new Set(
+      this.filterEntries()
+        .filter((entry) => entry.league === this.selectedLeague && entry.season)
+        .map((entry) => entry.season as string),
+    )].sort((a, b) => b.localeCompare(a, 'tr'));
+  });
+
+  weeksForSelectedFilter = computed(() => {
+    if (!this.selectedLeague) return [];
+    const weeks = new Set<number>();
+    for (const entry of this.filterEntries()) {
+      if (entry.league !== this.selectedLeague) continue;
+      if (this.selectedSeason && entry.season !== this.selectedSeason) continue;
+      entry.weeks.forEach((week) => weeks.add(week));
+    }
+    return [...weeks].sort((a, b) => a - b);
+  });
+
   filterSummary = computed(() => {
     if (this.filterMode === 'date-range') {
       return `${this.selectedFromDate} - ${this.selectedToDate}`;
     }
 
     const parts = [
-      this.selectedCompetition ? this.competitionLabel(this.selectedCompetition) : 'Tüm ligler',
+      this.selectedLeague || 'Tüm ligler',
+      this.selectedSeason || 'Tüm sezonlar',
       this.selectedWeek ? `Hafta ${this.selectedWeek}` : 'Tüm haftalar',
     ].filter(Boolean);
     return parts.join(' · ');
@@ -338,9 +374,9 @@ export class ScheduleReportingComponent implements OnInit {
   constructor(private api: ApiService, private snack: MatSnackBar, private datePipe: DatePipe) {}
 
   ngOnInit(): void {
-    this.api.get<FixtureCompetition[]>('/opta/fixture-competitions').subscribe({
-      next: (leagues) => this.leagues.set(Array.isArray(leagues) ? leagues : []),
-      error: () => this.snack.open('Lig listesi alınamadı', 'Kapat', { duration: 4000 }),
+    this.api.get<FixtureCompetition[]>('/schedules/reports/live-plan/filters').subscribe({
+      next: (entries) => this.filterEntries.set(Array.isArray(entries) ? entries : []),
+      error: () => this.snack.open('Rapor filtreleri alınamadı', 'Kapat', { duration: 4000 }),
     });
     this.load();
   }
@@ -406,12 +442,6 @@ export class ScheduleReportingComponent implements OnInit {
     return String(value);
   }
 
-  competitionLabel(competition: FixtureCompetition): string {
-    return competition.season && competition.season !== '-'
-      ? `${competition.name} · ${competition.season}`
-      : competition.name;
-  }
-
   time24(value: string): string {
     return this.datePipe.transform(value, 'HH:mm', '+0300') ?? '';
   }
@@ -425,37 +455,17 @@ export class ScheduleReportingComponent implements OnInit {
     }
   }
 
-  onCompetitionChange(competition: FixtureCompetition | null): void {
-    this.selectedCompetition = competition;
+  onLeagueChange(league: string | null): void {
+    this.selectedLeague = league;
+    this.selectedSeason = null;
     this.selectedWeek = null;
-    this.loadAvailableWeeks();
     this.load();
   }
 
-  private loadAvailableWeeks(): void {
-    this.availableWeeks.set([]);
-    if (!this.selectedCompetition) return;
-
-    this.weeksLoading.set(true);
-    this.api.get<{ data: Schedule[] }>(this.selectedReport().endpoint, {
-      page: 1,
-      pageSize: 2000,
-      league: this.selectedCompetition.name,
-    }).subscribe({
-      next: (result) => {
-        const weeks = new Set<number>();
-        for (const schedule of result.data ?? []) {
-          const value = Number(schedule.metadata?.['weekNumber']);
-          if (Number.isInteger(value) && value > 0) weeks.add(value);
-        }
-        this.availableWeeks.set([...weeks].sort((a, b) => a - b));
-        this.weeksLoading.set(false);
-      },
-      error: () => {
-        this.weeksLoading.set(false);
-        this.snack.open('Hafta listesi alınamadı', 'Kapat', { duration: 4000 });
-      },
-    });
+  onSeasonChange(season: string | null): void {
+    this.selectedSeason = season;
+    this.selectedWeek = null;
+    this.load();
   }
 
   private queryParams(): Record<string, string | number> | null {
@@ -464,7 +474,8 @@ export class ScheduleReportingComponent implements OnInit {
     if (this.filterMode === 'league-week') {
       return {
         ...base,
-        ...(this.selectedCompetition ? { league: this.selectedCompetition.name } : {}),
+        ...(this.selectedLeague ? { league: this.selectedLeague } : {}),
+        ...(this.selectedSeason ? { season: this.selectedSeason } : {}),
         ...(this.selectedWeek ? { week: this.selectedWeek } : {}),
       };
     }
@@ -546,8 +557,9 @@ export class ScheduleReportingComponent implements OnInit {
 
   private exportSuffix(): string {
     if (this.filterMode === 'league-week') {
-      const league = (this.selectedCompetition?.name || 'tum-ligler').toLocaleLowerCase('tr-TR').replace(/[^a-z0-9ğüşöçıİ-]+/gi, '-');
-      return `${league}_${this.selectedWeek ? `hafta-${this.selectedWeek}` : 'tum-haftalar'}`;
+      const league = (this.selectedLeague || 'tum-ligler').toLocaleLowerCase('tr-TR').replace(/[^a-z0-9ğüşöçıİ-]+/gi, '-');
+      const season = (this.selectedSeason || 'tum-sezonlar').toLocaleLowerCase('tr-TR').replace(/[^a-z0-9ğüşöçıİ-]+/gi, '-');
+      return `${league}_${season}_${this.selectedWeek ? `hafta-${this.selectedWeek}` : 'tum-haftalar'}`;
     }
 
     const range = this.normalizedDateRange();

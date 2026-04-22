@@ -9,6 +9,12 @@ import { importSchedulesFromBuffer } from './schedule.import.js';
 import { exportSchedulesToBuffer }   from './schedule.export.js';
 import { PERMISSIONS } from '@bcms/shared';
 
+interface LivePlanFilterEntry {
+  league: string;
+  season: string | null;
+  weeks: number[];
+}
+
 export async function scheduleRoutes(app: FastifyInstance) {
   const svc = new ScheduleService(app);
 
@@ -27,6 +33,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
           status:   { type: 'string', enum: ['DRAFT','CONFIRMED','ON_AIR','COMPLETED','CANCELLED'] },
           usage:    { type: 'string', enum: ['broadcast', 'live-plan', 'all'], default: 'broadcast' },
           league:   { type: 'string' },
+          season:   { type: 'string' },
           week:     { type: 'number' },
           page:     { type: 'number', default: 1 },
           pageSize: { type: 'number', default: 50 },
@@ -119,6 +126,49 @@ export async function scheduleRoutes(app: FastifyInstance) {
   });
 
   // GET /api/v1/schedules/reports/live-plan — Expert raporlama önizleme verisi
+  app.get('/reports/live-plan/filters', {
+    preHandler: app.requireRole(...PERMISSIONS.reports.read),
+    schema: {
+      tags: ['Schedules'],
+      summary: 'Canlı yayın plan raporu filtre seçenekleri',
+    },
+  }, async () => {
+    const schedules = await app.prisma.schedule.findMany({
+      where: { usageScope: 'live-plan' },
+      select: { metadata: true },
+      orderBy: { startTime: 'asc' },
+    });
+
+    const entries = new Map<string, { league: string; season: string | null; weeks: Set<number> }>();
+    for (const schedule of schedules) {
+      const metadata = schedule.metadata && typeof schedule.metadata === 'object'
+        ? schedule.metadata as Record<string, unknown>
+        : {};
+      const league = String(metadata['league'] ?? '').trim();
+      if (!league) continue;
+
+      const rawSeason = String(metadata['season'] ?? '').trim();
+      const season = rawSeason || null;
+      const key = `${league}\u0000${season ?? ''}`;
+      if (!entries.has(key)) entries.set(key, { league, season, weeks: new Set<number>() });
+
+      const week = Number(metadata['weekNumber']);
+      if (Number.isInteger(week) && week > 0) entries.get(key)!.weeks.add(week);
+    }
+
+    return [...entries.values()]
+      .map<LivePlanFilterEntry>((entry) => ({
+        league: entry.league,
+        season: entry.season,
+        weeks: [...entry.weeks].sort((a, b) => a - b),
+      }))
+      .sort((a, b) => (
+        a.league.localeCompare(b.league, 'tr')
+        || String(b.season ?? '').localeCompare(String(a.season ?? ''), 'tr')
+      ));
+  });
+
+  // GET /api/v1/schedules/reports/live-plan — Expert raporlama önizleme verisi
   app.get('/reports/live-plan', {
     preHandler: app.requireRole(...PERMISSIONS.reports.read),
     schema: {
@@ -131,6 +181,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
           from:      { type: 'string', format: 'date-time' },
           to:        { type: 'string', format: 'date-time' },
           league:    { type: 'string' },
+          season:    { type: 'string' },
           week:      { type: 'number' },
           page:      { type: 'number', default: 1 },
           pageSize:  { type: 'number', default: 500 },
@@ -139,7 +190,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
     },
   }, async (request) => {
     const q = request.query as {
-      channelId?: string; from?: string; to?: string; league?: string; week?: string; page?: string; pageSize?: string;
+      channelId?: string; from?: string; to?: string; league?: string; season?: string; week?: string; page?: string; pageSize?: string;
     };
 
     return svc.findAll({
@@ -148,6 +199,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
       from:     q.from,
       to:       q.to,
       league:   q.league,
+      season:   q.season,
       week:     q.week ? Number(q.week) : undefined,
       page:     q.page ? Number(q.page) : 1,
       pageSize: q.pageSize ? Number(q.pageSize) : 500,
@@ -162,13 +214,14 @@ export async function scheduleRoutes(app: FastifyInstance) {
       summary: 'Canlı yayın plan raporunu Excel olarak dışa aktar',
     },
   }, async (request, reply) => {
-    const q = request.query as { from?: string; to?: string; channelId?: string; league?: string; week?: string; title?: string };
+    const q = request.query as { from?: string; to?: string; channelId?: string; league?: string; season?: string; week?: string; title?: string };
     const buffer = await exportSchedulesToBuffer(app, {
       usage:     'live-plan',
       from:      q.from,
       to:        q.to,
       channelId: q.channelId ? Number(q.channelId) : undefined,
       league:    q.league,
+      season:    q.season,
       week:      q.week ? Number(q.week) : undefined,
       title:     q.title,
     });

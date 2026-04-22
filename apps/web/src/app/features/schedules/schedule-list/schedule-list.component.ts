@@ -1034,6 +1034,7 @@ export class ScheduleAddDialogComponent {
           ...LIVE_PLAN_METADATA,
           contentName:  title,
           league:       m.competitionName || undefined,
+          season:       m.season          || undefined,
           weekNumber:   m.weekNumber      ?? undefined,
           language:     f.language    || 'Yok',
           transStart:   f.transStart  || undefined,
