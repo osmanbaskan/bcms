@@ -82,3 +82,18 @@ Prisma DB baseline:
   `BookingStatus`, `IngestStatus`, and `IncidentSeverity` with enum `@@map`.
 - If booking/ingest/incident Prisma writes fail with a missing PascalCase enum
   type, check generated client freshness before changing DB enum names.
+- For a brand-new empty PostgreSQL database, use
+  `./ops/scripts/bcms-db-bootstrap-empty.sh`. It refuses to run if the public
+  schema already has tables, applies SQL generated from the current Prisma
+  schema, then marks existing repo migrations applied.
+
+Security/dependency notes:
+
+- On 2026-04-22 `npm audit fix` removed the moderate `@fastify/static`/`ajv`
+  audit findings.
+- The vulnerable `xlsx` package had no fix available and was replaced with
+  `exceljs`.
+- API import accepts `.xlsx` only; do not re-enable `.xls` unless a maintained
+  parser is selected and audited.
+- `npm run smoke:api` runs health, schedule optimistic lock, booking optimistic
+  lock, and playout transition guard checks against the local API.

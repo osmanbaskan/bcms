@@ -1,5 +1,5 @@
-import * as xlsx from 'xlsx';
 import type { FastifyInstance } from 'fastify';
+import { readFirstWorksheetRows } from '../../lib/excel.js';
 
 // ── Türkçe ay adları ──────────────────────────────────────────────────────────
 const TR_MONTHS: Record<string, number> = {
@@ -31,7 +31,11 @@ function parseTurkishDateTime(dateCell: unknown, timeCell: unknown): Date | null
     let dateStr = String(dateCell ?? '').trim();
     let timeStr = String(timeCell ?? '').trim();
 
-    // xlsx bazen saati sayıya çevirir (0.7916... = 19:00), düzeltelim
+    if (timeCell instanceof Date) {
+      timeStr = `${String(timeCell.getHours()).padStart(2, '0')}:${String(timeCell.getMinutes()).padStart(2, '0')}`;
+    }
+
+    // Excel bazen saati sayıya çevirir (0.7916... = 19:00), düzeltelim
     if (!isNaN(Number(timeCell)) && Number(timeCell) > 0 && Number(timeCell) < 1) {
       const totalMin = Math.round(Number(timeCell) * 1440);
       const h = Math.floor(totalMin / 60);
@@ -67,9 +71,7 @@ export async function importSchedulesFromBuffer(
 ): Promise<ScheduleImportResult> {
   const durationMin = options.defaultDurationMin ?? 120; // varsayılan 2 saat
 
-  const workbook  = xlsx.read(buffer, { type: 'buffer', cellDates: false });
-  const sheet     = workbook.Sheets[workbook.SheetNames[0]];
-  const rows: unknown[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  const rows = await readFirstWorksheetRows(buffer);
 
   // ── Satır 0: Başlık (lig + hafta) ─────────────────────────────────────────
   const headerTitle = rows[0]

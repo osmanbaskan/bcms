@@ -54,8 +54,8 @@ export async function scheduleRoutes(app: FastifyInstance) {
     if (!data) throw Object.assign(new Error('Dosya bulunamadı'), { statusCode: 400 });
 
     const ext = data.filename.split('.').pop()?.toLowerCase();
-    if (!['xlsx', 'xls'].includes(ext ?? '')) {
-      throw Object.assign(new Error('Sadece .xlsx veya .xls dosyası kabul edilir'), { statusCode: 400 });
+    if (ext !== 'xlsx') {
+      throw Object.assign(new Error('Sadece .xlsx dosyası kabul edilir'), { statusCode: 400 });
     }
 
     const chunks: Buffer[] = [];

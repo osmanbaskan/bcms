@@ -82,6 +82,16 @@ Tum repo build:
 npm run build
 ```
 
+API smoke test:
+
+```bash
+npm run smoke:api
+```
+
+Bu test health endpoint'ini, schedule/booking optimistic lock davranisini ve
+playout state guard'ini kontrol eder. Varsayilan API adresi
+`http://127.0.0.1:3000/api/v1`; farkli ortam icin `BCMS_API_URL` verilebilir.
+
 ## API
 
 API kaynak kodu:
@@ -105,6 +115,16 @@ npm run db:generate -w apps/api
 npm run db:migrate -w apps/api
 npm run db:studio -w apps/api
 ```
+
+Bos DB bootstrap:
+
+```bash
+./ops/scripts/bcms-db-bootstrap-empty.sh
+```
+
+Bu script sadece yeni ve bos PostgreSQL veritabanlari icindir. Public schema
+bos degilse calismayi reddeder. Guncel Prisma schema'dan baseline SQL uretir,
+DB'ye uygular ve repo altindaki migration'lari applied olarak isaretler.
 
 API health:
 
@@ -216,6 +236,14 @@ Prisma migration ve enum notu:
   `BookingStatus`, `IngestStatus` ve `IncidentSeverity` enumlarina `@@map`
   ile baglar. Bu nedenle enum tiplerini DB'de yeniden adlandirmadan once Prisma
   schema mapping'i dikkate alinmalidir.
+- Bos yeni ortamlar icin `./ops/scripts/bcms-db-bootstrap-empty.sh`
+  kullanilmalidir; mevcut veri olan DB'lerde bu script calistirilmaz.
+
+Excel import/export notu:
+
+- `xlsx` paketi bilinen high severity aciklari icin fix sunmadigindan kaldirildi.
+- API Excel islemleri `exceljs` ile yapilir ve import dosyalari sadece `.xlsx`
+  olarak kabul edilir. Eski `.xls` formati desteklenmez.
 
 ## Web
 

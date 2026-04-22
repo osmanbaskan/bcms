@@ -2,7 +2,8 @@
  * Excel import mantığı için hızlı birim testi (DB/RabbitMQ gerekmez)
  * Çalıştır: npx tsx src/modules/bookings/booking.import.test.ts
  */
-import * as xlsx from 'xlsx';
+import ExcelJS from 'exceljs';
+import { readFirstWorksheetRows, rowsToObjects } from '../../lib/excel.js';
 
 // ── Yardımcı: importFromBuffer mantığını izole et ────────────────────────────
 
@@ -18,12 +19,8 @@ interface ImportResult {
   errors: { row: number; reason: string }[];
 }
 
-function parseExcelBuffer(buffer: Buffer): ImportResult {
-  const workbook = xlsx.read(buffer, { type: 'buffer' });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error('Excel dosyası boş');
-
-  const rows = xlsx.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName]);
+async function parseExcelBuffer(buffer: Buffer): Promise<ImportResult> {
+  const rows = rowsToObjects(await readFirstWorksheetRows(buffer));
   const valid: Row[] = [];
   const errors: { row: number; reason: string }[] = [];
 
@@ -61,11 +58,17 @@ function assert(condition: boolean, message: string) {
   }
 }
 
-function makeBuffer(rows: Record<string, unknown>[]): Buffer {
-  const ws = xlsx.utils.json_to_sheet(rows);
-  const wb = xlsx.utils.book_new();
-  xlsx.utils.book_append_sheet(wb, ws, 'Bookings');
-  return Buffer.from(xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+async function makeBuffer(rows: Record<string, unknown>[]): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Bookings');
+  const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+
+  if (headers.length > 0) {
+    sheet.addRow(headers);
+    rows.forEach((row) => sheet.addRow(headers.map((header) => row[header] ?? '')));
+  }
+
+  return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
 // ── Testler ──────────────────────────────────────────────────────────────────
@@ -75,12 +78,12 @@ console.log('\n=== Excel Import Parser Testleri ===\n');
 // Test 1: Geçerli satırlar
 console.log('Test 1: Geçerli satırlar');
 {
-  const buf = makeBuffer([
+  const buf = await makeBuffer([
     { scheduleId: 1, teamId: 2, matchId: 100, notes: 'Final' },
     { scheduleId: 3 },
     { scheduleId: 5, notes: 'Yarı final' },
   ]);
-  const result = parseExcelBuffer(buf);
+  const result = await parseExcelBuffer(buf);
   assert(result.valid.length === 3, '3 geçerli satır parse edilmeli');
   assert(result.errors.length === 0, 'Hata olmamalı');
   assert(result.valid[0].scheduleId === 1, 'İlk satır scheduleId=1');
@@ -91,13 +94,13 @@ console.log('Test 1: Geçerli satırlar');
 // Test 2: Geçersiz satırlar
 console.log('\nTest 2: Geçersiz scheduleId');
 {
-  const buf = makeBuffer([
+  const buf = await makeBuffer([
     { scheduleId: 1 },
     { scheduleId: '' },
     { notes: 'scheduleId yok' },
     { scheduleId: 'abc' },
   ]);
-  const result = parseExcelBuffer(buf);
+  const result = await parseExcelBuffer(buf);
   assert(result.valid.length === 1, '1 geçerli satır olmalı');
   assert(result.errors.length === 3, '3 hata olmalı');
   assert(result.errors[0].row === 3, 'Hata satır numarası doğru (row=3)');
@@ -106,10 +109,10 @@ console.log('\nTest 2: Geçersiz scheduleId');
 // Test 3: schedule_id sütun adı alternatifi
 console.log('\nTest 3: schedule_id alias');
 {
-  const buf = makeBuffer([
+  const buf = await makeBuffer([
     { schedule_id: 7, notes: 'alias test' },
   ]);
-  const result = parseExcelBuffer(buf);
+  const result = await parseExcelBuffer(buf);
   assert(result.valid.length === 1, 'schedule_id alias çalışmalı');
   assert(result.valid[0].scheduleId === 7, 'scheduleId=7 parse edilmeli');
 }
@@ -117,8 +120,8 @@ console.log('\nTest 3: schedule_id alias');
 // Test 4: Boş dosya
 console.log('\nTest 4: Boş sheet');
 {
-  const buf = makeBuffer([]);
-  const result = parseExcelBuffer(buf);
+  const buf = await makeBuffer([]);
+  const result = await parseExcelBuffer(buf);
   assert(result.valid.length === 0, 'Boş dosyada geçerli satır olmamalı');
   assert(result.errors.length === 0, 'Boş dosyada hata olmamalı');
 }

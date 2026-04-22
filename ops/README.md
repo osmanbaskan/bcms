@@ -33,6 +33,7 @@ Bu kurulum `crontab @reboot` ile supervisor baslatir. Supervisor API veya Web ka
 ./ops/scripts/bcms-logs.sh api
 ./ops/scripts/bcms-logs.sh web
 ./ops/scripts/bcms-opta-status.sh
+npm run smoke:api
 ```
 
 `bcms-start.sh`, `bcms-restart.sh` ve kurulum scriptleri once `packages/shared`, `apps/api` ve `apps/web` build eder; sonra servisleri baslatir.
@@ -88,6 +89,16 @@ API mimarisi:
 - DB'deki eski enum tip adlari `booking_status`, `ingest_status` ve
   `incident_severity` olarak korunur. Prisma schema bunlari `BookingStatus`,
   `IngestStatus` ve `IncidentSeverity` enumlarina `@@map` ile baglar.
+- Yeni ve bos PostgreSQL veritabanlari icin
+  `./ops/scripts/bcms-db-bootstrap-empty.sh` kullanilir. Script public schema
+  bos degilse calismayi reddeder, guncel Prisma schema'yi uygular ve mevcut
+  migration'lari applied olarak isaretler.
+
+Excel notu:
+
+- Guvenlik nedeniyle `xlsx` paketi kaldirildi ve Excel islemleri `exceljs` ile
+  yapilir.
+- Import sadece `.xlsx` kabul eder; `.xls` desteklenmez.
 
 DB constraint:
 

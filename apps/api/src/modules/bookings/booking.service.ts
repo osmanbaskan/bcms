@@ -1,10 +1,10 @@
-import * as xlsx from 'xlsx';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import type { CreateBookingDto, UpdateBookingDto } from './booking.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { writeAuditLog } from '../../middleware/audit.js';
 import type { EmailPayload } from '../notifications/notification.consumer.js';
+import { readFirstWorksheetRows, rowsToObjects } from '../../lib/excel.js';
 
 const STATUS_LABELS: Record<string, string> = {
   APPROVED: 'onaylandı',
@@ -131,11 +131,8 @@ export class BookingService {
   async importFromBuffer(buffer: Buffer, request: FastifyRequest): Promise<ImportResult> {
     const user = (request.user as { preferred_username: string }).preferred_username;
 
-    const workbook = xlsx.read(buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    if (!sheetName) throw Object.assign(new Error('Excel dosyası boş'), { statusCode: 400 });
-
-    const rows = xlsx.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName]);
+    const rows = rowsToObjects(await readFirstWorksheetRows(buffer));
+    if (rows.length === 0) throw Object.assign(new Error('Excel dosyası boş'), { statusCode: 400 });
 
     const result: ImportResult = { created: 0, skipped: 0, errors: [] };
 

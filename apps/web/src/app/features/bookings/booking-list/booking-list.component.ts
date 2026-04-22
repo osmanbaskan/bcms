@@ -40,7 +40,7 @@ interface ImportResult {
             Excel İçe Aktar
           </button>
           <mat-spinner *ngIf="importing()" diameter="24"></mat-spinner>
-          <input #fileInput type="file" accept=".xlsx,.xls" style="display:none"
+          <input #fileInput type="file" accept=".xlsx" style="display:none"
             (change)="onFileSelected($event)">
         </div>
       </div>

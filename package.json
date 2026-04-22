@@ -15,6 +15,7 @@
     "db:migrate": "npm run db:migrate -w apps/api",
     "db:generate": "npm run db:generate -w apps/api",
     "db:studio": "npm run db:studio -w apps/api",
+    "smoke:api": "node ops/scripts/bcms-smoke-api.mjs",
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web"
   },
   "devDependencies": {

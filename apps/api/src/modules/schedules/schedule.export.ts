@@ -1,4 +1,4 @@
-import * as xlsx from 'xlsx';
+import ExcelJS from 'exceljs';
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
 
@@ -42,7 +42,10 @@ export async function exportSchedulesToBuffer(
     orderBy: { startTime: 'asc' },
   });
 
-  const workbook  = xlsx.utils.book_new();
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'BCMS';
+  workbook.created = new Date();
+  const sheet = workbook.addWorksheet('Plan');
 
   // ── Satır verileri ────────────────────────────────────────────────────────
   // Satır 0: Başlık
@@ -65,22 +68,24 @@ export async function exportSchedulesToBuffer(
     ]),
   ];
 
-  const sheet = xlsx.utils.aoa_to_sheet(sheetData);
+  sheet.addRows(sheetData);
 
   // ── Hücre birleştirme: başlık satırı A1:D1 ───────────────────────────────
-  sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
+  sheet.mergeCells('A1:D1');
 
   // ── Sütun genişlikleri ────────────────────────────────────────────────────
-  sheet['!cols'] = [
-    { wch: 28 },  // TARİH
-    { wch: 8  },  // SAAT
-    { wch: 50 },  // MAÇ
-    { wch: 22 },  // KANAL
+  sheet.columns = [
+    { width: 28 }, // TARİH
+    { width: 8  }, // SAAT
+    { width: 50 }, // MAÇ
+    { width: 22 }, // KANAL
   ];
 
-  xlsx.utils.book_append_sheet(workbook, sheet, 'Plan');
+  sheet.getRow(1).font = { bold: true, size: 14 };
+  sheet.getRow(2).font = { bold: true };
 
-  return Buffer.from(xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
+  const output = await workbook.xlsx.writeBuffer();
+  return Buffer.from(output);
 }
 
 function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' | 'league' | 'season' | 'week' | 'usage'>): Prisma.ScheduleWhereInput {
