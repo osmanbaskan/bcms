@@ -35,6 +35,8 @@ export const scheduleQuerySchema = z.object({
   status:   ScheduleStatusEnum.optional(),
   source:   z.enum(['manual', 'bxf']).optional(),
   usage:    z.enum(['broadcast', 'live-plan', 'all']).default('broadcast'),
+  league:   z.string().trim().min(1).optional(),
+  week:     z.coerce.number().int().positive().optional(),
   page:     z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });

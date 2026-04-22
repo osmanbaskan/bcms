@@ -10,8 +10,12 @@ export class ScheduleService {
   constructor(private readonly app: FastifyInstance) {}
 
   async findAll(query: ScheduleQuery) {
-    const { channel, from, to, status, source, usage, page, pageSize } = query;
+    const { channel, from, to, status, source, usage, league, week, page, pageSize } = query;
     const skip = (page - 1) * pageSize;
+    const metadataFilters: Prisma.ScheduleWhereInput[] = [
+      ...(league ? [{ metadata: { path: ['league'], equals: league } }] : []),
+      ...(week ? [{ metadata: { path: ['weekNumber'], equals: week } }] : []),
+    ];
 
     const where: Prisma.ScheduleWhereInput = {
       ...(channel  && { channelId: channel }),
@@ -22,6 +26,7 @@ export class ScheduleService {
       ...(source === 'bxf'    && { createdBy: 'bxf-importer' }),
       ...(usage === 'live-plan' && { usageScope: 'live-plan' }),
       ...(usage === 'broadcast' && { usageScope: 'broadcast' }),
+      ...(metadataFilters.length > 0 && { AND: metadataFilters }),
     };
 
     const [data, total] = await Promise.all([

@@ -26,6 +26,8 @@ export async function scheduleRoutes(app: FastifyInstance) {
           to:       { type: 'string', format: 'date-time' },
           status:   { type: 'string', enum: ['DRAFT','CONFIRMED','ON_AIR','COMPLETED','CANCELLED'] },
           usage:    { type: 'string', enum: ['broadcast', 'live-plan', 'all'], default: 'broadcast' },
+          league:   { type: 'string' },
+          week:     { type: 'number' },
           page:     { type: 'number', default: 1 },
           pageSize: { type: 'number', default: 50 },
         },
@@ -128,6 +130,8 @@ export async function scheduleRoutes(app: FastifyInstance) {
           channelId: { type: 'number' },
           from:      { type: 'string', format: 'date-time' },
           to:        { type: 'string', format: 'date-time' },
+          league:    { type: 'string' },
+          week:      { type: 'number' },
           page:      { type: 'number', default: 1 },
           pageSize:  { type: 'number', default: 500 },
         },
@@ -135,7 +139,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
     },
   }, async (request) => {
     const q = request.query as {
-      channelId?: string; from?: string; to?: string; page?: string; pageSize?: string;
+      channelId?: string; from?: string; to?: string; league?: string; week?: string; page?: string; pageSize?: string;
     };
 
     return svc.findAll({
@@ -143,6 +147,8 @@ export async function scheduleRoutes(app: FastifyInstance) {
       channel:  q.channelId ? Number(q.channelId) : undefined,
       from:     q.from,
       to:       q.to,
+      league:   q.league,
+      week:     q.week ? Number(q.week) : undefined,
       page:     q.page ? Number(q.page) : 1,
       pageSize: q.pageSize ? Number(q.pageSize) : 500,
     });
@@ -156,12 +162,14 @@ export async function scheduleRoutes(app: FastifyInstance) {
       summary: 'Canlı yayın plan raporunu Excel olarak dışa aktar',
     },
   }, async (request, reply) => {
-    const q = request.query as { from?: string; to?: string; channelId?: string; title?: string };
+    const q = request.query as { from?: string; to?: string; channelId?: string; league?: string; week?: string; title?: string };
     const buffer = await exportSchedulesToBuffer(app, {
       usage:     'live-plan',
       from:      q.from,
       to:        q.to,
       channelId: q.channelId ? Number(q.channelId) : undefined,
+      league:    q.league,
+      week:      q.week ? Number(q.week) : undefined,
       title:     q.title,
     });
 

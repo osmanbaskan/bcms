@@ -23,6 +23,8 @@ export interface ExportOptions {
   from?:      string;
   to?:        string;
   channelId?: number;
+  league?:    string;
+  week?:      number;
   title?:     string;   // Üst başlık: "TÜRKİYE SİGORTA BASKETBOL SÜPER LİGİ - (26. HAFTA)"
   usage?:     'broadcast' | 'live-plan' | 'all';
 }
@@ -31,10 +33,10 @@ export async function exportSchedulesToBuffer(
   app: FastifyInstance,
   opts: ExportOptions,
 ): Promise<Buffer> {
-  const { from, to, channelId, title, usage = 'broadcast' } = opts;
+  const { from, to, channelId, league, week, title, usage = 'broadcast' } = opts;
 
   const schedules = await app.prisma.schedule.findMany({
-    where: buildExportWhere({ from, to, channelId, usage }),
+    where: buildExportWhere({ from, to, channelId, league, week, usage }),
     include: { channel: { select: { name: true } } },
     orderBy: { startTime: 'asc' },
   });
@@ -80,7 +82,12 @@ export async function exportSchedulesToBuffer(
   return Buffer.from(xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
 }
 
-function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' | 'usage'>): Prisma.ScheduleWhereInput {
+function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' | 'league' | 'week' | 'usage'>): Prisma.ScheduleWhereInput {
+  const metadataFilters: Prisma.ScheduleWhereInput[] = [
+    ...(opts.league ? [{ metadata: { path: ['league'], equals: opts.league } }] : []),
+    ...(opts.week ? [{ metadata: { path: ['weekNumber'], equals: opts.week } }] : []),
+  ];
+
   return {
     status: { not: 'CANCELLED' },
     ...(opts.channelId && { channelId: opts.channelId }),
@@ -88,5 +95,6 @@ function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' 
     ...(opts.to && { startTime: { lte: new Date(opts.to) } }),
     ...(opts.usage === 'live-plan' && { usageScope: 'live-plan' }),
     ...(opts.usage === 'broadcast' && { usageScope: 'broadcast' }),
+    ...(metadataFilters.length > 0 && { AND: metadataFilters }),
   };
 }

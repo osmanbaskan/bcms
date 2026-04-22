@@ -1439,18 +1439,6 @@ export class ScheduleTechnicalDialogComponent {
           <button mat-stroked-button (click)="goToday()" class="today-btn">Bugün</button>
         </div>
 
-        <div class="top-filters">
-          <mat-form-field class="channel-filter" subscriptSizing="dynamic">
-            <mat-label>Kanal</mat-label>
-            <mat-select [(ngModel)]="selectedChannelId" (selectionChange)="load()">
-              <mat-option [value]="null">Tümü</mat-option>
-              @for (ch of channels(); track ch.id) {
-                <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-        </div>
-
         <div class="top-actions">
           <button mat-raised-button color="primary" (click)="openAddDialog()">
             <mat-icon>add</mat-icon> Yeni Ekle
@@ -1571,8 +1559,6 @@ export class ScheduleTechnicalDialogComponent {
     }
     .date-input::-webkit-calendar-picker-indicator { filter:invert(1); cursor:pointer; }
     .today-btn { margin-left:4px; font-size:0.8rem; min-width:60px; }
-    .channel-filter { min-width:180px; }
-    .top-filters { flex:1; }
     .top-actions { margin-left:auto; }
 
     /* ── Tablo ── */
@@ -1642,7 +1628,6 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   total             = signal(0);
   loading           = signal(false);
   currentTime       = signal(Date.now());
-  selectedChannelId: number | null = null;
   selectedDate = new Date().toISOString().slice(0, 10);
 
   pageSize = 100;
@@ -1693,7 +1678,6 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
     const to   = new Date(`${this.selectedDate}T23:59:59+03:00`).toISOString();
 
     const params: Record<string, string | number> = { from, to, page: this.page, pageSize: this.pageSize, usage: 'live-plan' };
-    if (this.selectedChannelId) params['channel'] = this.selectedChannelId;
 
     this.scheduleSvc.getSchedules(params as any).subscribe({
       next: (res) => {

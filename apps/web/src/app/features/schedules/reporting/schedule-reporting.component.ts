@@ -14,10 +14,10 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../../core/services/api.service';
 import type { Schedule } from '@bcms/shared';
 
-interface Channel {
-  id: number;
+interface FixtureCompetition {
+  id: string;
   name: string;
-  type: string;
+  season: string;
 }
 
 interface ReportDefinition {
@@ -31,6 +31,40 @@ interface ReportDefinition {
 interface ReportRow {
   schedule: Schedule;
   durationMin: number;
+}
+
+type FilterMode = 'date-range' | 'league-week';
+
+function todayDisplayDate(): string {
+  const date = new Date();
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}.${month}.${date.getFullYear()}`;
+}
+
+function parseDisplayDate(value: string): string | null {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(value ?? '').trim());
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function displayDateFromIso(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-');
+  return `${day}.${month}.${year}`;
+}
+
+function maskDisplayDateInput(value: string): string {
+  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
 }
 
 @Component({
@@ -80,20 +114,59 @@ interface ReportRow {
           </mat-select>
         </mat-form-field>
 
-        <mat-form-field>
-          <mat-label>Tarih</mat-label>
-          <input matInput type="date" [(ngModel)]="selectedDate" (change)="load()">
-        </mat-form-field>
-
-        <mat-form-field class="channel-field">
-          <mat-label>Kanal</mat-label>
-          <mat-select [(ngModel)]="selectedChannelId" (selectionChange)="load()">
-            <mat-option [value]="null">Tüm kanallar</mat-option>
-            @for (channel of channels(); track channel.id) {
-              <mat-option [value]="channel.id">{{ channel.name }}</mat-option>
-            }
+        <mat-form-field class="mode-field">
+          <mat-label>Filtre Tipi</mat-label>
+          <mat-select [(ngModel)]="filterMode" (selectionChange)="load()">
+            <mat-option value="date-range">Tarihler Arası</mat-option>
+            <mat-option value="league-week">Lig / Hafta</mat-option>
           </mat-select>
         </mat-form-field>
+
+        @if (filterMode === 'date-range') {
+          <mat-form-field class="date-field">
+            <mat-label>Başlangıç</mat-label>
+            <input matInput
+                   inputmode="numeric"
+                   maxlength="10"
+                   placeholder="gg.aa.yyyy"
+                   [ngModel]="selectedFromDate"
+                   (ngModelChange)="onDateInput('from', $event)"
+                   (change)="load()"
+                   (keyup.enter)="load()">
+          </mat-form-field>
+
+          <mat-form-field class="date-field">
+            <mat-label>Bitiş</mat-label>
+            <input matInput
+                   inputmode="numeric"
+                   maxlength="10"
+                   placeholder="gg.aa.yyyy"
+                   [ngModel]="selectedToDate"
+                   (ngModelChange)="onDateInput('to', $event)"
+                   (change)="load()"
+                   (keyup.enter)="load()">
+          </mat-form-field>
+        } @else {
+          <mat-form-field class="league-field">
+            <mat-label>Lig</mat-label>
+            <mat-select [(ngModel)]="selectedCompetition" (selectionChange)="onCompetitionChange($event.value)">
+              <mat-option [value]="null">Tüm ligler</mat-option>
+              @for (league of leagues(); track league.id + league.season) {
+                <mat-option [value]="league">{{ competitionLabel(league) }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field class="week-field">
+            <mat-label>Hafta</mat-label>
+            <mat-select [(ngModel)]="selectedWeek" (selectionChange)="load()" [disabled]="!selectedCompetition || weeksLoading()">
+              <mat-option [value]="null">Tüm haftalar</mat-option>
+              @for (week of availableWeeks(); track week) {
+                <mat-option [value]="week">Hafta {{ week }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        }
 
         <button mat-stroked-button (click)="load()">
           <mat-icon>refresh</mat-icon>
@@ -111,8 +184,8 @@ interface ReportRow {
           <span class="summary-label">Dakika</span>
         </div>
         <div class="summary-item">
-          <span class="summary-value">{{ selectedChannelName() }}</span>
-          <span class="summary-label">Kanal</span>
+          <span class="summary-value">{{ filterSummary() }}</span>
+          <span class="summary-label">Filtre</span>
         </div>
       </section>
 
@@ -125,12 +198,12 @@ interface ReportRow {
           <table mat-table [dataSource]="rows()" class="report-table">
             <ng-container matColumnDef="startTime">
               <th mat-header-cell *matHeaderCellDef>Saat</th>
-              <td mat-cell *matCellDef="let row">{{ row.schedule.startTime | date:'HH:mm' }}</td>
+              <td mat-cell *matCellDef="let row">{{ time24(row.schedule.startTime) }}</td>
             </ng-container>
 
             <ng-container matColumnDef="endTime">
               <th mat-header-cell *matHeaderCellDef>Bitiş</th>
-              <td mat-cell *matCellDef="let row">{{ row.schedule.endTime | date:'HH:mm' }}</td>
+              <td mat-cell *matCellDef="let row">{{ time24(row.schedule.endTime) }}</td>
             </ng-container>
 
             <ng-container matColumnDef="channel">
@@ -186,7 +259,10 @@ interface ReportRow {
       padding:14px 0; border-bottom:1px solid rgba(255,255,255,.08);
     }
     .report-field { min-width:280px; }
-    .channel-field { min-width:220px; }
+    .mode-field { min-width:180px; }
+    .date-field { min-width:180px; }
+    .league-field { min-width:240px; }
+    .week-field { width:120px; }
     .summary-grid {
       display:grid; grid-template-columns:repeat(3, minmax(140px, 1fr)); gap:12px;
     }
@@ -208,7 +284,7 @@ interface ReportRow {
     @media (max-width: 760px) {
       .page-header { flex-direction:column; }
       .summary-grid { grid-template-columns:1fr; }
-      .report-field, .channel-field { min-width:100%; }
+      .report-field, .mode-field, .date-field, .league-field, .week-field { width:100%; min-width:100%; }
     }
   `],
 })
@@ -225,14 +301,19 @@ export class ScheduleReportingComponent implements OnInit {
 
   readonly columns = ['startTime', 'endTime', 'channel', 'title', 'houseNumber', 'duration'];
 
-  channels = signal<Channel[]>([]);
+  leagues = signal<FixtureCompetition[]>([]);
+  availableWeeks = signal<number[]>([]);
   rows = signal<ReportRow[]>([]);
   loading = signal(false);
+  weeksLoading = signal(false);
   exporting = signal(false);
 
   selectedReportId = 'live-plan';
-  selectedChannelId: number | null = null;
-  selectedDate = new Date().toISOString().slice(0, 10);
+  filterMode: FilterMode = 'date-range';
+  selectedFromDate = todayDisplayDate();
+  selectedToDate = todayDisplayDate();
+  selectedCompetition: FixtureCompetition | null = null;
+  selectedWeek: number | null = null;
 
   selectedReport = computed(() =>
     this.reportDefinitions.find((report) => report.id === this.selectedReportId) ?? this.reportDefinitions[0],
@@ -242,17 +323,24 @@ export class ScheduleReportingComponent implements OnInit {
     this.rows().reduce((total, row) => total + row.durationMin, 0),
   );
 
-  selectedChannelName = computed(() => {
-    if (!this.selectedChannelId) return 'Tüm kanallar';
-    return this.channels().find((channel) => channel.id === this.selectedChannelId)?.name ?? String(this.selectedChannelId);
+  filterSummary = computed(() => {
+    if (this.filterMode === 'date-range') {
+      return `${this.selectedFromDate} - ${this.selectedToDate}`;
+    }
+
+    const parts = [
+      this.selectedCompetition ? this.competitionLabel(this.selectedCompetition) : 'Tüm ligler',
+      this.selectedWeek ? `Hafta ${this.selectedWeek}` : 'Tüm haftalar',
+    ].filter(Boolean);
+    return parts.join(' · ');
   });
 
   constructor(private api: ApiService, private snack: MatSnackBar, private datePipe: DatePipe) {}
 
   ngOnInit(): void {
-    this.api.get<Channel[]>('/channels').subscribe({
-      next: (channels) => this.channels.set(channels),
-      error: () => this.snack.open('Kanal listesi alınamadı', 'Kapat', { duration: 4000 }),
+    this.api.get<FixtureCompetition[]>('/opta/fixture-competitions').subscribe({
+      next: (leagues) => this.leagues.set(Array.isArray(leagues) ? leagues : []),
+      error: () => this.snack.open('Lig listesi alınamadı', 'Kapat', { duration: 4000 }),
     });
     this.load();
   }
@@ -261,8 +349,11 @@ export class ScheduleReportingComponent implements OnInit {
     const report = this.selectedReport();
     if (!report.enabled) return;
 
+    const params = this.queryParams();
+    if (!params) return;
+
     this.loading.set(true);
-    this.api.get<{ data: Schedule[]; total: number }>(report.endpoint, this.queryParams()).subscribe({
+    this.api.get<{ data: Schedule[]; total: number }>(report.endpoint, params).subscribe({
       next: (result) => {
         const schedules = result.data ?? [];
         this.rows.set(schedules.map((schedule) => ({
@@ -280,10 +371,13 @@ export class ScheduleReportingComponent implements OnInit {
 
   exportExcel(): void {
     const report = this.selectedReport();
+    const params = this.queryParams();
+    if (!params) return;
+
     this.exporting.set(true);
-    this.api.getBlob(report.exportEndpoint, this.queryParams()).subscribe({
+    this.api.getBlob(report.exportEndpoint, params).subscribe({
       next: (blob) => {
-        this.downloadBlob(blob, `${report.id}_${this.selectedDate}.xlsx`);
+        this.downloadBlob(blob, `${report.id}_${this.exportSuffix()}.xlsx`);
         this.exporting.set(false);
       },
       error: (err) => {
@@ -312,15 +406,80 @@ export class ScheduleReportingComponent implements OnInit {
     return String(value);
   }
 
-  private queryParams(): Record<string, string | number> {
-    const from = new Date(`${this.selectedDate}T00:00:00+03:00`).toISOString();
-    const to = new Date(`${this.selectedDate}T23:59:59+03:00`).toISOString();
-    return {
-      from,
-      to,
+  competitionLabel(competition: FixtureCompetition): string {
+    return competition.season && competition.season !== '-'
+      ? `${competition.name} · ${competition.season}`
+      : competition.name;
+  }
+
+  time24(value: string): string {
+    return this.datePipe.transform(value, 'HH:mm', '+0300') ?? '';
+  }
+
+  onDateInput(field: 'from' | 'to', value: string): void {
+    const masked = maskDisplayDateInput(value);
+    if (field === 'from') {
+      this.selectedFromDate = masked;
+    } else {
+      this.selectedToDate = masked;
+    }
+  }
+
+  onCompetitionChange(competition: FixtureCompetition | null): void {
+    this.selectedCompetition = competition;
+    this.selectedWeek = null;
+    this.loadAvailableWeeks();
+    this.load();
+  }
+
+  private loadAvailableWeeks(): void {
+    this.availableWeeks.set([]);
+    if (!this.selectedCompetition) return;
+
+    this.weeksLoading.set(true);
+    this.api.get<{ data: Schedule[] }>(this.selectedReport().endpoint, {
       page: 1,
-      pageSize: 500,
-      ...(this.selectedChannelId ? { channelId: this.selectedChannelId } : {}),
+      pageSize: 2000,
+      league: this.selectedCompetition.name,
+    }).subscribe({
+      next: (result) => {
+        const weeks = new Set<number>();
+        for (const schedule of result.data ?? []) {
+          const value = Number(schedule.metadata?.['weekNumber']);
+          if (Number.isInteger(value) && value > 0) weeks.add(value);
+        }
+        this.availableWeeks.set([...weeks].sort((a, b) => a - b));
+        this.weeksLoading.set(false);
+      },
+      error: () => {
+        this.weeksLoading.set(false);
+        this.snack.open('Hafta listesi alınamadı', 'Kapat', { duration: 4000 });
+      },
+    });
+  }
+
+  private queryParams(): Record<string, string | number> | null {
+    const base = { page: 1, pageSize: 500 };
+
+    if (this.filterMode === 'league-week') {
+      return {
+        ...base,
+        ...(this.selectedCompetition ? { league: this.selectedCompetition.name } : {}),
+        ...(this.selectedWeek ? { week: this.selectedWeek } : {}),
+      };
+    }
+
+    const range = this.normalizedDateRange();
+    if (!range) {
+      this.snack.open('Tarih formatı gg.aa.yyyy olmalıdır', 'Kapat', { duration: 4000 });
+      return null;
+    }
+
+    const [fromDate, toDate] = range;
+    return {
+      ...base,
+      from: new Date(`${fromDate}T00:00:00+03:00`).toISOString(),
+      to:   new Date(`${toDate}T23:59:59+03:00`).toISOString(),
     };
   }
 
@@ -334,11 +493,11 @@ export class ScheduleReportingComponent implements OnInit {
   }
 
   private buildPrintableHtml(): string {
-    const title = `${this.selectedReport().label} - ${this.selectedDate}`;
+    const title = `${this.selectedReport().label} - ${this.filterSummary()}`;
     const rows = this.rows().map((row) => `
       <tr>
-        <td>${this.date(row.schedule.startTime, 'HH:mm')}</td>
-        <td>${this.date(row.schedule.endTime, 'HH:mm')}</td>
+        <td>${this.time24(row.schedule.startTime)}</td>
+        <td>${this.time24(row.schedule.endTime)}</td>
         <td>${this.escape(row.schedule.channel?.name ?? '-')}</td>
         <td>${this.escape(this.text(row.schedule.metadata?.['contentName']) || row.schedule.title)}</td>
         <td>${this.escape(this.text(row.schedule.metadata?.['houseNumber']) || '-')}</td>
@@ -363,7 +522,7 @@ export class ScheduleReportingComponent implements OnInit {
         </head>
         <body>
           <h1>${this.escape(title)}</h1>
-          <div class="meta">Kanal: ${this.escape(this.selectedChannelName())} | Kayıt: ${this.rows().length}</div>
+          <div class="meta">Filtre: ${this.escape(this.filterSummary())} | Kayıt: ${this.rows().length}</div>
           <table>
             <thead>
               <tr><th>Saat</th><th>Bitiş</th><th>Kanal</th><th>Yayın</th><th>House No</th><th>Süre</th></tr>
@@ -375,8 +534,26 @@ export class ScheduleReportingComponent implements OnInit {
     `;
   }
 
-  private date(value: string, format: string): string {
-    return this.datePipe.transform(value, format) ?? '';
+  private normalizedDateRange(): [string, string] | null {
+    const from = parseDisplayDate(this.selectedFromDate);
+    const to = parseDisplayDate(this.selectedToDate);
+    if (!from || !to) return null;
+    if (from <= to) {
+      return [from, to];
+    }
+    return [to, from];
+  }
+
+  private exportSuffix(): string {
+    if (this.filterMode === 'league-week') {
+      const league = (this.selectedCompetition?.name || 'tum-ligler').toLocaleLowerCase('tr-TR').replace(/[^a-z0-9ğüşöçıİ-]+/gi, '-');
+      return `${league}_${this.selectedWeek ? `hafta-${this.selectedWeek}` : 'tum-haftalar'}`;
+    }
+
+    const range = this.normalizedDateRange();
+    if (!range) return 'tarih';
+    const [from, to] = range.map(displayDateFromIso);
+    return from === to ? from : `${from}_${to}`;
   }
 
   private escape(value: string): string {
