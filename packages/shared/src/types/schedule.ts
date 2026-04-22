@@ -12,6 +12,9 @@ export interface Schedule {
   broadcastTypeId?: number;
   status: ScheduleStatus;
   usageScope: ScheduleUsageScope;
+  reportLeague?: string | null;
+  reportSeason?: string | null;
+  reportWeekNumber?: number | null;
   createdBy: string;
   version: number;
   metadata?: Record<string, unknown>;

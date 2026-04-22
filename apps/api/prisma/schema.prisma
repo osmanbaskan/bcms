@@ -103,6 +103,9 @@ model Schedule {
   matchId         Int?           @map("match_id")
   status          ScheduleStatus @default(DRAFT)
   usageScope      String         @default("broadcast") @map("usage_scope") @db.VarChar(30)
+  reportLeague    String?        @map("report_league") @db.VarChar(200)
+  reportSeason    String?        @map("report_season") @db.VarChar(30)
+  reportWeekNumber Int?          @map("report_week_number")
   finishedAt      DateTime?      @map("finished_at") @db.Timestamptz
   createdBy       String         @map("created_by") @db.VarChar(100)
   version         Int            @default(1)
@@ -119,6 +122,7 @@ model Schedule {
   @@index([channelId, startTime, endTime])
   @@index([status])
   @@index([usageScope])
+  @@index([usageScope, reportLeague, reportSeason, reportWeekNumber])
   @@map("schedules")
 }
 

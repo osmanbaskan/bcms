@@ -147,6 +147,11 @@ Kural:
   `usageScope=live-plan` olmasi gerekir.
 - Eski metadata icindeki `usageScope=reporting-ingest` degeri karar noktasi
   degildir; gecis sonrasi kanonik kaynak `schedules.usage_scope` kolonudur.
+- Raporlama boyutlari artik JSON metadata path taramasi ile degil,
+  `schedules.report_league`, `schedules.report_season` ve
+  `schedules.report_week_number` kolonlari ile filtrelenir. Bu kolonlar
+  schedule create/update sirasinda metadata icindeki `league`, `season` ve
+  `weekNumber` alanlarindan senkronlanir.
 
 Ilgili endpointler:
 
@@ -162,12 +167,18 @@ DB dogrulama:
 
 ```sql
 SELECT usage_scope, COUNT(*) FROM schedules GROUP BY usage_scope;
+SELECT report_league, report_season, report_week_number, COUNT(*)
+FROM schedules
+WHERE usage_scope = 'live-plan'
+GROUP BY report_league, report_season, report_week_number;
 ```
 
 DB korumalari:
 
 - `schedules_usage_scope_check` constraint'i sadece `broadcast` ve `live-plan`
   degerlerini kabul eder.
+- `schedules_usage_report_dims_idx` index'i canli yayin plani raporlama
+  filtrelerini destekler.
 - Eski `metadata.usageScope` gecis alani temizlenmistir.
 
 Prisma Client notu:

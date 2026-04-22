@@ -134,25 +134,33 @@ export async function scheduleRoutes(app: FastifyInstance) {
     },
   }, async () => {
     const schedules = await app.prisma.schedule.findMany({
-      where: { usageScope: 'live-plan' },
-      select: { metadata: true },
-      orderBy: { startTime: 'asc' },
+      where: {
+        usageScope: 'live-plan',
+        reportLeague: { not: null },
+      },
+      select: {
+        reportLeague: true,
+        reportSeason: true,
+        reportWeekNumber: true,
+      },
+      orderBy: [
+        { reportLeague: 'asc' },
+        { reportSeason: 'desc' },
+        { reportWeekNumber: 'asc' },
+      ],
     });
 
     const entries = new Map<string, { league: string; season: string | null; weeks: Set<number> }>();
     for (const schedule of schedules) {
-      const metadata = schedule.metadata && typeof schedule.metadata === 'object'
-        ? schedule.metadata as Record<string, unknown>
-        : {};
-      const league = String(metadata['league'] ?? '').trim();
+      const league = String(schedule.reportLeague ?? '').trim();
       if (!league) continue;
 
-      const rawSeason = String(metadata['season'] ?? '').trim();
+      const rawSeason = String(schedule.reportSeason ?? '').trim();
       const season = rawSeason || null;
       const key = `${league}\u0000${season ?? ''}`;
       if (!entries.has(key)) entries.set(key, { league, season, weeks: new Set<number>() });
 
-      const week = Number(metadata['weekNumber']);
+      const week = Number(schedule.reportWeekNumber);
       if (Number.isInteger(week) && week > 0) entries.get(key)!.weeks.add(week);
     }
 

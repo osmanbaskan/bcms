@@ -84,12 +84,6 @@ export async function exportSchedulesToBuffer(
 }
 
 function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' | 'league' | 'season' | 'week' | 'usage'>): Prisma.ScheduleWhereInput {
-  const metadataFilters: Prisma.ScheduleWhereInput[] = [
-    ...(opts.league ? [{ metadata: { path: ['league'], equals: opts.league } }] : []),
-    ...(opts.season ? [{ metadata: { path: ['season'], equals: opts.season } }] : []),
-    ...(opts.week ? [{ metadata: { path: ['weekNumber'], equals: opts.week } }] : []),
-  ];
-
   return {
     status: { not: 'CANCELLED' },
     ...(opts.channelId && { channelId: opts.channelId }),
@@ -97,6 +91,8 @@ function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' 
     ...(opts.to && { startTime: { lte: new Date(opts.to) } }),
     ...(opts.usage === 'live-plan' && { usageScope: 'live-plan' }),
     ...(opts.usage === 'broadcast' && { usageScope: 'broadcast' }),
-    ...(metadataFilters.length > 0 && { AND: metadataFilters }),
+    ...(opts.league && { reportLeague: opts.league }),
+    ...(opts.season && { reportSeason: opts.season }),
+    ...(opts.week && { reportWeekNumber: opts.week }),
   };
 }

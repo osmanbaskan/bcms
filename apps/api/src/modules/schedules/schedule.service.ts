@@ -6,17 +6,33 @@ import { writeAuditLog } from '../../middleware/audit.js';
 
 export const LIVE_PLAN_SOURCE = 'live-plan';
 
+function stringDimension(metadata: unknown, key: string): string | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const value = (metadata as Record<string, unknown>)[key];
+  const text = String(value ?? '').trim();
+  return text || null;
+}
+
+function weekDimension(metadata: unknown): number | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const value = Number((metadata as Record<string, unknown>)['weekNumber']);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function reportDimensions(metadata: unknown) {
+  return {
+    reportLeague:     stringDimension(metadata, 'league'),
+    reportSeason:     stringDimension(metadata, 'season'),
+    reportWeekNumber: weekDimension(metadata),
+  };
+}
+
 export class ScheduleService {
   constructor(private readonly app: FastifyInstance) {}
 
   async findAll(query: ScheduleQuery) {
     const { channel, from, to, status, source, usage, league, season, week, page, pageSize } = query;
     const skip = (page - 1) * pageSize;
-    const metadataFilters: Prisma.ScheduleWhereInput[] = [
-      ...(league ? [{ metadata: { path: ['league'], equals: league } }] : []),
-      ...(season ? [{ metadata: { path: ['season'], equals: season } }] : []),
-      ...(week ? [{ metadata: { path: ['weekNumber'], equals: week } }] : []),
-    ];
 
     const where: Prisma.ScheduleWhereInput = {
       ...(channel  && { channelId: channel }),
@@ -27,7 +43,9 @@ export class ScheduleService {
       ...(source === 'bxf'    && { createdBy: 'bxf-importer' }),
       ...(usage === 'live-plan' && { usageScope: 'live-plan' }),
       ...(usage === 'broadcast' && { usageScope: 'broadcast' }),
-      ...(metadataFilters.length > 0 && { AND: metadataFilters }),
+      ...(league && { reportLeague: league }),
+      ...(season && { reportSeason: season }),
+      ...(week && { reportWeekNumber: week }),
     };
 
     const [data, total] = await Promise.all([
@@ -90,6 +108,7 @@ export class ScheduleService {
         contentId:       dto.contentId,
         broadcastTypeId: dto.broadcastTypeId,
         usageScope:      dto.usageScope,
+        ...reportDimensions(dto.metadata),
         metadata:        dto.metadata as Prisma.InputJsonValue,
         createdBy:       user,
       },
@@ -149,6 +168,7 @@ export class ScheduleService {
         ...(dto.status    && { status:    dto.status }),
         ...(dto.contentId !== undefined && { contentId: dto.contentId }),
         ...(dto.usageScope !== undefined && { usageScope: dto.usageScope }),
+        ...(dto.metadata && { ...reportDimensions(dto.metadata) }),
         ...(dto.metadata  && { metadata: dto.metadata as Prisma.InputJsonValue }),
         version: { increment: 1 },
       },
