@@ -70,3 +70,15 @@ Live plan data rule:
   - `/api/v1/schedules/ingest-candidates`
   - `/api/v1/schedules/reports/live-plan`
   - `/api/v1/schedules/reports/live-plan/export`
+
+Prisma DB baseline:
+
+- On 2026-04-22 the local PostgreSQL schema was inspected and the repo's 8
+  Prisma migrations were marked applied with `prisma migrate resolve --applied`.
+- `npm run db:migrate:prod -w apps/api` should now report no pending migrations.
+- The database still uses legacy PostgreSQL enum type names:
+  `booking_status`, `ingest_status`, and `incident_severity`.
+- Prisma schema intentionally maps these to TypeScript enum names
+  `BookingStatus`, `IngestStatus`, and `IncidentSeverity` with enum `@@map`.
+- If booking/ingest/incident Prisma writes fail with a missing PascalCase enum
+  type, check generated client freshness before changing DB enum names.

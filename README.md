@@ -204,6 +204,19 @@ Prisma Client notu:
 - Ayni regenerate sorunu tekrar gorulurse once ayni temiz Prisma reinstall
   proseduru uygulanmalidir; raw SQL koprusu geri eklenmemelidir.
 
+Prisma migration ve enum notu:
+
+- Bu lokal DB eski Alembic/manual kurulumdan geldigi icin `_prisma_migrations`
+  tablosu yoktu. 2026-04-22'de mevcut DB semasi kontrol edildi ve repo altindaki
+  8 Prisma migration `migrate resolve --applied` ile baseline edildi.
+- `npm run db:migrate:prod -w apps/api` artik temiz sekilde `No pending
+  migrations to apply` sonucunu verir.
+- DB'deki eski PostgreSQL enum tipleri `booking_status`, `ingest_status` ve
+  `incident_severity` olarak durur. Prisma schema bunlari sirasiyla
+  `BookingStatus`, `IngestStatus` ve `IncidentSeverity` enumlarina `@@map`
+  ile baglar. Bu nedenle enum tiplerini DB'de yeniden adlandirmadan once Prisma
+  schema mapping'i dikkate alinmalidir.
+
 ## Web
 
 Web kaynak kodu:

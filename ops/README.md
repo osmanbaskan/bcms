@@ -81,6 +81,13 @@ API mimarisi:
 - `prisma generate` tekrar schema'yi okuyup client dosyalarini yenilemezse
   once `node_modules/.prisma`, `node_modules/@prisma/client` ve
   `node_modules/prisma` temizlenip Prisma paketleri yeniden kurulmalidir.
+- Bu lokal DB 2026-04-22'de Prisma migration history acisindan baseline edildi:
+  repo altindaki 8 migration `_prisma_migrations` tablosunda applied olarak
+  isaretlidir ve `npm run db:migrate:prod -w apps/api` bekleyen migration
+  gormemelidir.
+- DB'deki eski enum tip adlari `booking_status`, `ingest_status` ve
+  `incident_severity` olarak korunur. Prisma schema bunlari `BookingStatus`,
+  `IngestStatus` ve `IncidentSeverity` enumlarina `@@map` ile baglar.
 
 DB constraint:
 

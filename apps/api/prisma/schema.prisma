@@ -160,6 +160,8 @@ enum BookingStatus {
   APPROVED
   REJECTED
   CANCELLED
+
+  @@map("booking_status")
 }
 
 // ── Ingest Jobs ───────────────────────────────────────────────────────────────
@@ -189,6 +191,8 @@ enum IngestStatus {
   QC
   COMPLETED
   FAILED
+
+  @@map("ingest_status")
 }
 
 // ── QC Reports ────────────────────────────────────────────────────────────────
@@ -237,6 +241,8 @@ enum IncidentSeverity {
   WARNING
   ERROR
   CRITICAL
+
+  @@map("incident_severity")
 }
 
 // ── Timeline Events (Technical Director Panel) ────────────────────────────────
