@@ -1,10 +1,10 @@
-import path from 'path';
+import path from 'node:path';
 import chokidar from 'chokidar';
 import type { FastifyInstance } from 'fastify';
 import { QUEUES } from '../../plugins/rabbitmq.js';
+import { validateIngestSourcePath, VIDEO_EXTENSIONS } from './ingest.paths.js';
 
 const WATCH_FOLDER    = process.env.WATCH_FOLDER ?? './tmp/watch';
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.mxf', '.avi', '.ts', '.mts', '.m2ts', '.mkv', '.wmv']);
 
 export function startIngestWatcher(app: FastifyInstance): void {
   const watcher = chokidar.watch(WATCH_FOLDER, {
@@ -23,16 +23,18 @@ export function startIngestWatcher(app: FastifyInstance): void {
     app.log.info({ filePath }, 'Watch folder: yeni dosya algılandı');
 
     try {
+      const sourcePath = validateIngestSourcePath(filePath);
+
       const job = await app.prisma.ingestJob.create({
-        data: { sourcePath: filePath },
+        data: { sourcePath },
       });
 
       await app.rabbitmq.publish(QUEUES.INGEST_NEW, {
         jobId:      job.id,
-        sourcePath: filePath,
+        sourcePath,
       });
 
-      app.log.info({ jobId: job.id, filePath }, 'Ingest job kuyruğa eklendi');
+      app.log.info({ jobId: job.id, sourcePath }, 'Ingest job kuyruğa eklendi');
     } catch (err) {
       app.log.error({ err, filePath }, 'Watch folder: job oluşturulamadı');
     }

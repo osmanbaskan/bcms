@@ -42,8 +42,10 @@ function validateRuntimeEnv(): void {
     'DATABASE_URL',
     'RABBITMQ_URL',
     'CORS_ORIGIN',
+    'KEYCLOAK_CLIENT_ID',
     'KEYCLOAK_ADMIN_PASSWORD',
     'INGEST_CALLBACK_SECRET',
+    'INGEST_ALLOWED_ROOTS',
   ];
 
   const missing = required.filter((name) => !process.env[name]);

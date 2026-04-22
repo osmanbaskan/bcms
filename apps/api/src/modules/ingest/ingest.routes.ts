@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { PERMISSIONS } from '@bcms/shared';
+import { validateIngestSourcePath } from './ingest.paths.js';
 
 const createIngestSchema = z.object({
   sourcePath: z.string().min(1),
@@ -87,6 +88,7 @@ export async function ingestRoutes(app: FastifyInstance) {
     schema: { tags: ['Ingest'], summary: 'Trigger a new ingest job' },
   }, async (request, reply) => {
     const dto = createIngestSchema.parse(request.body);
+    const sourcePath = validateIngestSourcePath(dto.sourcePath);
 
     if (dto.targetId) {
       const schedule = await app.prisma.schedule.findFirst({
@@ -100,7 +102,7 @@ export async function ingestRoutes(app: FastifyInstance) {
 
     const job = await app.prisma.ingestJob.create({
       data: {
-        sourcePath: dto.sourcePath,
+        sourcePath,
         targetId:   dto.targetId,
         metadata:   dto.metadata as Prisma.InputJsonValue,
       },

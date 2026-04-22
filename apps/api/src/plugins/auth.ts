@@ -27,6 +27,19 @@ const DEV_USER: JwtPayload = {
   exp: 9999999999,
 };
 
+type TokenClaims = JwtPayload & {
+  iss?: string;
+  aud?: string | string[];
+  azp?: string;
+};
+
+function hasAudience(claims: TokenClaims, clientIds: string[]): boolean {
+  const aud = claims.aud;
+  return clientIds.some((clientId) => (
+    claims.azp === clientId || (Array.isArray(aud) ? aud.includes(clientId) : aud === clientId)
+  ));
+}
+
 export const authPlugin = fp(async (app: FastifyInstance) => {
   const skipAuth = process.env.SKIP_AUTH === 'true';
 
@@ -36,6 +49,12 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
 
   const keycloakUrl  = process.env.KEYCLOAK_URL ?? 'http://localhost:8080';
   const realm        = process.env.KEYCLOAK_REALM ?? 'bcms';
+  const clientId     = process.env.KEYCLOAK_CLIENT_ID ?? 'bcms-web';
+  const issuer       = process.env.KEYCLOAK_ISSUER ?? `${keycloakUrl}/realms/${realm}`;
+  const clientIds    = (process.env.KEYCLOAK_ALLOWED_CLIENTS ?? clientId)
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
   const jwksUri      = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/certs`;
 
   const jwksClient = jwksRsa({ jwksUri, cache: true, rateLimit: true });
@@ -68,6 +87,10 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
     }
     try {
       await request.jwtVerify();
+      const claims = request.user as TokenClaims;
+      if (claims.iss !== issuer || !hasAudience(claims, clientIds)) {
+        throw new Error('Invalid token issuer or client');
+      }
     } catch {
       throw Object.assign(new Error('Invalid or expired token'), { statusCode: 401 });
     }

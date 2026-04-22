@@ -248,9 +248,15 @@ SKIP_AUTH=true
 CORS_ORIGIN=http://localhost:4200,http://172.28.204.133:4200
 OPTA_DIR=/mnt/opta-backups/OPTAfromFTP20511
 OPTA_SMB_MOUNT_POINT=/mnt/opta-backups
+KEYCLOAK_ISSUER=http://localhost:8080/realms/bcms
+KEYCLOAK_ALLOWED_CLIENTS=bcms-web,bcms-api
+INGEST_ALLOWED_ROOTS=./tmp/watch,/mnt/opta-backups/OPTAfromFTP20511
 ```
 
 Not: Lokal auth bypass artik `NODE_ENV=development` olmasina bagli degil; `SKIP_AUTH=true` gerekir.
+Production runtime `KEYCLOAK_CLIENT_ID`, `INGEST_CALLBACK_SECRET` ve
+`INGEST_ALLOWED_ROOTS` olmadan baslamaz. Ingest manuel kaynak yollari sadece
+`INGEST_ALLOWED_ROOTS` icindeki gercek video dosyalarini kabul eder.
 
 ## OPTA
 
