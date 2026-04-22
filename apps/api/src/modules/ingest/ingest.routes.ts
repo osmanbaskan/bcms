@@ -89,13 +89,10 @@ export async function ingestRoutes(app: FastifyInstance) {
     const dto = createIngestSchema.parse(request.body);
 
     if (dto.targetId) {
-      const [schedule] = await app.prisma.$queryRaw<Array<{ id: number }>>`
-        SELECT "id"
-        FROM "schedules"
-        WHERE "id" = ${dto.targetId}
-          AND "usage_scope" = 'live-plan'
-        LIMIT 1
-      `;
+      const schedule = await app.prisma.schedule.findFirst({
+        where: { id: dto.targetId, usageScope: 'live-plan' },
+        select: { id: true },
+      });
       if (!schedule) {
         throw Object.assign(new Error('Ingest hedefi canlı yayın planı kaydı olmalıdır'), { statusCode: 400 });
       }

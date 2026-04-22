@@ -11,6 +11,8 @@ Bu dosya gelistirici rehberidir. Gunluk servis kullanimi ve sahadaki baglanti bi
 - Frontend: Angular
 - Auth: Keycloak
 - Shared package: TypeScript tipleri ve ortak yardimcilar
+- Schedule veri kapsami: `schedules.usage_scope` kolonu Prisma
+  `Schedule.usageScope` alani uzerinden yonetilir.
 - Monorepo:
   - `apps/api`
   - `apps/web`
@@ -167,6 +169,21 @@ DB korumalari:
 - `schedules_usage_scope_check` constraint'i sadece `broadcast` ve `live-plan`
   degerlerini kabul eder.
 - Eski `metadata.usageScope` gecis alani temizlenmistir.
+
+Prisma Client notu:
+
+- 2026-04-22'de `prisma generate` komutu schema'yi okuyup hata vermeden
+  cikmasina ragmen `node_modules/.prisma/client` dosyalarini yenilemiyordu.
+- Temiz kurulumla `node_modules/.prisma`, `node_modules/@prisma/client` ve
+  `node_modules/prisma` silinip `prisma@5.22.0` ve `@prisma/client@5.22.0`
+  yeniden kuruldu.
+- Bu islemden sonra generated client `Schedule.usageScope` alanini yeniden
+  uretmeye basladi.
+- API artik `usage_scope` icin gecici raw SQL koprusu kullanmaz; schedule
+  listeleme, export ve ingest hedef kontrolu Prisma `usageScope` field'i ile
+  yapilir.
+- Ayni regenerate sorunu tekrar gorulurse once ayni temiz Prisma reinstall
+  proseduru uygulanmalidir; raw SQL koprusu geri eklenmemelidir.
 
 ## Web
 

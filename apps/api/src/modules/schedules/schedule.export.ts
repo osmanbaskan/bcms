@@ -33,22 +33,11 @@ export async function exportSchedulesToBuffer(
 ): Promise<Buffer> {
   const { from, to, channelId, title, usage = 'broadcast' } = opts;
 
-  const rawIds = await app.prisma.$queryRaw<Array<{ id: number }>>`
-    SELECT "id"
-    FROM "schedules"
-    WHERE ${buildExportWhereSql({ from, to, channelId, usage })}
-    ORDER BY "start_time" ASC
-  `;
-  const ids = rawIds.map((row) => row.id);
-
-  const schedules = ids.length === 0
-    ? []
-    : await app.prisma.schedule.findMany({
-      where: { id: { in: ids } },
-      include: { channel: { select: { name: true } } },
-    });
-  const order = new Map(ids.map((id, index) => [id, index]));
-  schedules.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  const schedules = await app.prisma.schedule.findMany({
+    where: buildExportWhere({ from, to, channelId, usage }),
+    include: { channel: { select: { name: true } } },
+    orderBy: { startTime: 'asc' },
+  });
 
   const workbook  = xlsx.utils.book_new();
 
@@ -91,14 +80,13 @@ export async function exportSchedulesToBuffer(
   return Buffer.from(xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
 }
 
-function buildExportWhereSql(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' | 'usage'>) {
-  const clauses: Prisma.Sql[] = [Prisma.sql`"status" <> 'CANCELLED'::"ScheduleStatus"`];
-
-  if (opts.channelId) clauses.push(Prisma.sql`"channel_id" = ${opts.channelId}`);
-  if (opts.from) clauses.push(Prisma.sql`"start_time" >= ${new Date(opts.from)}`);
-  if (opts.to) clauses.push(Prisma.sql`"start_time" <= ${new Date(opts.to)}`);
-  if (opts.usage === 'live-plan') clauses.push(Prisma.sql`"usage_scope" = 'live-plan'`);
-  if (opts.usage === 'broadcast') clauses.push(Prisma.sql`"usage_scope" = 'broadcast'`);
-
-  return Prisma.join(clauses, ' AND ');
+function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' | 'usage'>): Prisma.ScheduleWhereInput {
+  return {
+    status: { not: 'CANCELLED' },
+    ...(opts.channelId && { channelId: opts.channelId }),
+    ...(opts.from && { startTime: { gte: new Date(opts.from) } }),
+    ...(opts.to && { startTime: { lte: new Date(opts.to) } }),
+    ...(opts.usage === 'live-plan' && { usageScope: 'live-plan' }),
+    ...(opts.usage === 'broadcast' && { usageScope: 'broadcast' }),
+  };
 }

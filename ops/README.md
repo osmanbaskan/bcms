@@ -71,6 +71,17 @@ Karar mekanizmasi metadata degil bu DB kolonudur. Eski kayitlarda metadata
 icinde kalmis `usageScope` alanlari temizlenmistir, filtreleme icin
 kullanilmamalidir.
 
+API mimarisi:
+
+- `schedules.usage_scope` Prisma schema'da `Schedule.usageScope` olarak
+  tanimlidir.
+- 2026-04-22 temiz Prisma reinstall sonrasi generated client bu alani uretir.
+- Schedule listeleme/export ve Ingest hedef dogrulamasi Prisma `usageScope`
+  field'i ile yapilir; bu alan icin raw SQL uyumluluk koprusu kullanilmaz.
+- `prisma generate` tekrar schema'yi okuyup client dosyalarini yenilemezse
+  once `node_modules/.prisma`, `node_modules/@prisma/client` ve
+  `node_modules/prisma` temizlenip Prisma paketleri yeniden kurulmalidir.
+
 DB constraint:
 
 ```text

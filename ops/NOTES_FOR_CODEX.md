@@ -56,6 +56,15 @@ Live plan data rule:
 - Normal schedule records use `usageScope="broadcast"`.
 - DB has `schedules_usage_scope_check` allowing only `broadcast` and `live-plan`.
 - Old `metadata.usageScope` transition values were cleaned with migration `20260422000001_cleanup_live_plan_metadata_usage_scope`.
+- On 2026-04-22 a broken Prisma generate state was fixed by deleting
+  `node_modules/.prisma`, `node_modules/@prisma/client`, and
+  `node_modules/prisma`, then reinstalling `prisma@5.22.0` and
+  `@prisma/client@5.22.0`.
+- After that clean reinstall, generated Prisma Client includes
+  `Schedule.usageScope`; API code should use Prisma `usageScope` for
+  list/filter/create/update/export/ingest target validation.
+- Do not bring back the temporary raw SQL bridge for `usage_scope` unless the
+  user explicitly accepts a short-term emergency workaround.
 - Generic schedule consumers should use the default `/api/v1/schedules` behavior, which excludes those records.
 - Live plan UI/reporting/ingest should query `usage=live-plan` or the dedicated endpoints:
   - `/api/v1/schedules/ingest-candidates`
