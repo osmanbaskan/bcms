@@ -13,6 +13,10 @@ Bu dosya gelistirici rehberidir. Gunluk servis kullanimi ve sahadaki baglanti bi
 - Shared package: TypeScript tipleri ve ortak yardimcilar
 - Schedule veri kapsami: `schedules.usage_scope` kolonu Prisma
   `Schedule.usageScope` alani uzerinden yonetilir.
+- Frontend operasyon sekmeleri:
+  - `Stüdyo Planı`: web uzerinde haftalik studyo planlama ve PDF export
+  - `Haftalık Shift`: sol navigasyonda ayrilmis admin sekmesi
+  - `Provys İçerik Kontrol`: sol navigasyonda ayrilmis admin sekmesi
 - Monorepo:
   - `apps/api`
   - `apps/web`
@@ -283,6 +287,39 @@ Bu server:
 
 - Angular build dosyalarini sunar.
 - `/api` ve `/webhooks` isteklerini `http://127.0.0.1:3000` adresine proxy eder.
+
+### Stüdyo Planı
+
+`Stüdyo Planı` admin rolune acik, web uzerinde hazirlanan haftalik bir operasyon
+ekranidir. Kaynak dosya:
+
+```text
+apps/web/src/app/features/studio-plan/studio-plan.component.ts
+```
+
+Guncel davranis:
+
+- Sol navigasyonda `Stüdyo Planı`, `Haftalık Shift` ve
+  `Provys İçerik Kontrol` admin-only route olarak bulunur.
+- `Stüdyo Planı` Pazartesi-Pazar haftalik gorunum veya tek gun gorunumu sunar.
+- Plan tablosu 06:00-02:00 araliginda 30 dakikalik slotlardan olusur.
+- Her gun 5 studyo kolonuna bolunur: `Stüdyo 1`, `Stüdyo 2`, `Stüdyo 3`,
+  `Stüdyo 4`, `beIN Gurme`.
+- Program secimi ve renk secimi toolbar'daki select box'lardan yapilir.
+- Ayni program ve renk ardisik slotlarda secildiginde gorunumde birlesik
+  blok gibi davranir; metin tekrar etmez ve blok yuksekligine gore kuculur.
+- `Silgi` modu tek bir 30 dakikalik kutucugu temizler.
+- `Bu Haftayı Gelecek Haftaya Taşı` butonu bu haftadaki dolu hucreleri 7 gun
+  ileri tasir ve gorunumu gelecek haftaya alir.
+- `Export PDF` simdilik browser print akisini kullanir.
+
+Mimari not:
+
+- Bu ekran su an sadece frontend state ile calisir; sayfa yenilenirse hazirlanan
+  plan kaybolur.
+- Kalici veri, yetki, audit ve cok kullanicili calisma ihtiyaci dogdugunda
+  backend model/API ayrica tasarlanmalidir. Bu ekran `schedules` canli yayin
+  plani verisini henuz kullanmaz.
 
 ## Shared Package
 

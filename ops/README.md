@@ -43,6 +43,27 @@ npm run smoke:api
 - Web: http://172.28.204.133:4200
 - API: http://172.28.204.133:3000
 
+## Frontend Operasyon Sekmeleri
+
+Admin sol navigasyonunda uc yeni operasyon sekmesi bulunur:
+
+- `Stüdyo Planı` -> `/studio-plan`
+- `Haftalık Shift` -> `/weekly-shift`
+- `Provys İçerik Kontrol` -> `/provys-content-control`
+
+`Stüdyo Planı` web uzerinde haftalik plan hazirlamak ve PDF/print export almak
+icin kullanilir. Ekran 06:00-02:00 araliginda 30 dakikalik slotlarla calisir,
+gun basina 5 studyo kolonu gosterir ve program/renk secimini toolbar
+select'leriyle yapar. Ardisik ayni program-renk secimleri gorunumde birlesik
+blok gibi davranir; `Silgi` tek hucre temizler. `Bu Haftayı Gelecek Haftaya
+Taşı` butonu bu haftanin dolu hucrelerini 7 gun ileri tasir.
+
+Operasyon notu:
+
+- `Stüdyo Planı` su an frontend state ile calisir; kalici backend kaydi yoktur.
+- Sayfa yenilenirse hazirlanan plan kaybolur.
+- Bu ekran henuz `schedules` canli yayin plani verisiyle entegre degildir.
+
 ## Systemd servisleri
 
 - `bcms-opta-mount.service`

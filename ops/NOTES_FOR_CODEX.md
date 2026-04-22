@@ -25,6 +25,24 @@ Expected URLs:
 - Web: `http://172.28.204.133:4200`
 - API: `http://172.28.204.133:3000`
 
+Frontend architecture/current UI notes:
+
+- Admin navigation includes three new routes:
+  - `Stüdyo Planı` -> `/studio-plan`
+  - `Haftalık Shift` -> `/weekly-shift`
+  - `Provys İçerik Kontrol` -> `/provys-content-control`
+- `apps/web/src/app/features/studio-plan/studio-plan.component.ts` is a
+  standalone Angular component for preparing a weekly studio plan on the web.
+- The studio plan screen currently uses local frontend signal state only; it
+  does not persist to backend and does not read/write `schedules`.
+- It supports Monday-Sunday week view, single day view, 06:00-02:00 half-hour
+  cells, 5 studio columns per day, program/color select boxes, merged visual
+  runs for adjacent same program+color cells, a single-cell eraser, and a
+  button that moves the current week cells to the next week.
+- `Export PDF` currently uses `window.print()` and print CSS.
+- `weekly-shift` and `provys-content-control` are placeholder feature
+  components until the user defines their business rules.
+
 Reinstall services:
 
 ```bash

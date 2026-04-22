@@ -22,6 +22,27 @@ export const routes: Routes = [
     data: { roles: ['admin', 'planner', 'scheduler', 'viewer'] },
   },
   {
+    path: 'studio-plan',
+    loadComponent: () =>
+      import('./features/studio-plan/studio-plan.component').then((m) => m.StudioPlanComponent),
+    canActivate: [AuthGuard],
+    data: { roles: ['admin'] },
+  },
+  {
+    path: 'weekly-shift',
+    loadComponent: () =>
+      import('./features/weekly-shift/weekly-shift.component').then((m) => m.WeeklyShiftComponent),
+    canActivate: [AuthGuard],
+    data: { roles: ['admin'] },
+  },
+  {
+    path: 'provys-content-control',
+    loadComponent: () =>
+      import('./features/provys-content-control/provys-content-control.component').then((m) => m.ProvysContentControlComponent),
+    canActivate: [AuthGuard],
+    data: { roles: ['admin'] },
+  },
+  {
     path: 'channels',
     loadChildren: () =>
       import('./features/channels/channels.routes').then((m) => m.channelsRoutes),
