@@ -181,6 +181,14 @@ DB korumalari:
   filtrelerini destekler.
 - Eski `metadata.usageScope` gecis alani temizlenmistir.
 
+Tutarlilik kurallari:
+
+- Schedule ve booking update islemleri `If-Match` version header'i geldiyse
+  `id + version` kosulu ile atomik uygulanir; stale update `412` doner.
+- Playout gecisleri kontrolludur: sadece `CONFIRMED` kayit `ON_AIR`
+  yapilabilir, sadece `ON_AIR` kayit `COMPLETED` yapilabilir.
+- Ayni anda ayni kanalda ikinci bir `ON_AIR` schedule baslatilamaz.
+
 Prisma Client notu:
 
 - 2026-04-22'de `prisma generate` komutu schema'yi okuyup hata vermeden

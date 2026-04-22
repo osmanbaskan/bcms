@@ -158,21 +158,36 @@ export class ScheduleService {
       }
     }
 
-    const updated = await this.app.prisma.schedule.update({
-      where: { id },
-      data: {
-        ...(dto.channelId !== undefined && { channelId: dto.channelId }),
-        ...(dto.startTime && { startTime: new Date(dto.startTime) }),
-        ...(dto.endTime   && { endTime:   new Date(dto.endTime) }),
-        ...(dto.title     && { title:     dto.title }),
-        ...(dto.status    && { status:    dto.status }),
-        ...(dto.contentId !== undefined && { contentId: dto.contentId }),
-        ...(dto.usageScope !== undefined && { usageScope: dto.usageScope }),
-        ...(dto.metadata && { ...reportDimensions(dto.metadata) }),
-        ...(dto.metadata  && { metadata: dto.metadata as Prisma.InputJsonValue }),
-        version: { increment: 1 },
-      },
-      include: { channel: true },
+    const data: Prisma.ScheduleUpdateManyMutationInput = {
+      ...(dto.channelId !== undefined && { channelId: dto.channelId }),
+      ...(dto.startTime && { startTime: new Date(dto.startTime) }),
+      ...(dto.endTime   && { endTime:   new Date(dto.endTime) }),
+      ...(dto.title     && { title:     dto.title }),
+      ...(dto.status    && { status:    dto.status }),
+      ...(dto.contentId !== undefined && { contentId: dto.contentId }),
+      ...(dto.usageScope !== undefined && { usageScope: dto.usageScope }),
+      ...(dto.metadata && { ...reportDimensions(dto.metadata) }),
+      ...(dto.metadata  && { metadata: dto.metadata as Prisma.InputJsonValue }),
+      version: { increment: 1 },
+    };
+
+    const updated = await this.app.prisma.$transaction(async (tx) => {
+      const result = await tx.schedule.updateMany({
+        where: {
+          id,
+          ...(ifMatchVersion !== undefined && { version: ifMatchVersion }),
+        },
+        data,
+      });
+
+      if (result.count !== 1) {
+        throw Object.assign(new Error('Schedule version conflict'), { statusCode: ifMatchVersion !== undefined ? 412 : 404 });
+      }
+
+      return tx.schedule.findUniqueOrThrow({
+        where: { id },
+        include: { channel: true },
+      });
     });
 
     await writeAuditLog(this.app, {

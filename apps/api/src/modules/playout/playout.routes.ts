@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { PERMISSIONS } from '@bcms/shared';
 
 const goLiveSchema = z.object({
@@ -10,6 +11,12 @@ const goLiveSchema = z.object({
 const endSchema = z.object({
   tcOut: z.string().regex(/^\d{2}:\d{2}:\d{2}[:;]\d{2}$/).optional(),
   note:  z.string().optional(),
+});
+
+const timelineSchema = z.object({
+  tc:   z.string().regex(/^\d{2}:\d{2}:\d{2}[:;]\d{2}$/).optional(),
+  type: z.string().min(1).max(50).optional(),
+  note: z.string().max(1000).optional(),
 });
 
 export async function playoutRoutes(app: FastifyInstance) {
@@ -78,17 +85,37 @@ export async function playoutRoutes(app: FastifyInstance) {
     const dto = goLiveSchema.parse(request.body ?? {});
     const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'system';
 
-    const schedule = await app.prisma.schedule.findUnique({ where: { id } });
-    if (!schedule) throw Object.assign(new Error('Schedule bulunamadı'), { statusCode: 404 });
-    if (schedule.status === 'ON_AIR') throw Object.assign(new Error('Zaten yayında'), { statusCode: 409 });
+    const updated = await app.prisma.$transaction(async (tx) => {
+      const schedule = await tx.schedule.findUnique({ where: { id } });
+      if (!schedule) throw Object.assign(new Error('Schedule bulunamadı'), { statusCode: 404 });
+      if (schedule.status !== 'CONFIRMED') {
+        throw Object.assign(new Error('Sadece CONFIRMED durumundaki program yayına alınabilir'), { statusCode: 409 });
+      }
 
-    const [updated] = await app.prisma.$transaction([
-      app.prisma.schedule.update({
+      if (schedule.channelId != null) {
+        const activeOnChannel = await tx.schedule.findFirst({
+          where: {
+            channelId: schedule.channelId,
+            status: 'ON_AIR',
+            id: { not: id },
+          },
+          select: { id: true, title: true },
+        });
+        if (activeOnChannel) {
+          throw Object.assign(new Error('Bu kanalda zaten ON_AIR program var'), {
+            statusCode: 409,
+            activeSchedule: activeOnChannel,
+          });
+        }
+      }
+
+      const live = await tx.schedule.update({
         where: { id },
         data:  { status: 'ON_AIR' },
         include: { channel: true },
-      }),
-      app.prisma.timelineEvent.create({
+      });
+
+      await tx.timelineEvent.create({
         data: {
           scheduleId: id,
           tc:         dto.tcIn ?? tcNow(),
@@ -96,8 +123,10 @@ export async function playoutRoutes(app: FastifyInstance) {
           note:       dto.note ?? `Yayın başladı`,
           createdBy:  user,
         },
-      }),
-    ]);
+      });
+
+      return live;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     reply.status(200).send(updated);
   });
@@ -112,16 +141,20 @@ export async function playoutRoutes(app: FastifyInstance) {
     const dto = endSchema.parse(request.body ?? {});
     const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'system';
 
-    const schedule = await app.prisma.schedule.findUnique({ where: { id } });
-    if (!schedule) throw Object.assign(new Error('Schedule bulunamadı'), { statusCode: 404 });
+    const updated = await app.prisma.$transaction(async (tx) => {
+      const schedule = await tx.schedule.findUnique({ where: { id } });
+      if (!schedule) throw Object.assign(new Error('Schedule bulunamadı'), { statusCode: 404 });
+      if (schedule.status !== 'ON_AIR') {
+        throw Object.assign(new Error('Sadece ON_AIR durumundaki program bitirilebilir'), { statusCode: 409 });
+      }
 
-    const [updated] = await app.prisma.$transaction([
-      app.prisma.schedule.update({
+      const completed = await tx.schedule.update({
         where: { id },
         data:  { status: 'COMPLETED', finishedAt: new Date() },
         include: { channel: true },
-      }),
-      app.prisma.timelineEvent.create({
+      });
+
+      await tx.timelineEvent.create({
         data: {
           scheduleId: id,
           tc:         dto.tcOut ?? tcNow(),
@@ -129,8 +162,10 @@ export async function playoutRoutes(app: FastifyInstance) {
           note:       dto.note ?? `Yayın tamamlandı`,
           createdBy:  user,
         },
-      }),
-    ]);
+      });
+
+      return completed;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     reply.status(200).send(updated);
   });
@@ -154,7 +189,7 @@ export async function playoutRoutes(app: FastifyInstance) {
     schema: { tags: ['Playout'], summary: 'Zaman tüneline not ekle' },
   }, async (request, reply) => {
     const id = Number(request.params.id);
-    const body = request.body as { tc?: string; type?: string; note?: string };
+    const body = timelineSchema.parse(request.body ?? {});
     const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'system';
 
     const event = await app.prisma.timelineEvent.create({

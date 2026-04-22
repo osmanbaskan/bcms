@@ -79,15 +79,30 @@ export class BookingService {
       );
     }
 
-    const updated = await this.app.prisma.booking.update({
-      where: { id },
-      data: {
-        ...(dto.status   && { status: dto.status }),
-        ...(dto.notes    !== undefined && { notes: dto.notes }),
-        ...(dto.metadata && { metadata: dto.metadata as Prisma.InputJsonValue }),
-        version: { increment: 1 },
-      },
-      include: { team: true },
+    const data: Prisma.BookingUpdateManyMutationInput = {
+      ...(dto.status   && { status: dto.status }),
+      ...(dto.notes    !== undefined && { notes: dto.notes }),
+      ...(dto.metadata && { metadata: dto.metadata as Prisma.InputJsonValue }),
+      version: { increment: 1 },
+    };
+
+    const updated = await this.app.prisma.$transaction(async (tx) => {
+      const result = await tx.booking.updateMany({
+        where: {
+          id,
+          ...(ifMatchVersion !== undefined && { version: ifMatchVersion }),
+        },
+        data,
+      });
+
+      if (result.count !== 1) {
+        throw Object.assign(new Error('Booking version conflict'), { statusCode: ifMatchVersion !== undefined ? 412 : 404 });
+      }
+
+      return tx.booking.findUniqueOrThrow({
+        where: { id },
+        include: { team: true },
+      });
     });
 
     await writeAuditLog(this.app, { entityType: 'Booking', entityId: id, action: 'UPDATE', before: existing, after: updated, request });
