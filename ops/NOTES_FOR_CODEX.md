@@ -97,3 +97,10 @@ Security/dependency notes:
   parser is selected and audited.
 - `npm run smoke:api` runs health, schedule optimistic lock, booking optimistic
   lock, and playout transition guard checks against the local API.
+- GitHub Actions CI lives at `.github/workflows/ci.yml`. It runs npm audit,
+  Prisma generate, empty DB bootstrap, full build, starts the API with
+  `BCMS_BACKGROUND_SERVICES=none`, and runs `npm run smoke:api`.
+- Angular production build has realistic bundle budgets and allows the two
+  CommonJS dependencies currently pulled by Keycloak (`base64-js`, `js-sha256`).
+  Google Fonts inlining is disabled so CI builds do not depend on fonts network
+  fetches.

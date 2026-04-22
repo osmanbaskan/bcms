@@ -92,6 +92,14 @@ Bu test health endpoint'ini, schedule/booking optimistic lock davranisini ve
 playout state guard'ini kontrol eder. Varsayilan API adresi
 `http://127.0.0.1:3000/api/v1`; farkli ortam icin `BCMS_API_URL` verilebilir.
 
+CI:
+
+- GitHub Actions workflow'u `.github/workflows/ci.yml` altindadir.
+- Workflow `npm ci`, `npm audit --audit-level=high`, Prisma generate, bos DB
+  bootstrap, tum repo build ve `npm run smoke:api` adimlarini calistirir.
+- CI PostgreSQL ve RabbitMQ servis container'lari ile calisir; API arka plan
+  watcher'lari `BCMS_BACKGROUND_SERVICES=none` ile kapali tutulur.
+
 ## API
 
 API kaynak kodu:

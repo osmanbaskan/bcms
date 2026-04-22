@@ -100,6 +100,14 @@ Excel notu:
   yapilir.
 - Import sadece `.xlsx` kabul eder; `.xls` desteklenmez.
 
+CI notu:
+
+- GitHub Actions workflow'u `.github/workflows/ci.yml` dosyasindadir.
+- CI bos PostgreSQL DB'yi `./ops/scripts/bcms-db-bootstrap-empty.sh` ile
+  hazirlar ve `npm run smoke:api` calistirir.
+- CI ortaminda watcher/background servisleri `BCMS_BACKGROUND_SERVICES=none`
+  ile kapatilir.
+
 DB constraint:
 
 ```text
