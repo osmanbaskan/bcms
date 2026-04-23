@@ -74,8 +74,8 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
   { label: 'Sorunlular', value: 'issues' },
 ];
 
-const PORT_BOARD_START_MINUTE = 6 * 60;
-const PORT_BOARD_END_MINUTE = 27 * 60;
+const PORT_BOARD_START_MINUTE = 8 * 60;
+const PORT_BOARD_END_MINUTE = 26 * 60;
 const PORT_BOARD_SLOT_MINUTES = 30;
 
 const TR_DATE_FORMATS = {
@@ -703,8 +703,31 @@ export class IngestListComponent implements OnInit, OnDestroy {
     }
 
     const times = this.portBoardTimeLabels();
+    const columnRows = this.splitPortColumns(columns);
     const gridTemplateRows = this.timeGridTemplate();
-    const gridTemplateColumns = `96px repeat(${columns.length}, minmax(220px, 1fr))`;
+    const renderBoardRow = (rowColumns: IngestPortBoardColumnView[]) => {
+      const gridTemplateColumns = `96px repeat(${rowColumns.length}, minmax(180px, 1fr))`;
+      return `
+      <section class="board" style="grid-template-columns:${gridTemplateColumns}">
+        <div class="head">Saat</div>
+        ${rowColumns.map((column) => `<div class="head">${this.escapeHtml(column.port)}</div>`).join('')}
+        <div class="times">
+          ${times.map((time) => `<div class="time" style="grid-row:${time.gridRow}">${time.label}</div>`).join('')}
+        </div>
+        ${rowColumns.map((column) => `
+          <div class="col">
+            ${times.map((time) => `<div class="line" style="grid-row:${time.gridRow}"></div>`).join('')}
+            ${column.items.map((item) => `
+              <div class="item ${item.overlap ? 'overlap' : ''}" style="grid-row:${item.gridRow}">
+                <div class="t">${item.row.startTime} - ${item.row.endTime}</div>
+                <div class="ttl">${this.escapeHtml(item.row.title)}</div>
+                ${item.overlap ? '<div class="w">Cakisma</div>' : ''}
+              </div>
+            `).join('')}
+          </div>
+        `).join('')}
+      </section>`;
+    };
     const html = `<!doctype html>
 <html lang="tr">
   <head>
@@ -717,7 +740,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
       .sheet { width: 100%; }
       h1 { margin: 0 0 4px; font-size: 22px; }
       p { margin: 0 0 12px; color: #516579; font-size: 12px; }
-      .board { display: grid; grid-template-columns: ${gridTemplateColumns}; border: 1px solid #2c4360; }
+      .board { display: grid; border: 1px solid #2c4360; margin-bottom: 8mm; }
       .head { min-height: 34px; display: flex; align-items: center; justify-content: center; padding: 6px; background: #203754; color: #f5d24b; font-weight: 700; border-right: 1px solid #2c4360; border-bottom: 1px solid #2c4360; font-size: 12px; }
       .head:first-child { color: #fff; }
       .times, .col { position: relative; display: grid; grid-template-rows: ${gridTemplateRows}; min-height: 940px; }
@@ -738,27 +761,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
     <div class="sheet">
     <h1>Ingest Port Gorunumu</h1>
     <p>${this.formatBoardDateLabel()}</p>
-    <section class="board">
-      <div class="head">Saat</div>
-      ${columns.map((column) => `<div class="head">${this.escapeHtml(column.port)}</div>`).join('')}
-      <div class="times">
-        ${times.map((time) => `<div class="time" style="grid-row:${time.gridRow}">${time.label}</div>`).join('')}
-      </div>
-      ${columns.map((column) => `
-        <div class="col">
-          ${times.map((time) => `<div class="line" style="grid-row:${time.gridRow}"></div>`).join('')}
-          ${column.items.map((item) => `
-            <div class="item ${item.row.source === 'studio-plan' ? 'studio' : ''} ${item.overlap ? 'overlap' : ''}" style="grid-row:${item.gridRow}">
-              <div class="t">${item.row.startTime} - ${item.row.endTime}</div>
-              <div class="ttl">${this.escapeHtml(item.row.title)}</div>
-              <div class="m">${this.escapeHtml(item.row.location)}</div>
-              <div class="m">${this.escapeHtml(item.row.sourceLabel)}</div>
-              ${item.overlap ? '<div class="w">Cakisma</div>' : ''}
-            </div>
-          `).join('')}
-        </div>
-      `).join('')}
-    </section>
+    ${columnRows.map((rowColumns) => renderBoardRow(rowColumns)).join('')}
     </div>
     <script>window.print();</script>
   </body>
@@ -1073,5 +1076,10 @@ export class IngestListComponent implements OnInit, OnDestroy {
       .replaceAll('>', '&gt;')
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
+  }
+
+  private splitPortColumns(columns: IngestPortBoardColumnView[]): IngestPortBoardColumnView[][] {
+    const midpoint = Math.ceil(columns.length / 2);
+    return [columns.slice(0, midpoint), columns.slice(midpoint)].filter((row) => row.length > 0);
   }
 }

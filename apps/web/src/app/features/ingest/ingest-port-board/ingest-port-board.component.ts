@@ -60,47 +60,47 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
       </div>
 
       <div class="port-board-scroll">
-        <div class="port-board-frame">
-          <div class="port-board-times">
-            <div class="port-board-times-head">Saat</div>
-            <div class="port-board-times-body" [style.grid-template-rows]="gridTemplateRows">
-              <div class="port-board-time-cell" *ngFor="let time of timeLabels" [style.grid-row]="time.gridRow">{{ time.label }}</div>
-            </div>
-          </div>
-
-          <div
-            class="port-board-grid"
-            cdkDropList
-            cdkDropListOrientation="horizontal"
-            [cdkDropListData]="columns"
-            (cdkDropListDropped)="onDrop($event)"
-            [style.grid-template-columns]="gridTemplateColumns()"
-          >
-            <section class="port-board-column" cdkDrag *ngFor="let column of columns; trackBy: trackPort">
-              <header class="port-board-column-head">
-                <button class="port-drag-handle" type="button" cdkDragHandle aria-label="Port kolonunu tası">
-                  <mat-icon>drag_indicator</mat-icon>
-                </button>
-                <span>{{ column.port }}</span>
-              </header>
-
-              <div class="port-board-column-body" [style.grid-template-rows]="gridTemplateRows">
-                <div class="port-board-slot-line" *ngFor="let time of timeLabels; trackBy: trackTime" [style.grid-row]="time.gridRow"></div>
-
-                <article
-                  class="port-board-item"
-                  [class.overlap]="item.overlap"
-                  [style.grid-row]="item.gridRow"
-                  *ngFor="let item of column.items; trackBy: trackItem"
-                >
-                  <div class="port-board-time">{{ item.row.startTime }} - {{ item.row.endTime }}</div>
-                  <strong>{{ item.row.title }}</strong>
-                  <span>{{ item.row.location }}</span>
-                  <span>{{ item.row.sourceLabel }}</span>
-                  <span class="port-board-warning" *ngIf="item.overlap">Cakisma</span>
-                </article>
+        <div class="port-board-stack">
+          <div class="port-board-frame" *ngFor="let rowColumns of portColumnRows(); let rowIndex = index">
+            <div class="port-board-times">
+              <div class="port-board-times-head">Saat</div>
+              <div class="port-board-times-body" [style.grid-template-rows]="gridTemplateRows">
+                <div class="port-board-time-cell" *ngFor="let time of timeLabels; trackBy: trackTime" [style.grid-row]="time.gridRow">{{ time.label }}</div>
               </div>
-            </section>
+            </div>
+
+            <div
+              class="port-board-grid"
+              cdkDropList
+              cdkDropListOrientation="horizontal"
+              [cdkDropListData]="rowColumns"
+              (cdkDropListDropped)="onDrop($event, rowIndex)"
+              [style.grid-template-columns]="gridTemplateColumns(rowColumns)"
+            >
+              <section class="port-board-column" cdkDrag *ngFor="let column of rowColumns; trackBy: trackPort">
+                <header class="port-board-column-head">
+                  <button class="port-drag-handle" type="button" cdkDragHandle aria-label="Port kolonunu tası">
+                    <mat-icon>drag_indicator</mat-icon>
+                  </button>
+                  <span>{{ column.port }}</span>
+                </header>
+
+                <div class="port-board-column-body" [style.grid-template-rows]="gridTemplateRows">
+                  <div class="port-board-slot-line" *ngFor="let time of timeLabels; trackBy: trackTime" [style.grid-row]="time.gridRow"></div>
+
+                  <article
+                    class="port-board-item"
+                    [class.overlap]="item.overlap"
+                    [style.grid-row]="item.gridRow"
+                    *ngFor="let item of column.items; trackBy: trackItem"
+                  >
+                    <div class="port-board-time">{{ item.row.startTime }} - {{ item.row.endTime }}</div>
+                    <strong>{{ item.row.title }}</strong>
+                    <span class="port-board-warning" *ngIf="item.overlap">Cakisma</span>
+                  </article>
+                </div>
+              </section>
+            </div>
           </div>
         </div>
       </div>
@@ -121,6 +121,7 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-section.full-page .port-board-scroll{height:calc(100vh - 250px);overflow:auto}
     .port-board-section.is-fullscreen{margin:0;border:0;border-radius:0}
     .port-board-section.is-fullscreen .port-board-scroll{height:calc(100vh - 72px)}
+    .port-board-stack{display:flex;flex-direction:column;gap:16px;padding-bottom:16px}
     .port-board-frame{display:grid;grid-template-columns:84px minmax(0,1fr);min-width:max-content}
     .port-board-times{border-right:1px solid rgba(255,255,255,.08);background:#203754}
     .port-board-times-head,.port-board-column-head{justify-content:center;min-height:42px;border-bottom:1px solid rgba(255,255,255,.08);background:#203754;font-weight:800}
@@ -135,7 +136,7 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-times-body{position:sticky;left:0;z-index:2}
     .port-drag-handle{justify-content:center;width:22px;height:22px;padding:0;border:0;background:transparent;color:#d9e6f2;cursor:move}
     .port-drag-handle mat-icon{font-size:18px;width:18px;height:18px}
-    .port-board-column-body{position:relative;display:grid;padding:0;min-height:1176px;background:rgba(189,210,232,.08)}
+    .port-board-column-body{position:relative;display:grid;padding:0;min-height:1008px;background:rgba(189,210,232,.08)}
     .port-board-slot-line{border-bottom:1px solid rgba(255,255,255,.07)}
     .port-board-item{z-index:1;margin:2px 4px;padding:8px 8px 9px;border:1px solid rgba(255,255,255,.08);background:#c7d8ec;color:#17304d;display:flex;flex-direction:column;gap:4px;overflow:hidden}
     .port-board-item.overlap{background:#ffd9d9;border-color:#ef5350}
@@ -161,8 +162,13 @@ export class IngestPortBoardComponent {
   trackTime = (_: number, time: IngestPortBoardTimeLabel) => time.label;
   trackItem = (_: number, item: IngestPortBoardItemView) => item.row.id;
 
-  gridTemplateColumns(): string {
-    return `repeat(${this.columns.length}, minmax(${this.currentColumnWidth()}px, 1fr))`;
+  portColumnRows(): IngestPortBoardColumnView[][] {
+    const midpoint = Math.ceil(this.columns.length / 2);
+    return [this.columns.slice(0, midpoint), this.columns.slice(midpoint)].filter((row) => row.length > 0);
+  }
+
+  gridTemplateColumns(columns: IngestPortBoardColumnView[]): string {
+    return `repeat(${columns.length}, minmax(${this.currentColumnWidth()}px, 1fr))`;
   }
 
   setZoom(zoom: PortBoardZoom) {
@@ -186,10 +192,14 @@ export class IngestPortBoardComponent {
     this.isFullscreen = !!document.fullscreenElement;
   }
 
-  onDrop(event: CdkDragDrop<IngestPortBoardColumnView[]>) {
+  onDrop(event: CdkDragDrop<IngestPortBoardColumnView[]>, rowIndex: number) {
     if (event.previousIndex === event.currentIndex) return;
+    const rows = this.portColumnRows().map((row) => [...row]);
+    const targetRow = rows[rowIndex] ?? [];
     const nextOrder = this.columns.map((column) => column.port);
-    moveItemInArray(nextOrder, event.previousIndex, event.currentIndex);
+    const startOffset = rows.slice(0, rowIndex).reduce((sum, row) => sum + row.length, 0);
+    moveItemInArray(targetRow, event.previousIndex, event.currentIndex);
+    nextOrder.splice(startOffset, targetRow.length, ...targetRow.map((column) => column.port));
     this.portOrderChange.emit(nextOrder);
   }
 
