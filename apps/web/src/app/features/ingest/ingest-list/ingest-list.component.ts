@@ -161,7 +161,6 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
                 <span>Kanal / Stüdyo</span>
                 <span>Kayıt Portu</span>
                 <span>Not</span>
-                <span>İşlem</span>
               </div>
 
               @for (row of filteredPlanningRows(); track row.id) {
@@ -170,19 +169,18 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
                   <strong class="time-range">{{ row.startTime }} - {{ row.endTime }}</strong>
                   <span>{{ row.title }}</span>
                   <span>{{ row.location }}</span>
-                  <mat-form-field class="inline-field" appearance="outline">
-                    <mat-select [(ngModel)]="row.recordingPort">
-                      <mat-option value="">Port seçilmedi</mat-option>
-                      @for (port of activeRecordingPorts(); track port.id) {
-                        <mat-option [value]="port.name">{{ port.name }}</mat-option>
-                      }
-                    </mat-select>
-                  </mat-form-field>
+                  <div class="port-cell" [class.assigned]="row.recordingPort">
+                    <span class="port-dot"></span>
+                    <mat-form-field class="inline-field" appearance="outline">
+                      <mat-select [(ngModel)]="row.recordingPort" (selectionChange)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)">
+                        <mat-option value="">Port seçilmedi</mat-option>
+                        @for (port of activeRecordingPorts(); track port.id) {
+                          <mat-option [value]="port.name">{{ port.name }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
                   <span>{{ row.note }}</span>
-                  <button mat-stroked-button class="row-save-button" (click)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)">
-                    <mat-icon>save</mat-icon>
-                    Kaydet
-                  </button>
                 </div>
               }
             </div>
@@ -396,20 +394,22 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
     .plan-filter-button.active { border-color: #9bd3ff; background: rgba(155,211,255,0.14); color: #ffffff; }
     .planning-tools { padding: 12px 14px 0; }
     .planning-table-wrap { overflow-x: auto; }
-    .planning-table { min-width: 980px; }
+    .planning-table { min-width: 920px; }
     .planning-head,
-    .planning-row { display: grid; grid-template-columns: 126px 104px minmax(220px, 1fr) 140px 170px minmax(120px, 0.6fr) 104px; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .planning-row { display: grid; grid-template-columns: 126px 104px minmax(220px, 1fr) 140px 190px minmax(150px, 0.7fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
     .planning-head { color: #9aa2b3; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
     .planning-row { font-size: 0.86rem; }
     .planning-row:nth-child(odd) { background: rgba(255,255,255,0.025); }
     .source-pill { display: inline-flex; justify-content: center; padding: 4px 8px; border-radius: 999px; color: #04233d; background: #9bd3ff; font-size: 0.72rem; font-weight: 800; }
     .source-pill.studio { color: #2b1700; background: #ffd166; }
     .time-range { font-variant-numeric: tabular-nums; }
+    .port-cell { display: grid; grid-template-columns: 10px 1fr; align-items: center; gap: 8px; }
+    .port-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.26); }
+    .port-cell.assigned .port-dot { background: #66bb6a; box-shadow: 0 0 0 3px rgba(102,187,106,0.14); }
     .inline-field { width: 100%; }
     .inline-field ::ng-deep .mat-mdc-form-field-subscript-wrapper { display: none; }
     .inline-field ::ng-deep .mat-mdc-text-field-wrapper { height: 40px; }
     .inline-field ::ng-deep .mat-mdc-form-field-infix { min-height: 40px; padding-top: 8px; padding-bottom: 8px; }
-    .row-save-button { min-width: 96px; }
     .mono            { font-family: monospace; font-size: 0.8rem; }
     .inline-progress { width: 80px; margin-left: 8px; }
     .total-label     { margin-top: 8px; font-size: 0.85rem; opacity: 0.7; }
@@ -789,6 +789,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
           updated.delete(row.sourceKey);
           return updated;
         });
+        this.loadIngestPlanItems(row.day);
         this.snack.open(`Ingest plan satırı kaydedilemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
       },
     });

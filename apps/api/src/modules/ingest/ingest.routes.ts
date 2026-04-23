@@ -69,6 +69,22 @@ function dateOnly(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
+function minuteToTime(value: number | null): string {
+  if (value === null) return '--:--';
+  const hour = Math.floor(value / 60) % 24;
+  const minute = value % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function describeSourceKey(sourceKey: string): string {
+  const [type, day, location, minute, ...titleParts] = sourceKey.split(':');
+  if (type === 'studio' && day && location && minute && titleParts.length > 0) {
+    return `${titleParts.join(':')} · ${location}`;
+  }
+  if (type === 'live') return `Canlı yayın #${day}`;
+  return sourceKey;
+}
+
 function mapPlanItem(item: {
   id: number;
   sourceType: string;
@@ -226,7 +242,11 @@ export async function ingestRoutes(app: FastifyInstance) {
         select: { sourceKey: true, recordingPort: true, plannedStartMinute: true, plannedEndMinute: true },
       });
       if (conflict) {
-        throw Object.assign(new Error(`${recordingPort} seçili saat aralığında başka bir işe atanmış`), { statusCode: 409 });
+        const conflictRange = `${minuteToTime(conflict.plannedStartMinute)} - ${minuteToTime(conflict.plannedEndMinute)}`;
+        throw Object.assign(
+          new Error(`${recordingPort} ${conflictRange} aralığında "${describeSourceKey(conflict.sourceKey)}" için atanmış`),
+          { statusCode: 409 },
+        );
       }
     }
 
