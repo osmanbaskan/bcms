@@ -261,6 +261,39 @@ model TimelineEvent {
   @@map("timeline_events")
 }
 
+// ── Studio Plans ──────────────────────────────────────────────────────────────
+model StudioPlan {
+  id        Int      @id @default(autoincrement())
+  weekStart DateTime @unique @map("week_start") @db.Date
+  version   Int      @default(1)
+  createdBy String   @map("created_by") @db.VarChar(100)
+  updatedBy String?  @map("updated_by") @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  slots StudioPlanSlot[]
+
+  @@map("studio_plans")
+}
+
+model StudioPlanSlot {
+  id          Int      @id @default(autoincrement())
+  planId      Int      @map("plan_id")
+  dayDate     DateTime @map("day_date") @db.Date
+  studio      String   @db.VarChar(100)
+  startMinute Int      @map("start_minute")
+  program     String   @db.VarChar(300)
+  color       String   @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  plan StudioPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, dayDate, studio, startMinute])
+  @@index([dayDate, studio])
+  @@map("studio_plan_slots")
+}
+
 // ── Signal Telemetry ──────────────────────────────────────────────────────────
 model SignalTelemetry {
   id         Int      @id @default(autoincrement())

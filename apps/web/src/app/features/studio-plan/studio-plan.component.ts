@@ -1,11 +1,14 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
+import { finalize } from 'rxjs';
+import { StudioPlanService } from '../../core/services/studio-plan.service';
+import type { StudioPlan, StudioPlanSlot } from '@bcms/shared';
 
 interface StudioPlanDay {
   id: string;
@@ -34,16 +37,6 @@ const DAY_LABELS = [
 ];
 
 const DEFAULT_START_DATE = mondayFor(new Date());
-const INITIAL_DAYS: StudioPlanDay[] = [
-  { id: '2026-04-20', label: 'Pazartesi', date: '20.04.2026' },
-  { id: '2026-04-21', label: 'Salı', date: '21.04.2026' },
-  { id: '2026-04-22', label: 'Çarşamba', date: '22.04.2026' },
-  { id: '2026-04-23', label: 'Perşembe', date: '23.04.2026' },
-  { id: '2026-04-24', label: 'Cuma', date: '24.04.2026' },
-  { id: '2026-04-25', label: 'Cumartesi', date: '25.04.2026' },
-  { id: '2026-04-26', label: 'Pazar', date: '26.04.2026' },
-];
-
 const STUDIOS = [
   'Stüdyo 1',
   'Stüdyo 2',
@@ -217,6 +210,13 @@ function toDateInputValue(date: Date): string {
           <mat-icon>ink_eraser</mat-icon>
           Silgi
         </button>
+
+        <span class="save-state" *ngIf="loading()">Yükleniyor...</span>
+        <span class="save-state" *ngIf="saving()">Kaydediliyor...</span>
+        <span class="save-state error" *ngIf="saveError()">{{ saveError() }}</span>
+        <span class="save-state" *ngIf="!saving() && !loading() && lastSavedAt()">
+          Kaydedildi · {{ lastSavedAt() }}
+        </span>
       </div>
 
       <div id="studio-plan-export" class="plan-shell">
@@ -347,6 +347,16 @@ function toDateInputValue(date: Date): string {
       color: #fff !important;
       background: #b42318 !important;
       border-color: #b42318 !important;
+    }
+
+    .save-state {
+      color: #475467;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .save-state.error {
+      color: #b42318;
     }
 
     .plan-shell {
@@ -552,8 +562,10 @@ function toDateInputValue(date: Date): string {
     }
   `],
 })
-export class StudioPlanComponent {
-  readonly days = signal<StudioPlanDay[]>(INITIAL_DAYS);
+export class StudioPlanComponent implements OnInit {
+  private readonly studioPlanService = inject(StudioPlanService);
+
+  readonly days = signal<StudioPlanDay[]>([]);
   readonly studios = STUDIOS;
   readonly programs = PROGRAMS;
   readonly colors = COLORS;
@@ -563,6 +575,10 @@ export class StudioPlanComponent {
   readonly viewMode = signal<'week' | 'day'>('week');
   readonly cells = signal<Record<string, StudioPlanAssignment>>({});
   readonly eraserMode = signal(false);
+  readonly loading = signal(false);
+  readonly saving = signal(false);
+  readonly saveError = signal('');
+  readonly lastSavedAt = signal('');
 
   weekStart = DEFAULT_START_DATE;
   selectedDay = DEFAULT_START_DATE;
@@ -580,6 +596,10 @@ export class StudioPlanComponent {
     return this.days().filter((day) => day.id === this.selectedDay);
   });
 
+  ngOnInit(): void {
+    this.onWeekStartChange();
+  }
+
   onWeekStartChange(): void {
     const monday = this.normalizeToMonday(this.weekStart);
     this.weekStart = monday;
@@ -590,6 +610,8 @@ export class StudioPlanComponent {
     if (!nextDays.some((day) => day.id === this.selectedDay)) {
       this.selectedDay = nextDays[0]?.id ?? monday;
     }
+
+    this.loadPlan(monday);
   }
 
   assignProgram(day: string, studio: string, time: string): void {
@@ -600,6 +622,7 @@ export class StudioPlanComponent {
         delete next[key];
         return next;
       });
+      this.saveCurrentWeek();
       return;
     }
 
@@ -612,6 +635,7 @@ export class StudioPlanComponent {
       else next[key] = { program, color };
       return next;
     });
+    this.saveCurrentWeek();
   }
 
   programAt(day: string, studio: string, time: string): string {
@@ -672,6 +696,7 @@ export class StudioPlanComponent {
       }
       return next;
     });
+    this.saveCurrentWeek();
   }
 
   moveCurrentWeekToNextWeek(): void {
@@ -705,6 +730,8 @@ export class StudioPlanComponent {
     this.days.set(nextDays);
     this.selectedDay = nextDays[0]?.id ?? targetStart;
     this.viewMode.set('week');
+    this.saveWeek(sourceStart, []);
+    this.saveCurrentWeek();
   }
 
   exportPlan(): void {
@@ -713,6 +740,81 @@ export class StudioPlanComponent {
 
   private cellKey(day: string, studio: string, time: string): string {
     return `${day}::${studio}::${time}`;
+  }
+
+  private loadPlan(weekStart: string): void {
+    this.loading.set(true);
+    this.saveError.set('');
+    this.studioPlanService.getPlan(weekStart)
+      .pipe(finalize(() => this.loading.set(false)))
+      .subscribe({
+        next: (plan) => this.applyPlan(plan),
+        error: () => this.saveError.set('Plan yüklenemedi'),
+      });
+  }
+
+  private applyPlan(plan: StudioPlan): void {
+    const next: Record<string, StudioPlanAssignment> = {};
+    for (const slot of plan.slots) {
+      next[this.cellKey(slot.day, slot.studio, slot.time)] = {
+        program: slot.program,
+        color: slot.color,
+      };
+    }
+    this.cells.set(next);
+    this.lastSavedAt.set(plan.updatedAt ? this.formatSaveTime(plan.updatedAt) : '');
+  }
+
+  private saveCurrentWeek(): void {
+    this.saveWeek(this.weekStart, this.slotsForWeek(this.weekStart));
+  }
+
+  private saveWeek(weekStart: string, slots: StudioPlanSlot[]): void {
+    this.saving.set(true);
+    this.saveError.set('');
+    this.studioPlanService.savePlan(weekStart, { slots })
+      .pipe(finalize(() => this.saving.set(false)))
+      .subscribe({
+        next: (plan) => {
+          if (plan.weekStart === this.weekStart) this.lastSavedAt.set(this.formatSaveTime(plan.updatedAt));
+        },
+        error: () => this.saveError.set('Plan kaydedilemedi'),
+      });
+  }
+
+  private slotsForWeek(weekStart: string): StudioPlanSlot[] {
+    const weekDays = new Set(this.buildWeekDays(weekStart).map((day) => day.id));
+    const slots: StudioPlanSlot[] = [];
+
+    for (const [key, value] of Object.entries(this.cells())) {
+      const [day, studio, time] = key.split('::');
+      if (!weekDays.has(day)) continue;
+
+      slots.push({
+        day,
+        studio,
+        time,
+        startMinute: this.timeToMinute(time),
+        program: value.program,
+        color: value.color,
+      });
+    }
+
+    return slots;
+  }
+
+  private timeToMinute(time: string): number {
+    const [hour, minute] = time.split(':').map(Number);
+    const normalizedHour = hour < 6 ? hour + 24 : hour;
+    return normalizedHour * 60 + minute;
+  }
+
+  private formatSaveTime(value: string): string {
+    return new Intl.DateTimeFormat('tr-TR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date(value));
   }
 
   private previousTime(time: string): string | undefined {

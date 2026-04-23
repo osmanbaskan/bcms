@@ -60,9 +60,18 @@ Taşı` butonu bu haftanin dolu hucrelerini 7 gun ileri tasir.
 
 Operasyon notu:
 
-- `Stüdyo Planı` su an frontend state ile calisir; kalici backend kaydi yoktur.
-- Sayfa yenilenirse hazirlanan plan kaybolur.
-- Bu ekran henuz `schedules` canli yayin plani verisiyle entegre degildir.
+- `Stüdyo Planı` artik backend'e kalici kaydedilir.
+- Veri modeli `schedules` tablosundan ayridir: haftalik plan ust kaydi
+  `studio_plans`, 30 dakikalik dolu kutucuklar `studio_plan_slots` tablosunda
+  tutulur.
+- API endpointleri:
+  - `GET /api/v1/studio-plans/:weekStart`
+  - `PUT /api/v1/studio-plans/:weekStart`
+- `weekStart` Pazartesi tarihi olmak zorundadir; ekran sadece gecen hafta,
+  bu hafta ve gelecek hafta Pazartesi seceneklerini gosterir.
+- Bu ekran canli yayin plani `schedules.usage_scope` verisini kullanmaz.
+- Yeni ortamda veya migration uygulanmamis lokal DB'de once
+  `npm run db:migrate:prod -w apps/api` calistirilmelidir.
 
 ## Systemd servisleri
 

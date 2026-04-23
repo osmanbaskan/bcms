@@ -13,6 +13,8 @@ Bu dosya gelistirici rehberidir. Gunluk servis kullanimi ve sahadaki baglanti bi
 - Shared package: TypeScript tipleri ve ortak yardimcilar
 - Schedule veri kapsami: `schedules.usage_scope` kolonu Prisma
   `Schedule.usageScope` alani uzerinden yonetilir.
+- Stüdyo planlari `studio_plans` ve `studio_plan_slots` tablolarinda,
+  `schedules` akisini kirletmeden kalici tutulur.
 - Frontend operasyon sekmeleri:
   - `Stüdyo Planı`: web uzerinde haftalik studyo planlama ve PDF export
   - `Haftalık Shift`: sol navigasyonda ayrilmis admin sekmesi
@@ -193,6 +195,8 @@ GET  /api/v1/schedules/ingest-candidates
 GET  /api/v1/schedules/reports/live-plan
 GET  /api/v1/schedules/reports/live-plan/export
 POST /api/v1/ingest
+GET  /api/v1/studio-plans/:weekStart
+PUT  /api/v1/studio-plans/:weekStart
 ```
 
 DB dogrulama:
@@ -312,14 +316,27 @@ Guncel davranis:
 - `Bu Haftayı Gelecek Haftaya Taşı` butonu bu haftadaki dolu hucreleri 7 gun
   ileri tasir ve gorunumu gelecek haftaya alir.
 - `Export PDF` simdilik browser print akisini kullanir.
+- Plan degisiklikleri backend'e kaydedilir; ekran yuklenirken secili
+  Pazartesi haftasinin kaydi API'den okunur.
 
 Mimari not:
 
-- Bu ekran su an sadece frontend state ile calisir; sayfa yenilenirse hazirlanan
-  plan kaybolur.
-- Kalici veri, yetki, audit ve cok kullanicili calisma ihtiyaci dogdugunda
-  backend model/API ayrica tasarlanmalidir. Bu ekran `schedules` canli yayin
-  plani verisini henuz kullanmaz.
+- Stüdyo planlari `schedules` tablosundan ayri tutulur. Bu karar bilincli:
+  stüdyo haftalik planlama operasyonel bir hazirlik tablosudur; canli yayin
+  plani, raporlama ve ingest kapsamindaki yayin kayitlariyla ayni lifecycle'a
+  sahip degildir.
+- Backend endpoint'i `GET /api/v1/studio-plans/:weekStart` ile haftayi okur,
+  `PUT /api/v1/studio-plans/:weekStart` ile haftanin tum slotlarini atomik
+  olarak degistirir.
+- `weekStart` sadece Pazartesi tarihi olarak kabul edilir. Slotlar gun tarihi,
+  studyo, baslangic dakikasi, program ve renk degeriyle saklanir.
+- Prisma modelleri `StudioPlan` ve `StudioPlanSlot`; DB tabloları
+  `studio_plans` ve `studio_plan_slots` seklindedir.
+- Bu ozellik icin migration:
+  `apps/api/prisma/migrations/20260423000000_studio_plans/migration.sql`.
+- Migration uygulanmadan API calistirilirsa Stüdyo Planı endpoint'i veritabani
+  tablo hatasi verebilir. Yerelde PostgreSQL acikken
+  `npm run db:migrate:prod -w apps/api` calistirilmalidir.
 
 ## Shared Package
 

@@ -55,4 +55,9 @@ export const PERMISSIONS = {
     read:   ['admin', 'expert'] as Role[],
     export: ['admin', 'expert'] as Role[],
   },
+  studioPlans: {
+    read:   ['admin'] as Role[],
+    write:  ['admin'] as Role[],
+    delete: ['admin'] as Role[],
+  },
 } as const;

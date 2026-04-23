@@ -33,13 +33,35 @@ Frontend architecture/current UI notes:
   - `Provys İçerik Kontrol` -> `/provys-content-control`
 - `apps/web/src/app/features/studio-plan/studio-plan.component.ts` is a
   standalone Angular component for preparing a weekly studio plan on the web.
-- The studio plan screen currently uses local frontend signal state only; it
-  does not persist to backend and does not read/write `schedules`.
+- The studio plan screen persists to backend through
+  `apps/web/src/app/core/services/studio-plan.service.ts`.
+- It intentionally does not read/write `schedules`. Studio planning uses its
+  own Prisma models and tables:
+  - `StudioPlan` -> `studio_plans`
+  - `StudioPlanSlot` -> `studio_plan_slots`
+- API routes live in `apps/api/src/modules/studio-plans/studio-plan.routes.ts`
+  and are registered under `/api/v1/studio-plans`.
+- Supported endpoints:
+  - `GET /api/v1/studio-plans/:weekStart`
+  - `PUT /api/v1/studio-plans/:weekStart`
+- `weekStart` must be a Monday date. PUT replaces that week's slot set
+  transactionally.
 - It supports Monday-Sunday week view, single day view, 06:00-02:00 half-hour
   cells, 5 studio columns per day, program/color select boxes, merged visual
   runs for adjacent same program+color cells, a single-cell eraser, and a
   button that moves the current week cells to the next week.
 - `Export PDF` currently uses `window.print()` and print CSS.
+- Migration file: `apps/api/prisma/migrations/20260423000000_studio_plans/migration.sql`.
+- On 2026-04-23 Prisma Client generation again required the clean reinstall
+  pattern: delete `node_modules/.prisma`, `node_modules/@prisma/client`, and
+  `node_modules/prisma`, reinstall `prisma@5.22.0` and
+  `@prisma/client@5.22.0`, then run `npm run db:generate -w apps/api`.
+  Generated client includes `studioPlan` and `studioPlanSlot`.
+- `npm run build -w packages/shared`, `npm run build -w apps/api`, and
+  `npm run build -w apps/web` passed after this change.
+- Migration `20260423000000_studio_plans` was applied successfully on the
+  local PostgreSQL DB on 2026-04-23 with
+  `npm run db:migrate:prod -w apps/api`.
 - `weekly-shift` and `provys-content-control` are placeholder feature
   components until the user defines their business rules.
 

@@ -9,3 +9,4 @@ export * from './types/rbac.js';
 export * from './types/match.js';
 export * from './types/monitoring.js';
 export * from './types/playout.js';
+export * from './types/studio-plan.js';
