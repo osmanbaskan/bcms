@@ -38,6 +38,7 @@ const savePlanItemSchema = z.object({
   sourceType: z.string().min(1).max(30),
   day: dateSchema,
   sourcePath: z.string().trim().optional().nullable(),
+  recordingPort: z.string().trim().max(50).optional().nullable(),
   status: ingestPlanStatusSchema.optional(),
   note: z.string().trim().optional().nullable(),
 });
@@ -62,6 +63,7 @@ function mapPlanItem(item: {
   sourceKey: string;
   dayDate: Date;
   sourcePath: string | null;
+  recordingPort: string | null;
   status: string;
   jobId: number | null;
   note: string | null;
@@ -75,6 +77,7 @@ function mapPlanItem(item: {
     sourceKey: item.sourceKey,
     dayDate: dateOnly(item.dayDate),
     sourcePath: item.sourcePath,
+    recordingPort: item.recordingPort,
     status: item.status,
     jobId: item.jobId,
     note: item.note,
@@ -153,12 +156,14 @@ export async function ingestRoutes(app: FastifyInstance) {
     const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'unknown';
 
     const sourcePath = dto.sourcePath?.trim() || null;
+    const recordingPort = dto.recordingPort?.trim() || null;
     const item = await app.prisma.ingestPlanItem.upsert({
       where: { sourceKey },
       update: {
         sourceType: dto.sourceType,
         dayDate: parseDate(dto.day),
         sourcePath,
+        recordingPort,
         status: dto.status ?? undefined,
         note: dto.note?.trim() || null,
         updatedBy: user,
@@ -168,6 +173,7 @@ export async function ingestRoutes(app: FastifyInstance) {
         sourceType: dto.sourceType,
         dayDate: parseDate(dto.day),
         sourcePath,
+        recordingPort,
         status: dto.status ?? 'WAITING',
         note: dto.note?.trim() || null,
         updatedBy: user,

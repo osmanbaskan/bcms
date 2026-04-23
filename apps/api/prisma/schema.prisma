@@ -190,6 +190,7 @@ model IngestPlanItem {
   sourceKey  String           @unique @map("source_key") @db.VarChar(500)
   dayDate    DateTime         @map("day_date") @db.Date
   sourcePath String?          @map("source_path")
+  recordingPort String?       @map("recording_port") @db.VarChar(50)
   status     IngestPlanStatus @default(WAITING)
   jobId      Int?             @map("job_id")
   note       String?

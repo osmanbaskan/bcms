@@ -43,6 +43,7 @@ export interface IngestPlanItem {
   sourceKey: string;
   dayDate: string;
   sourcePath?: string | null;
+  recordingPort?: string | null;
   status: IngestPlanStatus;
   jobId?: number | null;
   note?: string | null;
@@ -55,6 +56,7 @@ export interface SaveIngestPlanItemDto {
   sourceType: 'live-plan' | 'studio-plan' | string;
   day: string;
   sourcePath?: string | null;
+  recordingPort?: string | null;
   status?: IngestPlanStatus;
   note?: string | null;
 }
