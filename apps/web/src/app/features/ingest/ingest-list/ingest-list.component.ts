@@ -8,6 +8,8 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MAT_DATE_LOCALE, MatNativeDateModule } from '@angular/material/core';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -70,6 +72,7 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
 @Component({
   selector: 'app-ingest-list',
   standalone: true,
+  providers: [{ provide: MAT_DATE_LOCALE, useValue: 'tr-TR' }],
   imports: [
     CommonModule,
     FormsModule,
@@ -80,6 +83,8 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
     MatExpansionModule,
     MatProgressBarModule,
     MatSnackBarModule,
@@ -130,7 +135,9 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
         <div class="live-plan-tools planning-tools">
           <mat-form-field>
             <mat-label>Tarih</mat-label>
-            <input matInput type="date" [(ngModel)]="livePlanDate" (change)="loadLivePlanCandidates()" />
+            <input matInput [matDatepicker]="livePlanPicker" [(ngModel)]="livePlanDateValue" (dateChange)="onLivePlanDateChange($event.value)" />
+            <mat-datepicker-toggle matIconSuffix [for]="livePlanPicker"></mat-datepicker-toggle>
+            <mat-datepicker #livePlanPicker></mat-datepicker>
           </mat-form-field>
 
           <button mat-stroked-button (click)="loadLivePlanCandidates()" [disabled]="livePlanLoading() || studioPlanLoading()">
@@ -455,7 +462,8 @@ export class IngestListComponent implements OnInit, OnDestroy {
   livePlanLoading = signal(false);
   studioPlanLoading = signal(false);
   triggerPath = '';
-  livePlanDate = new Date().toISOString().slice(0, 10);
+  livePlanDate = this.todayDate();
+  livePlanDateValue = new Date(`${this.livePlanDate}T00:00:00`);
   selectedScheduleId: number | null = null;
   livePlanSourcePath = '';
 
@@ -562,9 +570,16 @@ export class IngestListComponent implements OnInit, OnDestroy {
       const today = this.todayDate();
       if (this.livePlanDate !== today) {
         this.livePlanDate = today;
+        this.livePlanDateValue = new Date(`${today}T00:00:00`);
         this.loadLivePlanCandidates();
       }
     }
+  }
+
+  onLivePlanDateChange(value: Date | null) {
+    if (!value) return;
+    this.livePlanDate = this.dateToInputValue(value);
+    this.loadLivePlanCandidates();
   }
 
   planFilterCount(filter: PlanFilter): number {
@@ -744,6 +759,10 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   private todayDate(): string {
     const date = new Date();
+    return this.dateToInputValue(date);
+  }
+
+  private dateToInputValue(date: Date): string {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
 

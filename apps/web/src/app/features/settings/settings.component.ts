@@ -126,7 +126,7 @@ interface SmbConfig {
                 <div class="port-row">
                   <mat-form-field>
                     <mat-label>Port Adı</mat-label>
-                    <input matInput [(ngModel)]="portNames[$index]" placeholder="REC 1">
+                    <input matInput [(ngModel)]="portNames[$index]" placeholder="1">
                   </mat-form-field>
                   <button mat-icon-button type="button" (click)="removePort($index)" [disabled]="portNames.length <= 1">
                     <mat-icon>delete</mat-icon>
@@ -219,11 +219,11 @@ export class SettingsComponent implements OnInit {
           .filter((port) => port.active)
           .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'tr'))
           .map((port) => port.name);
-        if (this.portNames.length === 0) this.portNames = ['REC 1'];
+        if (this.portNames.length === 0) this.portNames = ['1'];
         this.portsLoading.set(false);
       },
       error: () => {
-        this.portNames = ['REC 1'];
+        this.portNames = ['1'];
         this.portsLoading.set(false);
         this.snack.open('Kayıt portları alınamadı', 'Kapat', { duration: 4000 });
       },
@@ -231,7 +231,9 @@ export class SettingsComponent implements OnInit {
   }
 
   addPort() {
-    this.portNames.push(`REC ${this.portNames.length + 1}`);
+    const numericPorts = this.portNames.map((name) => Number(name)).filter((value) => Number.isInteger(value));
+    const nextPort = numericPorts.length ? Math.max(...numericPorts) + 1 : this.portNames.length + 1;
+    this.portNames.push(String(nextPort));
   }
 
   removePort(index: number) {
