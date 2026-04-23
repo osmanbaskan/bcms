@@ -33,7 +33,7 @@ export interface IngestPortBoardTimeLabel {
   standalone: true,
   imports: [CommonModule, CdkDropList, CdkDrag, MatButtonModule, MatIconModule],
   template: `
-    <div class="port-board-section" *ngIf="columns.length > 0">
+    <div class="port-board-section" [class.full-page]="fullPage" *ngIf="columns.length > 0">
       <div class="port-board-header">
         <div>
           <h3>Port Görünümü</h3>
@@ -63,7 +63,7 @@ export interface IngestPortBoardTimeLabel {
             cdkDropListOrientation="horizontal"
             [cdkDropListData]="columns"
             (cdkDropListDropped)="onDrop($event)"
-            [style.grid-template-columns]="'repeat(' + columns.length + ', minmax(220px, 1fr))'"
+            [style.grid-template-columns]="gridTemplateColumns()"
           >
             <section class="port-board-column" cdkDrag *ngFor="let column of columns; trackBy: trackPort">
               <header class="port-board-column-head">
@@ -98,11 +98,13 @@ export interface IngestPortBoardTimeLabel {
   styles: [`
     .port-board-header,.port-board-actions,.port-board-times-head,.port-board-time-cell,.port-board-column-head,.port-drag-handle{display:flex;align-items:center}
     .port-board-section{margin:18px 14px 14px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(7,17,31,.7);overflow:hidden}
+    .port-board-section.full-page{margin:0;border-radius:0;border-left:0;border-right:0}
     .port-board-header{justify-content:space-between;gap:16px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
     .port-board-header h3,.port-board-header p{margin:0}
     .port-board-header p{color:#9aa2b3;font-size:.8rem}
     .port-board-actions{gap:12px}
     .port-board-scroll{overflow-x:auto}
+    .port-board-section.full-page .port-board-scroll{height:calc(100vh - 250px);overflow:auto}
     .port-board-frame{display:grid;grid-template-columns:84px minmax(0,1fr);min-width:max-content}
     .port-board-times{border-right:1px solid rgba(255,255,255,.08);background:#203754}
     .port-board-times-head,.port-board-column-head{justify-content:center;min-height:42px;border-bottom:1px solid rgba(255,255,255,.08);background:#203754;font-weight:800}
@@ -112,7 +114,9 @@ export interface IngestPortBoardTimeLabel {
     .port-board-grid{display:grid;min-width:max-content}
     .port-board-column{min-height:100%;border-right:1px solid rgba(255,255,255,.08);background:rgba(19,38,64,.72)}
     .port-board-column:last-child{border-right:0}
+    .port-board-column-head,.port-board-times-head{position:sticky;top:0;z-index:3}
     .port-board-column-head{gap:4px;padding:0 8px;color:#f5d24b;font-size:.84rem;cursor:move}
+    .port-board-times-body{position:sticky;left:0;z-index:2}
     .port-drag-handle{justify-content:center;width:22px;height:22px;padding:0;border:0;background:transparent;color:#d9e6f2;cursor:move}
     .port-drag-handle mat-icon{font-size:18px;width:18px;height:18px}
     .port-board-column-body{position:relative;display:grid;padding:0;min-height:1176px;background:rgba(189,210,232,.08)}
@@ -127,6 +131,8 @@ export class IngestPortBoardComponent {
   @Input() columns: IngestPortBoardColumnView[] = [];
   @Input() timeLabels: IngestPortBoardTimeLabel[] = [];
   @Input() gridTemplateRows = '';
+  @Input() fullPage = false;
+  @Input() columnMinWidth = 220;
 
   @Output() requestPrint = new EventEmitter<void>();
   @Output() portOrderChange = new EventEmitter<string[]>();
@@ -134,6 +140,10 @@ export class IngestPortBoardComponent {
   trackPort = (_: number, column: IngestPortBoardColumnView) => column.port;
   trackTime = (_: number, time: IngestPortBoardTimeLabel) => time.label;
   trackItem = (_: number, item: IngestPortBoardItemView) => item.row.id;
+
+  gridTemplateColumns(): string {
+    return `repeat(${this.columns.length}, minmax(${this.columnMinWidth}px, 1fr))`;
+  }
 
   onDrop(event: CdkDragDrop<IngestPortBoardColumnView[]>) {
     if (event.previousIndex === event.currentIndex) return;

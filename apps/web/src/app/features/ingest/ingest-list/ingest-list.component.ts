@@ -220,16 +220,28 @@ const TR_DATE_FORMATS = {
           </div>
         }
 
-        @if (assignedPortColumns().length > 0) {
-          <app-ingest-port-board
-            [columns]="assignedPortColumns()"
-            [timeLabels]="portBoardTimeLabels()"
-            [gridTemplateRows]="timeGridTemplate()"
-            (requestPrint)="printPortBoard()"
-            (portOrderChange)="setPortBoardOrder($event)"
-          />
-        }
       </div>
+        </mat-tab>
+
+        <mat-tab label="Port Görünümü">
+          <div class="port-board-page">
+            @if (assignedPortColumns().length === 0) {
+              <div class="port-board-empty">
+                <h2>Port Görünümü</h2>
+                <p>Seçili tarih ve filtre için atanmış port bulunamadı.</p>
+              </div>
+            } @else {
+              <app-ingest-port-board
+                [columns]="assignedPortColumns()"
+                [timeLabels]="portBoardTimeLabels()"
+                [gridTemplateRows]="timeGridTemplate()"
+                [fullPage]="true"
+                [columnMinWidth]="160"
+                (requestPrint)="printPortBoard()"
+                (portOrderChange)="setPortBoardOrder($event)"
+              />
+            }
+          </div>
         </mat-tab>
 
         <mat-tab label="Ingest">
@@ -428,6 +440,10 @@ const TR_DATE_FORMATS = {
     .live-plan-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 8px; }
     .empty-live-plan { margin: 6px 0 0; color: #9aa2b3; font-size: 0.85rem; }
     .planning-board { margin: 14px 0 18px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); border-radius: 8px; overflow: hidden; }
+    .port-board-page { margin-top: 14px; }
+    .port-board-empty { min-height: calc(100vh - 260px); display: flex; flex-direction: column; justify-content: center; padding: 24px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); }
+    .port-board-empty h2 { margin: 0 0 8px; }
+    .port-board-empty p { margin: 0; color: #9aa2b3; }
     .planning-board-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.1); }
     .planning-board-header h2 { margin: 0; font-size: 1rem; }
     .planning-board-header p { margin: 2px 0 0; color: #9aa2b3; font-size: 0.82rem; }
