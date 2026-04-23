@@ -16,12 +16,25 @@ import { interval, Subscription } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
 import { ApiService } from '../../../core/services/api.service';
-import type { IngestJob, PaginatedResponse, Schedule } from '@bcms/shared';
+import type { IngestJob, PaginatedResponse, Schedule, StudioPlan, StudioPlanSlot } from '@bcms/shared';
 
 interface Channel {
   id: number;
   name: string;
   type: string;
+}
+
+interface IngestPlanRow {
+  id: string;
+  source: 'live-plan' | 'studio-plan';
+  sourceLabel: string;
+  sortMinute: number;
+  startTime: string;
+  endTime: string;
+  title: string;
+  location: string;
+  note: string;
+  scheduleId?: number;
 }
 
 const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING', 'PROXY_GEN', 'QC']);
@@ -55,7 +68,10 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
   template: `
     <div class="page-container">
       <div class="page-header">
-        <h1>Ingest İşleri</h1>
+        <div>
+          <h1>Ingest Planlama</h1>
+          <p class="page-subtitle">Canlı yayın planı ve stüdyo planı ingest departmanı için tek akışta görünür.</p>
+        </div>
         <div class="header-actions">
           <span class="auto-refresh-label" *ngIf="hasActiveJobs()">
             <mat-icon class="spin">sync</mat-icon> Otomatik yenileniyor…
@@ -64,6 +80,70 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
             <mat-icon>refresh</mat-icon> Yenile
           </button>
         </div>
+      </div>
+
+      <div class="planning-board">
+        <div class="planning-board-header">
+          <div>
+            <h2>Ingest Planı</h2>
+            <p>Canlı yayın planı ve stüdyo planı kayıtları</p>
+          </div>
+          <span>{{ planningRows().length }} kayıt</span>
+        </div>
+
+        <div class="live-plan-tools planning-tools">
+          <mat-form-field>
+            <mat-label>Tarih</mat-label>
+            <input matInput type="date" [(ngModel)]="livePlanDate" (change)="loadLivePlanCandidates()" />
+          </mat-form-field>
+
+          <mat-form-field>
+            <mat-label>Kanal</mat-label>
+            <mat-select [(ngModel)]="livePlanChannelId" (selectionChange)="loadLivePlanCandidates()">
+              <mat-option [value]="null">Tüm kanallar</mat-option>
+              @for (channel of channels(); track channel.id) {
+                <mat-option [value]="channel.id">{{ channel.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+
+          <button mat-stroked-button (click)="loadLivePlanCandidates()" [disabled]="livePlanLoading() || studioPlanLoading()">
+            <mat-icon>refresh</mat-icon>
+            Planı Yenile
+          </button>
+        </div>
+
+        @if (livePlanLoading() || studioPlanLoading()) {
+          <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+        }
+
+        @if (!livePlanLoading() && !studioPlanLoading() && planningRows().length === 0) {
+          <p class="empty-live-plan">Seçili tarih için ingest planı kaydı bulunamadı.</p>
+        }
+
+        @if (planningRows().length > 0) {
+          <div class="planning-table-wrap">
+            <div class="planning-table">
+              <div class="planning-head">
+                <span>Kaynak</span>
+                <span>Saat</span>
+                <span>İçerik</span>
+                <span>Kanal / Stüdyo</span>
+                <span>Not</span>
+              </div>
+
+              @for (row of planningRows(); track row.id) {
+                <div class="planning-row">
+                  <span class="source-pill" [class.studio]="row.source === 'studio-plan'">{{ row.sourceLabel }}</span>
+                  <strong class="time-range">{{ row.startTime }} - {{ row.endTime }}</strong>
+                  <span>{{ row.title }}</span>
+                  <span>{{ row.location }}</span>
+                  <span>{{ row.note }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        }
       </div>
 
       <!-- Manuel Tetikleme -->
@@ -93,28 +173,6 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
             <mat-icon>event_available</mat-icon>&nbsp;Canlı Yayın Planından Ingest Başlat
           </mat-panel-title>
         </mat-expansion-panel-header>
-
-        <div class="live-plan-tools">
-          <mat-form-field>
-            <mat-label>Tarih</mat-label>
-            <input matInput type="date" [(ngModel)]="livePlanDate" (change)="loadLivePlanCandidates()" />
-          </mat-form-field>
-
-          <mat-form-field>
-            <mat-label>Kanal</mat-label>
-            <mat-select [(ngModel)]="livePlanChannelId" (selectionChange)="loadLivePlanCandidates()">
-              <mat-option [value]="null">Tüm kanallar</mat-option>
-              @for (channel of channels(); track channel.id) {
-                <mat-option [value]="channel.id">{{ channel.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-
-          <button mat-stroked-button (click)="loadLivePlanCandidates()" [disabled]="livePlanLoading()">
-            <mat-icon>refresh</mat-icon>
-            Planı Yenile
-          </button>
-        </div>
 
         <div class="trigger-form">
           <mat-form-field class="schedule-field">
@@ -268,6 +326,8 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
   styles: [`
     .page-container  { max-width: 1100px; margin: 0 auto; }
     .page-header     { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .page-header h1  { margin-bottom: 2px; }
+    .page-subtitle   { margin: 0; color: #9aa2b3; font-size: 0.9rem; }
     .header-actions  { display: flex; align-items: center; gap: 12px; }
     .auto-refresh-label { display: flex; align-items: center; gap: 4px; font-size: 0.85rem; opacity: 0.7; }
     .status-tabs     { margin-bottom: 16px; }
@@ -277,6 +337,22 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
     .schedule-field  { flex: 1.4; min-width: 280px; }
     .live-plan-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 8px; }
     .empty-live-plan { margin: 6px 0 0; color: #9aa2b3; font-size: 0.85rem; }
+    .planning-board { margin: 14px 0 18px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); border-radius: 8px; overflow: hidden; }
+    .planning-board-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .planning-board-header h2 { margin: 0; font-size: 1rem; }
+    .planning-board-header p { margin: 2px 0 0; color: #9aa2b3; font-size: 0.82rem; }
+    .planning-board-header span { color: #c8d3e5; font-size: 0.85rem; font-weight: 700; }
+    .planning-tools { padding: 12px 14px 0; }
+    .planning-table-wrap { overflow-x: auto; }
+    .planning-table { min-width: 820px; }
+    .planning-head,
+    .planning-row { display: grid; grid-template-columns: 150px 110px minmax(240px, 1fr) 150px minmax(140px, 0.8fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .planning-head { color: #9aa2b3; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+    .planning-row { font-size: 0.86rem; }
+    .planning-row:nth-child(odd) { background: rgba(255,255,255,0.025); }
+    .source-pill { display: inline-flex; justify-content: center; padding: 4px 8px; border-radius: 999px; color: #04233d; background: #9bd3ff; font-size: 0.72rem; font-weight: 800; }
+    .source-pill.studio { color: #2b1700; background: #ffd166; }
+    .time-range { font-variant-numeric: tabular-nums; }
     .mono            { font-family: monospace; font-size: 0.8rem; }
     .inline-progress { width: 80px; margin-left: 8px; }
     .total-label     { margin-top: 8px; font-size: 0.85rem; opacity: 0.7; }
@@ -310,11 +386,13 @@ export class IngestListComponent implements OnInit, OnDestroy {
   jobs        = signal<IngestJob[]>([]);
   channels    = signal<Channel[]>([]);
   livePlanCandidates = signal<Schedule[]>([]);
+  studioPlanSlots = signal<StudioPlanSlot[]>([]);
   total       = signal(0);
   selectedTab = signal(0);
   expandedId  = signal<number | null>(null);
   triggering  = signal(false);
   livePlanLoading = signal(false);
+  studioPlanLoading = signal(false);
   triggerPath = '';
   livePlanDate = new Date().toISOString().slice(0, 10);
   livePlanChannelId: number | null = null;
@@ -326,6 +404,25 @@ export class IngestListComponent implements OnInit, OnDestroy {
     if (!tab?.value) return this.jobs();
     if (tab.value === 'ACTIVE') return this.jobs().filter((j) => ACTIVE_STATUSES.has(j.status));
     return this.jobs().filter((j) => j.status === tab.value);
+  });
+
+  planningRows = computed<IngestPlanRow[]>(() => {
+    const liveRows = this.livePlanCandidates().map((schedule) => ({
+      id: `live-${schedule.id}`,
+      source: 'live-plan' as const,
+      sourceLabel: 'Canlı Yayın',
+      sortMinute: this.sortMinuteFromDate(schedule.startTime),
+      startTime: this.formatTime(schedule.startTime),
+      endTime: this.formatTime(schedule.endTime),
+      title: this.scheduleTitle(schedule),
+      location: schedule.channel?.name ?? '-',
+      note: [schedule.reportLeague, schedule.reportSeason, schedule.reportWeekNumber ? `${schedule.reportWeekNumber}. Hafta` : '']
+        .filter(Boolean)
+        .join(' · ') || '-',
+      scheduleId: schedule.id,
+    }));
+
+    return [...liveRows, ...this.studioPlanRows()].sort((a, b) => a.sortMinute - b.sortMinute);
   });
 
   hasActiveJobs = computed(() => this.jobs().some((j) => ACTIVE_STATUSES.has(j.status)));
@@ -404,6 +501,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
     };
 
     this.livePlanLoading.set(true);
+    this.loadStudioPlanForDate(this.livePlanDate);
     this.api.get<PaginatedResponse<Schedule>>('/schedules/ingest-candidates', params).subscribe({
       next: (res) => {
         this.livePlanCandidates.set(res.data ?? []);
@@ -417,6 +515,102 @@ export class IngestListComponent implements OnInit, OnDestroy {
         this.snack.open(`Canlı yayın planı alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
       },
     });
+  }
+
+  private loadStudioPlanForDate(dateValue: string) {
+    const weekStart = this.mondayFor(dateValue);
+    this.studioPlanLoading.set(true);
+    this.api.get<StudioPlan>(`/studio-plans/${weekStart}`).subscribe({
+      next: (plan) => {
+        this.studioPlanSlots.set((plan.slots ?? []).filter((slot) => slot.day === dateValue));
+        this.studioPlanLoading.set(false);
+      },
+      error: (err) => {
+        this.studioPlanSlots.set([]);
+        this.studioPlanLoading.set(false);
+        this.snack.open(`Stüdyo planı alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+      },
+    });
+  }
+
+  private studioPlanRows(): IngestPlanRow[] {
+    const slots = [...this.studioPlanSlots()].sort((a, b) => (
+      a.studio.localeCompare(b.studio, 'tr')
+      || a.startMinute - b.startMinute
+      || a.program.localeCompare(b.program, 'tr')
+    ));
+
+    const rows: IngestPlanRow[] = [];
+    const used = new Set<number>();
+
+    for (let index = 0; index < slots.length; index++) {
+      if (used.has(index)) continue;
+      const first = slots[index];
+      let endMinute = first.startMinute + 30;
+      used.add(index);
+
+      for (let nextIndex = index + 1; nextIndex < slots.length; nextIndex++) {
+        const next = slots[nextIndex];
+        if (
+          used.has(nextIndex)
+          || next.studio !== first.studio
+          || next.program !== first.program
+          || next.color !== first.color
+          || next.startMinute !== endMinute
+        ) {
+          continue;
+        }
+        endMinute += 30;
+        used.add(nextIndex);
+      }
+
+      rows.push({
+        id: `studio-${first.day}-${first.studio}-${first.startMinute}-${first.program}`,
+        source: 'studio-plan',
+        sourceLabel: 'Stüdyo Planı',
+        sortMinute: first.startMinute,
+        startTime: this.minuteToTime(first.startMinute),
+        endTime: this.minuteToTime(endMinute),
+        title: first.program,
+        location: first.studio,
+        note: 'Stüdyo programı',
+      });
+    }
+
+    return rows;
+  }
+
+  private scheduleTitle(schedule: Schedule): string {
+    const contentName = schedule.metadata?.['contentName'];
+    return typeof contentName === 'string' && contentName.trim() ? contentName : schedule.title;
+  }
+
+  private formatTime(value: string): string {
+    return new Intl.DateTimeFormat('tr-TR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date(value));
+  }
+
+  private minuteToTime(value: number): string {
+    const hour = Math.floor(value / 60) % 24;
+    const minute = value % 60;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  }
+
+  private sortMinuteFromDate(value: string): number {
+    const date = new Date(value);
+    const minute = date.getHours() * 60 + date.getMinutes();
+    return minute < 6 * 60 ? minute + 24 * 60 : minute;
+  }
+
+  private mondayFor(dateValue: string): string {
+    const date = new Date(`${dateValue}T00:00:00`);
+    const day = date.getDay();
+    const distanceFromMonday = day === 0 ? 6 : day - 1;
+    date.setDate(date.getDate() - distanceFromMonday);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
 
   triggerLivePlanJob() {
