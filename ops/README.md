@@ -51,6 +51,26 @@ Admin sol navigasyonunda uc yeni operasyon sekmesi bulunur:
 - `Haftalık Shift` -> `/weekly-shift`
 - `Provys İçerik Kontrol` -> `/provys-content-control`
 
+## Ingest Operasyon Mimarisi
+
+`Ingest` frontend'i artik iki ayri calisma penceresi mantigi ile ilerler:
+
+- `Ingest Planlama`: satir bazli plan tablosu
+- `Port Görünümü`: kayit portlarina gore operasyonel pano
+
+Teknik notlar:
+
+- Kayit port katalogu backend tablosu `recording_ports` uzerinden yonetilir.
+- Varsayilan aktif liste `1..44`, `Metus1`, `Metus2` toplam 46 porttur.
+- Plan satiri kaliciligi `ingest_plan_items` tablosundadir.
+- `recording_port`, `planned_start_minute`, `planned_end_minute`, `status`,
+  `job_id` ve `updated_by` burada tutulur.
+- Port cakismasi backend'de reddedilir; ayni gun ve ayni port icin kesisen
+  saat araliklari ikinci kez kaydedilemez.
+- `Port Görünümü` bos portlari da gosterir; operasyon ekibi toplam kapasiteyi
+  tek ekranda gorebilir.
+- Guncel pano davranisi: 5 satirli dagilim, tam ekran, zoom ve print/export.
+
 `Stüdyo Planı` web uzerinde haftalik plan hazirlamak ve PDF/print export almak
 icin kullanilir. Ekran 06:00-02:00 araliginda 30 dakikalik slotlarla calisir,
 gun basina 5 studyo kolonu gosterir ve program/renk secimini toolbar

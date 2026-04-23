@@ -72,6 +72,23 @@ Frontend architecture/current UI notes:
   `npm run db:migrate:prod -w apps/api`.
 - `weekly-shift` and `provys-content-control` are placeholder feature
   components until the user defines their business rules.
+- Ingest frontend is split into two work areas:
+  - `Ingest Planlama` for row-level planning and port assignment
+  - `Port Görünümü` for port-based operations board
+- Port board component:
+  `apps/web/src/app/features/ingest/ingest-port-board/ingest-port-board.component.ts`
+- Parent ingest screen:
+  `apps/web/src/app/features/ingest/ingest-list/ingest-list.component.ts`
+- Recording ports are backend-managed through `recording_ports`.
+- Current default/active port set is `1..44`, `Metus1`, `Metus2` (46 total).
+- Plan persistence is `ingest_plan_items`.
+- Current board behavior:
+  - shows all active ports, even empty ones
+  - 5-row port layout
+  - fullscreen and zoom controls
+  - print/export action
+  - cards show only time and title
+  - title may use up to 3 lines
 
 Reinstall services:
 

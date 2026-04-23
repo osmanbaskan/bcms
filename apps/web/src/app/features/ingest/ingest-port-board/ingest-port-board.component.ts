@@ -62,13 +62,6 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
       <div class="port-board-scroll">
         <div class="port-board-stack">
           <div class="port-board-frame" *ngFor="let rowColumns of portColumnRows(); let rowIndex = index">
-            <div class="port-board-times">
-              <div class="port-board-times-head">Saat</div>
-              <div class="port-board-times-body" [style.grid-template-rows]="gridTemplateRows">
-                <div class="port-board-time-cell" *ngFor="let time of timeLabels; trackBy: trackTime" [style.grid-row]="time.gridRow">{{ time.label }}</div>
-              </div>
-            </div>
-
             <div
               class="port-board-grid"
               cdkDropList
@@ -78,15 +71,13 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
               [style.grid-template-columns]="gridTemplateColumns(rowColumns)"
             >
               <section class="port-board-column" cdkDrag *ngFor="let column of rowColumns; trackBy: trackPort">
-                <header class="port-board-column-head">
-                  <button class="port-drag-handle" type="button" cdkDragHandle aria-label="Port kolonunu tası">
-                    <mat-icon>drag_indicator</mat-icon>
-                  </button>
-                  <span>{{ column.port }}</span>
-                </header>
-
                 <div class="port-board-column-body" [style.grid-template-rows]="gridTemplateRows">
-                  <div class="port-board-slot-line" *ngFor="let time of timeLabels; trackBy: trackTime" [style.grid-row]="time.gridRow"></div>
+                  <div class="port-board-column-tag">
+                    <button class="port-drag-handle" type="button" cdkDragHandle aria-label="Port kolonunu tası">
+                      <mat-icon>drag_indicator</mat-icon>
+                    </button>
+                    <span>{{ column.port }}</span>
+                  </div>
 
                   <article
                     class="port-board-item"
@@ -95,7 +86,7 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
                     *ngFor="let item of column.items; trackBy: trackItem"
                   >
                     <div class="port-board-time">{{ item.row.startTime }} - {{ item.row.endTime }}</div>
-                    <strong>{{ item.row.title }}</strong>
+                    <strong [title]="item.row.title">{{ item.row.title }}</strong>
                     <span class="port-board-warning" *ngIf="item.overlap">Cakisma</span>
                   </article>
                 </div>
@@ -107,7 +98,7 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     </div>
   `,
   styles: [`
-    .port-board-header,.port-board-actions,.port-board-times-head,.port-board-time-cell,.port-board-column-head,.port-drag-handle{display:flex;align-items:center}
+    .port-board-header,.port-board-actions,.port-drag-handle,.port-board-column-tag{display:flex;align-items:center}
     .port-board-section{margin:18px 14px 14px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(7,17,31,.7);overflow:hidden}
     .port-board-section.full-page{margin:0;border-radius:0;border-left:0;border-right:0}
     .port-board-header{justify-content:space-between;gap:16px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
@@ -122,25 +113,19 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-section.is-fullscreen{margin:0;border:0;border-radius:0}
     .port-board-section.is-fullscreen .port-board-scroll{height:calc(100vh - 72px)}
     .port-board-stack{display:flex;flex-direction:column;gap:10px;padding-bottom:10px}
-    .port-board-frame{display:grid;grid-template-columns:84px minmax(0,1fr);min-width:max-content}
-    .port-board-times{background:transparent}
-    .port-board-times-head,.port-board-column-head{justify-content:center;min-height:42px;border-bottom:1px solid rgba(255,255,255,.08);background:#203754;font-weight:800}
-    .port-board-times-head{color:#f5d24b;font-size:.82rem}
-    .port-board-times-body{display:grid;background:transparent}
-    .port-board-time-cell{justify-content:center;padding-top:6px;font-size:.74rem;font-weight:700;color:#d7e6f5}
+    .port-board-frame{display:block;min-width:max-content}
     .port-board-grid{display:grid;min-width:max-content}
     .port-board-column{min-height:100%;border-right:1px solid rgba(255,255,255,.08);background:rgba(19,38,64,.72)}
     .port-board-column:last-child{border-right:0}
-    .port-board-column-head,.port-board-times-head{position:sticky;top:0;z-index:3}
-    .port-board-column-head{gap:4px;padding:0 8px;color:#f5d24b;font-size:.84rem;cursor:move}
-    .port-board-times-body{position:sticky;left:0;z-index:2}
-    .port-drag-handle{justify-content:center;width:22px;height:22px;padding:0;border:0;background:transparent;color:#d9e6f2;cursor:move}
-    .port-drag-handle mat-icon{font-size:18px;width:18px;height:18px}
-    .port-board-column-body{position:relative;display:grid;padding:0;min-height:420px;background:rgba(189,210,232,.08)}
-    .port-board-slot-line{border-bottom:1px solid rgba(255,255,255,.05)}
-    .port-board-item{z-index:1;margin:2px 4px;padding:8px 8px 9px;border:1px solid rgba(255,255,255,.08);background:#c7d8ec;color:#17304d;display:flex;flex-direction:column;gap:4px;overflow:hidden}
+    .port-board-column-tag{position:absolute;top:2px;left:2px;z-index:3;gap:1px;padding:0 2px;background:transparent;color:#f5d24b;font-size:.58rem;cursor:move}
+    .port-drag-handle{justify-content:center;width:18px;height:18px;padding:0;border:0;background:transparent;color:#d9e6f2;cursor:move}
+    .port-drag-handle mat-icon{font-size:16px;width:16px;height:16px}
+    .port-board-column-body{position:relative;display:grid;padding:0;min-height:260px;background:rgba(189,210,232,.08)}
+    .port-board-item{z-index:1;margin:1px 0 0;padding:1px 1px 2px;border:1px solid rgba(255,255,255,.08);background:#c7d8ec;color:#17304d;display:flex;flex-direction:column;gap:1px;overflow:hidden}
+    .port-board-item:first-of-type{margin-top:10px}
     .port-board-item.overlap{background:#ffd9d9;border-color:#ef5350}
-    .port-board-time,.port-board-warning{font-weight:800}
+    .port-board-item strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;font-size:.72rem;line-height:1.02;overflow:hidden;word-break:break-word}
+    .port-board-time,.port-board-warning{font-weight:800;font-size:.54rem;line-height:1}
     .port-board-warning{color:#b71c1c}
   `],
 })
@@ -151,7 +136,7 @@ export class IngestPortBoardComponent {
   @Input() gridTemplateRows = '';
   @Input() fullPage = false;
   @Input() columnMinWidth = 220;
-  @Input() rowCount = 2;
+  @Input() rowCount = 5;
 
   @Output() requestPrint = new EventEmitter<void>();
   @Output() portOrderChange = new EventEmitter<string[]>();
@@ -160,13 +145,16 @@ export class IngestPortBoardComponent {
   isFullscreen = false;
 
   trackPort = (_: number, column: IngestPortBoardColumnView) => column.port;
-  trackTime = (_: number, time: IngestPortBoardTimeLabel) => time.label;
   trackItem = (_: number, item: IngestPortBoardItemView) => item.row.id;
 
   portColumnRows(): IngestPortBoardColumnView[][] {
-    const chunkSize = Math.max(1, Math.ceil(this.columns.length / this.rowCount));
-    const rows: IngestPortBoardColumnView[][] = [];
-    for (let index = 0; index < this.columns.length; index += chunkSize) rows.push(this.columns.slice(index, index + chunkSize));
+    const rows: IngestPortBoardColumnView[][] = Array.from({ length: this.rowCount }, () => []);
+    for (const column of this.columns) {
+      const targetRow = rows.reduce((bestIndex, currentRow, index, allRows) => (
+        currentRow.length < allRows[bestIndex].length ? index : bestIndex
+      ), 0);
+      rows[targetRow].push(column);
+    }
     return rows;
   }
 

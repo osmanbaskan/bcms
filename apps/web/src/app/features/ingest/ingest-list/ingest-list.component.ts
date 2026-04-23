@@ -234,8 +234,8 @@ const TR_DATE_FORMATS = {
                 [timeLabels]="portBoardTimeLabels()"
                 [gridTemplateRows]="timeGridTemplate()"
                 [fullPage]="true"
-                [columnMinWidth]="160"
-                [rowCount]="3"
+                [columnMinWidth]="48"
+                [rowCount]="5"
                 (requestPrint)="printPortBoard()"
                 (portOrderChange)="setPortBoardOrder($event)"
               />
@@ -617,11 +617,12 @@ export class IngestListComponent implements OnInit, OnDestroy {
       grouped.set(row.recordingPort, rows);
     }
 
-    return [...grouped.entries()]
-      .sort((a, b) => (portOrder.get(a[0]) ?? Number.MAX_SAFE_INTEGER) - (portOrder.get(b[0]) ?? Number.MAX_SAFE_INTEGER))
-      .map(([port, rows]) => ({
+    return orderedNames
+      .filter((name) => this.activeRecordingPorts().some((port) => port.name === name))
+      .sort((a, b) => (portOrder.get(a) ?? Number.MAX_SAFE_INTEGER) - (portOrder.get(b) ?? Number.MAX_SAFE_INTEGER))
+      .map((port) => ({
         port,
-        items: this.toPortBoardItems(rows),
+        items: this.toPortBoardItems(grouped.get(port) ?? []),
       }));
   });
 

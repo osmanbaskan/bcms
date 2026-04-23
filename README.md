@@ -292,6 +292,37 @@ Bu server:
 - Angular build dosyalarini sunar.
 - `/api` ve `/webhooks` isteklerini `http://127.0.0.1:3000` adresine proxy eder.
 
+### Ingest Planlama
+
+`Ingest` operasyonu artik iki ayri frontend alanina ayrilmistir:
+
+- `Ingest Planlama`: canli yayin plani ve Stüdyo Planı kayitlarini tek tabloda
+  birlestirir, tarih bazli okur ve satir bazinda kayit portu atar.
+- `Port Görünümü`: ayni plan verisini kayit portlarina gore operasyonel pano
+  seklinde gosterir.
+
+Guncel davranis:
+
+- Kayit portlari backend katalog tablosundan gelir: `recording_ports`.
+- Varsayilan aktif portlar `1..44`, `Metus1`, `Metus2` toplam 46 adettir.
+- Port atamasi kalicidir; veri `ingest_plan_items.recording_port` alanina
+  yazilir.
+- Ayni portta cakisan saat araliklari backend tarafinda engellenir.
+- `Port Görünümü` tum aktif portlari bos olsalar bile gosterir.
+- Pano 5 satirli port dagilimi ile calisir.
+- Tam ekran modu, zoom kontrolleri ve yazdir/export butonu vardir.
+- Kartlarda yalnizca saat ve icerik adi gosterilir; icerik adi 3 satira kadar
+  acilabilir.
+
+Mimari not:
+
+- Pano sunumu ayri standalone Angular component'tedir:
+  `apps/web/src/app/features/ingest/ingest-port-board/ingest-port-board.component.ts`
+- Parent ekran:
+  `apps/web/src/app/features/ingest/ingest-list/ingest-list.component.ts`
+- Kalici plan durumu backend'de `ingest_plan_items` tablosundadir.
+- Kayit port katalogu backend'de `recording_ports` tablosundadir.
+
 ### Stüdyo Planı
 
 `Stüdyo Planı` admin rolune acik, web uzerinde hazirlanan haftalik bir operasyon
