@@ -18,6 +18,12 @@ import { interval, Subscription } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
 import { ApiService } from '../../../core/services/api.service';
+import {
+  IngestPortBoardColumnView,
+  IngestPortBoardComponent,
+  IngestPortBoardItemView,
+  IngestPortBoardTimeLabel,
+} from '../ingest-port-board/ingest-port-board.component';
 import type {
   IngestJob,
   IngestPlanItem,
@@ -46,17 +52,6 @@ interface IngestPlanRow {
   status: IngestPlanStatus;
   jobId?: number | null;
   scheduleId?: number;
-}
-
-interface PortBoardItem {
-  row: IngestPlanRow;
-  gridRow: string;
-  overlap: boolean;
-}
-
-interface PortBoardColumn {
-  port: string;
-  items: PortBoardItem[];
 }
 
 type PlanFilter = 'all' | 'today' | 'active' | 'unassigned' | 'issues';
@@ -119,6 +114,7 @@ const TR_DATE_FORMATS = {
     MatProgressBarModule,
     MatSnackBarModule,
     MatChipsModule,
+    IngestPortBoardComponent,
   ],
   template: `
     <div class="page-container">
@@ -225,60 +221,13 @@ const TR_DATE_FORMATS = {
         }
 
         @if (assignedPortColumns().length > 0) {
-          <div class="port-board-section">
-            <div class="port-board-header">
-              <div>
-                <h3>Port Görünümü</h3>
-                <p>Atanmış portlara göre ingest plan akışı</p>
-              </div>
-              <div class="port-board-actions">
-                <span>{{ assignedPortColumns().length }} port</span>
-                <button mat-stroked-button type="button" (click)="printPortBoard()">
-                  <mat-icon>print</mat-icon>
-                  Yazdır / Export
-                </button>
-              </div>
-            </div>
-
-            <div class="port-board-scroll">
-              <div class="port-board-frame">
-                <div class="port-board-times">
-                  <div class="port-board-times-head">Saat</div>
-                  <div class="port-board-times-body" [style.grid-template-rows]="timeGridTemplate()">
-                    @for (time of portBoardTimeLabels(); track time.label) {
-                      <div class="port-board-time-cell" [style.grid-row]="time.gridRow">{{ time.label }}</div>
-                    }
-                  </div>
-                </div>
-
-                <div class="port-board-grid" [style.grid-template-columns]="'repeat(' + assignedPortColumns().length + ', minmax(220px, 1fr))'">
-                @for (column of assignedPortColumns(); track column.port) {
-                  <section class="port-board-column">
-                    <header class="port-board-column-head">{{ column.port }}</header>
-
-                    <div class="port-board-column-body" [style.grid-template-rows]="timeGridTemplate()">
-                      @for (time of portBoardTimeLabels(); track time.label) {
-                        <div class="port-board-slot-line" [style.grid-row]="time.gridRow"></div>
-                      }
-
-                      @for (item of column.items; track item.row.id) {
-                        <article class="port-board-item" [class.studio]="item.row.source === 'studio-plan'" [class.overlap]="item.overlap" [style.grid-row]="item.gridRow">
-                          <div class="port-board-time">{{ item.row.startTime }} - {{ item.row.endTime }}</div>
-                          <strong class="port-board-title">{{ item.row.title }}</strong>
-                          <span class="port-board-meta">{{ item.row.location }}</span>
-                          <span class="port-board-note">{{ item.row.sourceLabel }}</span>
-                          @if (item.overlap) {
-                            <span class="port-board-warning">Cakisma</span>
-                          }
-                        </article>
-                      }
-                    </div>
-                  </section>
-                }
-                </div>
-              </div>
-            </div>
-          </div>
+          <app-ingest-port-board
+            [columns]="assignedPortColumns()"
+            [timeLabels]="portBoardTimeLabels()"
+            [gridTemplateRows]="timeGridTemplate()"
+            (requestPrint)="printPortBoard()"
+            (portOrderChange)="setPortBoardOrder($event)"
+          />
         }
       </div>
         </mat-tab>
@@ -504,27 +453,6 @@ const TR_DATE_FORMATS = {
     .inline-field ::ng-deep .mat-mdc-form-field-subscript-wrapper { display: none; }
     .inline-field ::ng-deep .mat-mdc-text-field-wrapper { height: 40px; }
     .inline-field ::ng-deep .mat-mdc-form-field-infix { min-height: 40px; padding-top: 8px; padding-bottom: 8px; }
-    .port-board-section { margin: 18px 14px 14px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; background: rgba(7,17,31,0.7); overflow: hidden; }
-    .port-board-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-    .port-board-header h3, .port-board-header p { margin: 0; }
-    .port-board-header p { color: #9aa2b3; font-size: 0.8rem; }
-    .port-board-actions { display: flex; align-items: center; gap: 12px; }
-    .port-board-scroll { overflow-x: auto; }
-    .port-board-frame { display: grid; grid-template-columns: 84px minmax(0, 1fr); min-width: max-content; }
-    .port-board-times { border-right: 1px solid rgba(255,255,255,0.08); background: #203754; }
-    .port-board-times-head { display: flex; align-items: center; justify-content: center; min-height: 42px; border-bottom: 1px solid rgba(255,255,255,0.08); color: #f5d24b; font-size: 0.82rem; font-weight: 800; }
-    .port-board-times-body { display: grid; background: rgba(189,210,232,0.12); }
-    .port-board-time-cell { display: flex; align-items: flex-start; justify-content: center; padding-top: 6px; font-size: 0.74rem; font-weight: 700; color: #d7e6f5; }
-    .port-board-grid { display: grid; gap: 0; min-width: max-content; }
-    .port-board-column { min-height: 100%; border-right: 1px solid rgba(255,255,255,0.08); background: rgba(19,38,64,0.72); }
-    .port-board-column:last-child { border-right: 0; }
-    .port-board-column-head { display: flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,0.08); background: #203754; color: #f5d24b; font-size: 0.84rem; font-weight: 800; }
-    .port-board-column-body { position: relative; display: grid; padding: 0; min-height: 1176px; background: rgba(189,210,232,0.08); }
-    .port-board-slot-line { border-bottom: 1px solid rgba(255,255,255,0.07); }
-    .port-board-item { z-index: 1; margin: 2px 4px; padding: 8px 8px 9px; border: 1px solid rgba(255,255,255,0.08); background: #c7d8ec; color: #17304d; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
-    .port-board-item.overlap { background: #ffd9d9; border-color: #ef5350; }
-    .port-board-time { font-size: 0.8rem; font-weight: 800; }
-    .port-board-warning { font-weight: 800; color: #b71c1c; }
     .mono            { font-family: monospace; font-size: 0.8rem; }
     .inline-progress { width: 80px; margin-left: 8px; }
     .total-label     { margin-top: 8px; font-size: 0.85rem; opacity: 0.7; }
@@ -561,6 +489,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
   studioPlanSlots = signal<StudioPlanSlot[]>([]);
   ingestPlanItems = signal<IngestPlanItem[]>([]);
   recordingPorts = signal<RecordingPort[]>([]);
+  portBoardOrder = signal<string[]>([]);
   savingPlanKeys = signal<Set<string>>(new Set());
   total       = signal(0);
   selectedTab = signal(0);
@@ -629,8 +558,8 @@ export class IngestListComponent implements OnInit, OnDestroy {
     return rows;
   });
 
-  portBoardTimeLabels = computed(() => {
-    const items: Array<{ label: string; gridRow: string }> = [];
+  portBoardTimeLabels = computed<IngestPortBoardTimeLabel[]>(() => {
+    const items: IngestPortBoardTimeLabel[] = [];
     for (let minute = PORT_BOARD_START_MINUTE; minute < PORT_BOARD_END_MINUTE; minute += PORT_BOARD_SLOT_MINUTES * 2) {
       const rowStart = Math.floor((minute - PORT_BOARD_START_MINUTE) / PORT_BOARD_SLOT_MINUTES) + 1;
       items.push({
@@ -641,8 +570,11 @@ export class IngestListComponent implements OnInit, OnDestroy {
     return items;
   });
 
-  assignedPortColumns = computed<PortBoardColumn[]>(() => {
-    const portOrder = new Map(this.activeRecordingPorts().map((port, index) => [port.name, index]));
+  assignedPortColumns = computed<IngestPortBoardColumnView[]>(() => {
+    const configuredOrder = this.portBoardOrder();
+    const defaultOrder = this.activeRecordingPorts().map((port) => port.name);
+    const orderedNames = configuredOrder.length ? configuredOrder : defaultOrder;
+    const portOrder = new Map(orderedNames.map((name, index) => [name, index]));
     const grouped = new Map<string, IngestPlanRow[]>();
 
     for (const row of this.filteredPlanningRows()) {
@@ -721,6 +653,10 @@ export class IngestListComponent implements OnInit, OnDestroy {
     this.loadLivePlanCandidates();
   }
 
+  setPortBoardOrder(nextOrder: string[]) {
+    this.portBoardOrder.set(nextOrder);
+  }
+
   planFilterCount(filter: PlanFilter): number {
     const rows = this.planningRows();
     if (filter === 'today') {
@@ -759,27 +695,31 @@ export class IngestListComponent implements OnInit, OnDestroy {
     <meta charset="utf-8">
     <title>Ingest Port Gorunumu</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 24px; color: #0f2740; }
-      h1 { margin: 0 0 6px; font-size: 24px; }
-      p { margin: 0 0 18px; color: #516579; }
+      @page { size: A3 landscape; margin: 10mm; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, sans-serif; margin: 0; color: #0f2740; }
+      .sheet { width: 100%; }
+      h1 { margin: 0 0 4px; font-size: 22px; }
+      p { margin: 0 0 12px; color: #516579; font-size: 12px; }
       .board { display: grid; grid-template-columns: ${gridTemplateColumns}; border: 1px solid #2c4360; }
-      .head { min-height: 42px; display: flex; align-items: center; justify-content: center; padding: 8px; background: #203754; color: #f5d24b; font-weight: 700; border-right: 1px solid #2c4360; border-bottom: 1px solid #2c4360; }
+      .head { min-height: 34px; display: flex; align-items: center; justify-content: center; padding: 6px; background: #203754; color: #f5d24b; font-weight: 700; border-right: 1px solid #2c4360; border-bottom: 1px solid #2c4360; font-size: 12px; }
       .head:first-child { color: #fff; }
-      .times, .col { position: relative; display: grid; grid-template-rows: ${gridTemplateRows}; min-height: 1176px; }
+      .times, .col { position: relative; display: grid; grid-template-rows: ${gridTemplateRows}; min-height: 940px; }
       .times { background: #eef3f8; border-right: 1px solid #2c4360; }
-      .time { padding: 4px 8px; font-size: 12px; color: #2c4360; border-bottom: 1px solid #d2dde8; }
+      .time { padding: 2px 6px; font-size: 11px; color: #2c4360; border-bottom: 1px solid #d2dde8; }
       .col { background: #f6f9fc; border-right: 1px solid #2c4360; }
       .line { border-bottom: 1px solid #d2dde8; }
-      .item { margin: 3px; padding: 8px; border: 1px solid #93aac3; background: #c7d8ec; display: flex; flex-direction: column; gap: 3px; overflow: hidden; }
+      .item { margin: 2px; padding: 6px; border: 1px solid #93aac3; background: #c7d8ec; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
       .item.studio { background: #dbe6f3; }
       .item.overlap { background: #ffe0e0; border-color: #d94242; }
-      .t { font-size: 12px; font-weight: 700; }
-      .ttl { font-size: 13px; font-weight: 700; line-height: 1.25; }
-      .m { font-size: 12px; }
+      .t { font-size: 11px; font-weight: 700; }
+      .ttl { font-size: 12px; font-weight: 700; line-height: 1.2; }
+      .m { font-size: 11px; }
       .w { font-size: 11px; font-weight: 700; color: #b71c1c; }
     </style>
   </head>
   <body>
+    <div class="sheet">
     <h1>Ingest Port Gorunumu</h1>
     <p>${this.formatBoardDateLabel()}</p>
     <section class="board">
@@ -803,6 +743,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
         </div>
       `).join('')}
     </section>
+    </div>
     <script>window.print();</script>
   </body>
 </html>`;
@@ -889,7 +830,18 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   private loadRecordingPorts() {
     this.api.get<RecordingPort[]>('/ingest/recording-ports').subscribe({
-      next: (ports) => this.recordingPorts.set(Array.isArray(ports) ? ports : []),
+      next: (ports) => {
+        const nextPorts = Array.isArray(ports) ? ports : [];
+        this.recordingPorts.set(nextPorts);
+        const validNames = new Set(nextPorts.filter((port) => port.active).map((port) => port.name));
+        this.portBoardOrder.update((current) => {
+          const preserved = current.filter((name) => validNames.has(name));
+          const missing = nextPorts
+            .filter((port) => port.active && !preserved.includes(port.name))
+            .map((port) => port.name);
+          return [...preserved, ...missing];
+        });
+      },
       error: (err) => this.snack.open(`Kayıt portları alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 }),
     });
   }
@@ -1065,7 +1017,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
     });
   }
 
-  private toPortBoardItems(rows: IngestPlanRow[]): PortBoardItem[] {
+  private toPortBoardItems(rows: IngestPlanRow[]): IngestPortBoardItemView[] {
     const sorted = [...rows]
       .map((row) => ({
         row,
