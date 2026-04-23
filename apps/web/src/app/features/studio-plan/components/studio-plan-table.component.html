@@ -7,12 +7,10 @@
       <span>{{ day.label }}</span>
     </div>
   </ng-container>
-  <div class="header-fill"></div>
 
   <ng-container *ngFor="let day of days">
     <div class="studio-header" *ngFor="let studio of studios">{{ studio }}</div>
   </ng-container>
-  <div class="header-fill second-row"></div>
 
   <ng-container *ngFor="let time of timeSlots">
     <div class="time-cell">{{ time }}</div>
