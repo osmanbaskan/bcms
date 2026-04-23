@@ -50,7 +50,10 @@ interface IngestPlanRow {
   scheduleId?: number;
 }
 
+type PlanFilter = 'all' | 'today' | 'active' | 'issues';
+
 const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING', 'PROXY_GEN', 'QC']);
+const ACTIVE_PLAN_STATUSES = new Set<IngestPlanStatus>(['WAITING', 'RECEIVED', 'INGEST_STARTED']);
 
 const STATUS_TABS: Array<{ label: string; value: string | null }> = [
   { label: 'Tümü',       value: null },
@@ -65,6 +68,13 @@ const PLAN_STATUS_OPTIONS: Array<{ label: string; value: IngestPlanStatus }> = [
   { label: 'Ingest Başladı', value: 'INGEST_STARTED' },
   { label: 'Tamamlandı', value: 'COMPLETED' },
   { label: 'Sorunlu', value: 'ISSUE' },
+];
+
+const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
+  { label: 'Tüm Plan', value: 'all' },
+  { label: 'Bugünün İşleri', value: 'today' },
+  { label: 'Aktif İşler', value: 'active' },
+  { label: 'Sorunlular', value: 'issues' },
 ];
 
 
@@ -112,6 +122,20 @@ const PLAN_STATUS_OPTIONS: Array<{ label: string; value: IngestPlanStatus }> = [
           <span>{{ planningRows().length }} kayıt</span>
         </div>
 
+        <div class="plan-filter-bar">
+          @for (filter of planFilters; track filter.value) {
+            <button
+              type="button"
+              class="plan-filter-button"
+              [class.active]="planFilter() === filter.value"
+              (click)="setPlanFilter(filter.value)"
+            >
+              {{ filter.label }}
+              <span>{{ planFilterCount(filter.value) }}</span>
+            </button>
+          }
+        </div>
+
         <div class="live-plan-tools planning-tools">
           <mat-form-field>
             <mat-label>Tarih</mat-label>
@@ -142,7 +166,11 @@ const PLAN_STATUS_OPTIONS: Array<{ label: string; value: IngestPlanStatus }> = [
           <p class="empty-live-plan">Seçili tarih için ingest planı kaydı bulunamadı.</p>
         }
 
-        @if (planningRows().length > 0) {
+        @if (!livePlanLoading() && !studioPlanLoading() && planningRows().length > 0 && filteredPlanningRows().length === 0) {
+          <p class="empty-live-plan">Seçili filtre için ingest planı kaydı bulunamadı.</p>
+        }
+
+        @if (filteredPlanningRows().length > 0) {
           <div class="planning-table-wrap">
             <div class="planning-table">
               <div class="planning-head">
@@ -156,7 +184,7 @@ const PLAN_STATUS_OPTIONS: Array<{ label: string; value: IngestPlanStatus }> = [
                 <span>İşlem</span>
               </div>
 
-              @for (row of planningRows(); track row.id) {
+              @for (row of filteredPlanningRows(); track row.id) {
                 <div class="planning-row">
                   <span class="source-pill" [class.studio]="row.source === 'studio-plan'">{{ row.sourceLabel }}</span>
                   <strong class="time-range">{{ row.startTime }} - {{ row.endTime }}</strong>
@@ -379,7 +407,10 @@ const PLAN_STATUS_OPTIONS: Array<{ label: string; value: IngestPlanStatus }> = [
     .planning-board-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.1); }
     .planning-board-header h2 { margin: 0; font-size: 1rem; }
     .planning-board-header p { margin: 2px 0 0; color: #9aa2b3; font-size: 0.82rem; }
-    .planning-board-header span { color: #c8d3e5; font-size: 0.85rem; font-weight: 700; }
+    .plan-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 14px 0; }
+    .plan-filter-button { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; background: rgba(255,255,255,0.04); color: #c8d3e5; }
+    .plan-filter-button span { min-width: 22px; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.1); color: #ffffff; font-size: 0.72rem; font-weight: 800; text-align: center; }
+    .plan-filter-button.active { border-color: #9bd3ff; background: rgba(155,211,255,0.14); color: #ffffff; }
     .planning-tools { padding: 12px 14px 0; }
     .planning-table-wrap { overflow-x: auto; }
     .planning-table { min-width: 1120px; }
@@ -429,6 +460,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
   columns     = ['id', 'sourcePath', 'status', 'plan', 'qc', 'createdAt', 'expand'];
   statusTabs  = STATUS_TABS;
   planStatusOptions = PLAN_STATUS_OPTIONS;
+  planFilters = PLAN_FILTERS;
 
   jobs        = signal<IngestJob[]>([]);
   channels    = signal<Channel[]>([]);
@@ -438,6 +470,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
   savingPlanKeys = signal<Set<string>>(new Set());
   total       = signal(0);
   selectedTab = signal(0);
+  planFilter = signal<PlanFilter>('all');
   expandedId  = signal<number | null>(null);
   triggering  = signal(false);
   livePlanLoading = signal(false);
@@ -478,6 +511,22 @@ export class IngestListComponent implements OnInit, OnDestroy {
     }));
 
     return [...liveRows, ...this.studioPlanRows()].sort((a, b) => a.sortMinute - b.sortMinute);
+  });
+
+  filteredPlanningRows = computed<IngestPlanRow[]>(() => {
+    const rows = this.planningRows();
+    const filter = this.planFilter();
+    if (filter === 'today') {
+      const today = this.todayDate();
+      return rows.filter((row) => row.day === today);
+    }
+    if (filter === 'active') {
+      return rows.filter((row) => ACTIVE_PLAN_STATUSES.has(row.status));
+    }
+    if (filter === 'issues') {
+      return rows.filter((row) => row.status === 'ISSUE');
+    }
+    return rows;
   });
 
   hasActiveJobs = computed(() => this.jobs().some((j) => ACTIVE_STATUSES.has(j.status)));
@@ -524,6 +573,32 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   isActive(status: string): boolean {
     return ACTIVE_STATUSES.has(status);
+  }
+
+  setPlanFilter(filter: PlanFilter) {
+    this.planFilter.set(filter);
+    if (filter === 'today') {
+      const today = this.todayDate();
+      if (this.livePlanDate !== today) {
+        this.livePlanDate = today;
+        this.loadLivePlanCandidates();
+      }
+    }
+  }
+
+  planFilterCount(filter: PlanFilter): number {
+    const rows = this.planningRows();
+    if (filter === 'today') {
+      const today = this.todayDate();
+      return rows.filter((row) => row.day === today).length;
+    }
+    if (filter === 'active') {
+      return rows.filter((row) => ACTIVE_PLAN_STATUSES.has(row.status)).length;
+    }
+    if (filter === 'issues') {
+      return rows.filter((row) => row.status === 'ISSUE').length;
+    }
+    return rows.length;
   }
 
   triggerJob() {
@@ -674,6 +749,11 @@ export class IngestListComponent implements OnInit, OnDestroy {
     const date = new Date(value);
     const minute = date.getHours() * 60 + date.getMinutes();
     return minute < 6 * 60 ? minute + 24 * 60 : minute;
+  }
+
+  private todayDate(): string {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
 
   private mondayFor(dateValue: string): string {
