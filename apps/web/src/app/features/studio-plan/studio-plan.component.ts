@@ -258,7 +258,7 @@ export class StudioPlanComponent implements OnInit {
   }
 
   moveCurrentWeekToNextWeek(): void {
-    const sourceStart = DEFAULT_START_DATE;
+    const sourceStart = this.weekStart;
     const targetStart = this.toDateInputValue(this.addDays(this.parseDateInput(sourceStart) ?? new Date(), 7));
     const sourceDays = this.buildWeekDays(sourceStart);
     const targetBySourceDay = new Map(
@@ -277,7 +277,6 @@ export class StudioPlanComponent implements OnInit {
         if (!targetDay) continue;
 
         next[this.cellKey(targetDay, studio, time)] = value;
-        delete next[key];
       }
 
       return next;
@@ -288,7 +287,6 @@ export class StudioPlanComponent implements OnInit {
     this.days.set(nextDays);
     this.selectedDay = nextDays[0]?.id ?? targetStart;
     this.viewMode.set('table');
-    this.saveWeek(sourceStart, []);
     this.saveCurrentWeek();
   }
 

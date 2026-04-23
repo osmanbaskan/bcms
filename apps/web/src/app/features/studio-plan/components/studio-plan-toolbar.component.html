@@ -42,17 +42,18 @@
     </mat-select>
   </mat-form-field>
 
-  <button mat-stroked-button type="button" (click)="clearSelection.emit()">
+  <button class="action-button danger-action" mat-stroked-button type="button" (click)="clearSelection.emit()">
     <mat-icon>backspace</mat-icon>
     Seçili Programı Temizle
   </button>
 
-  <button mat-stroked-button type="button" (click)="moveCurrentWeekToNextWeek.emit()">
+  <button class="action-button copy-action" mat-stroked-button type="button" (click)="moveCurrentWeekToNextWeek.emit()">
     <mat-icon>event_repeat</mat-icon>
-    Bu Haftayı Gelecek Haftaya Taşı
+    Bu Haftayı Gelecek Haftaya Kopyala
   </button>
 
   <button
+    class="action-button eraser-action"
     mat-stroked-button
     type="button"
     [class.active-tool]="eraserMode"

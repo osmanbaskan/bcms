@@ -52,6 +52,32 @@ mat-form-field {
   border-color: #98a2b3 !important;
 }
 
+.action-button {
+  min-height: 44px;
+  color: #111827 !important;
+  border-width: 2px !important;
+  font-weight: 700;
+}
+
+.action-button mat-icon {
+  margin-right: 6px;
+}
+
+.danger-action {
+  background: #fff4e5 !important;
+  border-color: #f79009 !important;
+}
+
+.copy-action {
+  background: #e8f5ff !important;
+  border-color: #1570ef !important;
+}
+
+.eraser-action {
+  background: #fff1f3 !important;
+  border-color: #d92d20 !important;
+}
+
 .active-tool {
   color: #fff !important;
   background: #b42318 !important;
