@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
-import type { SaveStudioPlanDto, StudioPlan } from '@bcms/shared';
+import type { SaveStudioPlanCatalogDto, SaveStudioPlanDto, StudioPlan, StudioPlanCatalog } from '@bcms/shared';
 
 @Injectable({ providedIn: 'root' })
 export class StudioPlanService {
@@ -13,5 +13,13 @@ export class StudioPlanService {
 
   savePlan(weekStart: string, dto: SaveStudioPlanDto): Observable<StudioPlan> {
     return this.api.put<StudioPlan>(`/studio-plans/${weekStart}`, dto);
+  }
+
+  getCatalog(): Observable<StudioPlanCatalog> {
+    return this.api.get<StudioPlanCatalog>('/studio-plans/catalog');
+  }
+
+  saveCatalog(dto: SaveStudioPlanCatalogDto): Observable<StudioPlanCatalog> {
+    return this.api.put<StudioPlanCatalog>('/studio-plans/catalog', dto);
   }
 }

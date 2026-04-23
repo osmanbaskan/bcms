@@ -1,0 +1,71 @@
+.studio-plan-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+p {
+  margin: 4px 0 0;
+  color: #667085;
+}
+
+app-studio-plan-toolbar {
+  display: block;
+}
+
+.plan-shell {
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+  border: 1px solid #111827;
+  background: #fff;
+  position: relative;
+}
+
+.print-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: max-content;
+  padding: 10px 12px;
+  color: #fff;
+  background: #43206d;
+  letter-spacing: 0.02em;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #studio-plan-export,
+  #studio-plan-export * {
+    visibility: visible;
+  }
+
+  #studio-plan-export {
+    position: fixed;
+    inset: 0;
+    overflow: visible;
+    border: 0;
+  }
+
+  .page-header,
+  app-studio-plan-toolbar {
+    display: none !important;
+  }
+}

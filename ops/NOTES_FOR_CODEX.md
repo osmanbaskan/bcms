@@ -44,6 +44,12 @@ Frontend architecture/current UI notes:
 - Supported endpoints:
   - `GET /api/v1/studio-plans/:weekStart`
   - `PUT /api/v1/studio-plans/:weekStart`
+  - `GET /api/v1/studio-plans/catalog`
+  - `PUT /api/v1/studio-plans/catalog`
+- Program/color selectors are backend-managed, not hardcoded frontend
+  configuration. Prisma models/tables:
+  - `StudioPlanProgram` -> `studio_plan_programs`
+  - `StudioPlanColor` -> `studio_plan_colors`
 - `weekStart` must be a Monday date. PUT replaces that week's slot set
   transactionally.
 - It supports Monday-Sunday week view, single day view, 06:00-02:00 half-hour
@@ -52,6 +58,8 @@ Frontend architecture/current UI notes:
   button that moves the current week cells to the next week.
 - `Export PDF` currently uses `window.print()` and print CSS.
 - Migration file: `apps/api/prisma/migrations/20260423000000_studio_plans/migration.sql`.
+- Catalog migration file:
+  `apps/api/prisma/migrations/20260423001000_studio_plan_catalog/migration.sql`.
 - On 2026-04-23 Prisma Client generation again required the clean reinstall
   pattern: delete `node_modules/.prisma`, `node_modules/@prisma/client`, and
   `node_modules/prisma`, reinstall `prisma@5.22.0` and

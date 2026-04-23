@@ -67,6 +67,10 @@ Operasyon notu:
 - API endpointleri:
   - `GET /api/v1/studio-plans/:weekStart`
   - `PUT /api/v1/studio-plans/:weekStart`
+  - `GET /api/v1/studio-plans/catalog`
+  - `PUT /api/v1/studio-plans/catalog`
+- Program ve renk secenekleri artik backend katalog tablolarindan gelir:
+  `studio_plan_programs` ve `studio_plan_colors`.
 - `weekStart` Pazartesi tarihi olmak zorundadir; ekran sadece gecen hafta,
   bu hafta ve gelecek hafta Pazartesi seceneklerini gosterir.
 - Bu ekran canli yayin plani `schedules.usage_scope` verisini kullanmaz.

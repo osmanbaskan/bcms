@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { PERMISSIONS, type StudioPlan, type StudioPlanSlot } from '@bcms/shared';
+import {
+  PERMISSIONS,
+  type SaveStudioPlanCatalogDto,
+  type StudioPlan,
+  type StudioPlanCatalog,
+  type StudioPlanSlot,
+} from '@bcms/shared';
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const timeSchema = z.string().regex(/^\d{2}:\d{2}$/);
@@ -16,6 +22,24 @@ const slotSchema = z.object({
 
 const saveStudioPlanSchema = z.object({
   slots: z.array(slotSchema).max(7 * 5 * 40),
+});
+
+const catalogProgramSchema = z.object({
+  name: z.string().min(1).max(300),
+  sortOrder: z.number().int().min(0).max(10_000),
+  active: z.boolean(),
+});
+
+const catalogColorSchema = z.object({
+  label: z.string().min(1).max(100),
+  value: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  sortOrder: z.number().int().min(0).max(10_000),
+  active: z.boolean(),
+});
+
+const saveCatalogSchema = z.object({
+  programs: z.array(catalogProgramSchema).max(200),
+  colors: z.array(catalogColorSchema).max(100),
 });
 
 interface DbStudioPlanSlot {
@@ -103,7 +127,45 @@ function mapPlan(plan: DbStudioPlanWithSlots): StudioPlan {
   };
 }
 
+async function getCatalog(app: FastifyInstance): Promise<StudioPlanCatalog> {
+  const [programs, colors] = await Promise.all([
+    app.prisma.studioPlanProgram.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+    app.prisma.studioPlanColor.findMany({ orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }] }),
+  ]);
+
+  return {
+    programs,
+    colors,
+  };
+}
+
 export async function studioPlanRoutes(app: FastifyInstance) {
+  app.get('/catalog', {
+    preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
+    schema: { tags: ['Studio Plans'], summary: 'Get studio plan program and color catalog' },
+  }, async () => getCatalog(app));
+
+  app.put('/catalog', {
+    preHandler: app.requireRole(...PERMISSIONS.studioPlans.write),
+    schema: { tags: ['Studio Plans'], summary: 'Replace studio plan program and color catalog' },
+  }, async (request) => {
+    const dto = saveCatalogSchema.parse(request.body) satisfies SaveStudioPlanCatalogDto;
+
+    await app.prisma.$transaction(async (tx) => {
+      await tx.studioPlanProgram.deleteMany();
+      await tx.studioPlanColor.deleteMany();
+
+      if (dto.programs.length > 0) {
+        await tx.studioPlanProgram.createMany({ data: dto.programs });
+      }
+      if (dto.colors.length > 0) {
+        await tx.studioPlanColor.createMany({ data: dto.colors });
+      }
+    });
+
+    return getCatalog(app);
+  });
+
   app.get<{ Params: { weekStart: string } }>('/:weekStart', {
     preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
     schema: { tags: ['Studio Plans'], summary: 'Get one weekly studio plan' },

@@ -1,43 +1,21 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
-import { MatSelectModule } from '@angular/material/select';
 import { finalize } from 'rxjs';
 import { StudioPlanService } from '../../core/services/studio-plan.service';
 import type { StudioPlan, StudioPlanSlot } from '@bcms/shared';
-
-interface StudioPlanDay {
-  id: string;
-  label: string;
-  date: string;
-}
-
-interface StudioPlanColor {
-  label: string;
-  value: string;
-}
-
-interface StudioPlanAssignment {
-  program: string;
-  color: string;
-}
-
-interface StudioPlanListEntry {
-  id: string;
-  dayLabel: string;
-  dayDate: string;
-  studio: string;
-  startTime: string;
-  endTime: string;
-  program: string;
-  color: string;
-  colorLabel: string;
-  slotCount: number;
-}
+import { StudioPlanListComponent } from './components/studio-plan-list.component';
+import { StudioPlanTableComponent } from './components/studio-plan-table.component';
+import { StudioPlanToolbarComponent } from './components/studio-plan-toolbar.component';
+import type {
+  StudioPlanAssignment,
+  StudioPlanColor,
+  StudioPlanDay,
+  StudioPlanListEntry,
+  StudioPlanViewMode,
+  StudioPlanWeekOption,
+} from './studio-plan.types';
 
 const DAY_LABELS = [
   'Pazar',
@@ -58,7 +36,7 @@ const STUDIOS = [
   'beIN Gurme',
 ];
 
-const PROGRAMS = [
+const DEFAULT_PROGRAMS = [
   'HABER CY',
   'beIN SABAH CY',
   'GÜN ORTASI CY',
@@ -89,7 +67,7 @@ const PROGRAMS = [
   'BASKETBOL SÜPER LİG MAÇ SONU REJİ ORTAK',
 ];
 
-const COLORS: StudioPlanColor[] = [
+const DEFAULT_COLORS: StudioPlanColor[] = [
   { label: 'HD NEWS', value: '#ffc400' },
   { label: 'BS 1', value: '#c6d9f1' },
   { label: 'BS 2', value: '#bfbfbf' },
@@ -132,584 +110,26 @@ function toDateInputValue(date: Date): string {
   standalone: true,
   imports: [
     CommonModule,
-    FormsModule,
     MatButtonModule,
-    MatButtonToggleModule,
-    MatFormFieldModule,
     MatIconModule,
-    MatSelectModule,
+    StudioPlanListComponent,
+    StudioPlanTableComponent,
+    StudioPlanToolbarComponent,
   ],
-  template: `
-    <section class="studio-plan-page">
-      <header class="page-header">
-        <div>
-          <h1>Stüdyo Planı</h1>
-          <p>{{ dateRangeLabel() }} · 06:00 - 02:00 · 30 dakikalık slotlar</p>
-        </div>
-
-        <button mat-flat-button color="primary" type="button" (click)="exportPlan()">
-          <mat-icon>download</mat-icon>
-          Export PDF
-        </button>
-      </header>
-
-      <div class="toolbar">
-        <mat-form-field appearance="outline">
-          <mat-label>Hafta Başlangıcı</mat-label>
-          <mat-select [(ngModel)]="weekStart" (selectionChange)="onWeekStartChange()">
-            <mat-option *ngFor="let option of weekOptions" [value]="option.value">
-              {{ option.label }}
-            </mat-option>
-          </mat-select>
-        </mat-form-field>
-
-        <mat-button-toggle-group
-          [value]="viewMode()"
-          (change)="viewMode.set($event.value)"
-          aria-label="Görünüm"
-        >
-          <mat-button-toggle value="table">Tablo</mat-button-toggle>
-          <mat-button-toggle value="list">Liste</mat-button-toggle>
-        </mat-button-toggle-group>
-
-        <mat-form-field appearance="outline" class="program-select">
-          <mat-label>Program</mat-label>
-          <mat-select [(ngModel)]="selectedProgram">
-            <mat-option *ngFor="let program of programs" [value]="program">{{ program }}</mat-option>
-          </mat-select>
-        </mat-form-field>
-
-        <mat-form-field appearance="outline" class="color-select">
-          <mat-label>Renk</mat-label>
-          <mat-select [(ngModel)]="selectedColor">
-            <mat-select-trigger>
-              <span class="color-option">
-                <span class="color-swatch" [style.background]="selectedColor"></span>
-                {{ colorLabel(selectedColor) }}
-              </span>
-            </mat-select-trigger>
-            <mat-option *ngFor="let color of colors" [value]="color.value">
-              <span class="color-option">
-                <span class="color-swatch" [style.background]="color.value"></span>
-                {{ color.label }}
-              </span>
-            </mat-option>
-          </mat-select>
-        </mat-form-field>
-
-        <button mat-stroked-button type="button" (click)="clearSelection()">
-          <mat-icon>backspace</mat-icon>
-          Seçili Programı Temizle
-        </button>
-
-        <button mat-stroked-button type="button" (click)="moveCurrentWeekToNextWeek()">
-          <mat-icon>event_repeat</mat-icon>
-          Bu Haftayı Gelecek Haftaya Taşı
-        </button>
-
-        <button
-          mat-stroked-button
-          type="button"
-          [class.active-tool]="eraserMode()"
-          (click)="eraserMode.set(!eraserMode())"
-        >
-          <mat-icon>ink_eraser</mat-icon>
-          Silgi
-        </button>
-
-        <span class="save-state" *ngIf="loading()">Yükleniyor...</span>
-        <span class="save-state" *ngIf="saving()">Kaydediliyor...</span>
-        <span class="save-state error" *ngIf="saveError()">{{ saveError() }}</span>
-        <span class="save-state" *ngIf="!saving() && !loading() && lastSavedAt()">
-          Kaydedildi · {{ lastSavedAt() }}
-        </span>
-      </div>
-
-      <div id="studio-plan-export" class="plan-shell">
-        <div class="print-title">
-          <strong>STÜDYO PLANI</strong>
-          <span>{{ dateRangeLabel() }}</span>
-        </div>
-
-        <div class="plan-grid" *ngIf="viewMode() !== 'list'" [style.--day-count]="visibleDays().length">
-          <div class="corner-cell">Saat</div>
-
-          <ng-container *ngFor="let day of visibleDays()">
-            <div class="day-header" [style.gridColumn]="'span ' + studios.length">
-              <strong>{{ day.date }}</strong>
-              <span>{{ day.label }}</span>
-            </div>
-          </ng-container>
-
-          <ng-container *ngFor="let day of visibleDays()">
-            <div class="studio-header" *ngFor="let studio of studios">{{ studio }}</div>
-          </ng-container>
-
-          <ng-container *ngFor="let time of timeSlots">
-            <div class="time-cell">{{ time }}</div>
-
-            <ng-container *ngFor="let day of visibleDays()">
-              <button
-                class="slot-cell"
-                type="button"
-                *ngFor="let studio of studios"
-                [class.filled]="programAt(day.id, studio, time)"
-                [class.continuation]="isContinuation(day.id, studio, time)"
-                [class.continues]="continuesProgram(day.id, studio, time)"
-                [style.background]="colorAt(day.id, studio, time)"
-                [style.borderBottomColor]="continuesProgram(day.id, studio, time) ? colorAt(day.id, studio, time) : null"
-                [style.--run-slots]="runLength(day.id, studio, time)"
-                [style.--program-font-size.px]="programFontSize(day.id, studio, time)"
-                (click)="assignProgram(day.id, studio, time)"
-                [attr.aria-label]="day.label + ' ' + studio + ' ' + time"
-              >
-                <span>{{ isContinuation(day.id, studio, time) ? '' : programAt(day.id, studio, time) }}</span>
-              </button>
-            </ng-container>
-          </ng-container>
-        </div>
-
-        <div class="list-view" *ngIf="viewMode() === 'list'">
-          <div class="list-header">
-            <span>Gün</span>
-            <span>Stüdyo</span>
-            <span>Saat</span>
-            <span>Program</span>
-            <span>Renk</span>
-            <span>Süre</span>
-          </div>
-
-          <div class="empty-list" *ngIf="listEntries().length === 0">
-            Bu hafta için kayıtlı stüdyo planı yok.
-          </div>
-
-          <div class="list-row" *ngFor="let entry of listEntries()">
-            <div class="day-cell">
-              <strong>{{ entry.dayLabel }}</strong>
-              <span>{{ entry.dayDate }}</span>
-            </div>
-            <div>{{ entry.studio }}</div>
-            <div class="time-range">{{ entry.startTime }} - {{ entry.endTime }}</div>
-            <div class="program-cell">
-              <span class="program-marker" [style.background]="entry.color"></span>
-              <strong>{{ entry.program }}</strong>
-            </div>
-            <div>{{ entry.colorLabel }}</div>
-            <div>{{ entry.slotCount * 30 }} dk</div>
-          </div>
-        </div>
-      </div>
-    </section>
-  `,
-  styles: [`
-    .studio-plan-page {
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-      min-width: 0;
-    }
-
-    .page-header,
-    .toolbar {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 28px;
-      font-weight: 600;
-    }
-
-    p {
-      margin: 4px 0 0;
-      color: #667085;
-    }
-
-    .toolbar {
-      align-items: center;
-      padding: 12px;
-      border: 1px solid #d0d5dd;
-      background: #f8fafc;
-    }
-
-    mat-form-field {
-      width: 220px;
-    }
-
-    .program-select {
-      width: min(440px, 100%);
-    }
-
-    .color-select {
-      width: 260px;
-    }
-
-    .color-option {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-    }
-
-    .color-swatch {
-      width: 34px;
-      height: 12px;
-      border: 1px solid rgba(17, 24, 39, 0.3);
-      flex: 0 0 auto;
-    }
-
-    .toolbar ::ng-deep .mat-mdc-select-value,
-    .toolbar ::ng-deep .mat-mdc-select-arrow,
-    .toolbar ::ng-deep .mat-mdc-floating-label,
-    .toolbar ::ng-deep .mat-mdc-form-field-label {
-      color: #111827 !important;
-    }
-
-    .toolbar ::ng-deep .mat-mdc-text-field-wrapper {
-      background: #ffffff !important;
-    }
-
-    .toolbar ::ng-deep .mdc-notched-outline__leading,
-    .toolbar ::ng-deep .mdc-notched-outline__notch,
-    .toolbar ::ng-deep .mdc-notched-outline__trailing {
-      border-color: #98a2b3 !important;
-    }
-
-    .active-tool {
-      color: #fff !important;
-      background: #b42318 !important;
-      border-color: #b42318 !important;
-    }
-
-    .save-state {
-      color: #475467;
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .save-state.error {
-      color: #b42318;
-    }
-
-    .plan-shell {
-      max-height: calc(100vh - 260px);
-      overflow: auto;
-      border: 1px solid #111827;
-      background: #fff;
-      position: relative;
-    }
-
-    .print-title {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      min-width: max-content;
-      padding: 10px 12px;
-      color: #fff;
-      background: #43206d;
-      letter-spacing: 0.02em;
-    }
-
-    .plan-grid {
-      --cell-width: 92px;
-      --time-width: 58px;
-      display: grid;
-      grid-template-columns: var(--time-width) repeat(calc(var(--day-count) * 5), var(--cell-width));
-      min-width: max-content;
-      font-size: 11px;
-    }
-
-    .corner-cell,
-    .time-cell,
-    .day-header,
-    .studio-header,
-    .slot-cell {
-      border-right: 1px solid #111827;
-      border-bottom: 1px solid #111827;
-    }
-
-    .corner-cell,
-    .time-cell {
-      position: sticky;
-      left: 0;
-      z-index: 3;
-    }
-
-    .corner-cell {
-      background: #43206d;
-    }
-
-    .corner-cell {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      font-weight: 700;
-      grid-row: span 2;
-      top: 0;
-      z-index: 8;
-    }
-
-    .day-header {
-      position: sticky;
-      top: 0;
-      z-index: 7;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 48px;
-      color: #fff;
-      background: #43206d;
-      text-transform: uppercase;
-    }
-
-    .studio-header {
-      position: sticky;
-      top: 49px;
-      z-index: 6;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 42px;
-      padding: 4px;
-      color: #fff;
-      background: #43206d;
-      font-size: 10px;
-      font-weight: 700;
-      text-align: center;
-      text-transform: uppercase;
-    }
-
-    .time-cell {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 34px;
-      color: #fff;
-      background: #43206d;
-      font-weight: 700;
-      z-index: 4;
-    }
-
-    .slot-cell {
-      min-height: 34px;
-      padding: 2px 3px;
-      background: #ffd226;
-      color: #111827;
-      border-top: 0;
-      border-left: 0;
-      font: inherit;
-      font-weight: 700;
-      cursor: pointer;
-      overflow: visible;
-      position: relative;
-    }
-
-    .slot-cell:hover {
-      outline: 2px solid #1d4ed8;
-      outline-offset: -2px;
-    }
-
-    .slot-cell.filled {
-      background: #f4b400;
-    }
-
-    .slot-cell.continuation {
-      padding-top: 0;
-      padding-bottom: 0;
-    }
-
-    .slot-cell span {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: calc(var(--run-slots, 1) * 34px - 6px);
-      overflow: hidden;
-      font-size: var(--program-font-size, 11px);
-      line-height: 1.1;
-      text-align: center;
-      overflow-wrap: anywhere;
-    }
-
-    .slot-cell.continues:not(.continuation) span {
-      position: absolute;
-      inset: 2px 3px auto 3px;
-      z-index: 2;
-      pointer-events: none;
-    }
-
-    .list-view {
-      min-width: 920px;
-      color: #111827;
-      background: #fff;
-    }
-
-    .list-header,
-    .list-row {
-      display: grid;
-      grid-template-columns: 160px 120px 120px minmax(280px, 1fr) 180px 80px;
-      align-items: center;
-      min-height: 44px;
-      border-bottom: 1px solid #d0d5dd;
-    }
-
-    .list-header {
-      position: sticky;
-      top: 0;
-      z-index: 5;
-      color: #fff;
-      background: #43206d;
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    .list-header span,
-    .list-row > div {
-      min-width: 0;
-      padding: 8px 10px;
-      border-right: 1px solid #d0d5dd;
-    }
-
-    .list-row {
-      font-size: 13px;
-    }
-
-    .list-row:nth-child(odd) {
-      background: #f8fafc;
-    }
-
-    .day-cell,
-    .program-cell {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-    }
-
-    .day-cell {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 2px;
-    }
-
-    .day-cell span {
-      color: #667085;
-      font-size: 12px;
-    }
-
-    .time-range {
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .program-marker {
-      width: 30px;
-      height: 14px;
-      flex: 0 0 auto;
-      border: 1px solid rgba(17, 24, 39, 0.3);
-    }
-
-    .program-cell strong {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .empty-list {
-      padding: 28px;
-      color: #667085;
-      font-weight: 600;
-      text-align: center;
-    }
-
-    @media print {
-      body * {
-        visibility: hidden;
-      }
-
-      #studio-plan-export,
-      #studio-plan-export * {
-        visibility: visible;
-      }
-
-      #studio-plan-export {
-        position: fixed;
-        inset: 0;
-        overflow: visible;
-        border: 0;
-      }
-
-      .page-header,
-      .toolbar {
-        display: none !important;
-      }
-
-      .plan-grid {
-        --cell-width: 32px;
-        --time-width: 30px;
-        font-size: 5px;
-      }
-
-      .list-view {
-        min-width: 0;
-      }
-
-      .list-header,
-      .list-row {
-        grid-template-columns: 88px 70px 70px minmax(130px, 1fr) 90px 44px;
-        min-height: 24px;
-        font-size: 6px;
-      }
-
-      .list-header span,
-      .list-row > div {
-        padding: 3px 4px;
-      }
-
-      .day-header {
-        min-height: 22px;
-      }
-
-      .studio-header {
-        min-height: 26px;
-        font-size: 4.5px;
-        writing-mode: vertical-rl;
-        transform: rotate(180deg);
-      }
-
-      .time-cell,
-      .slot-cell {
-        min-height: 16px;
-      }
-
-      .slot-cell {
-        appearance: none;
-      }
-
-      .slot-cell span {
-        min-height: calc(var(--run-slots, 1) * 16px - 4px);
-        font-size: calc(var(--program-font-size, 11px) * 0.55);
-      }
-    }
-  `],
+  templateUrl: './studio-plan.component.html',
+  styleUrl: './studio-plan-shell.scss',
 })
 export class StudioPlanComponent implements OnInit {
   private readonly studioPlanService = inject(StudioPlanService);
 
   readonly days = signal<StudioPlanDay[]>([]);
   readonly studios = STUDIOS;
-  readonly programs = PROGRAMS;
-  readonly colors = COLORS;
+  readonly programs = signal<string[]>(DEFAULT_PROGRAMS);
+  readonly colors = signal<StudioPlanColor[]>(DEFAULT_COLORS);
   readonly timeSlots = TIME_SLOTS;
   readonly weekOptions = this.buildWeekOptions();
 
-  readonly viewMode = signal<'table' | 'list'>('table');
+  readonly viewMode = signal<StudioPlanViewMode>('table');
   readonly cells = signal<Record<string, StudioPlanAssignment>>({});
   readonly eraserMode = signal(false);
   readonly loading = signal(false);
@@ -719,8 +139,8 @@ export class StudioPlanComponent implements OnInit {
 
   weekStart = DEFAULT_START_DATE;
   selectedDay = DEFAULT_START_DATE;
-  selectedProgram = PROGRAMS[0];
-  selectedColor = COLORS[0].value;
+  selectedProgram = DEFAULT_PROGRAMS[0];
+  selectedColor = DEFAULT_COLORS[0].value;
 
   readonly dateRangeLabel = computed(() => {
     const days = this.days();
@@ -776,11 +196,12 @@ export class StudioPlanComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    this.loadCatalog();
     this.onWeekStartChange();
   }
 
-  onWeekStartChange(): void {
-    const monday = this.normalizeToMonday(this.weekStart);
+  onWeekStartChange(weekStart = this.weekStart): void {
+    const monday = this.normalizeToMonday(weekStart);
     this.weekStart = monday;
 
     const nextDays = this.buildWeekDays(monday);
@@ -817,54 +238,12 @@ export class StudioPlanComponent implements OnInit {
     this.saveCurrentWeek();
   }
 
-  programAt(day: string, studio: string, time: string): string {
-    return this.cells()[this.cellKey(day, studio, time)]?.program ?? '';
-  }
-
-  colorAt(day: string, studio: string, time: string): string | null {
-    return this.cells()[this.cellKey(day, studio, time)]?.color ?? null;
+  onCellAssign(event: { day: string; studio: string; time: string }): void {
+    this.assignProgram(event.day, event.studio, event.time);
   }
 
   colorLabel(value: string): string {
-    return this.colors.find((color) => color.value === value)?.label ?? 'Renk';
-  }
-
-  isContinuation(day: string, studio: string, time: string): boolean {
-    const program = this.programAt(day, studio, time);
-    const color = this.colorAt(day, studio, time);
-    const previous = this.previousTime(time);
-    return !!program && !!previous && this.programAt(day, studio, previous) === program && this.colorAt(day, studio, previous) === color;
-  }
-
-  continuesProgram(day: string, studio: string, time: string): boolean {
-    const program = this.programAt(day, studio, time);
-    const color = this.colorAt(day, studio, time);
-    const next = this.nextTime(time);
-    return !!program && !!next && this.programAt(day, studio, next) === program && this.colorAt(day, studio, next) === color;
-  }
-
-  runLength(day: string, studio: string, time: string): number {
-    const program = this.programAt(day, studio, time);
-    if (!program || this.isContinuation(day, studio, time)) return 1;
-
-    let length = 1;
-    let cursor = this.nextTime(time);
-    const color = this.colorAt(day, studio, time);
-    while (cursor && this.programAt(day, studio, cursor) === program && this.colorAt(day, studio, cursor) === color) {
-      length++;
-      cursor = this.nextTime(cursor);
-    }
-    return length;
-  }
-
-  programFontSize(day: string, studio: string, time: string): number {
-    const program = this.programAt(day, studio, time);
-    if (!program || this.isContinuation(day, studio, time)) return 11;
-
-    const runLength = this.runLength(day, studio, time);
-    const available = Math.max(1, runLength);
-    const rawSize = Math.floor((available * 80) / Math.max(program.length, 12));
-    return Math.max(7, Math.min(11, rawSize));
+    return this.colors().find((color) => color.value === value)?.label ?? 'Renk';
   }
 
   clearSelection(): void {
@@ -932,6 +311,28 @@ export class StudioPlanComponent implements OnInit {
       });
   }
 
+  private loadCatalog(): void {
+    this.studioPlanService.getCatalog().subscribe({
+      next: (catalog) => {
+        const programs = catalog.programs.filter((program) => program.active).map((program) => program.name);
+        const colors = catalog.colors
+          .filter((color) => color.active)
+          .map((color) => ({ label: color.label, value: color.value }));
+
+        if (programs.length > 0) {
+          this.programs.set(programs);
+          if (!programs.includes(this.selectedProgram)) this.selectedProgram = programs[0];
+        }
+
+        if (colors.length > 0) {
+          this.colors.set(colors);
+          if (!colors.some((color) => color.value === this.selectedColor)) this.selectedColor = colors[0].value;
+        }
+      },
+      error: () => this.saveError.set('Program/renk kataloğu yüklenemedi'),
+    });
+  }
+
   private applyPlan(plan: StudioPlan): void {
     const next: Record<string, StudioPlanAssignment> = {};
     for (const slot of plan.slots) {
@@ -994,16 +395,6 @@ export class StudioPlanComponent implements OnInit {
       minute: '2-digit',
       hour12: false,
     }).format(new Date(value));
-  }
-
-  private previousTime(time: string): string | undefined {
-    const index = this.timeSlots.indexOf(time);
-    return index > 0 ? this.timeSlots[index - 1] : undefined;
-  }
-
-  private nextTime(time: string): string | undefined {
-    const index = this.timeSlots.indexOf(time);
-    return index >= 0 && index < this.timeSlots.length - 1 ? this.timeSlots[index + 1] : undefined;
   }
 
   private endTimeForSlotIndex(index: number): string {

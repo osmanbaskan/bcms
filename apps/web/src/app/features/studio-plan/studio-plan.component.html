@@ -1,0 +1,56 @@
+<section class="studio-plan-page">
+  <header class="page-header">
+    <div>
+      <h1>Stüdyo Planı</h1>
+      <p>{{ dateRangeLabel() }} · 06:00 - 02:00 · 30 dakikalık slotlar</p>
+    </div>
+
+    <button mat-flat-button color="primary" type="button" (click)="exportPlan()">
+      <mat-icon>download</mat-icon>
+      Export PDF
+    </button>
+  </header>
+
+  <app-studio-plan-toolbar
+    [weekStart]="weekStart"
+    [weekOptions]="weekOptions"
+    [viewMode]="viewMode()"
+    [programs]="programs()"
+    [colors]="colors()"
+    [selectedProgram]="selectedProgram"
+    [selectedColor]="selectedColor"
+    [eraserMode]="eraserMode()"
+    [loading]="loading()"
+    [saving]="saving()"
+    [saveError]="saveError()"
+    [lastSavedAt]="lastSavedAt()"
+    (weekStartChange)="onWeekStartChange($event)"
+    (viewModeChange)="viewMode.set($event)"
+    (selectedProgramChange)="selectedProgram = $event"
+    (selectedColorChange)="selectedColor = $event"
+    (clearSelection)="clearSelection()"
+    (moveCurrentWeekToNextWeek)="moveCurrentWeekToNextWeek()"
+    (eraserModeChange)="eraserMode.set($event)"
+  ></app-studio-plan-toolbar>
+
+  <div id="studio-plan-export" class="plan-shell">
+    <div class="print-title">
+      <strong>STÜDYO PLANI</strong>
+      <span>{{ dateRangeLabel() }}</span>
+    </div>
+
+    <app-studio-plan-table
+      *ngIf="viewMode() !== 'list'"
+      [days]="visibleDays()"
+      [studios]="studios"
+      [timeSlots]="timeSlots"
+      [cells]="cells()"
+      (assignProgram)="onCellAssign($event)"
+    ></app-studio-plan-table>
+
+    <app-studio-plan-list
+      *ngIf="viewMode() === 'list'"
+      [entries]="listEntries()"
+    ></app-studio-plan-list>
+  </div>
+</section>

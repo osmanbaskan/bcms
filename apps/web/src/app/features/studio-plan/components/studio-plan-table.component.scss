@@ -1,0 +1,158 @@
+.plan-grid {
+  --cell-width: 92px;
+  --time-width: 58px;
+  display: grid;
+  grid-template-columns: var(--time-width) repeat(calc(var(--day-count) * 5), var(--cell-width));
+  min-width: max-content;
+  font-size: 11px;
+}
+
+.corner-cell,
+.time-cell,
+.day-header,
+.studio-header,
+.slot-cell {
+  border-right: 1px solid #111827;
+  border-bottom: 1px solid #111827;
+}
+
+.corner-cell,
+.time-cell {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+}
+
+.corner-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  grid-row: span 2;
+  top: 0;
+  z-index: 8;
+  background: #43206d;
+}
+
+.day-header {
+  position: sticky;
+  top: 0;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  color: #fff;
+  background: #43206d;
+  text-transform: uppercase;
+}
+
+.studio-header {
+  position: sticky;
+  top: 49px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 4px;
+  color: #fff;
+  background: #43206d;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.time-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  color: #fff;
+  background: #43206d;
+  font-weight: 700;
+  z-index: 4;
+}
+
+.slot-cell {
+  min-height: 34px;
+  padding: 2px 3px;
+  background: #ffd226;
+  color: #111827;
+  border-top: 0;
+  border-left: 0;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  overflow: visible;
+  position: relative;
+}
+
+.slot-cell:hover {
+  outline: 2px solid #1d4ed8;
+  outline-offset: -2px;
+}
+
+.slot-cell.filled {
+  background: #f4b400;
+}
+
+.slot-cell.continuation {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.slot-cell span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(var(--run-slots, 1) * 34px - 6px);
+  overflow: hidden;
+  font-size: var(--program-font-size, 11px);
+  line-height: 1.1;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.slot-cell.continues:not(.continuation) span {
+  position: absolute;
+  inset: 2px 3px auto 3px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+@media print {
+  .plan-grid {
+    --cell-width: 32px;
+    --time-width: 30px;
+    font-size: 5px;
+  }
+
+  .day-header {
+    min-height: 22px;
+  }
+
+  .studio-header {
+    min-height: 26px;
+    font-size: 4.5px;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+  }
+
+  .time-cell,
+  .slot-cell {
+    min-height: 16px;
+  }
+
+  .slot-cell {
+    appearance: none;
+  }
+
+  .slot-cell span {
+    min-height: calc(var(--run-slots, 1) * 16px - 4px);
+    font-size: calc(var(--program-font-size, 11px) * 0.55);
+  }
+}

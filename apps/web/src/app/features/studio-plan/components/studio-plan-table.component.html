@@ -1,0 +1,37 @@
+<div class="plan-grid" [style.--day-count]="days.length">
+  <div class="corner-cell">Saat</div>
+
+  <ng-container *ngFor="let day of days">
+    <div class="day-header" [style.gridColumn]="'span ' + studios.length">
+      <strong>{{ day.date }}</strong>
+      <span>{{ day.label }}</span>
+    </div>
+  </ng-container>
+
+  <ng-container *ngFor="let day of days">
+    <div class="studio-header" *ngFor="let studio of studios">{{ studio }}</div>
+  </ng-container>
+
+  <ng-container *ngFor="let time of timeSlots">
+    <div class="time-cell">{{ time }}</div>
+
+    <ng-container *ngFor="let day of days">
+      <button
+        class="slot-cell"
+        type="button"
+        *ngFor="let studio of studios"
+        [class.filled]="programAt(day.id, studio, time)"
+        [class.continuation]="isContinuation(day.id, studio, time)"
+        [class.continues]="continuesProgram(day.id, studio, time)"
+        [style.background]="colorAt(day.id, studio, time)"
+        [style.borderBottomColor]="continuesProgram(day.id, studio, time) ? colorAt(day.id, studio, time) : null"
+        [style.--run-slots]="runLength(day.id, studio, time)"
+        [style.--program-font-size.px]="programFontSize(day.id, studio, time)"
+        (click)="assignProgram.emit({ day: day.id, studio, time })"
+        [attr.aria-label]="day.label + ' ' + studio + ' ' + time"
+      >
+        <span>{{ isContinuation(day.id, studio, time) ? '' : programAt(day.id, studio, time) }}</span>
+      </button>
+    </ng-container>
+  </ng-container>
+</div>

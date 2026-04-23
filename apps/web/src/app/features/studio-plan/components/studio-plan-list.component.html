@@ -1,0 +1,29 @@
+<div class="list-view">
+  <div class="list-header">
+    <span>Gün</span>
+    <span>Stüdyo</span>
+    <span>Saat</span>
+    <span>Program</span>
+    <span>Renk</span>
+    <span>Süre</span>
+  </div>
+
+  <div class="empty-list" *ngIf="entries.length === 0">
+    Bu hafta için kayıtlı stüdyo planı yok.
+  </div>
+
+  <div class="list-row" *ngFor="let entry of entries">
+    <div class="day-cell">
+      <strong>{{ entry.dayLabel }}</strong>
+      <span>{{ entry.dayDate }}</span>
+    </div>
+    <div>{{ entry.studio }}</div>
+    <div class="time-range">{{ entry.startTime }} - {{ entry.endTime }}</div>
+    <div class="program-cell">
+      <span class="program-marker" [style.background]="entry.color"></span>
+      <strong>{{ entry.program }}</strong>
+    </div>
+    <div>{{ entry.colorLabel }}</div>
+    <div>{{ entry.slotCount * 30 }} dk</div>
+  </div>
+</div>

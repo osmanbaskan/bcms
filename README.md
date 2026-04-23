@@ -328,12 +328,19 @@ Mimari not:
 - Backend endpoint'i `GET /api/v1/studio-plans/:weekStart` ile haftayi okur,
   `PUT /api/v1/studio-plans/:weekStart` ile haftanin tum slotlarini atomik
   olarak degistirir.
+- Program ve renk secenekleri frontend icinde sabit liste degildir. Backend
+  katalog endpoint'i `GET /api/v1/studio-plans/catalog` ile okunur; admin
+  yazma yetkisiyle `PUT /api/v1/studio-plans/catalog` uzerinden yenilenebilir.
 - `weekStart` sadece Pazartesi tarihi olarak kabul edilir. Slotlar gun tarihi,
   studyo, baslangic dakikasi, program ve renk degeriyle saklanir.
 - Prisma modelleri `StudioPlan` ve `StudioPlanSlot`; DB tabloları
   `studio_plans` ve `studio_plan_slots` seklindedir.
+- Katalog modelleri `StudioPlanProgram` ve `StudioPlanColor`; DB tabloları
+  `studio_plan_programs` ve `studio_plan_colors` seklindedir.
 - Bu ozellik icin migration:
   `apps/api/prisma/migrations/20260423000000_studio_plans/migration.sql`.
+- Katalog migration'i:
+  `apps/api/prisma/migrations/20260423001000_studio_plan_catalog/migration.sql`.
 - Migration uygulanmadan API calistirilirsa Stüdyo Planı endpoint'i veritabani
   tablo hatasi verebilir. Yerelde PostgreSQL acikken
   `npm run db:migrate:prod -w apps/api` calistirilmalidir.

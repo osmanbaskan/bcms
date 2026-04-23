@@ -294,6 +294,31 @@ model StudioPlanSlot {
   @@map("studio_plan_slots")
 }
 
+model StudioPlanProgram {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(300)
+  sortOrder Int      @default(0) @map("sort_order")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([active, sortOrder])
+  @@map("studio_plan_programs")
+}
+
+model StudioPlanColor {
+  id        Int      @id @default(autoincrement())
+  label     String   @unique @db.VarChar(100)
+  value     String   @unique @db.VarChar(20)
+  sortOrder Int      @default(0) @map("sort_order")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([active, sortOrder])
+  @@map("studio_plan_colors")
+}
+
 // ── Signal Telemetry ──────────────────────────────────────────────────────────
 model SignalTelemetry {
   id         Int      @id @default(autoincrement())

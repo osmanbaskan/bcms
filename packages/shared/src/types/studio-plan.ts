@@ -22,3 +22,28 @@ export interface StudioPlan {
 export interface SaveStudioPlanDto {
   slots: StudioPlanSlot[];
 }
+
+export interface StudioPlanProgramOption {
+  id: number;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+}
+
+export interface StudioPlanColorOption {
+  id: number;
+  label: string;
+  value: string;
+  sortOrder: number;
+  active: boolean;
+}
+
+export interface StudioPlanCatalog {
+  programs: StudioPlanProgramOption[];
+  colors: StudioPlanColorOption[];
+}
+
+export interface SaveStudioPlanCatalogDto {
+  programs: Array<Pick<StudioPlanProgramOption, 'name' | 'sortOrder' | 'active'>>;
+  colors: Array<Pick<StudioPlanColorOption, 'label' | 'value' | 'sortOrder' | 'active'>>;
+}
