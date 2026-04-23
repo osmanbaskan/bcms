@@ -26,6 +26,19 @@ interface StudioPlanAssignment {
   color: string;
 }
 
+interface StudioPlanListEntry {
+  id: string;
+  dayLabel: string;
+  dayDate: string;
+  studio: string;
+  startTime: string;
+  endTime: string;
+  program: string;
+  color: string;
+  colorLabel: string;
+  slotCount: number;
+}
+
 const DAY_LABELS = [
   'Pazar',
   'Pazartesi',
@@ -155,16 +168,9 @@ function toDateInputValue(date: Date): string {
           (change)="viewMode.set($event.value)"
           aria-label="Görünüm"
         >
-          <mat-button-toggle value="week">Pazartesi - Pazar</mat-button-toggle>
-          <mat-button-toggle value="day">Tek Gün</mat-button-toggle>
+          <mat-button-toggle value="table">Tablo</mat-button-toggle>
+          <mat-button-toggle value="list">Liste</mat-button-toggle>
         </mat-button-toggle-group>
-
-        <mat-form-field appearance="outline" *ngIf="viewMode() === 'day'">
-          <mat-label>Gün</mat-label>
-          <mat-select [(ngModel)]="selectedDay">
-            <mat-option *ngFor="let day of days()" [value]="day.id">{{ day.label }} · {{ day.date }}</mat-option>
-          </mat-select>
-        </mat-form-field>
 
         <mat-form-field appearance="outline" class="program-select">
           <mat-label>Program</mat-label>
@@ -225,7 +231,7 @@ function toDateInputValue(date: Date): string {
           <span>{{ dateRangeLabel() }}</span>
         </div>
 
-        <div class="plan-grid" [style.--day-count]="visibleDays().length">
+        <div class="plan-grid" *ngIf="viewMode() !== 'list'" [style.--day-count]="visibleDays().length">
           <div class="corner-cell">Saat</div>
 
           <ng-container *ngFor="let day of visibleDays()">
@@ -261,6 +267,36 @@ function toDateInputValue(date: Date): string {
               </button>
             </ng-container>
           </ng-container>
+        </div>
+
+        <div class="list-view" *ngIf="viewMode() === 'list'">
+          <div class="list-header">
+            <span>Gün</span>
+            <span>Stüdyo</span>
+            <span>Saat</span>
+            <span>Program</span>
+            <span>Renk</span>
+            <span>Süre</span>
+          </div>
+
+          <div class="empty-list" *ngIf="listEntries().length === 0">
+            Bu hafta için kayıtlı stüdyo planı yok.
+          </div>
+
+          <div class="list-row" *ngFor="let entry of listEntries()">
+            <div class="day-cell">
+              <strong>{{ entry.dayLabel }}</strong>
+              <span>{{ entry.dayDate }}</span>
+            </div>
+            <div>{{ entry.studio }}</div>
+            <div class="time-range">{{ entry.startTime }} - {{ entry.endTime }}</div>
+            <div class="program-cell">
+              <span class="program-marker" [style.background]="entry.color"></span>
+              <strong>{{ entry.program }}</strong>
+            </div>
+            <div>{{ entry.colorLabel }}</div>
+            <div>{{ entry.slotCount * 30 }} dk</div>
+          </div>
         </div>
       </div>
     </section>
@@ -507,6 +543,91 @@ function toDateInputValue(date: Date): string {
       pointer-events: none;
     }
 
+    .list-view {
+      min-width: 920px;
+      color: #111827;
+      background: #fff;
+    }
+
+    .list-header,
+    .list-row {
+      display: grid;
+      grid-template-columns: 160px 120px 120px minmax(280px, 1fr) 180px 80px;
+      align-items: center;
+      min-height: 44px;
+      border-bottom: 1px solid #d0d5dd;
+    }
+
+    .list-header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      color: #fff;
+      background: #43206d;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .list-header span,
+    .list-row > div {
+      min-width: 0;
+      padding: 8px 10px;
+      border-right: 1px solid #d0d5dd;
+    }
+
+    .list-row {
+      font-size: 13px;
+    }
+
+    .list-row:nth-child(odd) {
+      background: #f8fafc;
+    }
+
+    .day-cell,
+    .program-cell {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .day-cell {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+    }
+
+    .day-cell span {
+      color: #667085;
+      font-size: 12px;
+    }
+
+    .time-range {
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .program-marker {
+      width: 30px;
+      height: 14px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(17, 24, 39, 0.3);
+    }
+
+    .program-cell strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .empty-list {
+      padding: 28px;
+      color: #667085;
+      font-weight: 600;
+      text-align: center;
+    }
+
     @media print {
       body * {
         visibility: hidden;
@@ -533,6 +654,22 @@ function toDateInputValue(date: Date): string {
         --cell-width: 32px;
         --time-width: 30px;
         font-size: 5px;
+      }
+
+      .list-view {
+        min-width: 0;
+      }
+
+      .list-header,
+      .list-row {
+        grid-template-columns: 88px 70px 70px minmax(130px, 1fr) 90px 44px;
+        min-height: 24px;
+        font-size: 6px;
+      }
+
+      .list-header span,
+      .list-row > div {
+        padding: 3px 4px;
       }
 
       .day-header {
@@ -572,7 +709,7 @@ export class StudioPlanComponent implements OnInit {
   readonly timeSlots = TIME_SLOTS;
   readonly weekOptions = this.buildWeekOptions();
 
-  readonly viewMode = signal<'week' | 'day'>('week');
+  readonly viewMode = signal<'table' | 'list'>('table');
   readonly cells = signal<Record<string, StudioPlanAssignment>>({});
   readonly eraserMode = signal(false);
   readonly loading = signal(false);
@@ -592,8 +729,50 @@ export class StudioPlanComponent implements OnInit {
   });
 
   readonly visibleDays = computed(() => {
-    if (this.viewMode() === 'week') return this.days();
-    return this.days().filter((day) => day.id === this.selectedDay);
+    return this.days();
+  });
+
+  readonly listEntries = computed(() => {
+    const entries: StudioPlanListEntry[] = [];
+
+    for (const day of this.days()) {
+      for (const studio of this.studios) {
+        let cursor = 0;
+        while (cursor < this.timeSlots.length) {
+          const time = this.timeSlots[cursor];
+          const assignment = this.cells()[this.cellKey(day.id, studio, time)];
+          if (!assignment) {
+            cursor++;
+            continue;
+          }
+
+          let endIndex = cursor + 1;
+          while (endIndex < this.timeSlots.length) {
+            const nextTime = this.timeSlots[endIndex];
+            const nextAssignment = this.cells()[this.cellKey(day.id, studio, nextTime)];
+            if (!nextAssignment || nextAssignment.program !== assignment.program || nextAssignment.color !== assignment.color) break;
+            endIndex++;
+          }
+
+          entries.push({
+            id: `${day.id}-${studio}-${time}`,
+            dayLabel: day.label,
+            dayDate: day.date,
+            studio,
+            startTime: time,
+            endTime: this.endTimeForSlotIndex(endIndex),
+            program: assignment.program,
+            color: assignment.color,
+            colorLabel: this.colorLabel(assignment.color),
+            slotCount: endIndex - cursor,
+          });
+
+          cursor = endIndex;
+        }
+      }
+    }
+
+    return entries;
   });
 
   ngOnInit(): void {
@@ -729,7 +908,7 @@ export class StudioPlanComponent implements OnInit {
     const nextDays = this.buildWeekDays(targetStart);
     this.days.set(nextDays);
     this.selectedDay = nextDays[0]?.id ?? targetStart;
-    this.viewMode.set('week');
+    this.viewMode.set('table');
     this.saveWeek(sourceStart, []);
     this.saveCurrentWeek();
   }
@@ -825,6 +1004,11 @@ export class StudioPlanComponent implements OnInit {
   private nextTime(time: string): string | undefined {
     const index = this.timeSlots.indexOf(time);
     return index >= 0 && index < this.timeSlots.length - 1 ? this.timeSlots[index + 1] : undefined;
+  }
+
+  private endTimeForSlotIndex(index: number): string {
+    if (index < this.timeSlots.length) return this.timeSlots[index];
+    return '02:00';
   }
 
   private buildWeekDays(startValue: string): StudioPlanDay[] {
