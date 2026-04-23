@@ -74,8 +74,6 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
   { label: 'Sorunlular', value: 'issues' },
 ];
 
-const PORT_BOARD_START_MINUTE = 8 * 60;
-const PORT_BOARD_END_MINUTE = 26 * 60;
 const PORT_BOARD_SLOT_MINUTES = 30;
 
 const TR_DATE_FORMATS = {
@@ -237,6 +235,7 @@ const TR_DATE_FORMATS = {
                 [gridTemplateRows]="timeGridTemplate()"
                 [fullPage]="true"
                 [columnMinWidth]="160"
+                [rowCount]="3"
                 (requestPrint)="printPortBoard()"
                 (portOrderChange)="setPortBoardOrder($event)"
               />
@@ -574,10 +573,28 @@ export class IngestListComponent implements OnInit, OnDestroy {
     return rows;
   });
 
+  portBoardRows = computed(() => this.filteredPlanningRows().filter((row) => !!row.recordingPort));
+
+  portBoardStartMinute = computed(() => {
+    const rows = this.portBoardRows();
+    if (rows.length === 0) return 8 * 60;
+    const earliest = Math.min(...rows.map((row) => row.sortMinute));
+    return Math.max(0, Math.floor(earliest / PORT_BOARD_SLOT_MINUTES) * PORT_BOARD_SLOT_MINUTES);
+  });
+
+  portBoardEndMinute = computed(() => {
+    const rows = this.portBoardRows();
+    if (rows.length === 0) return 10 * 60;
+    const latest = Math.max(...rows.map((row) => row.endMinute));
+    return Math.min(48 * 60, Math.max(this.portBoardStartMinute() + 60, Math.ceil(latest / PORT_BOARD_SLOT_MINUTES) * PORT_BOARD_SLOT_MINUTES));
+  });
+
   portBoardTimeLabels = computed<IngestPortBoardTimeLabel[]>(() => {
     const items: IngestPortBoardTimeLabel[] = [];
-    for (let minute = PORT_BOARD_START_MINUTE; minute < PORT_BOARD_END_MINUTE; minute += PORT_BOARD_SLOT_MINUTES * 2) {
-      const rowStart = Math.floor((minute - PORT_BOARD_START_MINUTE) / PORT_BOARD_SLOT_MINUTES) + 1;
+    const startMinute = this.portBoardStartMinute();
+    const endMinute = this.portBoardEndMinute();
+    for (let minute = startMinute; minute < endMinute; minute += PORT_BOARD_SLOT_MINUTES * 2) {
+      const rowStart = Math.floor((minute - startMinute) / PORT_BOARD_SLOT_MINUTES) + 1;
       items.push({
         label: this.minuteToTime(minute),
         gridRow: `${rowStart} / span 2`,
@@ -692,7 +709,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
   }
 
   timeGridTemplate(): string {
-    return `repeat(${(PORT_BOARD_END_MINUTE - PORT_BOARD_START_MINUTE) / PORT_BOARD_SLOT_MINUTES}, minmax(28px, auto))`;
+    return `repeat(${(this.portBoardEndMinute() - this.portBoardStartMinute()) / PORT_BOARD_SLOT_MINUTES}, minmax(28px, auto))`;
   }
 
   printPortBoard() {
@@ -703,7 +720,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
     }
 
     const times = this.portBoardTimeLabels();
-    const columnRows = this.splitPortColumns(columns);
+    const columnRows = this.splitPortColumns(columns, 3);
     const gridTemplateRows = this.timeGridTemplate();
     const renderBoardRow = (rowColumns: IngestPortBoardColumnView[]) => {
       const gridTemplateColumns = `96px repeat(${rowColumns.length}, minmax(180px, 1fr))`;
@@ -1037,10 +1054,12 @@ export class IngestListComponent implements OnInit, OnDestroy {
   }
 
   private toPortBoardItems(rows: IngestPlanRow[]): IngestPortBoardItemView[] {
+    const boardStartMinute = this.portBoardStartMinute();
+    const boardEndMinute = this.portBoardEndMinute();
     const sorted = [...rows]
       .map((row) => ({
         row,
-        start: Math.max(row.sortMinute, PORT_BOARD_START_MINUTE),
+        start: Math.max(row.sortMinute, boardStartMinute),
         end: Math.max(row.endMinute, row.sortMinute + PORT_BOARD_SLOT_MINUTES),
       }))
       .sort((a, b) => a.start - b.start || a.end - b.end || a.row.title.localeCompare(b.row.title, 'tr'));
@@ -1050,9 +1069,9 @@ export class IngestListComponent implements OnInit, OnDestroy {
         if (candidateIndex === index) return false;
         return candidate.start < current.end && candidate.end > current.start;
       });
-      const normalizedEnd = Math.min(Math.max(current.end, current.start + PORT_BOARD_SLOT_MINUTES), PORT_BOARD_END_MINUTE);
-      const gridRowStart = Math.floor((current.start - PORT_BOARD_START_MINUTE) / PORT_BOARD_SLOT_MINUTES) + 1;
-      const gridRowEnd = Math.ceil((normalizedEnd - PORT_BOARD_START_MINUTE) / PORT_BOARD_SLOT_MINUTES) + 1;
+      const normalizedEnd = Math.min(Math.max(current.end, current.start + PORT_BOARD_SLOT_MINUTES), boardEndMinute);
+      const gridRowStart = Math.floor((current.start - boardStartMinute) / PORT_BOARD_SLOT_MINUTES) + 1;
+      const gridRowEnd = Math.ceil((normalizedEnd - boardStartMinute) / PORT_BOARD_SLOT_MINUTES) + 1;
       return {
         row: current.row,
         gridRow: `${gridRowStart} / ${Math.max(gridRowEnd, gridRowStart + 1)}`,
@@ -1078,8 +1097,10 @@ export class IngestListComponent implements OnInit, OnDestroy {
       .replaceAll("'", '&#39;');
   }
 
-  private splitPortColumns(columns: IngestPortBoardColumnView[]): IngestPortBoardColumnView[][] {
-    const midpoint = Math.ceil(columns.length / 2);
-    return [columns.slice(0, midpoint), columns.slice(midpoint)].filter((row) => row.length > 0);
+  private splitPortColumns(columns: IngestPortBoardColumnView[], rowCount: number): IngestPortBoardColumnView[][] {
+    const chunkSize = Math.max(1, Math.ceil(columns.length / rowCount));
+    const rows: IngestPortBoardColumnView[][] = [];
+    for (let index = 0; index < columns.length; index += chunkSize) rows.push(columns.slice(index, index + chunkSize));
+    return rows;
   }
 }

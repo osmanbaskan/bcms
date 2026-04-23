@@ -121,12 +121,12 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-section.full-page .port-board-scroll{height:calc(100vh - 250px);overflow:auto}
     .port-board-section.is-fullscreen{margin:0;border:0;border-radius:0}
     .port-board-section.is-fullscreen .port-board-scroll{height:calc(100vh - 72px)}
-    .port-board-stack{display:flex;flex-direction:column;gap:16px;padding-bottom:16px}
+    .port-board-stack{display:flex;flex-direction:column;gap:10px;padding-bottom:10px}
     .port-board-frame{display:grid;grid-template-columns:84px minmax(0,1fr);min-width:max-content}
-    .port-board-times{border-right:1px solid rgba(255,255,255,.08);background:#203754}
+    .port-board-times{background:transparent}
     .port-board-times-head,.port-board-column-head{justify-content:center;min-height:42px;border-bottom:1px solid rgba(255,255,255,.08);background:#203754;font-weight:800}
     .port-board-times-head{color:#f5d24b;font-size:.82rem}
-    .port-board-times-body{display:grid;background:rgba(189,210,232,.12)}
+    .port-board-times-body{display:grid;background:transparent}
     .port-board-time-cell{justify-content:center;padding-top:6px;font-size:.74rem;font-weight:700;color:#d7e6f5}
     .port-board-grid{display:grid;min-width:max-content}
     .port-board-column{min-height:100%;border-right:1px solid rgba(255,255,255,.08);background:rgba(19,38,64,.72)}
@@ -136,8 +136,8 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-times-body{position:sticky;left:0;z-index:2}
     .port-drag-handle{justify-content:center;width:22px;height:22px;padding:0;border:0;background:transparent;color:#d9e6f2;cursor:move}
     .port-drag-handle mat-icon{font-size:18px;width:18px;height:18px}
-    .port-board-column-body{position:relative;display:grid;padding:0;min-height:1008px;background:rgba(189,210,232,.08)}
-    .port-board-slot-line{border-bottom:1px solid rgba(255,255,255,.07)}
+    .port-board-column-body{position:relative;display:grid;padding:0;min-height:420px;background:rgba(189,210,232,.08)}
+    .port-board-slot-line{border-bottom:1px solid rgba(255,255,255,.05)}
     .port-board-item{z-index:1;margin:2px 4px;padding:8px 8px 9px;border:1px solid rgba(255,255,255,.08);background:#c7d8ec;color:#17304d;display:flex;flex-direction:column;gap:4px;overflow:hidden}
     .port-board-item.overlap{background:#ffd9d9;border-color:#ef5350}
     .port-board-time,.port-board-warning{font-weight:800}
@@ -151,6 +151,7 @@ export class IngestPortBoardComponent {
   @Input() gridTemplateRows = '';
   @Input() fullPage = false;
   @Input() columnMinWidth = 220;
+  @Input() rowCount = 2;
 
   @Output() requestPrint = new EventEmitter<void>();
   @Output() portOrderChange = new EventEmitter<string[]>();
@@ -163,8 +164,10 @@ export class IngestPortBoardComponent {
   trackItem = (_: number, item: IngestPortBoardItemView) => item.row.id;
 
   portColumnRows(): IngestPortBoardColumnView[][] {
-    const midpoint = Math.ceil(this.columns.length / 2);
-    return [this.columns.slice(0, midpoint), this.columns.slice(midpoint)].filter((row) => row.length > 0);
+    const chunkSize = Math.max(1, Math.ceil(this.columns.length / this.rowCount));
+    const rows: IngestPortBoardColumnView[][] = [];
+    for (let index = 0; index < this.columns.length; index += chunkSize) rows.push(this.columns.slice(index, index + chunkSize));
+    return rows;
   }
 
   gridTemplateColumns(columns: IngestPortBoardColumnView[]): string {
