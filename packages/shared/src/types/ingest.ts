@@ -44,6 +44,8 @@ export interface IngestPlanItem {
   dayDate: string;
   sourcePath?: string | null;
   recordingPort?: string | null;
+  plannedStartMinute?: number | null;
+  plannedEndMinute?: number | null;
   status: IngestPlanStatus;
   jobId?: number | null;
   note?: string | null;
@@ -57,8 +59,21 @@ export interface SaveIngestPlanItemDto {
   day: string;
   sourcePath?: string | null;
   recordingPort?: string | null;
+  plannedStartMinute?: number | null;
+  plannedEndMinute?: number | null;
   status?: IngestPlanStatus;
   note?: string | null;
+}
+
+export interface RecordingPort {
+  id: number;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+}
+
+export interface SaveRecordingPortsDto {
+  ports: Array<Pick<RecordingPort, 'name' | 'sortOrder' | 'active'>>;
 }
 
 export interface IngestCallbackDto {

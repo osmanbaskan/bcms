@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { QUEUES } from '../../plugins/rabbitmq.js';
-import { PERMISSIONS, type SaveIngestPlanItemDto } from '@bcms/shared';
+import { PERMISSIONS, type SaveIngestPlanItemDto, type SaveRecordingPortsDto } from '@bcms/shared';
 import { validateIngestSourcePath } from './ingest.paths.js';
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -39,8 +39,20 @@ const savePlanItemSchema = z.object({
   day: dateSchema,
   sourcePath: z.string().trim().optional().nullable(),
   recordingPort: z.string().trim().max(50).optional().nullable(),
+  plannedStartMinute: z.number().int().min(0).max(26 * 60).optional().nullable(),
+  plannedEndMinute: z.number().int().min(0).max(26 * 60).optional().nullable(),
   status: ingestPlanStatusSchema.optional(),
   note: z.string().trim().optional().nullable(),
+});
+
+const recordingPortSchema = z.object({
+  name: z.string().trim().min(1).max(50),
+  sortOrder: z.number().int().min(0).max(10_000),
+  active: z.boolean(),
+});
+
+const saveRecordingPortsSchema = z.object({
+  ports: z.array(recordingPortSchema).max(100),
 });
 
 function safeEqual(a: string, b: string): boolean {
@@ -64,6 +76,8 @@ function mapPlanItem(item: {
   dayDate: Date;
   sourcePath: string | null;
   recordingPort: string | null;
+  plannedStartMinute: number | null;
+  plannedEndMinute: number | null;
   status: string;
   jobId: number | null;
   note: string | null;
@@ -78,6 +92,8 @@ function mapPlanItem(item: {
     dayDate: dateOnly(item.dayDate),
     sourcePath: item.sourcePath,
     recordingPort: item.recordingPort,
+    plannedStartMinute: item.plannedStartMinute,
+    plannedEndMinute: item.plannedEndMinute,
     status: item.status,
     jobId: item.jobId,
     note: item.note,
@@ -85,6 +101,12 @@ function mapPlanItem(item: {
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   };
+}
+
+async function getRecordingPorts(app: FastifyInstance) {
+  return app.prisma.recordingPort.findMany({
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+  });
 }
 
 export async function ingestRoutes(app: FastifyInstance) {
@@ -132,6 +154,28 @@ export async function ingestRoutes(app: FastifyInstance) {
     return job;
   });
 
+  // GET /api/v1/ingest/recording-ports — Kayıt portu kataloğu
+  app.get('/recording-ports', {
+    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    schema: { tags: ['Ingest'], summary: 'Get recording port catalog' },
+  }, async () => getRecordingPorts(app));
+
+  app.put('/recording-ports', {
+    preHandler: app.requireRole(...PERMISSIONS.ingest.write),
+    schema: { tags: ['Ingest'], summary: 'Replace recording port catalog' },
+  }, async (request) => {
+    const dto = saveRecordingPortsSchema.parse(request.body) satisfies SaveRecordingPortsDto;
+
+    await app.prisma.$transaction(async (tx) => {
+      await tx.recordingPort.deleteMany();
+      if (dto.ports.length > 0) {
+        await tx.recordingPort.createMany({ data: dto.ports });
+      }
+    });
+
+    return getRecordingPorts(app);
+  });
+
   // GET /api/v1/ingest/plan?date=YYYY-MM-DD — Ingest departmanı plan satırı durumları
   app.get('/plan', {
     preHandler: app.requireRole(...PERMISSIONS.ingest.read),
@@ -157,6 +201,35 @@ export async function ingestRoutes(app: FastifyInstance) {
 
     const sourcePath = dto.sourcePath?.trim() || null;
     const recordingPort = dto.recordingPort?.trim() || null;
+    const plannedStartMinute = dto.plannedStartMinute ?? null;
+    const plannedEndMinute = dto.plannedEndMinute ?? null;
+
+    if (recordingPort) {
+      const port = await app.prisma.recordingPort.findFirst({
+        where: { name: recordingPort, active: true },
+        select: { id: true },
+      });
+      if (!port) {
+        throw Object.assign(new Error('Seçilen kayıt portu aktif değil'), { statusCode: 400 });
+      }
+    }
+
+    if (recordingPort && plannedStartMinute !== null && plannedEndMinute !== null) {
+      const conflict = await app.prisma.ingestPlanItem.findFirst({
+        where: {
+          sourceKey: { not: sourceKey },
+          dayDate: parseDate(dto.day),
+          recordingPort,
+          plannedStartMinute: { lt: plannedEndMinute },
+          plannedEndMinute: { gt: plannedStartMinute },
+        },
+        select: { sourceKey: true, recordingPort: true, plannedStartMinute: true, plannedEndMinute: true },
+      });
+      if (conflict) {
+        throw Object.assign(new Error(`${recordingPort} seçili saat aralığında başka bir işe atanmış`), { statusCode: 409 });
+      }
+    }
+
     const item = await app.prisma.ingestPlanItem.upsert({
       where: { sourceKey },
       update: {
@@ -164,6 +237,8 @@ export async function ingestRoutes(app: FastifyInstance) {
         dayDate: parseDate(dto.day),
         sourcePath,
         recordingPort,
+        plannedStartMinute,
+        plannedEndMinute,
         status: dto.status ?? undefined,
         note: dto.note?.trim() || null,
         updatedBy: user,
@@ -174,6 +249,8 @@ export async function ingestRoutes(app: FastifyInstance) {
         dayDate: parseDate(dto.day),
         sourcePath,
         recordingPort,
+        plannedStartMinute,
+        plannedEndMinute,
         status: dto.status ?? 'WAITING',
         note: dto.note?.trim() || null,
         updatedBy: user,

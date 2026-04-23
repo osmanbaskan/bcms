@@ -11,6 +11,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { ApiService } from '../../core/services/api.service';
+import type { RecordingPort } from '@bcms/shared';
 
 interface SmbConfig {
   share:      string;
@@ -108,6 +109,48 @@ interface SmbConfig {
           </button>
         </mat-card-actions>
       </mat-card>
+
+      <mat-card class="settings-card">
+        <mat-card-header>
+          <mat-icon mat-card-avatar>settings_input_component</mat-icon>
+          <mat-card-title>Kayıt Portları</mat-card-title>
+          <mat-card-subtitle>Ingest planlama ekranındaki kayıt portu seçenekleri.</mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+          @if (portsLoading()) {
+            <div class="center-spinner"><mat-spinner diameter="36"></mat-spinner></div>
+          } @else {
+            <div class="port-list">
+              @for (port of portNames; track $index) {
+                <div class="port-row">
+                  <mat-form-field>
+                    <mat-label>Port Adı</mat-label>
+                    <input matInput [(ngModel)]="portNames[$index]" placeholder="REC 1">
+                  </mat-form-field>
+                  <button mat-icon-button type="button" (click)="removePort($index)" [disabled]="portNames.length <= 1">
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </div>
+              }
+            </div>
+          }
+        </mat-card-content>
+
+        <mat-card-actions align="end">
+          <button mat-stroked-button type="button" (click)="addPort()" [disabled]="portsLoading() || portsSaving()">
+            <mat-icon>add</mat-icon> Port Ekle
+          </button>
+          <button mat-raised-button color="primary" type="button" (click)="savePorts()" [disabled]="portsLoading() || portsSaving()">
+            @if (portsSaving()) {
+              <mat-spinner diameter="18" style="display:inline-block;margin-right:6px"></mat-spinner>
+              Kaydediliyor…
+            } @else {
+              <ng-container><mat-icon>save</mat-icon> Kaydet</ng-container>
+            }
+          </button>
+        </mat-card-actions>
+      </mat-card>
     </div>
   `,
   styles: [`
@@ -124,6 +167,8 @@ interface SmbConfig {
     }
     .full     { grid-column: 1 / -1; }
     .col-span { grid-column: 1 / -1; margin: 4px 0; }
+    .port-list { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .port-row { display: grid; grid-template-columns: 1fr 44px; gap: 8px; align-items: center; }
 
     mat-form-field { width: 100%; }
     code { font-size: 0.8rem; background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 3px; }
@@ -133,6 +178,9 @@ export class SettingsComponent implements OnInit {
   cfg: SmbConfig = { share: '', mountPoint: '', subdir: '', username: '', password: '', domain: '' };
   loading = signal(true);
   saving  = signal(false);
+  portsLoading = signal(true);
+  portsSaving = signal(false);
+  portNames: string[] = [];
   showPass = false;
 
   constructor(private api: ApiService, private snack: MatSnackBar) {}
@@ -142,6 +190,7 @@ export class SettingsComponent implements OnInit {
       next:  (c) => { this.cfg = c; this.loading.set(false); },
       error: ()  => { this.loading.set(false); },
     });
+    this.loadPorts();
   }
 
   save() {
@@ -158,6 +207,56 @@ export class SettingsComponent implements OnInit {
       error: () => {
         this.saving.set(false);
         this.snack.open('Kayıt başarısız', 'Kapat', { duration: 4000 });
+      },
+    });
+  }
+
+  loadPorts() {
+    this.portsLoading.set(true);
+    this.api.get<RecordingPort[]>('/ingest/recording-ports').subscribe({
+      next: (ports) => {
+        this.portNames = (Array.isArray(ports) ? ports : [])
+          .filter((port) => port.active)
+          .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'tr'))
+          .map((port) => port.name);
+        if (this.portNames.length === 0) this.portNames = ['REC 1'];
+        this.portsLoading.set(false);
+      },
+      error: () => {
+        this.portNames = ['REC 1'];
+        this.portsLoading.set(false);
+        this.snack.open('Kayıt portları alınamadı', 'Kapat', { duration: 4000 });
+      },
+    });
+  }
+
+  addPort() {
+    this.portNames.push(`REC ${this.portNames.length + 1}`);
+  }
+
+  removePort(index: number) {
+    this.portNames.splice(index, 1);
+  }
+
+  savePorts() {
+    const names = [...new Set(this.portNames.map((name) => name.trim()).filter(Boolean))];
+    if (names.length === 0) {
+      this.snack.open('En az bir kayıt portu olmalı', 'Kapat', { duration: 3000 });
+      return;
+    }
+
+    this.portsSaving.set(true);
+    this.api.put<RecordingPort[]>('/ingest/recording-ports', {
+      ports: names.map((name, index) => ({ name, sortOrder: (index + 1) * 10, active: true })),
+    }).subscribe({
+      next: (ports) => {
+        this.portNames = ports.filter((port) => port.active).map((port) => port.name);
+        this.portsSaving.set(false);
+        this.snack.open('Kayıt portları kaydedildi', 'Tamam', { duration: 3000 });
+      },
+      error: (err) => {
+        this.portsSaving.set(false);
+        this.snack.open(`Kayıt portları kaydedilemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
       },
     });
   }

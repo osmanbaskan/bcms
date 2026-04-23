@@ -191,6 +191,8 @@ model IngestPlanItem {
   dayDate    DateTime         @map("day_date") @db.Date
   sourcePath String?          @map("source_path")
   recordingPort String?       @map("recording_port") @db.VarChar(50)
+  plannedStartMinute Int?     @map("planned_start_minute")
+  plannedEndMinute   Int?     @map("planned_end_minute")
   status     IngestPlanStatus @default(WAITING)
   jobId      Int?             @map("job_id")
   note       String?
@@ -201,6 +203,18 @@ model IngestPlanItem {
   @@index([dayDate])
   @@index([status])
   @@map("ingest_plan_items")
+}
+
+model RecordingPort {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(50)
+  sortOrder Int      @default(0) @map("sort_order")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([active, sortOrder])
+  @@map("recording_ports")
 }
 
 enum IngestStatus {

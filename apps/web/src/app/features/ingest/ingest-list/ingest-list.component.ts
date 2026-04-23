@@ -21,6 +21,7 @@ import type {
   IngestPlanItem,
   IngestPlanStatus,
   PaginatedResponse,
+  RecordingPort,
   Schedule,
   StudioPlan,
   StudioPlanSlot,
@@ -33,6 +34,7 @@ interface IngestPlanRow {
   sourceKey: string;
   day: string;
   sortMinute: number;
+  endMinute: number;
   startTime: string;
   endTime: string;
   title: string;
@@ -44,7 +46,7 @@ interface IngestPlanRow {
   scheduleId?: number;
 }
 
-type PlanFilter = 'all' | 'today' | 'active' | 'issues';
+type PlanFilter = 'all' | 'today' | 'active' | 'unassigned' | 'issues';
 
 const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING', 'PROXY_GEN', 'QC']);
 const ACTIVE_PLAN_STATUSES = new Set<IngestPlanStatus>(['WAITING', 'RECEIVED', 'INGEST_STARTED']);
@@ -60,10 +62,9 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
   { label: 'Tüm Plan', value: 'all' },
   { label: 'Bugünün İşleri', value: 'today' },
   { label: 'Aktif İşler', value: 'active' },
+  { label: 'Port Atanmamış', value: 'unassigned' },
   { label: 'Sorunlular', value: 'issues' },
 ];
-
-const RECORDING_PORTS = ['REC 1', 'REC 2', 'REC 3', 'REC 4', 'REC 5', 'REC 6', 'REC 7', 'REC 8'];
 
 
 @Component({
@@ -172,8 +173,8 @@ const RECORDING_PORTS = ['REC 1', 'REC 2', 'REC 3', 'REC 4', 'REC 5', 'REC 6', '
                   <mat-form-field class="inline-field" appearance="outline">
                     <mat-select [(ngModel)]="row.recordingPort">
                       <mat-option value="">Port seçilmedi</mat-option>
-                      @for (port of recordingPorts; track port) {
-                        <mat-option [value]="port">{{ port }}</mat-option>
+                      @for (port of activeRecordingPorts(); track port.id) {
+                        <mat-option [value]="port.name">{{ port.name }}</mat-option>
                       }
                     </mat-select>
                   </mat-form-field>
@@ -439,12 +440,12 @@ export class IngestListComponent implements OnInit, OnDestroy {
   columns     = ['id', 'sourcePath', 'status', 'plan', 'qc', 'createdAt', 'expand'];
   statusTabs  = STATUS_TABS;
   planFilters = PLAN_FILTERS;
-  recordingPorts = RECORDING_PORTS;
 
   jobs        = signal<IngestJob[]>([]);
   livePlanCandidates = signal<Schedule[]>([]);
   studioPlanSlots = signal<StudioPlanSlot[]>([]);
   ingestPlanItems = signal<IngestPlanItem[]>([]);
+  recordingPorts = signal<RecordingPort[]>([]);
   savingPlanKeys = signal<Set<string>>(new Set());
   total       = signal(0);
   selectedTab = signal(0);
@@ -465,6 +466,8 @@ export class IngestListComponent implements OnInit, OnDestroy {
     return this.jobs().filter((j) => j.status === tab.value);
   });
 
+  activeRecordingPorts = computed(() => this.recordingPorts().filter((port) => port.active));
+
   planningRows = computed<IngestPlanRow[]>(() => {
     const planItemMap = new Map(this.ingestPlanItems().map((item) => [item.sourceKey, item]));
     const liveRows = this.livePlanCandidates().map((schedule) => ({
@@ -474,6 +477,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
       sourceKey: `live:${schedule.id}`,
       day: this.livePlanDate,
       sortMinute: this.sortMinuteFromDate(schedule.startTime),
+      endMinute: this.sortMinuteFromDate(schedule.endTime),
       startTime: this.formatTime(schedule.startTime),
       endTime: this.formatTime(schedule.endTime),
       title: this.scheduleTitle(schedule),
@@ -500,6 +504,9 @@ export class IngestListComponent implements OnInit, OnDestroy {
     if (filter === 'active') {
       return rows.filter((row) => ACTIVE_PLAN_STATUSES.has(row.status));
     }
+    if (filter === 'unassigned') {
+      return rows.filter((row) => !row.recordingPort);
+    }
     if (filter === 'issues') {
       return rows.filter((row) => row.status === 'ISSUE');
     }
@@ -514,6 +521,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.loadLivePlanCandidates();
+    this.loadRecordingPorts();
     this.load();
     // Poll every 5 s when there are active jobs; when no active jobs the computed signal
     // will show false and we skip the update silently (still fires but has no side-effect).
@@ -567,6 +575,9 @@ export class IngestListComponent implements OnInit, OnDestroy {
     }
     if (filter === 'active') {
       return rows.filter((row) => ACTIVE_PLAN_STATUSES.has(row.status)).length;
+    }
+    if (filter === 'unassigned') {
+      return rows.filter((row) => !row.recordingPort).length;
     }
     if (filter === 'issues') {
       return rows.filter((row) => row.status === 'ISSUE').length;
@@ -643,6 +654,13 @@ export class IngestListComponent implements OnInit, OnDestroy {
     });
   }
 
+  private loadRecordingPorts() {
+    this.api.get<RecordingPort[]>('/ingest/recording-ports').subscribe({
+      next: (ports) => this.recordingPorts.set(Array.isArray(ports) ? ports : []),
+      error: (err) => this.snack.open(`Kayıt portları alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 }),
+    });
+  }
+
   private studioPlanRows(): IngestPlanRow[] {
     const planItemMap = new Map(this.ingestPlanItems().map((item) => [item.sourceKey, item]));
     const slots = [...this.studioPlanSlots()].sort((a, b) => (
@@ -684,6 +702,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
         sourceKey,
         day: first.day,
         sortMinute: first.startMinute,
+        endMinute,
         startTime: this.minuteToTime(first.startMinute),
         endTime: this.minuteToTime(endMinute),
         title: first.program,
@@ -749,6 +768,8 @@ export class IngestListComponent implements OnInit, OnDestroy {
       sourceType: row.source,
       day: row.day,
       recordingPort: row.recordingPort || null,
+      plannedStartMinute: row.sortMinute,
+      plannedEndMinute: row.endMinute,
     }).subscribe({
       next: (item) => {
         this.ingestPlanItems.update((items) => {
