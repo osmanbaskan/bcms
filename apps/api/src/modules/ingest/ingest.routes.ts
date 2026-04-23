@@ -3,8 +3,11 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { QUEUES } from '../../plugins/rabbitmq.js';
-import { PERMISSIONS } from '@bcms/shared';
+import { PERMISSIONS, type SaveIngestPlanItemDto } from '@bcms/shared';
 import { validateIngestSourcePath } from './ingest.paths.js';
+
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const ingestPlanStatusSchema = z.enum(['WAITING', 'RECEIVED', 'INGEST_STARTED', 'COMPLETED', 'ISSUE']);
 
 const createIngestSchema = z.object({
   sourcePath: z.string().min(1),
@@ -31,10 +34,54 @@ const callbackSchema = z.object({
   }).optional(),
 });
 
+const savePlanItemSchema = z.object({
+  sourceType: z.string().min(1).max(30),
+  day: dateSchema,
+  sourcePath: z.string().trim().optional().nullable(),
+  status: ingestPlanStatusSchema.optional(),
+  note: z.string().trim().optional().nullable(),
+});
+
 function safeEqual(a: string, b: string): boolean {
   const aBuffer = Buffer.from(a);
   const bBuffer = Buffer.from(b);
   return aBuffer.length === bBuffer.length && crypto.timingSafeEqual(aBuffer, bBuffer);
+}
+
+function parseDate(value: string): Date {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function dateOnly(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function mapPlanItem(item: {
+  id: number;
+  sourceType: string;
+  sourceKey: string;
+  dayDate: Date;
+  sourcePath: string | null;
+  status: string;
+  jobId: number | null;
+  note: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: item.id,
+    sourceType: item.sourceType,
+    sourceKey: item.sourceKey,
+    dayDate: dateOnly(item.dayDate),
+    sourcePath: item.sourcePath,
+    status: item.status,
+    jobId: item.jobId,
+    note: item.note,
+    updatedBy: item.updatedBy,
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
+  };
 }
 
 export async function ingestRoutes(app: FastifyInstance) {
@@ -82,6 +129,54 @@ export async function ingestRoutes(app: FastifyInstance) {
     return job;
   });
 
+  // GET /api/v1/ingest/plan?date=YYYY-MM-DD — Ingest departmanı plan satırı durumları
+  app.get('/plan', {
+    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    schema: { tags: ['Ingest'], summary: 'Get ingest planning item states for one day' },
+  }, async (request) => {
+    const q = request.query as { date?: string };
+    const day = dateSchema.parse(q.date);
+    const items = await app.prisma.ingestPlanItem.findMany({
+      where: { dayDate: parseDate(day) },
+      orderBy: [{ sourceType: 'asc' }, { sourceKey: 'asc' }],
+    });
+    return items.map(mapPlanItem);
+  });
+
+  // PUT /api/v1/ingest/plan/:sourceKey — Kaynak dosya ve operasyon durumunu kaydet
+  app.put<{ Params: { sourceKey: string } }>('/plan/:sourceKey', {
+    preHandler: app.requireRole(...PERMISSIONS.ingest.write),
+    schema: { tags: ['Ingest'], summary: 'Upsert one ingest planning item state' },
+  }, async (request) => {
+    const sourceKey = decodeURIComponent(request.params.sourceKey);
+    const dto = savePlanItemSchema.parse(request.body) satisfies SaveIngestPlanItemDto;
+    const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'unknown';
+
+    const sourcePath = dto.sourcePath?.trim() || null;
+    const item = await app.prisma.ingestPlanItem.upsert({
+      where: { sourceKey },
+      update: {
+        sourceType: dto.sourceType,
+        dayDate: parseDate(dto.day),
+        sourcePath,
+        status: dto.status ?? undefined,
+        note: dto.note?.trim() || null,
+        updatedBy: user,
+      },
+      create: {
+        sourceKey,
+        sourceType: dto.sourceType,
+        dayDate: parseDate(dto.day),
+        sourcePath,
+        status: dto.status ?? 'WAITING',
+        note: dto.note?.trim() || null,
+        updatedBy: user,
+      },
+    });
+
+    return mapPlanItem(item);
+  });
+
   // POST /api/v1/ingest — Trigger new ingest job (watch folder or manual)
   app.post('/', {
     preHandler: app.requireRole(...PERMISSIONS.ingest.write),
@@ -107,6 +202,20 @@ export async function ingestRoutes(app: FastifyInstance) {
         metadata:   dto.metadata as Prisma.InputJsonValue,
       },
     });
+
+    const planSourceKey = typeof dto.metadata?.ingestPlanSourceKey === 'string'
+      ? dto.metadata.ingestPlanSourceKey
+      : null;
+    if (planSourceKey) {
+      await app.prisma.ingestPlanItem.updateMany({
+        where: { sourceKey: planSourceKey },
+        data: {
+          sourcePath,
+          status: 'INGEST_STARTED',
+          jobId: job.id,
+        },
+      });
+    }
 
     await app.rabbitmq.publish(QUEUES.INGEST_NEW, {
       jobId:      job.id,
@@ -157,6 +266,11 @@ export async function ingestRoutes(app: FastifyInstance) {
         update: { ...dto.qcReport, errors: dto.qcReport.errors as Prisma.InputJsonValue, warnings: dto.qcReport.warnings as Prisma.InputJsonValue },
       });
     }
+
+    await app.prisma.ingestPlanItem.updateMany({
+      where: { jobId: dto.jobId },
+      data: { status: dto.status === 'FAILED' ? 'ISSUE' : dto.status === 'COMPLETED' ? 'COMPLETED' : 'INGEST_STARTED' },
+    });
 
     await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, { jobId: dto.jobId, status: dto.status });
 

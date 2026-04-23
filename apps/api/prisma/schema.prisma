@@ -184,6 +184,24 @@ model IngestJob {
   @@map("ingest_jobs")
 }
 
+model IngestPlanItem {
+  id         Int              @id @default(autoincrement())
+  sourceType String           @map("source_type") @db.VarChar(30)
+  sourceKey  String           @unique @map("source_key") @db.VarChar(500)
+  dayDate    DateTime         @map("day_date") @db.Date
+  sourcePath String?          @map("source_path")
+  status     IngestPlanStatus @default(WAITING)
+  jobId      Int?             @map("job_id")
+  note       String?
+  updatedBy  String?          @map("updated_by") @db.VarChar(100)
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  @@index([dayDate])
+  @@index([status])
+  @@map("ingest_plan_items")
+}
+
 enum IngestStatus {
   PENDING
   PROCESSING
@@ -193,6 +211,16 @@ enum IngestStatus {
   FAILED
 
   @@map("ingest_status")
+}
+
+enum IngestPlanStatus {
+  WAITING
+  RECEIVED
+  INGEST_STARTED
+  COMPLETED
+  ISSUE
+
+  @@map("ingest_plan_status")
 }
 
 // ── QC Reports ────────────────────────────────────────────────────────────────

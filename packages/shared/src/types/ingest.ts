@@ -1,4 +1,5 @@
 export type IngestStatus = 'PENDING' | 'PROCESSING' | 'PROXY_GEN' | 'QC' | 'COMPLETED' | 'FAILED';
+export type IngestPlanStatus = 'WAITING' | 'RECEIVED' | 'INGEST_STARTED' | 'COMPLETED' | 'ISSUE';
 
 export interface IngestJob {
   id: number;
@@ -34,6 +35,28 @@ export interface CreateIngestJobDto {
   sourcePath: string;
   targetId?: number;
   metadata?: Record<string, unknown>;
+}
+
+export interface IngestPlanItem {
+  id: number;
+  sourceType: 'live-plan' | 'studio-plan' | string;
+  sourceKey: string;
+  dayDate: string;
+  sourcePath?: string | null;
+  status: IngestPlanStatus;
+  jobId?: number | null;
+  note?: string | null;
+  updatedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveIngestPlanItemDto {
+  sourceType: 'live-plan' | 'studio-plan' | string;
+  day: string;
+  sourcePath?: string | null;
+  status?: IngestPlanStatus;
+  note?: string | null;
 }
 
 export interface IngestCallbackDto {

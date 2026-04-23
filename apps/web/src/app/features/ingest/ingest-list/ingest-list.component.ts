@@ -16,7 +16,15 @@ import { interval, Subscription } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
 import { ApiService } from '../../../core/services/api.service';
-import type { IngestJob, PaginatedResponse, Schedule, StudioPlan, StudioPlanSlot } from '@bcms/shared';
+import type {
+  IngestJob,
+  IngestPlanItem,
+  IngestPlanStatus,
+  PaginatedResponse,
+  Schedule,
+  StudioPlan,
+  StudioPlanSlot,
+} from '@bcms/shared';
 
 interface Channel {
   id: number;
@@ -28,12 +36,17 @@ interface IngestPlanRow {
   id: string;
   source: 'live-plan' | 'studio-plan';
   sourceLabel: string;
+  sourceKey: string;
+  day: string;
   sortMinute: number;
   startTime: string;
   endTime: string;
   title: string;
   location: string;
   note: string;
+  sourcePath: string;
+  status: IngestPlanStatus;
+  jobId?: number | null;
   scheduleId?: number;
 }
 
@@ -44,6 +57,14 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
   { label: 'Aktif',      value: 'ACTIVE' },
   { label: 'Tamamlandı', value: 'COMPLETED' },
   { label: 'Başarısız',  value: 'FAILED' },
+];
+
+const PLAN_STATUS_OPTIONS: Array<{ label: string; value: IngestPlanStatus }> = [
+  { label: 'Bekliyor', value: 'WAITING' },
+  { label: 'Alındı', value: 'RECEIVED' },
+  { label: 'Ingest Başladı', value: 'INGEST_STARTED' },
+  { label: 'Tamamlandı', value: 'COMPLETED' },
+  { label: 'Sorunlu', value: 'ISSUE' },
 ];
 
 
@@ -129,7 +150,10 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
                 <span>Saat</span>
                 <span>İçerik</span>
                 <span>Kanal / Stüdyo</span>
+                <span>Kaynak Dosya</span>
+                <span>Durum</span>
                 <span>Not</span>
+                <span>İşlem</span>
               </div>
 
               @for (row of planningRows(); track row.id) {
@@ -138,7 +162,21 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
                   <strong class="time-range">{{ row.startTime }} - {{ row.endTime }}</strong>
                   <span>{{ row.title }}</span>
                   <span>{{ row.location }}</span>
+                  <mat-form-field class="inline-field" appearance="outline">
+                    <input matInput [(ngModel)]="row.sourcePath" placeholder="Kaynak dosya yolu" autocomplete="off" />
+                  </mat-form-field>
+                  <mat-form-field class="inline-status" appearance="outline">
+                    <mat-select [(ngModel)]="row.status" (selectionChange)="savePlanRow(row)">
+                      @for (option of planStatusOptions; track option.value) {
+                        <mat-option [value]="option.value">{{ option.label }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
                   <span>{{ row.note }}</span>
+                  <button mat-stroked-button class="row-save-button" (click)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)">
+                    <mat-icon>save</mat-icon>
+                    Kaydet
+                  </button>
                 </div>
               }
             </div>
@@ -324,7 +362,7 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
     </div>
   `,
   styles: [`
-    .page-container  { max-width: 1100px; margin: 0 auto; }
+    .page-container  { max-width: 1380px; margin: 0 auto; }
     .page-header     { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
     .page-header h1  { margin-bottom: 2px; }
     .page-subtitle   { margin: 0; color: #9aa2b3; font-size: 0.9rem; }
@@ -344,15 +382,23 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
     .planning-board-header span { color: #c8d3e5; font-size: 0.85rem; font-weight: 700; }
     .planning-tools { padding: 12px 14px 0; }
     .planning-table-wrap { overflow-x: auto; }
-    .planning-table { min-width: 820px; }
+    .planning-table { min-width: 1120px; }
     .planning-head,
-    .planning-row { display: grid; grid-template-columns: 150px 110px minmax(240px, 1fr) 150px minmax(140px, 0.8fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .planning-row { display: grid; grid-template-columns: 126px 104px minmax(180px, 1fr) 120px minmax(210px, 1.05fr) 144px minmax(104px, 0.55fr) 104px; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
     .planning-head { color: #9aa2b3; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
     .planning-row { font-size: 0.86rem; }
     .planning-row:nth-child(odd) { background: rgba(255,255,255,0.025); }
     .source-pill { display: inline-flex; justify-content: center; padding: 4px 8px; border-radius: 999px; color: #04233d; background: #9bd3ff; font-size: 0.72rem; font-weight: 800; }
     .source-pill.studio { color: #2b1700; background: #ffd166; }
     .time-range { font-variant-numeric: tabular-nums; }
+    .inline-field, .inline-status { width: 100%; }
+    .inline-field ::ng-deep .mat-mdc-form-field-subscript-wrapper,
+    .inline-status ::ng-deep .mat-mdc-form-field-subscript-wrapper { display: none; }
+    .inline-field ::ng-deep .mat-mdc-text-field-wrapper,
+    .inline-status ::ng-deep .mat-mdc-text-field-wrapper { height: 40px; }
+    .inline-field ::ng-deep .mat-mdc-form-field-infix,
+    .inline-status ::ng-deep .mat-mdc-form-field-infix { min-height: 40px; padding-top: 8px; padding-bottom: 8px; }
+    .row-save-button { min-width: 96px; }
     .mono            { font-family: monospace; font-size: 0.8rem; }
     .inline-progress { width: 80px; margin-left: 8px; }
     .total-label     { margin-top: 8px; font-size: 0.85rem; opacity: 0.7; }
@@ -382,11 +428,14 @@ const STATUS_TABS: Array<{ label: string; value: string | null }> = [
 export class IngestListComponent implements OnInit, OnDestroy {
   columns     = ['id', 'sourcePath', 'status', 'plan', 'qc', 'createdAt', 'expand'];
   statusTabs  = STATUS_TABS;
+  planStatusOptions = PLAN_STATUS_OPTIONS;
 
   jobs        = signal<IngestJob[]>([]);
   channels    = signal<Channel[]>([]);
   livePlanCandidates = signal<Schedule[]>([]);
   studioPlanSlots = signal<StudioPlanSlot[]>([]);
+  ingestPlanItems = signal<IngestPlanItem[]>([]);
+  savingPlanKeys = signal<Set<string>>(new Set());
   total       = signal(0);
   selectedTab = signal(0);
   expandedId  = signal<number | null>(null);
@@ -407,10 +456,13 @@ export class IngestListComponent implements OnInit, OnDestroy {
   });
 
   planningRows = computed<IngestPlanRow[]>(() => {
+    const planItemMap = new Map(this.ingestPlanItems().map((item) => [item.sourceKey, item]));
     const liveRows = this.livePlanCandidates().map((schedule) => ({
       id: `live-${schedule.id}`,
       source: 'live-plan' as const,
       sourceLabel: 'Canlı Yayın',
+      sourceKey: `live:${schedule.id}`,
+      day: this.livePlanDate,
       sortMinute: this.sortMinuteFromDate(schedule.startTime),
       startTime: this.formatTime(schedule.startTime),
       endTime: this.formatTime(schedule.endTime),
@@ -419,6 +471,9 @@ export class IngestListComponent implements OnInit, OnDestroy {
       note: [schedule.reportLeague, schedule.reportSeason, schedule.reportWeekNumber ? `${schedule.reportWeekNumber}. Hafta` : '']
         .filter(Boolean)
         .join(' · ') || '-',
+      sourcePath: planItemMap.get(`live:${schedule.id}`)?.sourcePath ?? '',
+      status: planItemMap.get(`live:${schedule.id}`)?.status ?? 'WAITING' as IngestPlanStatus,
+      jobId: planItemMap.get(`live:${schedule.id}`)?.jobId,
       scheduleId: schedule.id,
     }));
 
@@ -502,6 +557,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
     this.livePlanLoading.set(true);
     this.loadStudioPlanForDate(this.livePlanDate);
+    this.loadIngestPlanItems(this.livePlanDate);
     this.api.get<PaginatedResponse<Schedule>>('/schedules/ingest-candidates', params).subscribe({
       next: (res) => {
         this.livePlanCandidates.set(res.data ?? []);
@@ -533,7 +589,15 @@ export class IngestListComponent implements OnInit, OnDestroy {
     });
   }
 
+  private loadIngestPlanItems(dateValue: string) {
+    this.api.get<IngestPlanItem[]>('/ingest/plan', { date: dateValue }).subscribe({
+      next: (items) => this.ingestPlanItems.set(Array.isArray(items) ? items : []),
+      error: (err) => this.snack.open(`Ingest plan durumları alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 }),
+    });
+  }
+
   private studioPlanRows(): IngestPlanRow[] {
+    const planItemMap = new Map(this.ingestPlanItems().map((item) => [item.sourceKey, item]));
     const slots = [...this.studioPlanSlots()].sort((a, b) => (
       a.studio.localeCompare(b.studio, 'tr')
       || a.startMinute - b.startMinute
@@ -564,16 +628,23 @@ export class IngestListComponent implements OnInit, OnDestroy {
         used.add(nextIndex);
       }
 
+      const sourceKey = `studio:${first.day}:${first.studio}:${first.startMinute}:${first.program}`;
+      const planItem = planItemMap.get(sourceKey);
       rows.push({
         id: `studio-${first.day}-${first.studio}-${first.startMinute}-${first.program}`,
         source: 'studio-plan',
         sourceLabel: 'Stüdyo Planı',
+        sourceKey,
+        day: first.day,
         sortMinute: first.startMinute,
         startTime: this.minuteToTime(first.startMinute),
         endTime: this.minuteToTime(endMinute),
         title: first.program,
         location: first.studio,
         note: 'Stüdyo programı',
+        sourcePath: planItem?.sourcePath ?? '',
+        status: planItem?.status ?? 'WAITING',
+        jobId: planItem?.jobId,
       });
     }
 
@@ -613,6 +684,44 @@ export class IngestListComponent implements OnInit, OnDestroy {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
 
+  isSavingPlanRow(sourceKey: string): boolean {
+    return this.savingPlanKeys().has(sourceKey);
+  }
+
+  savePlanRow(row: IngestPlanRow) {
+    const nextSaving = new Set(this.savingPlanKeys());
+    nextSaving.add(row.sourceKey);
+    this.savingPlanKeys.set(nextSaving);
+
+    this.api.put<IngestPlanItem>(`/ingest/plan/${encodeURIComponent(row.sourceKey)}`, {
+      sourceType: row.source,
+      day: row.day,
+      sourcePath: row.sourcePath.trim() || null,
+      status: row.status,
+    }).subscribe({
+      next: (item) => {
+        this.ingestPlanItems.update((items) => {
+          const otherItems = items.filter((current) => current.sourceKey !== item.sourceKey);
+          return [...otherItems, item];
+        });
+        this.savingPlanKeys.update((keys) => {
+          const updated = new Set(keys);
+          updated.delete(row.sourceKey);
+          return updated;
+        });
+        this.snack.open('Ingest plan satırı kaydedildi', 'Kapat', { duration: 2000 });
+      },
+      error: (err) => {
+        this.savingPlanKeys.update((keys) => {
+          const updated = new Set(keys);
+          updated.delete(row.sourceKey);
+          return updated;
+        });
+        this.snack.open(`Ingest plan satırı kaydedilemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+      },
+    });
+  }
+
   triggerLivePlanJob() {
     const sourcePath = this.livePlanSourcePath.trim();
     const schedule = this.livePlanCandidates().find((item) => item.id === this.selectedScheduleId);
@@ -625,6 +734,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
       metadata: {
         usageScope: 'live-plan',
         source: 'live-plan',
+        ingestPlanSourceKey: `live:${schedule.id}`,
         scheduleId: schedule.id,
         scheduleTitle: schedule.metadata?.['contentName'] || schedule.title,
         channelName: schedule.channel?.name ?? null,
