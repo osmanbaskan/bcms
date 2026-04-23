@@ -48,6 +48,17 @@ interface IngestPlanRow {
   scheduleId?: number;
 }
 
+interface PortBoardItem {
+  row: IngestPlanRow;
+  gridRow: string;
+  overlap: boolean;
+}
+
+interface PortBoardColumn {
+  port: string;
+  items: PortBoardItem[];
+}
+
 type PlanFilter = 'all' | 'today' | 'active' | 'unassigned' | 'issues';
 
 const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING', 'PROXY_GEN', 'QC']);
@@ -67,6 +78,10 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
   { label: 'Port Atanmamış', value: 'unassigned' },
   { label: 'Sorunlular', value: 'issues' },
 ];
+
+const PORT_BOARD_START_MINUTE = 6 * 60;
+const PORT_BOARD_END_MINUTE = 27 * 60;
+const PORT_BOARD_SLOT_MINUTES = 30;
 
 const TR_DATE_FORMATS = {
   parse: {
@@ -216,27 +231,51 @@ const TR_DATE_FORMATS = {
                 <h3>Port Görünümü</h3>
                 <p>Atanmış portlara göre ingest plan akışı</p>
               </div>
-              <span>{{ assignedPortColumns().length }} port</span>
+              <div class="port-board-actions">
+                <span>{{ assignedPortColumns().length }} port</span>
+                <button mat-stroked-button type="button" (click)="printPortBoard()">
+                  <mat-icon>print</mat-icon>
+                  Yazdır / Export
+                </button>
+              </div>
             </div>
 
             <div class="port-board-scroll">
-              <div class="port-board-grid" [style.grid-template-columns]="'repeat(' + assignedPortColumns().length + ', minmax(220px, 1fr))'">
+              <div class="port-board-frame">
+                <div class="port-board-times">
+                  <div class="port-board-times-head">Saat</div>
+                  <div class="port-board-times-body" [style.grid-template-rows]="timeGridTemplate()">
+                    @for (time of portBoardTimeLabels(); track time.label) {
+                      <div class="port-board-time-cell" [style.grid-row]="time.gridRow">{{ time.label }}</div>
+                    }
+                  </div>
+                </div>
+
+                <div class="port-board-grid" [style.grid-template-columns]="'repeat(' + assignedPortColumns().length + ', minmax(220px, 1fr))'">
                 @for (column of assignedPortColumns(); track column.port) {
                   <section class="port-board-column">
                     <header class="port-board-column-head">{{ column.port }}</header>
 
-                    <div class="port-board-column-body">
-                      @for (row of column.rows; track row.id) {
-                        <article class="port-board-item" [class.studio]="row.source === 'studio-plan'">
-                          <div class="port-board-time">{{ row.startTime }} - {{ row.endTime }}</div>
-                          <strong class="port-board-title">{{ row.title }}</strong>
-                          <span class="port-board-meta">{{ row.location }}</span>
-                          <span class="port-board-note">{{ row.sourceLabel }}</span>
+                    <div class="port-board-column-body" [style.grid-template-rows]="timeGridTemplate()">
+                      @for (time of portBoardTimeLabels(); track time.label) {
+                        <div class="port-board-slot-line" [style.grid-row]="time.gridRow"></div>
+                      }
+
+                      @for (item of column.items; track item.row.id) {
+                        <article class="port-board-item" [class.studio]="item.row.source === 'studio-plan'" [class.overlap]="item.overlap" [style.grid-row]="item.gridRow">
+                          <div class="port-board-time">{{ item.row.startTime }} - {{ item.row.endTime }}</div>
+                          <strong class="port-board-title">{{ item.row.title }}</strong>
+                          <span class="port-board-meta">{{ item.row.location }}</span>
+                          <span class="port-board-note">{{ item.row.sourceLabel }}</span>
+                          @if (item.overlap) {
+                            <span class="port-board-warning">Cakisma</span>
+                          }
                         </article>
                       }
                     </div>
                   </section>
                 }
+                </div>
               </div>
             </div>
           </div>
@@ -448,7 +487,6 @@ const TR_DATE_FORMATS = {
     .plan-filter-button span { min-width: 22px; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.1); color: #ffffff; font-size: 0.72rem; font-weight: 800; text-align: center; }
     .plan-filter-button.active { border-color: #9bd3ff; background: rgba(155,211,255,0.14); color: #ffffff; }
     .planning-tools { padding: 12px 14px 0; }
-    .planning-tools mat-form-field { min-width: 210px; }
     .planning-table-wrap { overflow-x: auto; }
     .planning-table { min-width: 920px; }
     .planning-head,
@@ -468,19 +506,25 @@ const TR_DATE_FORMATS = {
     .inline-field ::ng-deep .mat-mdc-form-field-infix { min-height: 40px; padding-top: 8px; padding-bottom: 8px; }
     .port-board-section { margin: 18px 14px 14px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; background: rgba(7,17,31,0.7); overflow: hidden; }
     .port-board-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-    .port-board-header h3 { margin: 0; font-size: 0.96rem; }
-    .port-board-header p { margin: 2px 0 0; color: #9aa2b3; font-size: 0.8rem; }
+    .port-board-header h3, .port-board-header p { margin: 0; }
+    .port-board-header p { color: #9aa2b3; font-size: 0.8rem; }
+    .port-board-actions { display: flex; align-items: center; gap: 12px; }
     .port-board-scroll { overflow-x: auto; }
+    .port-board-frame { display: grid; grid-template-columns: 84px minmax(0, 1fr); min-width: max-content; }
+    .port-board-times { border-right: 1px solid rgba(255,255,255,0.08); background: #203754; }
+    .port-board-times-head { display: flex; align-items: center; justify-content: center; min-height: 42px; border-bottom: 1px solid rgba(255,255,255,0.08); color: #f5d24b; font-size: 0.82rem; font-weight: 800; }
+    .port-board-times-body { display: grid; background: rgba(189,210,232,0.12); }
+    .port-board-time-cell { display: flex; align-items: flex-start; justify-content: center; padding-top: 6px; font-size: 0.74rem; font-weight: 700; color: #d7e6f5; }
     .port-board-grid { display: grid; gap: 0; min-width: max-content; }
     .port-board-column { min-height: 100%; border-right: 1px solid rgba(255,255,255,0.08); background: rgba(19,38,64,0.72); }
     .port-board-column:last-child { border-right: 0; }
     .port-board-column-head { display: flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,0.08); background: #203754; color: #f5d24b; font-size: 0.84rem; font-weight: 800; }
-    .port-board-column-body { display: flex; flex-direction: column; gap: 8px; padding: 10px; min-height: 180px; background: rgba(189,210,232,0.08); }
-    .port-board-item { display: flex; flex-direction: column; gap: 4px; min-height: 82px; padding: 10px 10px 11px; border: 1px solid rgba(255,255,255,0.08); background: #c7d8ec; color: #17304d; }
-    .port-board-item.studio { background: #d6e3f3; }
+    .port-board-column-body { position: relative; display: grid; padding: 0; min-height: 1176px; background: rgba(189,210,232,0.08); }
+    .port-board-slot-line { border-bottom: 1px solid rgba(255,255,255,0.07); }
+    .port-board-item { z-index: 1; margin: 2px 4px; padding: 8px 8px 9px; border: 1px solid rgba(255,255,255,0.08); background: #c7d8ec; color: #17304d; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+    .port-board-item.overlap { background: #ffd9d9; border-color: #ef5350; }
     .port-board-time { font-size: 0.8rem; font-weight: 800; }
-    .port-board-title { font-size: 0.9rem; line-height: 1.3; }
-    .port-board-meta, .port-board-note { font-size: 0.76rem; color: rgba(23,48,77,0.86); }
+    .port-board-warning { font-weight: 800; color: #b71c1c; }
     .mono            { font-family: monospace; font-size: 0.8rem; }
     .inline-progress { width: 80px; margin-left: 8px; }
     .total-label     { margin-top: 8px; font-size: 0.85rem; opacity: 0.7; }
@@ -585,7 +629,19 @@ export class IngestListComponent implements OnInit, OnDestroy {
     return rows;
   });
 
-  assignedPortColumns = computed(() => {
+  portBoardTimeLabels = computed(() => {
+    const items: Array<{ label: string; gridRow: string }> = [];
+    for (let minute = PORT_BOARD_START_MINUTE; minute < PORT_BOARD_END_MINUTE; minute += PORT_BOARD_SLOT_MINUTES * 2) {
+      const rowStart = Math.floor((minute - PORT_BOARD_START_MINUTE) / PORT_BOARD_SLOT_MINUTES) + 1;
+      items.push({
+        label: this.minuteToTime(minute),
+        gridRow: `${rowStart} / span 2`,
+      });
+    }
+    return items;
+  });
+
+  assignedPortColumns = computed<PortBoardColumn[]>(() => {
     const portOrder = new Map(this.activeRecordingPorts().map((port, index) => [port.name, index]));
     const grouped = new Map<string, IngestPlanRow[]>();
 
@@ -600,7 +656,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
       .sort((a, b) => (portOrder.get(a[0]) ?? Number.MAX_SAFE_INTEGER) - (portOrder.get(b[0]) ?? Number.MAX_SAFE_INTEGER))
       .map(([port, rows]) => ({
         port,
-        rows: [...rows].sort((a, b) => a.sortMinute - b.sortMinute || a.endMinute - b.endMinute || a.title.localeCompare(b.title, 'tr')),
+        items: this.toPortBoardItems(rows),
       }));
   });
 
@@ -681,6 +737,85 @@ export class IngestListComponent implements OnInit, OnDestroy {
       return rows.filter((row) => row.status === 'ISSUE').length;
     }
     return rows.length;
+  }
+
+  timeGridTemplate(): string {
+    return `repeat(${(PORT_BOARD_END_MINUTE - PORT_BOARD_START_MINUTE) / PORT_BOARD_SLOT_MINUTES}, minmax(28px, auto))`;
+  }
+
+  printPortBoard() {
+    const columns = this.assignedPortColumns();
+    if (columns.length === 0) {
+      this.snack.open('Export icin atanmis port bulunamadi', 'Kapat', { duration: 3000 });
+      return;
+    }
+
+    const times = this.portBoardTimeLabels();
+    const gridTemplateRows = this.timeGridTemplate();
+    const gridTemplateColumns = `96px repeat(${columns.length}, minmax(220px, 1fr))`;
+    const html = `<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <title>Ingest Port Gorunumu</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; color: #0f2740; }
+      h1 { margin: 0 0 6px; font-size: 24px; }
+      p { margin: 0 0 18px; color: #516579; }
+      .board { display: grid; grid-template-columns: ${gridTemplateColumns}; border: 1px solid #2c4360; }
+      .head { min-height: 42px; display: flex; align-items: center; justify-content: center; padding: 8px; background: #203754; color: #f5d24b; font-weight: 700; border-right: 1px solid #2c4360; border-bottom: 1px solid #2c4360; }
+      .head:first-child { color: #fff; }
+      .times, .col { position: relative; display: grid; grid-template-rows: ${gridTemplateRows}; min-height: 1176px; }
+      .times { background: #eef3f8; border-right: 1px solid #2c4360; }
+      .time { padding: 4px 8px; font-size: 12px; color: #2c4360; border-bottom: 1px solid #d2dde8; }
+      .col { background: #f6f9fc; border-right: 1px solid #2c4360; }
+      .line { border-bottom: 1px solid #d2dde8; }
+      .item { margin: 3px; padding: 8px; border: 1px solid #93aac3; background: #c7d8ec; display: flex; flex-direction: column; gap: 3px; overflow: hidden; }
+      .item.studio { background: #dbe6f3; }
+      .item.overlap { background: #ffe0e0; border-color: #d94242; }
+      .t { font-size: 12px; font-weight: 700; }
+      .ttl { font-size: 13px; font-weight: 700; line-height: 1.25; }
+      .m { font-size: 12px; }
+      .w { font-size: 11px; font-weight: 700; color: #b71c1c; }
+    </style>
+  </head>
+  <body>
+    <h1>Ingest Port Gorunumu</h1>
+    <p>${this.formatBoardDateLabel()}</p>
+    <section class="board">
+      <div class="head">Saat</div>
+      ${columns.map((column) => `<div class="head">${this.escapeHtml(column.port)}</div>`).join('')}
+      <div class="times">
+        ${times.map((time) => `<div class="time" style="grid-row:${time.gridRow}">${time.label}</div>`).join('')}
+      </div>
+      ${columns.map((column) => `
+        <div class="col">
+          ${times.map((time) => `<div class="line" style="grid-row:${time.gridRow}"></div>`).join('')}
+          ${column.items.map((item) => `
+            <div class="item ${item.row.source === 'studio-plan' ? 'studio' : ''} ${item.overlap ? 'overlap' : ''}" style="grid-row:${item.gridRow}">
+              <div class="t">${item.row.startTime} - ${item.row.endTime}</div>
+              <div class="ttl">${this.escapeHtml(item.row.title)}</div>
+              <div class="m">${this.escapeHtml(item.row.location)}</div>
+              <div class="m">${this.escapeHtml(item.row.sourceLabel)}</div>
+              ${item.overlap ? '<div class="w">Cakisma</div>' : ''}
+            </div>
+          `).join('')}
+        </div>
+      `).join('')}
+    </section>
+    <script>window.print();</script>
+  </body>
+</html>`;
+
+    const popup = window.open('', '_blank', 'width=1600,height=900');
+    if (!popup) {
+      this.snack.open('Yazdirma penceresi acilamadi', 'Kapat', { duration: 4000 });
+      return;
+    }
+
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
   }
 
   triggerJob() {
@@ -928,5 +1063,47 @@ export class IngestListComponent implements OnInit, OnDestroy {
         this.triggering.set(false);
       },
     });
+  }
+
+  private toPortBoardItems(rows: IngestPlanRow[]): PortBoardItem[] {
+    const sorted = [...rows]
+      .map((row) => ({
+        row,
+        start: Math.max(row.sortMinute, PORT_BOARD_START_MINUTE),
+        end: Math.max(row.endMinute, row.sortMinute + PORT_BOARD_SLOT_MINUTES),
+      }))
+      .sort((a, b) => a.start - b.start || a.end - b.end || a.row.title.localeCompare(b.row.title, 'tr'));
+
+    return sorted.map((current, index) => {
+      const overlap = sorted.some((candidate, candidateIndex) => {
+        if (candidateIndex === index) return false;
+        return candidate.start < current.end && candidate.end > current.start;
+      });
+      const normalizedEnd = Math.min(Math.max(current.end, current.start + PORT_BOARD_SLOT_MINUTES), PORT_BOARD_END_MINUTE);
+      const gridRowStart = Math.floor((current.start - PORT_BOARD_START_MINUTE) / PORT_BOARD_SLOT_MINUTES) + 1;
+      const gridRowEnd = Math.ceil((normalizedEnd - PORT_BOARD_START_MINUTE) / PORT_BOARD_SLOT_MINUTES) + 1;
+      return {
+        row: current.row,
+        gridRow: `${gridRowStart} / ${Math.max(gridRowEnd, gridRowStart + 1)}`,
+        overlap,
+      };
+    });
+  }
+
+  private formatBoardDateLabel(): string {
+    return new Intl.DateTimeFormat('tr-TR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(new Date(`${this.livePlanDate}T12:00:00`));
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 }
