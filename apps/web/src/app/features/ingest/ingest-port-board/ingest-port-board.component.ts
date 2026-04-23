@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, ElementRef, EventEmitter, HostListener, Input, Output, ViewChild } from '@angular/core';
 import { CdkDrag, CdkDragDrop, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -28,19 +28,30 @@ export interface IngestPortBoardTimeLabel {
   gridRow: string;
 }
 
+type PortBoardZoom = 'tight' | 'normal' | 'wide';
+
 @Component({
   selector: 'app-ingest-port-board',
   standalone: true,
   imports: [CommonModule, CdkDropList, CdkDrag, MatButtonModule, MatIconModule],
   template: `
-    <div class="port-board-section" [class.full-page]="fullPage" *ngIf="columns.length > 0">
+    <div class="port-board-section" [class.full-page]="fullPage" [class.is-fullscreen]="isFullscreen" *ngIf="columns.length > 0" #boardRoot>
       <div class="port-board-header">
         <div>
           <h3>Port Görünümü</h3>
           <p>Atanmış portlara göre ingest plan akışı</p>
         </div>
         <div class="port-board-actions">
+          <div class="port-board-zoom" role="group" aria-label="Zoom Seviyesi">
+            <button type="button" [class.active]="zoom === 'tight'" (click)="setZoom('tight')">Sıkı</button>
+            <button type="button" [class.active]="zoom === 'normal'" (click)="setZoom('normal')">Normal</button>
+            <button type="button" [class.active]="zoom === 'wide'" (click)="setZoom('wide')">Geniş</button>
+          </div>
           <span>{{ columns.length }} port</span>
+          <button mat-stroked-button type="button" (click)="toggleFullscreen()">
+            <mat-icon>{{ isFullscreen ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon>
+            {{ isFullscreen ? 'Tam Ekrandan Çık' : 'Tam Ekran' }}
+          </button>
           <button mat-stroked-button type="button" (click)="requestPrint.emit()">
             <mat-icon>print</mat-icon>
             Yazdır / Export
@@ -102,9 +113,14 @@ export interface IngestPortBoardTimeLabel {
     .port-board-header{justify-content:space-between;gap:16px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
     .port-board-header h3,.port-board-header p{margin:0}
     .port-board-header p{color:#9aa2b3;font-size:.8rem}
-    .port-board-actions{gap:12px}
+    .port-board-actions{gap:12px;flex-wrap:wrap;justify-content:flex-end}
+    .port-board-zoom{display:inline-flex;border:1px solid rgba(255,255,255,.14);border-radius:999px;overflow:hidden}
+    .port-board-zoom button{min-width:64px;height:34px;border:0;background:transparent;color:#c8d3e5}
+    .port-board-zoom button.active{background:rgba(155,211,255,.16);color:#fff}
     .port-board-scroll{overflow-x:auto}
     .port-board-section.full-page .port-board-scroll{height:calc(100vh - 250px);overflow:auto}
+    .port-board-section.is-fullscreen{margin:0;border:0;border-radius:0}
+    .port-board-section.is-fullscreen .port-board-scroll{height:calc(100vh - 72px)}
     .port-board-frame{display:grid;grid-template-columns:84px minmax(0,1fr);min-width:max-content}
     .port-board-times{border-right:1px solid rgba(255,255,255,.08);background:#203754}
     .port-board-times-head,.port-board-column-head{justify-content:center;min-height:42px;border-bottom:1px solid rgba(255,255,255,.08);background:#203754;font-weight:800}
@@ -128,6 +144,7 @@ export interface IngestPortBoardTimeLabel {
   `],
 })
 export class IngestPortBoardComponent {
+  @ViewChild('boardRoot') boardRoot?: ElementRef<HTMLElement>;
   @Input() columns: IngestPortBoardColumnView[] = [];
   @Input() timeLabels: IngestPortBoardTimeLabel[] = [];
   @Input() gridTemplateRows = '';
@@ -137,12 +154,36 @@ export class IngestPortBoardComponent {
   @Output() requestPrint = new EventEmitter<void>();
   @Output() portOrderChange = new EventEmitter<string[]>();
 
+  zoom: PortBoardZoom = 'normal';
+  isFullscreen = false;
+
   trackPort = (_: number, column: IngestPortBoardColumnView) => column.port;
   trackTime = (_: number, time: IngestPortBoardTimeLabel) => time.label;
   trackItem = (_: number, item: IngestPortBoardItemView) => item.row.id;
 
   gridTemplateColumns(): string {
-    return `repeat(${this.columns.length}, minmax(${this.columnMinWidth}px, 1fr))`;
+    return `repeat(${this.columns.length}, minmax(${this.currentColumnWidth()}px, 1fr))`;
+  }
+
+  setZoom(zoom: PortBoardZoom) {
+    this.zoom = zoom;
+  }
+
+  async toggleFullscreen() {
+    const root = this.boardRoot?.nativeElement;
+    if (!root) return;
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      this.isFullscreen = false;
+      return;
+    }
+    await root.requestFullscreen();
+    this.isFullscreen = true;
+  }
+
+  @HostListener('document:fullscreenchange')
+  syncFullscreenState() {
+    this.isFullscreen = !!document.fullscreenElement;
   }
 
   onDrop(event: CdkDragDrop<IngestPortBoardColumnView[]>) {
@@ -150,5 +191,11 @@ export class IngestPortBoardComponent {
     const nextOrder = this.columns.map((column) => column.port);
     moveItemInArray(nextOrder, event.previousIndex, event.currentIndex);
     this.portOrderChange.emit(nextOrder);
+  }
+
+  private currentColumnWidth(): number {
+    if (this.zoom === 'tight') return Math.max(120, this.columnMinWidth - 40);
+    if (this.zoom === 'wide') return this.columnMinWidth + 60;
+    return this.columnMinWidth;
   }
 }
