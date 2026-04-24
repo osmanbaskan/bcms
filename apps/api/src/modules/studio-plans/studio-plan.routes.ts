@@ -140,6 +140,68 @@ async function getCatalog(app: FastifyInstance): Promise<StudioPlanCatalog> {
 }
 
 export async function studioPlanRoutes(app: FastifyInstance) {
+
+  // GET /api/v1/studio-plans/reports/usage?from=YYYY-MM-DD&to=YYYY-MM-DD
+  app.get<{ Querystring: { from: string; to: string } }>('/reports/usage', {
+    preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
+    schema: {
+      tags: ['Studio Plans'],
+      summary: 'Program bazlı stüdyo kullanım raporu',
+      querystring: {
+        type: 'object',
+        required: ['from', 'to'],
+        properties: {
+          from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+          to:   { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+        },
+      },
+    },
+  }, async (request) => {
+    const { from, to } = request.query;
+
+    const rows = await app.prisma.$queryRaw<{
+      program: string;
+      color: string;
+      studio: string;
+      slot_count: bigint;
+      day_count: bigint;
+    }[]>`
+      SELECT
+        program,
+        color,
+        studio,
+        COUNT(*)                      AS slot_count,
+        COUNT(DISTINCT day_date)      AS day_count
+      FROM studio_plan_slots sps
+      JOIN studio_plans sp ON sp.id = sps.plan_id
+      WHERE sps.day_date >= ${parseDate(from)}
+        AND sps.day_date <= ${parseDate(to)}
+      GROUP BY program, color, studio
+      ORDER BY COUNT(*) DESC, program ASC
+    `;
+
+    // program bazında birleştir, stüdyo dağılımı ekle
+    const map = new Map<string, {
+      program: string; color: string;
+      slotCount: number; totalMinutes: number; dayCount: number;
+      studios: { studio: string; slotCount: number; totalMinutes: number }[];
+    }>();
+
+    for (const r of rows) {
+      const sc = Number(r.slot_count);
+      if (!map.has(r.program)) {
+        map.set(r.program, { program: r.program, color: r.color, slotCount: 0, totalMinutes: 0, dayCount: 0, studios: [] });
+      }
+      const entry = map.get(r.program)!;
+      entry.slotCount    += sc;
+      entry.totalMinutes += sc * 30;
+      entry.dayCount      = Math.max(entry.dayCount, Number(r.day_count));
+      entry.studios.push({ studio: r.studio, slotCount: sc, totalMinutes: sc * 30 });
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.totalMinutes - a.totalMinutes);
+  });
+
   app.get('/catalog', {
     preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
     schema: { tags: ['Studio Plans'], summary: 'Get studio plan program and color catalog' },

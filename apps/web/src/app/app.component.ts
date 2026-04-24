@@ -122,7 +122,13 @@ export class AppComponent implements OnInit {
       ],
     },
     { label: 'Rezervasyonlar', icon: 'book_online',         route: '/bookings',   roles: ['admin','planner','scheduler','viewer'] },
-    { label: 'Stüdyo Planı',    icon: 'event_seat',          route: '/studio-plan', roles: ['admin'] },
+    {
+      label: 'Stüdyo Planı', icon: 'event_seat', route: '/studio-plan', roles: ['admin'],
+      children: [
+        { label: 'Haftalık Plan',  icon: 'grid_view',  route: '/studio-plan',        roles: ['admin'], exactMatch: true },
+        { label: 'Kullanım Raporu', icon: 'bar_chart', route: '/studio-plan/report', roles: ['admin'] },
+      ],
+    },
     { label: 'Haftalık Shift',  icon: 'groups',              route: '/weekly-shift', roles: ['admin'] },
     { label: 'Provys İçerik Kontrol', icon: 'fact_check',    route: '/provys-content-control', roles: ['admin'] },
     { label: 'Kanallar',       icon: 'live_tv',             route: '/channels',   roles: ['admin'] },

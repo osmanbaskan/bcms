@@ -29,6 +29,13 @@ export const routes: Routes = [
     data: { roles: ['admin'] },
   },
   {
+    path: 'studio-plan/report',
+    loadComponent: () =>
+      import('./features/studio-plan/studio-plan-report.component').then((m) => m.StudioPlanReportComponent),
+    canActivate: [AuthGuard],
+    data: { roles: ['admin'] },
+  },
+  {
     path: 'weekly-shift',
     loadComponent: () =>
       import('./features/weekly-shift/weekly-shift.component').then((m) => m.WeeklyShiftComponent),
