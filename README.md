@@ -158,6 +158,8 @@ GET  /api/v1/schedules/ingest-candidates
 GET  /api/v1/schedules/reports/live-plan
 GET  /api/v1/schedules/reports/live-plan/export
 POST /api/v1/ingest
+GET  /api/v1/ingest/plan/report?from=YYYY-MM-DD&to=YYYY-MM-DD
+GET  /api/v1/ingest/plan/report/export?from=YYYY-MM-DD&to=YYYY-MM-DD
 GET  /api/v1/studio-plans/:weekStart
 PUT  /api/v1/studio-plans/:weekStart
 GET  /api/v1/studio-plans/reports/usage?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -187,14 +189,6 @@ docker compose up -d --build web
 
 Tarayıcıda "dev-admin" kullanıcısı görünüyorsa → web imajı `environment.ts` (`skipAuth: true`) ile derlenmiş demektir. `--build web` ile yeniden derle.
 
-### Ingest Planlama
-
-- `Ingest Planlama`: Canlı yayın planı ve Stüdyo Planı kayıtlarını birleştiren tablo; port ataması burada yapılır.
-- `Port Görünümü`: Port bazlı operasyonel pano (5 satır, tam ekran, zoom, print).
-- Kayıt portları: `recording_ports` backend tablosundan gelir (varsayılan 1-44 + Metus1/Metus2 = 46 port).
-- Port atama kalıcılığı: `ingest_plan_items.recording_port`.
-- Çakışma kontrolü backend tarafında reddedilir.
-
 ### Stüdyo Planı
 
 - Admin-only, Pazartesi-Pazar haftalık görünüm, 06:00-02:00 arası 30 dakikalık slotlar.
@@ -205,6 +199,29 @@ Tarayıcıda "dev-admin" kullanıcısı görünüyorsa → web imajı `environme
 - `weekStart` yalnızca Pazartesi tarihi kabul edilir.
 - Kullanım raporu: `GET /reports/usage` (JSON) ve `GET /reports/usage/export` (xlsx). Her slot = 30 dakika.
 - Raporlama sayfasında "Stüdyo Kullanım Raporu" seçeneği → tarih aralığı filtresi → Excel/PDF export.
+- `/studio-plan/report` bağımsız route'u kaldırılmıştır; rapor artık yalnızca `/schedules/reporting` üzerinden erişilir.
+
+### Raporlama (`/schedules/reporting`)
+
+Bağımsız navigasyon öğesi — üç rapor tipi desteklenir:
+
+| Rapor Tipi | Filtre | Excel | PDF |
+|---|---|---|---|
+| `live-plan` | Lig/hafta veya tarih aralığı | ✓ | ✓ |
+| `studio-usage` | Tarih aralığı | ✓ (TOPLAM satırı) | ✓ (TOPLAM satırı) |
+| `ingest` | Tarih aralığı | ✓ (TOPLAM satırı) | ✓ (TOPLAM satırı) |
+
+- Excel/PDF butonları yalnızca seçili raporda veri varken aktif olur.
+- `currentReport()` metodu her export çağrısında doğru `exportEndpoint`'i döner (computed signal yerine, sinyal bağımlılığı olmayan computed'ın önbellek sorununu önler).
+
+### Ingest Planlama
+
+- `Ingest Planlama`: Canlı yayın planı ve Stüdyo Planı kayıtlarını birleştiren tablo; port ataması burada yapılır.
+- `Port Görünümü`: Port bazlı operasyonel pano (5 satır, tam ekran, zoom, print).
+- Kayıt portları: `recording_ports` backend tablosundan gelir (varsayılan 1-44 + Metus1/Metus2 = 46 port).
+- Port atama kalıcılığı: `ingest_plan_items.recording_port`.
+- Çakışma kontrolü backend tarafında reddedilir.
+- Rapor endpointleri: `GET /api/v1/ingest/plan/report` (JSON) ve `/plan/report/export` (xlsx).
 
 ## Yerel Altyapı (Docker)
 

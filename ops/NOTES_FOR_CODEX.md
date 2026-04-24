@@ -46,10 +46,14 @@ OPTA dizini veya RabbitMQ geçici koptuğunda API çökmez:
 ## Frontend
 
 Admin navigasyonunda:
-- `Stüdyo Planı` (grup) → Haftalık Plan `/studio-plan` + Kullanım Raporu `/studio-plan/report`
+- `Yayın Planı` (grup) → Canlı Yayın Plan Listesi `/schedules` + Günlük Yayın Raporu `/schedules/daily-report`
+- `Rezervasyonlar` → `/bookings`
+- `Raporlama` → `/schedules/reporting` (**bağımsız** öğe — Yayın Planı grubunun altında değil)
+- `Stüdyo Planı` → `/studio-plan` (tek öğe, artık grup değil; `/studio-plan/report` route'u kaldırıldı)
 - `Haftalık Shift` → `/weekly-shift`
 - `Provys İçerik Kontrol` → `/provys-content-control`
-- `Yayın Planı` (grup) → liste + Raporlama + Günlük Yayın Raporu
+
+**KRİTİK nav kuralı:** `Raporlama` bağımsız nav öğesidir. `Yayın Planı` grubuna veya `Stüdyo Planı` grubuna eklenmez. `Stüdyo Planı`'nın alt öğesi yoktur.
 
 Stüdyo Planı:
 - `apps/web/src/app/features/studio-plan/studio-plan.component.ts`
@@ -57,19 +61,26 @@ Stüdyo Planı:
 - `GET/PUT /api/v1/studio-plans/:weekStart`, `GET/PUT /api/v1/studio-plans/catalog`
 - `weekStart` Pazartesi tarihi olmak zorundadır
 
+Raporlama Sayfası (`/schedules/reporting`):
+- `apps/web/src/app/features/schedules/reporting/schedule-reporting.component.ts`
+- Rapor tipleri: `live-plan`, `studio-usage`, `ingest` (dropdown seçimi)
+- Tarih alanları: `TrDateAdapter` ile dd.MM.yyyy formatı hem yazma hem takvim seçimi destekler
+- Excel/PDF butonları veri varken aktif, yokken pasif
+- **KRİTİK:** `exportExcel()` içinde `this.selectedReport()` computed KULLANILMAZ — `currentReport()` metodunu kullan. Angular computed, sinyal olmayan `selectedReportId` property'sini takip etmez; ilk değer olan `live-plan`'ı döner ve önbellekte kalır.
+
 Stüdyo Kullanım Raporu (API):
 - `GET /api/v1/studio-plans/reports/usage?from=YYYY-MM-DD&to=YYYY-MM-DD` → JSON
-- `GET /api/v1/studio-plans/reports/usage/export?from=YYYY-MM-DD&to=YYYY-MM-DD` → xlsx (ExcelJS)
+- `GET /api/v1/studio-plans/reports/usage/export?from=YYYY-MM-DD&to=YYYY-MM-DD` → xlsx (ExcelJS, TOPLAM satırı)
 - Her slot 30 dakika sayılır; program bazında toplanır
 - `apps/api/src/modules/studio-plans/studio-plan.routes.ts` içinde `queryStudioUsage()` helper
 
-Raporlama Sayfası (`/schedules/reporting`):
-- `apps/web/src/app/features/schedules/reporting/schedule-reporting.component.ts`
-- Rapor tipi: `live-plan` veya `studio-usage` (dropdown seçimi)
-- Tarih alanları: `TrDateAdapter` ile dd.MM.yyyy formatı hem yazma hem takvim seçimi destekler
-- Excel/PDF butonları her iki rapor tipi için aktif
+Ingest Raporu (API):
+- `GET /api/v1/ingest/plan/report?from=YYYY-MM-DD&to=YYYY-MM-DD` → JSON (IngestPlanItem listesi)
+- `GET /api/v1/ingest/plan/report/export?from=YYYY-MM-DD&to=YYYY-MM-DD` → xlsx (TOPLAM satırı)
+- Kolonlar: Tarih, Kaynak Tipi, İçerik (describeSourceKey), Port, Başlangıç, Bitiş, Süre, Durum (TR), Not, Güncelleyen
+- `apps/api/src/modules/ingest/ingest.routes.ts` içinde tanımlı
 
-Ingest:
+Ingest Port Board:
 - Port board: `apps/web/src/app/features/ingest/ingest-port-board/ingest-port-board.component.ts`
 - Parent: `apps/web/src/app/features/ingest/ingest-list/ingest-list.component.ts`
 - `ingest_plan_items` kalıcılık tablosu
@@ -139,15 +150,20 @@ Local DB 2026-04-22'de 8 migration baseline edildi. `npm run db:migrate:prod -w 
 ## Önemli Dosya Konumları
 
 ```
-apps/api/src/server.ts                    → graceful shutdown (SIGTERM)
-apps/api/src/app.ts                       → buildApp, health endpoint (degraded mode)
-apps/api/src/plugins/rabbitmq.ts          → RabbitMQClient, isConnected()
-apps/api/src/plugins/audit.ts             → Prisma audit middleware
-apps/api/src/modules/opta/opta.watcher.ts → OPTA dizin health + getOptaWatcherStatus()
-apps/api/src/modules/opta/opta.sync.routes.ts → POST /api/v1/opta/sync
-apps/web/angular.json                     → fileReplacements (environment.prod.ts aktif edilmeli!)
-apps/web/src/environments/environment.ts      → skipAuth: true  (SADECE ng serve için)
-apps/web/src/environments/environment.prod.ts → skipAuth: false (Docker build için)
-infra/docker/nginx.conf                   → Angular serve + API proxy + docs proxy
-docker-compose.yml                        → api + worker ayrıştırması
+apps/api/src/server.ts                           → graceful shutdown (SIGTERM)
+apps/api/src/app.ts                              → buildApp, health endpoint (degraded mode)
+apps/api/src/plugins/rabbitmq.ts                 → RabbitMQClient, isConnected()
+apps/api/src/plugins/audit.ts                    → Prisma audit middleware
+apps/api/src/modules/opta/opta.watcher.ts        → OPTA dizin health + getOptaWatcherStatus()
+apps/api/src/modules/opta/opta.sync.routes.ts    → POST /api/v1/opta/sync
+apps/api/src/modules/ingest/ingest.routes.ts     → GET /plan/report + /plan/report/export
+apps/api/src/modules/studio-plans/studio-plan.routes.ts → GET /reports/usage + /reports/usage/export
+apps/web/src/app/app.component.ts                → navItems (Raporlama bağımsız, Stüdyo Planı tek öğe)
+apps/web/src/app/app.routes.ts                   → route tanımları (studio-plan/report yok)
+apps/web/src/app/features/schedules/reporting/schedule-reporting.component.ts → Raporlama sayfası
+apps/web/angular.json                            → fileReplacements (environment.prod.ts aktif edilmeli!)
+apps/web/src/environments/environment.ts             → skipAuth: true  (SADECE ng serve için)
+apps/web/src/environments/environment.prod.ts        → skipAuth: false (Docker build için)
+infra/docker/nginx.conf                          → Angular serve + API proxy + docs proxy
+docker-compose.yml                               → api + worker ayrıştırması
 ```

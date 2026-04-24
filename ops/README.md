@@ -80,13 +80,14 @@ curl -fsS http://127.0.0.1:3000/health
 
 ## Frontend Operasyon Sekmeleri (Admin)
 
-- `Stüdyo Planı` → `/studio-plan` (Haftalık Plan) + `/studio-plan/report` (Kullanım Raporu)
+- `Stüdyo Planı` → `/studio-plan` (Haftalık Plan)
 - `Haftalık Shift` → `/weekly-shift`
 - `Provys İçerik Kontrol` → `/provys-content-control`
 - `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab)
-- `Raporlama` → `/schedules/reporting` — Rapor tipi seçilebilir:
+- `Raporlama` → `/schedules/reporting` — **bağımsız** navigasyon öğesi, rapor tipi seçilebilir:
   - `Canlı Yayın Planı` — tarih aralığı veya lig/hafta filtresi, Excel + PDF export
-  - `Stüdyo Kullanım Raporu` — tarih aralığı filtresi, Excel + PDF export
+  - `Stüdyo Kullanım Raporu` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
+  - `Ingest` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
 
 ## Ingest Operasyon Mimarisi
 
@@ -95,6 +96,9 @@ curl -fsS http://127.0.0.1:3000/health
 - Plan kalıcılığı: `ingest_plan_items`.
 - Port çakışması backend'de reddedilir.
 - Port görünümü: 5 satırlı düzen, tam ekran, zoom, print/export.
+- Rapor endpointleri:
+  - `GET /api/v1/ingest/plan/report?from=YYYY-MM-DD&to=YYYY-MM-DD` → JSON
+  - `GET /api/v1/ingest/plan/report/export?from=YYYY-MM-DD&to=YYYY-MM-DD` → xlsx (TOPLAM satırı dahil)
 
 ## Canli Yayin Plani Kapsami
 
