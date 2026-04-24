@@ -1,8 +1,8 @@
 import { CommonModule, DatePipe } from '@angular/common';
-import { Component, OnInit, computed, signal } from '@angular/core';
+import { Component, Injectable, Inject, Optional, OnInit, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatNativeDateModule, MAT_DATE_LOCALE } from '@angular/material/core';
+import { DateAdapter, NativeDateAdapter, MatNativeDateModule, MAT_DATE_LOCALE } from '@angular/material/core';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -51,6 +51,32 @@ function displayDateFromIso(isoDate: string): string {
   return `${day}.${month}.${year}`;
 }
 
+@Injectable()
+class TrDateAdapter extends NativeDateAdapter {
+  constructor(@Optional() @Inject(MAT_DATE_LOCALE) locale: string) {
+    super(locale);
+  }
+
+  override parse(value: string): Date | null {
+    if (!value) return null;
+    const match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(String(value).trim());
+    if (match) {
+      const d = Number(match[1]);
+      const m = Number(match[2]) - 1;
+      const y = Number(match[3]);
+      const date = new Date(y, m, d);
+      if (date.getFullYear() === y && date.getMonth() === m && date.getDate() === d) return date;
+    }
+    return super.parse(value);
+  }
+
+  override format(date: Date, _displayFormat: object): string {
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    return `${d}.${m}.${date.getFullYear()}`;
+  }
+}
+
 function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -78,6 +104,7 @@ function formatHours(minutes: number): string {
   providers: [
     DatePipe,
     { provide: MAT_DATE_LOCALE, useValue: 'tr-TR' },
+    { provide: DateAdapter, useClass: TrDateAdapter, deps: [MAT_DATE_LOCALE] },
   ],
   template: `
     <div class="report-page">
@@ -88,11 +115,11 @@ function formatHours(minutes: number): string {
         </div>
 
         <div class="header-actions">
-          <button mat-stroked-button [disabled]="loading() || exporting() || !rows().length" (click)="exportExcel()">
+          <button mat-stroked-button [disabled]="loading() || exporting() || !hasResults()" (click)="exportExcel()">
             <mat-icon>table_view</mat-icon>
             Excel
           </button>
-          <button mat-stroked-button [disabled]="loading() || exporting() || !rows().length" (click)="exportPdf()">
+          <button mat-stroked-button [disabled]="loading() || exporting() || !hasResults()" (click)="exportPdf()">
             <mat-icon>picture_as_pdf</mat-icon>
             PDF
           </button>
@@ -380,7 +407,7 @@ export class ScheduleReportingComponent implements OnInit {
       id: 'studio-usage',
       label: 'Stüdyo Kullanım Raporu',
       endpoint: '/studio-plans/reports/usage',
-      exportEndpoint: '',
+      exportEndpoint: '/studio-plans/reports/usage/export',
       enabled: true,
     },
   ];
@@ -413,6 +440,10 @@ export class ScheduleReportingComponent implements OnInit {
   });
 
   readonly formatHours = formatHours;
+
+  hasResults = computed(() =>
+    this.selectedReportId === 'studio-usage' ? this.studioRows().length > 0 : this.rows().length > 0,
+  );
 
   leagues = computed(() => (
     [...new Set(this.filterEntries().map((entry) => entry.league))]
@@ -522,6 +553,25 @@ export class ScheduleReportingComponent implements OnInit {
   }
 
   exportExcel(): void {
+    if (this.selectedReportId === 'studio-usage') {
+      const range = this.normalizedDateRange();
+      if (!range) return;
+      const [from, to] = range;
+      const report = this.selectedReport();
+      this.exporting.set(true);
+      this.api.getBlob(report.exportEndpoint, { from, to }).subscribe({
+        next: (blob) => {
+          this.downloadBlob(blob, `studio-usage_${displayDateFromIso(from)}_${displayDateFromIso(to)}.xlsx`);
+          this.exporting.set(false);
+        },
+        error: (err) => {
+          this.exporting.set(false);
+          this.snack.open(`Excel export hatası: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+        },
+      });
+      return;
+    }
+
     const report = this.selectedReport();
     const params = this.queryParams();
     if (!params) return;
@@ -547,7 +597,11 @@ export class ScheduleReportingComponent implements OnInit {
     }
     win.opener = null;
 
-    win.document.write(this.buildPrintableHtml());
+    const html = this.selectedReportId === 'studio-usage'
+      ? this.buildStudioPrintableHtml()
+      : this.buildPrintableHtml();
+
+    win.document.write(html);
     win.document.close();
     win.focus();
     setTimeout(() => win.print(), 250);
@@ -614,6 +668,37 @@ export class ScheduleReportingComponent implements OnInit {
     anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  private buildStudioPrintableHtml(): string {
+    const range = this.normalizedDateRange();
+    const dateRange = range ? `${displayDateFromIso(range[0])} - ${displayDateFromIso(range[1])}` : '-';
+    const title = `Stüdyo Kullanım Raporu — ${dateRange}`;
+    const rows = this.studioRows().map((row, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td><span style="display:inline-block;width:14px;height:14px;background:${this.escape(row.color)};border-radius:3px;border:1px solid #999;vertical-align:middle"></span></td>
+        <td>${this.escape(row.program)}</td>
+        <td style="text-align:right">${row.slotCount}</td>
+        <td style="text-align:right">${row.totalMinutes}</td>
+        <td style="text-align:right">${this.escape(formatHours(row.totalMinutes))}</td>
+        <td style="text-align:right">${row.dayCount}</td>
+        <td>${row.studios.map((s) => `${this.escape(s.studio)}: ${s.totalMinutes} dk`).join(', ')}</td>
+      </tr>`).join('');
+
+    return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${this.escape(title)}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+        h1 { font-size: 18px; margin: 0 0 4px; }
+        .meta { color: #555; margin-bottom: 16px; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th, td { border: 1px solid #bbb; padding: 5px 7px; text-align: left; }
+        th { background: #eee; }
+      </style></head><body>
+      <h1>${this.escape(title)}</h1>
+      <div class="meta">Program sayısı: ${this.studioRows().length} | Toplam: ${formatHours(this.totalMinutes())}</div>
+      <table><thead><tr><th>#</th><th>Renk</th><th>Program</th><th>Slot</th><th>Toplam Dk</th><th>Toplam Saat</th><th>Gün</th><th>Stüdyo Dağılımı</th></tr></thead>
+      <tbody>${rows}</tbody></table></body></html>`;
   }
 
   private buildPrintableHtml(): string {

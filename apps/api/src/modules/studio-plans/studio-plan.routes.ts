@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
@@ -127,6 +128,49 @@ function mapPlan(plan: DbStudioPlanWithSlots): StudioPlan {
   };
 }
 
+interface UsageAggRow {
+  program: string; color: string;
+  slotCount: number; totalMinutes: number; dayCount: number;
+  studios: { studio: string; slotCount: number; totalMinutes: number }[];
+}
+
+function fmtHours(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h} sa` : `${h} sa ${m} dk`;
+}
+
+async function queryStudioUsage(app: FastifyInstance, from: string, to: string): Promise<UsageAggRow[]> {
+  const rows = await app.prisma.$queryRaw<{
+    program: string; color: string; studio: string;
+    slot_count: bigint; day_count: bigint;
+  }[]>`
+    SELECT program, color, studio,
+           COUNT(*)                 AS slot_count,
+           COUNT(DISTINCT day_date) AS day_count
+    FROM studio_plan_slots sps
+    JOIN studio_plans sp ON sp.id = sps.plan_id
+    WHERE sps.day_date >= ${parseDate(from)}
+      AND sps.day_date <= ${parseDate(to)}
+    GROUP BY program, color, studio
+    ORDER BY COUNT(*) DESC, program ASC
+  `;
+
+  const map = new Map<string, UsageAggRow>();
+  for (const r of rows) {
+    const sc = Number(r.slot_count);
+    if (!map.has(r.program)) {
+      map.set(r.program, { program: r.program, color: r.color, slotCount: 0, totalMinutes: 0, dayCount: 0, studios: [] });
+    }
+    const entry = map.get(r.program)!;
+    entry.slotCount    += sc;
+    entry.totalMinutes += sc * 30;
+    entry.dayCount      = Math.max(entry.dayCount, Number(r.day_count));
+    entry.studios.push({ studio: r.studio, slotCount: sc, totalMinutes: sc * 30 });
+  }
+  return Array.from(map.values()).sort((a, b) => b.totalMinutes - a.totalMinutes);
+}
+
 async function getCatalog(app: FastifyInstance): Promise<StudioPlanCatalog> {
   const [programs, colors] = await Promise.all([
     app.prisma.studioPlanProgram.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
@@ -141,65 +185,66 @@ async function getCatalog(app: FastifyInstance): Promise<StudioPlanCatalog> {
 
 export async function studioPlanRoutes(app: FastifyInstance) {
 
+  const usageQuerySchema = {
+    type: 'object',
+    required: ['from', 'to'],
+    properties: {
+      from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+      to:   { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+    },
+  };
+
   // GET /api/v1/studio-plans/reports/usage?from=YYYY-MM-DD&to=YYYY-MM-DD
   app.get<{ Querystring: { from: string; to: string } }>('/reports/usage', {
     preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
-    schema: {
-      tags: ['Studio Plans'],
-      summary: 'Program bazlı stüdyo kullanım raporu',
-      querystring: {
-        type: 'object',
-        required: ['from', 'to'],
-        properties: {
-          from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
-          to:   { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
-        },
-      },
-    },
+    schema: { tags: ['Studio Plans'], summary: 'Program bazlı stüdyo kullanım raporu', querystring: usageQuerySchema },
   }, async (request) => {
     const { from, to } = request.query;
+    return queryStudioUsage(app, from, to);
+  });
 
-    const rows = await app.prisma.$queryRaw<{
-      program: string;
-      color: string;
-      studio: string;
-      slot_count: bigint;
-      day_count: bigint;
-    }[]>`
-      SELECT
-        program,
-        color,
-        studio,
-        COUNT(*)                      AS slot_count,
-        COUNT(DISTINCT day_date)      AS day_count
-      FROM studio_plan_slots sps
-      JOIN studio_plans sp ON sp.id = sps.plan_id
-      WHERE sps.day_date >= ${parseDate(from)}
-        AND sps.day_date <= ${parseDate(to)}
-      GROUP BY program, color, studio
-      ORDER BY COUNT(*) DESC, program ASC
-    `;
+  // GET /api/v1/studio-plans/reports/usage/export?from=YYYY-MM-DD&to=YYYY-MM-DD
+  app.get<{ Querystring: { from: string; to: string } }>('/reports/usage/export', {
+    preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
+    schema: { tags: ['Studio Plans'], summary: 'Stüdyo kullanım raporunu Excel olarak dışa aktar', querystring: usageQuerySchema },
+  }, async (request, reply) => {
+    const { from, to } = request.query;
+    const data = await queryStudioUsage(app, from, to);
 
-    // program bazında birleştir, stüdyo dağılımı ekle
-    const map = new Map<string, {
-      program: string; color: string;
-      slotCount: number; totalMinutes: number; dayCount: number;
-      studios: { studio: string; slotCount: number; totalMinutes: number }[];
-    }>();
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'BCMS';
+    const sheet = workbook.addWorksheet('Stüdyo Kullanım');
 
-    for (const r of rows) {
-      const sc = Number(r.slot_count);
-      if (!map.has(r.program)) {
-        map.set(r.program, { program: r.program, color: r.color, slotCount: 0, totalMinutes: 0, dayCount: 0, studios: [] });
-      }
-      const entry = map.get(r.program)!;
-      entry.slotCount    += sc;
-      entry.totalMinutes += sc * 30;
-      entry.dayCount      = Math.max(entry.dayCount, Number(r.day_count));
-      entry.studios.push({ studio: r.studio, slotCount: sc, totalMinutes: sc * 30 });
-    }
+    sheet.columns = [
+      { header: '#',              width: 6  },
+      { header: 'Program',        width: 40 },
+      { header: 'Renk',           width: 10 },
+      { header: 'Slot Sayısı',    width: 12 },
+      { header: 'Toplam Dk',      width: 12 },
+      { header: 'Toplam Saat',    width: 16 },
+      { header: 'Gün Sayısı',     width: 12 },
+      { header: 'Stüdyo Dağılımı', width: 60 },
+    ];
+    sheet.getRow(1).font = { bold: true };
 
-    return Array.from(map.values()).sort((a, b) => b.totalMinutes - a.totalMinutes);
+    data.forEach((row, i) => {
+      sheet.addRow([
+        i + 1,
+        row.program,
+        row.color,
+        row.slotCount,
+        row.totalMinutes,
+        fmtHours(row.totalMinutes),
+        row.dayCount,
+        row.studios.map((s) => `${s.studio}: ${s.totalMinutes} dk`).join(', '),
+      ]);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="studio-usage_${from}_${to}.xlsx"`)
+      .send(Buffer.from(buffer));
   });
 
   app.get('/catalog', {

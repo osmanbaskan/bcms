@@ -160,6 +160,8 @@ GET  /api/v1/schedules/reports/live-plan/export
 POST /api/v1/ingest
 GET  /api/v1/studio-plans/:weekStart
 PUT  /api/v1/studio-plans/:weekStart
+GET  /api/v1/studio-plans/reports/usage?from=YYYY-MM-DD&to=YYYY-MM-DD
+GET  /api/v1/studio-plans/reports/usage/export?from=YYYY-MM-DD&to=YYYY-MM-DD
 ```
 
 ## Web
@@ -201,6 +203,8 @@ Tarayıcıda "dev-admin" kullanıcısı görünüyorsa → web imajı `environme
 - Veri: `studio_plans` + `studio_plan_slots` (schedules'tan ayrı).
 - Endpoint: `GET/PUT /api/v1/studio-plans/:weekStart`, `GET/PUT /api/v1/studio-plans/catalog`.
 - `weekStart` yalnızca Pazartesi tarihi kabul edilir.
+- Kullanım raporu: `GET /reports/usage` (JSON) ve `GET /reports/usage/export` (xlsx). Her slot = 30 dakika.
+- Raporlama sayfasında "Stüdyo Kullanım Raporu" seçeneği → tarih aralığı filtresi → Excel/PDF export.
 
 ## Yerel Altyapı (Docker)
 

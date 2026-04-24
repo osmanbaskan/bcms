@@ -80,10 +80,13 @@ curl -fsS http://127.0.0.1:3000/health
 
 ## Frontend Operasyon Sekmeleri (Admin)
 
-- `Stüdyo Planı` → `/studio-plan`
+- `Stüdyo Planı` → `/studio-plan` (Haftalık Plan) + `/studio-plan/report` (Kullanım Raporu)
 - `Haftalık Shift` → `/weekly-shift`
 - `Provys İçerik Kontrol` → `/provys-content-control`
 - `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab)
+- `Raporlama` → `/schedules/reporting` — Rapor tipi seçilebilir:
+  - `Canlı Yayın Planı` — tarih aralığı veya lig/hafta filtresi, Excel + PDF export
+  - `Stüdyo Kullanım Raporu` — tarih aralığı filtresi, Excel + PDF export
 
 ## Ingest Operasyon Mimarisi
 

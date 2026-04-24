@@ -45,16 +45,29 @@ OPTA dizini veya RabbitMQ geçici koptuğunda API çökmez:
 
 ## Frontend
 
-Admin navigasyonunda üç admin-only route:
-- `Stüdyo Planı` → `/studio-plan`
+Admin navigasyonunda:
+- `Stüdyo Planı` (grup) → Haftalık Plan `/studio-plan` + Kullanım Raporu `/studio-plan/report`
 - `Haftalık Shift` → `/weekly-shift`
 - `Provys İçerik Kontrol` → `/provys-content-control`
+- `Yayın Planı` (grup) → liste + Raporlama + Günlük Yayın Raporu
 
 Stüdyo Planı:
 - `apps/web/src/app/features/studio-plan/studio-plan.component.ts`
 - `studio_plans` + `studio_plan_slots` tabloları (schedules'tan ayrı)
 - `GET/PUT /api/v1/studio-plans/:weekStart`, `GET/PUT /api/v1/studio-plans/catalog`
 - `weekStart` Pazartesi tarihi olmak zorundadır
+
+Stüdyo Kullanım Raporu (API):
+- `GET /api/v1/studio-plans/reports/usage?from=YYYY-MM-DD&to=YYYY-MM-DD` → JSON
+- `GET /api/v1/studio-plans/reports/usage/export?from=YYYY-MM-DD&to=YYYY-MM-DD` → xlsx (ExcelJS)
+- Her slot 30 dakika sayılır; program bazında toplanır
+- `apps/api/src/modules/studio-plans/studio-plan.routes.ts` içinde `queryStudioUsage()` helper
+
+Raporlama Sayfası (`/schedules/reporting`):
+- `apps/web/src/app/features/schedules/reporting/schedule-reporting.component.ts`
+- Rapor tipi: `live-plan` veya `studio-usage` (dropdown seçimi)
+- Tarih alanları: `TrDateAdapter` ile dd.MM.yyyy formatı hem yazma hem takvim seçimi destekler
+- Excel/PDF butonları her iki rapor tipi için aktif
 
 Ingest:
 - Port board: `apps/web/src/app/features/ingest/ingest-port-board/ingest-port-board.component.ts`
