@@ -7,6 +7,7 @@
 3. **usageScope kanonik**: `schedules.usage_scope` DB kolonudur. Metadata JSON filtresi yoktur. Ham SQL köprüsü eklenmez.
 4. **Nginx static serve**: Angular dosyaları `infra/docker/web.Dockerfile` → nginx:alpine ile sunulur. `bcms-web-static-server.mjs` kaldırıldı.
 5. **Audit log**: `apps/api/src/plugins/audit.ts` tüm write işlemlerini loglar. Bu plugin'i devre dışı bırakma.
+6. **Angular production environment**: `apps/web/angular.json` production konfigürasyonunda `fileReplacements` ile `environment.ts` → `environment.prod.ts` değişimi tanımlı olmalı. Aksi hâlde Docker build `skipAuth: true` ile çalışır ("dev-admin" görünür, tüm API çağrıları 401 döner). Web imajı rebuild: `docker compose up -d --build web`.
 
 ## Primary Runtime
 
@@ -85,6 +86,12 @@ Local DB 2026-04-22'de 8 migration baseline edildi. `npm run db:migrate:prod -w 
 - Env: `BCMS_API_URL`, `BCMS_API_TOKEN`
 - Doğrudan PostgreSQL erişimi yok; psycopg2 kaldırıldı
 
+## Keycloak / Auth
+
+- Keycloak oturumları **in-memory** tutulur (disk kalıcılığı yok). Docker restart sonrası tüm oturumlar geçersiz olur.
+- Tarayıcı eski token'ı kullanmaya devam ederse → Ctrl+Shift+R (hard refresh) + yeniden giriş.
+- Test kullanıcısı: `admin` / `admin123`
+
 ## Güvenlik
 
 - `SKIP_AUTH=true` production'da yasak (`validateRuntimeEnv()` fırlatır)
@@ -125,6 +132,9 @@ apps/api/src/plugins/rabbitmq.ts          → RabbitMQClient, isConnected()
 apps/api/src/plugins/audit.ts             → Prisma audit middleware
 apps/api/src/modules/opta/opta.watcher.ts → OPTA dizin health + getOptaWatcherStatus()
 apps/api/src/modules/opta/opta.sync.routes.ts → POST /api/v1/opta/sync
+apps/web/angular.json                     → fileReplacements (environment.prod.ts aktif edilmeli!)
+apps/web/src/environments/environment.ts      → skipAuth: true  (SADECE ng serve için)
+apps/web/src/environments/environment.prod.ts → skipAuth: false (Docker build için)
 infra/docker/nginx.conf                   → Angular serve + API proxy + docs proxy
 docker-compose.yml                        → api + worker ayrıştırması
 ```

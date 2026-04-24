@@ -12,6 +12,7 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 6. **Audit log**: Tüm write işlemleri `apps/api/src/plugins/audit.ts` Prisma middleware ile `audit_logs` tablosuna yazılır. Kullanıcı context AsyncLocalStorage ile taşınır.
 7. **Statik servis**: Angular build dosyaları `infra/docker/nginx.conf` üzerinden nginx ile sunulur. `bcms-web-static-server.mjs` kaldırılmıştır.
 8. **Excel**: Yalnızca `exceljs` kullanılır; `xlsx` paketi güvenlik açığı nedeniyle kaldırılmıştır. Yalnızca `.xlsx` formatı kabul edilir.
+9. **Angular production ortamı**: `apps/web/angular.json`'da production konfigürasyonunda `fileReplacements` tanımlı olmalıdır (`environment.ts` → `environment.prod.ts`). Bu olmadan Docker build `skipAuth: true` ile çalışır ("dev-admin" görünür, tüm API çağrıları 401 döner).
 
 ## Mimari
 
@@ -176,6 +177,14 @@ npm run build -w apps/web
 
 Web nginx üzerinden sunulur. Angular dev server (`ng serve`) sadece geliştirme debug'unda kullanılır.
 
+**Önemli:** `angular.json` production konfigürasyonunda `fileReplacements` ile `environment.prod.ts` aktif olmalıdır. Web imajını rebuild etmeden değişiklik yansımaz:
+
+```bash
+docker compose up -d --build web
+```
+
+Tarayıcıda "dev-admin" kullanıcısı görünüyorsa → web imajı `environment.ts` (`skipAuth: true`) ile derlenmiş demektir. `--build web` ile yeniden derle.
+
 ### Ingest Planlama
 
 - `Ingest Planlama`: Canlı yayın planı ve Stüdyo Planı kayıtlarını birleştiren tablo; port ataması burada yapılır.
@@ -197,9 +206,9 @@ Web nginx üzerinden sunulur. Angular dev server (`ng serve`) sadece geliştirme
 
 | Servis | Port | Konteyner |
 |---|---|---|
-| PostgreSQL | 5432 | bcms_postgres |
-| RabbitMQ AMQP | 5672 | bcms_rabbitmq |
-| RabbitMQ UI | 15672 | bcms_rabbitmq |
+| PostgreSQL | **5433** (host) / 5432 (container) | bcms_postgres |
+| RabbitMQ AMQP | **5673** (host) / 5672 (container) | bcms_rabbitmq |
+| RabbitMQ UI | **15673** (host) / 15672 (container) | bcms_rabbitmq |
 | Keycloak | 8080 | bcms_keycloak |
 | Prometheus | 9090 | bcms_prometheus |
 | Grafana | 3001 | bcms_grafana |

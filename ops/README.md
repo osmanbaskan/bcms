@@ -100,6 +100,20 @@ schedules.usage_scope = 'live-plan'   → Sadece Raporlama + Ingest
 schedules.usage_scope = 'broadcast'  → Normal yayın
 ```
 
+## Web / Frontend
+
+Angular production build `environment.prod.ts` kullanmalıdır (`skipAuth: false`). Bu `angular.json`'daki `fileReplacements` ile sağlanır.
+
+**"dev-admin" görünüyorsa veya tüm API çağrıları 401 dönüyorsa:**
+
+```bash
+docker compose up -d --build web
+```
+
+Web imajı yeniden derlenir ve doğru environment ile çalışır.
+
+Keycloak oturumu Docker restart sonrası geçersiz kalır (in-memory session). Tarayıcıda hard refresh (Ctrl+Shift+R) yapıp yeniden login olunmalıdır.
+
 ## Aktif Ops Scriptleri
 
 ```text
