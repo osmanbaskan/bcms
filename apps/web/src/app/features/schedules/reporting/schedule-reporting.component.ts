@@ -2,6 +2,8 @@ import { CommonModule, DatePipe } from '@angular/common';
 import { Component, OnInit, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatNativeDateModule, MAT_DATE_LOCALE } from '@angular/material/core';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -44,10 +46,6 @@ interface StudioUsageRow {
 
 type FilterMode = 'date-range' | 'league-week';
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function displayDateFromIso(isoDate: string): string {
   const [year, month, day] = isoDate.split('-');
   return `${day}.${month}.${year}`;
@@ -66,6 +64,8 @@ function formatHours(minutes: number): string {
     CommonModule,
     FormsModule,
     MatButtonModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
@@ -75,7 +75,10 @@ function formatHours(minutes: number): string {
     MatTableModule,
     MatTooltipModule,
   ],
-  providers: [DatePipe],
+  providers: [
+    DatePipe,
+    { provide: MAT_DATE_LOCALE, useValue: 'tr-TR' },
+  ],
   template: `
     <div class="report-page">
       <header class="page-header">
@@ -119,12 +122,16 @@ function formatHours(minutes: number): string {
         @if (selectedReportId === 'studio-usage' || filterMode === 'date-range') {
           <mat-form-field class="date-field">
             <mat-label>Başlangıç</mat-label>
-            <input matInput type="date" [(ngModel)]="selectedFromDate" (change)="load()">
+            <input matInput [matDatepicker]="fromPicker" [(ngModel)]="selectedFromDate" (dateChange)="load()">
+            <mat-datepicker-toggle matIconSuffix [for]="fromPicker"></mat-datepicker-toggle>
+            <mat-datepicker #fromPicker></mat-datepicker>
           </mat-form-field>
 
           <mat-form-field class="date-field">
             <mat-label>Bitiş</mat-label>
-            <input matInput type="date" [(ngModel)]="selectedToDate" (change)="load()">
+            <input matInput [matDatepicker]="toPicker" [(ngModel)]="selectedToDate" (dateChange)="load()">
+            <mat-datepicker-toggle matIconSuffix [for]="toPicker"></mat-datepicker-toggle>
+            <mat-datepicker #toPicker></mat-datepicker>
           </mat-form-field>
 
           @if (selectedReportId !== 'studio-usage') {
@@ -388,8 +395,8 @@ export class ScheduleReportingComponent implements OnInit {
 
   selectedReportId = 'live-plan';
   filterMode: FilterMode = 'date-range';
-  selectedFromDate = todayIso();
-  selectedToDate = todayIso();
+  selectedFromDate: Date | null = new Date();
+  selectedToDate: Date | null = new Date();
   selectedLeague: string | null = null;
   selectedSeason: string | null = null;
   selectedWeek: number | null = null;
@@ -434,9 +441,8 @@ export class ScheduleReportingComponent implements OnInit {
 
   filterSummary(): string {
     if (this.selectedReportId === 'studio-usage' || this.filterMode === 'date-range') {
-      const from = this.selectedFromDate ? displayDateFromIso(this.selectedFromDate) : '-';
-      const to   = this.selectedToDate   ? displayDateFromIso(this.selectedToDate)   : '-';
-      const parts: string[] = [`${from} - ${to}`];
+      const fmt = (d: Date | null) => d ? d.toLocaleDateString('tr-TR') : '-';
+      const parts: string[] = [`${fmt(this.selectedFromDate)} - ${fmt(this.selectedToDate)}`];
       if (this.selectedReportId !== 'studio-usage') parts.push(this.selectedLeague || 'Tüm ligler');
       return parts.join(' · ');
     }
@@ -501,7 +507,7 @@ export class ScheduleReportingComponent implements OnInit {
   private loadStudioUsage(): void {
     const range = this.normalizedDateRange();
     if (!range) {
-      this.snack.open('Tarih formatı gg.aa.yyyy olmalıdır', 'Kapat', { duration: 4000 });
+      this.snack.open('Lütfen geçerli bir tarih aralığı seçin', 'Kapat', { duration: 4000 });
       return;
     }
     const [from, to] = range;
@@ -588,7 +594,7 @@ export class ScheduleReportingComponent implements OnInit {
 
     const range = this.normalizedDateRange();
     if (!range) {
-      this.snack.open('Tarih formatı gg.aa.yyyy olmalıdır', 'Kapat', { duration: 4000 });
+      this.snack.open('Lütfen geçerli bir tarih aralığı seçin', 'Kapat', { duration: 4000 });
       return null;
     }
 
@@ -653,9 +659,15 @@ export class ScheduleReportingComponent implements OnInit {
   }
 
   private normalizedDateRange(): [string, string] | null {
-    const from = this.selectedFromDate;
-    const to   = this.selectedToDate;
-    if (!from || !to) return null;
+    if (!this.selectedFromDate || !this.selectedToDate) return null;
+    const toIso = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    const from = toIso(this.selectedFromDate);
+    const to   = toIso(this.selectedToDate);
     return from <= to ? [from, to] : [to, from];
   }
 
