@@ -646,12 +646,16 @@ export class ScheduleReportingComponent implements OnInit {
     this.load();
   }
 
+  private currentReport() {
+    return this.reportDefinitions.find((r) => r.id === this.selectedReportId) ?? this.reportDefinitions[0];
+  }
+
   load(): void {
     this.rows.set([]);
     this.studioRows.set([]);
     this.ingestRows.set([]);
 
-    const report = this.selectedReport();
+    const report = this.currentReport();
     if (!report.enabled) return;
 
     if (this.selectedReportId === 'studio-usage') { this.loadStudioUsage(); return; }
@@ -712,11 +716,12 @@ export class ScheduleReportingComponent implements OnInit {
   }
 
   exportExcel(): void {
+    const report = this.currentReport();
+
     if (this.selectedReportId === 'studio-usage' || this.selectedReportId === 'ingest') {
       const range = this.normalizedDateRange();
       if (!range) return;
       const [from, to] = range;
-      const report = this.selectedReport();
       const filename = this.selectedReportId === 'ingest'
         ? `ingest-report_${displayDateFromIso(from)}_${displayDateFromIso(to)}.xlsx`
         : `studio-usage_${displayDateFromIso(from)}_${displayDateFromIso(to)}.xlsx`;
@@ -734,7 +739,6 @@ export class ScheduleReportingComponent implements OnInit {
       return;
     }
 
-    const report = this.selectedReport();
     const params = this.queryParams();
     if (!params) return;
 
