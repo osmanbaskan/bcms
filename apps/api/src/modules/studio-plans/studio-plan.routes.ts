@@ -240,6 +240,11 @@ export async function studioPlanRoutes(app: FastifyInstance) {
       ]);
     });
 
+    const totalSlots = data.reduce((s, r) => s + r.slotCount, 0);
+    const totalMins  = data.reduce((s, r) => s + r.totalMinutes, 0);
+    const totalRow = sheet.addRow(['', 'TOPLAM', '', totalSlots, totalMins, fmtHours(totalMins), '', '']);
+    totalRow.font = { bold: true };
+
     const buffer = await workbook.xlsx.writeBuffer();
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

@@ -230,30 +230,6 @@ function formatHours(minutes: number): string {
           <mat-spinner diameter="44"></mat-spinner>
         </div>
       } @else if (selectedReportId === 'studio-usage') {
-        @if (studioRows().length) {
-          <div class="studio-summary-grid">
-            <div class="summary-item">
-              <span class="summary-value">{{ studioRows().length }}</span>
-              <span class="summary-label">Program</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-value">{{ totalSlots() }}</span>
-              <span class="summary-label">Toplam Slot</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-value">{{ totalMinutes() | number:'1.0-0' }}</span>
-              <span class="summary-label">Toplam Dakika</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-value">{{ formatHours(totalMinutes()) }}</span>
-              <span class="summary-label">Toplam Saat</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-value">{{ filterSummary() }}</span>
-              <span class="summary-label">Filtre</span>
-            </div>
-          </div>
-        }
         <div class="table-shell">
           <table class="studio-table">
             <thead>
@@ -385,11 +361,6 @@ function formatHours(minutes: number): string {
       display:flex; align-items:center; justify-content:center; gap:10px;
       padding:32px; color:#9aa2b3;
     }
-    .studio-summary-grid {
-      display:grid; grid-template-columns:repeat(5, minmax(120px, 1fr)); gap:12px; margin-bottom:16px;
-    }
-    @media (max-width: 900px) { .studio-summary-grid { grid-template-columns: repeat(3, 1fr); } }
-    @media (max-width: 580px) { .studio-summary-grid { grid-template-columns: repeat(2, 1fr); } }
     .studio-table {
       width:100%; border-collapse:collapse; font-size:13px;
     }
@@ -472,10 +443,6 @@ export class ScheduleReportingComponent implements OnInit {
 
   hasResults = computed(() =>
     this.selectedReportId === 'studio-usage' ? this.studioRows().length > 0 : this.rows().length > 0,
-  );
-
-  totalSlots = computed(() =>
-    this.studioRows().reduce((s, r) => s + r.slotCount, 0),
   );
 
   leagues = computed(() => (
@@ -707,7 +674,10 @@ export class ScheduleReportingComponent implements OnInit {
     const range = this.normalizedDateRange();
     const dateRange = range ? `${displayDateFromIso(range[0])} - ${displayDateFromIso(range[1])}` : '-';
     const title = `Stüdyo Kullanım Raporu — ${dateRange}`;
-    const rows = this.studioRows().map((row, i) => `
+    const studioData = this.studioRows();
+    const totalSlots = studioData.reduce((s, r) => s + r.slotCount, 0);
+    const totalMins  = this.totalMinutes();
+    const rows = studioData.map((row, i) => `
       <tr>
         <td>${i + 1}</td>
         <td><span style="display:inline-block;width:14px;height:14px;background:${this.escape(row.color)};border-radius:3px;border:1px solid #999;vertical-align:middle"></span></td>
@@ -727,11 +697,20 @@ export class ScheduleReportingComponent implements OnInit {
         table { width: 100%; border-collapse: collapse; font-size: 11px; }
         th, td { border: 1px solid #bbb; padding: 5px 7px; text-align: left; }
         th { background: #eee; }
+        tfoot td { background: #f5f5f5; font-weight: bold; }
       </style></head><body>
       <h1>${this.escape(title)}</h1>
-      <div class="meta">Program sayısı: ${this.studioRows().length} | Toplam: ${formatHours(this.totalMinutes())}</div>
+      <div class="meta">Program sayısı: ${studioData.length} | Toplam: ${formatHours(totalMins)}</div>
       <table><thead><tr><th>#</th><th>Renk</th><th>Program</th><th>Slot</th><th>Toplam Dk</th><th>Toplam Saat</th><th>Gün</th><th>Stüdyo Dağılımı</th></tr></thead>
-      <tbody>${rows}</tbody></table></body></html>`;
+      <tbody>${rows}</tbody>
+      <tfoot><tr>
+        <td colspan="3" style="text-align:right">TOPLAM</td>
+        <td style="text-align:right">${totalSlots}</td>
+        <td style="text-align:right">${totalMins}</td>
+        <td style="text-align:right">${this.escape(formatHours(totalMins))}</td>
+        <td colspan="2"></td>
+      </tr></tfoot>
+      </table></body></html>`;
   }
 
   private buildPrintableHtml(): string {
