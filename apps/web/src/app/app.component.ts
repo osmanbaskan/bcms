@@ -117,18 +117,12 @@ export class AppComponent implements OnInit {
       roles: ['admin','planner','scheduler','viewer'],
       children: [
         { label: 'Canlı Yayın Plan Listesi', icon: 'list', route: '/schedules', roles: ['admin','planner','scheduler','viewer'], exactMatch: true },
-        { label: 'Raporlama', icon: 'summarize', route: '/schedules/reporting', roles: ['admin','expert'] },
-        { label: 'Günlük Yayın Raporu', icon: 'bar_chart',        route: '/schedules/daily-report', roles: ['admin','planner','scheduler','viewer'] },
+        { label: 'Günlük Yayın Raporu', icon: 'bar_chart', route: '/schedules/daily-report', roles: ['admin','planner','scheduler','viewer'] },
       ],
     },
     { label: 'Rezervasyonlar', icon: 'book_online',         route: '/bookings',   roles: ['admin','planner','scheduler','viewer'] },
-    {
-      label: 'Stüdyo Planı', icon: 'event_seat', route: '/studio-plan', roles: ['admin'],
-      children: [
-        { label: 'Haftalık Plan',  icon: 'grid_view',  route: '/studio-plan',        roles: ['admin'], exactMatch: true },
-        { label: 'Kullanım Raporu', icon: 'bar_chart', route: '/studio-plan/report', roles: ['admin'] },
-      ],
-    },
+    { label: 'Raporlama',     icon: 'summarize',            route: '/schedules/reporting', roles: ['admin','expert'] },
+    { label: 'Stüdyo Planı', icon: 'event_seat',            route: '/studio-plan', roles: ['admin'] },
     { label: 'Haftalık Shift',  icon: 'groups',              route: '/weekly-shift', roles: ['admin'] },
     { label: 'Provys İçerik Kontrol', icon: 'fact_check',    route: '/provys-content-control', roles: ['admin'] },
     { label: 'Kanallar',       icon: 'live_tv',             route: '/channels',   roles: ['admin'] },
