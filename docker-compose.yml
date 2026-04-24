@@ -174,8 +174,9 @@ services:
       dockerfile: infra/docker/opta-watcher.Dockerfile
     container_name: bcms_opta_watcher
     restart: unless-stopped
+    network_mode: host
     environment:
-      BCMS_API_URL: http://api:3000/api/v1
+      BCMS_API_URL: http://localhost:3000/api/v1
       BCMS_API_TOKEN: ${OPTA_WATCHER_API_TOKEN}
       OPTA_SMB_SHARE: ${OPTA_SMB_SHARE}
       OPTA_SMB_SUBDIR: ${OPTA_SMB_SUBDIR}
@@ -185,8 +186,6 @@ services:
       OPTA_POLL_INTERVAL: ${OPTA_POLL_INTERVAL:-3600}
     depends_on:
       - api
-    networks:
-      - bcms_net
 
   # ── Mailhog (Dev SMTP) ────────────────────────────────────────────────────────
   mailhog:

@@ -3,71 +3,88 @@ import { FastifyPluginAsync } from 'fastify';
 export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/sync', async (request, reply) => {
     const body = request.body as { matches: any[] };
-    
+
     if (!body || !Array.isArray(body.matches)) {
       return reply.code(400).send({ error: 'Geçersiz payload, matches dizisi zorunludur.' });
     }
 
-    let inserted = 0;
-    let updated = 0;
+    const validMatches = body.matches.filter((m) => m.matchUid);
+    if (validMatches.length === 0) return { inserted: 0, updated: 0, unchanged: 0 };
+
+    // 1. Benzersiz ligleri tek seferde upsert et
+    const uniqueComps = new Map<string, { compId: string; compName: string }>();
+    for (const m of validMatches) {
+      if (!uniqueComps.has(m.compId)) uniqueComps.set(m.compId, { compId: m.compId, compName: m.compName });
+    }
+
+    const leagueMap = new Map<string, number>(); // compId → leagueId
+    await Promise.all(
+      Array.from(uniqueComps.values()).map(async ({ compId, compName }) => {
+        const league = await fastify.prisma.league.upsert({
+          where:  { code: `opta-${compId}` },
+          create: { code: `opta-${compId}`, name: compName, country: '', metadata: { optaCompId: compId } },
+          update: { name: compName },
+          select: { id: true },
+        });
+        leagueMap.set(compId, league.id);
+      }),
+    );
+
+    // 2. Mevcut maçları toplu sorgula
+    const uids = validMatches.map((m) => m.matchUid);
+    const existing = await fastify.prisma.match.findMany({
+      where:  { optaUid: { in: uids } },
+      select: { id: true, optaUid: true, matchDate: true },
+    });
+    const existingMap = new Map(existing.map((e) => [e.optaUid!, e]));
+
+    // 3. Insert / update listelerini ayır
+    const toInsert: typeof validMatches = [];
+    const toUpdate: { id: number; matchDate: Date }[] = [];
     let unchanged = 0;
 
-    // Gelen her Opta maçı için DB Prisma Upsert işlemlerini yapıyoruz
-    for (const match of body.matches) {
-      if (!match.matchUid) continue;
-
-      // 1. Lig (Competition) bilgisini Upsert et
-      const leagueCode = `opta-${match.compId}`;
-      const league = await fastify.prisma.league.upsert({
-        where: { code: leagueCode },
-        create: {
-          code: leagueCode,
-          name: match.compName,
-          country: '',
-          metadata: { optaCompId: match.compId },
-        },
-        update: {
-          name: match.compName,
-        },
-      });
-
-      // 2. Maç (Match) bilgisini Upsert et
-      const existingMatch = await fastify.prisma.match.findUnique({
-        where: { optaUid: match.matchUid },
-      });
-
-      if (!existingMatch) {
-        await fastify.prisma.match.create({
-          data: {
-            leagueId: league.id,
-            optaUid: match.matchUid,
-            homeTeamName: match.homeTeam || '?',
-            awayTeamName: match.awayTeam || '?',
-            matchDate: new Date(match.matchDate),
-            weekNumber: match.weekNumber || null,
-            season: match.season,
-            venue: match.venue || null,
-          },
-        });
-        inserted++;
+    for (const m of validMatches) {
+      const ex = existingMap.get(m.matchUid);
+      if (!ex) {
+        toInsert.push(m);
       } else {
-        const oldDate = existingMatch.matchDate.getTime();
-        const newDate = new Date(match.matchDate).getTime();
-
-        if (oldDate !== newDate) {
-          await fastify.prisma.match.update({
-            where: { id: existingMatch.id },
-            data: { matchDate: new Date(match.matchDate) },
-          });
-          updated++;
+        const newDate = new Date(m.matchDate).getTime();
+        if (ex.matchDate.getTime() !== newDate) {
+          toUpdate.push({ id: ex.id, matchDate: new Date(m.matchDate) });
         } else {
           unchanged++;
         }
       }
     }
 
-    fastify.log.info(`OPTA Senkronizasyonu Tamamlandı - Yeni: ${inserted}, Güncellenen: ${updated}, Değişmeyen: ${unchanged}`);
-    
-    return { inserted, updated, unchanged };
+    // 4. Tek transaction içinde toplu yaz
+    await fastify.prisma.$transaction([
+      ...toInsert.map((m) =>
+        fastify.prisma.match.create({
+          data: {
+            leagueId:     leagueMap.get(m.compId)!,
+            optaUid:      m.matchUid,
+            homeTeamName: m.homeTeam || '?',
+            awayTeamName: m.awayTeam || '?',
+            matchDate:    new Date(m.matchDate),
+            weekNumber:   m.weekNumber || null,
+            season:       m.season,
+            venue:        m.venue || null,
+          },
+        }),
+      ),
+      ...toUpdate.map((u) =>
+        fastify.prisma.match.update({
+          where: { id: u.id },
+          data:  { matchDate: u.matchDate },
+        }),
+      ),
+    ]);
+
+    fastify.log.info(
+      `OPTA sync tamamlandı — yeni: ${toInsert.length}, güncellenen: ${toUpdate.length}, değişmeyen: ${unchanged}`,
+    );
+
+    return { inserted: toInsert.length, updated: toUpdate.length, unchanged };
   });
 };
