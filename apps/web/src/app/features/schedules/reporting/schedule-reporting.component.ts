@@ -44,6 +44,22 @@ interface StudioUsageRow {
   studios: { studio: string; slotCount: number; totalMinutes: number }[];
 }
 
+interface IngestReportRow {
+  id: number;
+  sourceType: string;
+  sourceKey: string;
+  dayDate: string;
+  sourcePath: string | null;
+  recordingPort: string | null;
+  plannedStartMinute: number | null;
+  plannedEndMinute: number | null;
+  status: string;
+  note: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 type FilterMode = 'date-range' | 'league-week';
 
 function displayDateFromIso(isoDate: string): string {
@@ -81,6 +97,43 @@ function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return m === 0 ? `${h} sa` : `${h} sa ${m} dk`;
+}
+
+function minuteToTime(value: number | null): string {
+  if (value === null) return '--:--';
+  const h = Math.floor(value / 60) % 24;
+  const m = value % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+const INGEST_STATUS_LABELS: Record<string, string> = {
+  WAITING: 'Bekliyor',
+  RECEIVED: 'Alındı',
+  INGEST_STARTED: 'İşlemde',
+  COMPLETED: 'Tamamlandı',
+  ISSUE: 'Sorun',
+};
+
+function ingestStatusLabel(s: string): string { return INGEST_STATUS_LABELS[s] ?? s; }
+
+function ingestStatusClass(s: string): string {
+  const map: Record<string, string> = {
+    WAITING: 'istat-waiting',
+    RECEIVED: 'istat-received',
+    INGEST_STARTED: 'istat-progress',
+    COMPLETED: 'istat-done',
+    ISSUE: 'istat-issue',
+  };
+  return map[s] ?? '';
+}
+
+function describeIngestKey(sourceKey: string): string {
+  const parts = sourceKey.split(':');
+  if (parts[0] === 'studio' && parts.length >= 5) {
+    return `${parts.slice(4).join(':')} · ${parts[2]}`;
+  }
+  if (parts[0] === 'live') return `Canlı yayın #${parts[1]}`;
+  return sourceKey;
 }
 
 @Component({
@@ -136,7 +189,7 @@ function formatHours(minutes: number): string {
           </mat-select>
         </mat-form-field>
 
-        @if (selectedReportId !== 'studio-usage') {
+        @if (selectedReportId !== 'studio-usage' && selectedReportId !== 'ingest') {
           <mat-form-field class="mode-field">
             <mat-label>Filtre Tipi</mat-label>
             <mat-select [(ngModel)]="filterMode" (selectionChange)="load()">
@@ -146,7 +199,7 @@ function formatHours(minutes: number): string {
           </mat-form-field>
         }
 
-        @if (selectedReportId === 'studio-usage' || filterMode === 'date-range') {
+        @if (selectedReportId === 'studio-usage' || selectedReportId === 'ingest' || filterMode === 'date-range') {
           <mat-form-field class="date-field">
             <mat-label>Başlangıç</mat-label>
             <input matInput [matDatepicker]="fromPicker" [(ngModel)]="selectedFromDate" (dateChange)="load()">
@@ -161,7 +214,7 @@ function formatHours(minutes: number): string {
             <mat-datepicker #toPicker></mat-datepicker>
           </mat-form-field>
 
-          @if (selectedReportId !== 'studio-usage') {
+          @if (selectedReportId !== 'studio-usage' && selectedReportId !== 'ingest') {
             <mat-form-field class="league-field">
               <mat-label>Lig</mat-label>
               <mat-select [(ngModel)]="selectedLeague" (selectionChange)="onDateRangeLeagueChange($event.value)">
@@ -212,8 +265,8 @@ function formatHours(minutes: number): string {
 
       <section class="summary-grid">
         <div class="summary-item">
-          <span class="summary-value">{{ selectedReportId === 'studio-usage' ? studioRows().length : rows().length }}</span>
-          <span class="summary-label">{{ selectedReportId === 'studio-usage' ? 'Program' : 'Kayıt' }}</span>
+          <span class="summary-value">{{ resultCount() }}</span>
+          <span class="summary-label">{{ resultCountLabel() }}</span>
         </div>
         <div class="summary-item">
           <span class="summary-value">{{ totalMinutes() | number:'1.0-0' }}</span>
@@ -269,6 +322,49 @@ function formatHours(minutes: number): string {
             <div class="empty-state">
               <mat-icon>summarize</mat-icon>
               <span>Seçili tarih aralığında stüdyo plan verisi bulunamadı.</span>
+            </div>
+          }
+        </div>
+      } @else if (selectedReportId === 'ingest') {
+        <div class="table-shell">
+          <table class="studio-table">
+            <thead>
+              <tr>
+                <th class="th-rank">#</th>
+                <th>Tarih</th>
+                <th>İçerik</th>
+                <th>Port</th>
+                <th class="th-num">Başlangıç</th>
+                <th class="th-num">Bitiş</th>
+                <th class="th-num">Süre</th>
+                <th>Durum</th>
+                <th>Not</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of ingestRows(); track row.id; let i = $index) {
+                <tr>
+                  <td class="th-rank td-muted">{{ i + 1 }}</td>
+                  <td class="td-nowrap">{{ formatDay(row.dayDate) }}</td>
+                  <td>{{ describeIngestKey(row.sourceKey) }}</td>
+                  <td class="td-nowrap">{{ row.recordingPort ?? '-' }}</td>
+                  <td class="th-num td-nowrap">{{ minuteToTime(row.plannedStartMinute) }}</td>
+                  <td class="th-num td-nowrap">{{ minuteToTime(row.plannedEndMinute) }}</td>
+                  <td class="th-num td-nowrap">
+                    @if (row.plannedStartMinute !== null && row.plannedEndMinute !== null) {
+                      {{ row.plannedEndMinute - row.plannedStartMinute }} dk
+                    } @else { - }
+                  </td>
+                  <td><span class="istat-badge" [ngClass]="ingestStatusClass(row.status)">{{ ingestStatusLabel(row.status) }}</span></td>
+                  <td class="td-note">{{ row.note ?? '' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+          @if (!ingestRows().length) {
+            <div class="empty-state">
+              <mat-icon>cloud_upload</mat-icon>
+              <span>Seçili tarih aralığında ingest plan verisi bulunamadı.</span>
             </div>
           }
         </div>
@@ -387,6 +483,17 @@ function formatHours(minutes: number): string {
       background:rgba(255,255,255,.08); padding:2px 8px;
       border-radius:10px; font-size:11px; white-space:nowrap;
     }
+    .td-nowrap { white-space:nowrap; }
+    .td-note { max-width:200px; font-size:12px; color:rgba(255,255,255,.6); }
+    .istat-badge {
+      display:inline-block; padding:2px 10px; border-radius:10px;
+      font-size:11px; font-weight:600; white-space:nowrap;
+    }
+    .istat-waiting  { background:#3a3a50; color:#aaa; }
+    .istat-received { background:#1e3a5f; color:#7ab8f5; }
+    .istat-progress { background:#1e3a2a; color:#6fcf97; }
+    .istat-done     { background:#1a3d1a; color:#56e156; }
+    .istat-issue    { background:#4d1f1f; color:#ff7b7b; }
     @media (max-width: 760px) {
       .page-header { flex-direction:column; }
       .summary-grid { grid-template-columns:1fr; }
@@ -410,6 +517,13 @@ export class ScheduleReportingComponent implements OnInit {
       exportEndpoint: '/studio-plans/reports/usage/export',
       enabled: true,
     },
+    {
+      id: 'ingest',
+      label: 'Ingest',
+      endpoint: '/ingest/plan/report',
+      exportEndpoint: '/ingest/plan/report/export',
+      enabled: true,
+    },
   ];
 
   readonly columns = ['startTime', 'endTime', 'channel', 'title', 'houseNumber', 'duration'];
@@ -417,6 +531,7 @@ export class ScheduleReportingComponent implements OnInit {
   filterEntries = signal<FixtureCompetition[]>([]);
   rows = signal<ReportRow[]>([]);
   studioRows = signal<StudioUsageRow[]>([]);
+  ingestRows = signal<IngestReportRow[]>([]);
   loading = signal(false);
   exporting = signal(false);
 
@@ -434,15 +549,43 @@ export class ScheduleReportingComponent implements OnInit {
 
   totalMinutes = computed(() => {
     if (this.selectedReportId === 'studio-usage') {
-      return this.studioRows().reduce((total, row) => total + row.totalMinutes, 0);
+      return this.studioRows().reduce((t, r) => t + r.totalMinutes, 0);
     }
-    return this.rows().reduce((total, row) => total + row.durationMin, 0);
+    if (this.selectedReportId === 'ingest') {
+      return this.ingestRows().reduce((t, r) => {
+        const dur = (r.plannedStartMinute !== null && r.plannedEndMinute !== null)
+          ? r.plannedEndMinute - r.plannedStartMinute : 0;
+        return t + dur;
+      }, 0);
+    }
+    return this.rows().reduce((t, r) => t + r.durationMin, 0);
   });
 
   readonly formatHours = formatHours;
+  readonly minuteToTime = minuteToTime;
+  readonly ingestStatusLabel = ingestStatusLabel;
+  readonly ingestStatusClass = ingestStatusClass;
+  readonly describeIngestKey = describeIngestKey;
 
-  hasResults = computed(() =>
-    this.selectedReportId === 'studio-usage' ? this.studioRows().length > 0 : this.rows().length > 0,
+  formatDay(isoDate: string): string {
+    const [y, m, d] = isoDate.split('-');
+    return `${d}.${m}.${y}`;
+  }
+
+  hasResults = computed(() => {
+    if (this.selectedReportId === 'studio-usage') return this.studioRows().length > 0;
+    if (this.selectedReportId === 'ingest') return this.ingestRows().length > 0;
+    return this.rows().length > 0;
+  });
+
+  resultCount = computed(() => {
+    if (this.selectedReportId === 'studio-usage') return this.studioRows().length;
+    if (this.selectedReportId === 'ingest') return this.ingestRows().length;
+    return this.rows().length;
+  });
+
+  resultCountLabel = computed(() =>
+    this.selectedReportId === 'studio-usage' ? 'Program' : 'Kayıt',
   );
 
   leagues = computed(() => (
@@ -497,7 +640,7 @@ export class ScheduleReportingComponent implements OnInit {
   }
 
   onReportChange(): void {
-    if (this.selectedReportId === 'studio-usage') {
+    if (this.selectedReportId === 'studio-usage' || this.selectedReportId === 'ingest') {
       this.filterMode = 'date-range';
     }
     this.load();
@@ -506,14 +649,13 @@ export class ScheduleReportingComponent implements OnInit {
   load(): void {
     this.rows.set([]);
     this.studioRows.set([]);
+    this.ingestRows.set([]);
 
     const report = this.selectedReport();
     if (!report.enabled) return;
 
-    if (this.selectedReportId === 'studio-usage') {
-      this.loadStudioUsage();
-      return;
-    }
+    if (this.selectedReportId === 'studio-usage') { this.loadStudioUsage(); return; }
+    if (this.selectedReportId === 'ingest') { this.loadIngestReport(); return; }
 
     const params = this.queryParams();
     if (!params) return;
@@ -528,6 +670,23 @@ export class ScheduleReportingComponent implements OnInit {
         })));
         this.loading.set(false);
       },
+      error: (err) => {
+        this.loading.set(false);
+        this.snack.open(`Rapor verisi alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+      },
+    });
+  }
+
+  private loadIngestReport(): void {
+    const range = this.normalizedDateRange();
+    if (!range) {
+      this.snack.open('Lütfen geçerli bir tarih aralığı seçin', 'Kapat', { duration: 4000 });
+      return;
+    }
+    const [from, to] = range;
+    this.loading.set(true);
+    this.api.get<IngestReportRow[]>('/ingest/plan/report', { from, to }).subscribe({
+      next: (data) => { this.ingestRows.set(data); this.loading.set(false); },
       error: (err) => {
         this.loading.set(false);
         this.snack.open(`Rapor verisi alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
@@ -553,15 +712,18 @@ export class ScheduleReportingComponent implements OnInit {
   }
 
   exportExcel(): void {
-    if (this.selectedReportId === 'studio-usage') {
+    if (this.selectedReportId === 'studio-usage' || this.selectedReportId === 'ingest') {
       const range = this.normalizedDateRange();
       if (!range) return;
       const [from, to] = range;
       const report = this.selectedReport();
+      const filename = this.selectedReportId === 'ingest'
+        ? `ingest-report_${displayDateFromIso(from)}_${displayDateFromIso(to)}.xlsx`
+        : `studio-usage_${displayDateFromIso(from)}_${displayDateFromIso(to)}.xlsx`;
       this.exporting.set(true);
       this.api.getBlob(report.exportEndpoint, { from, to }).subscribe({
         next: (blob) => {
-          this.downloadBlob(blob, `studio-usage_${displayDateFromIso(from)}_${displayDateFromIso(to)}.xlsx`);
+          this.downloadBlob(blob, filename);
           this.exporting.set(false);
         },
         error: (err) => {
@@ -599,7 +761,9 @@ export class ScheduleReportingComponent implements OnInit {
 
     const html = this.selectedReportId === 'studio-usage'
       ? this.buildStudioPrintableHtml()
-      : this.buildPrintableHtml();
+      : this.selectedReportId === 'ingest'
+        ? this.buildIngestPrintableHtml()
+        : this.buildPrintableHtml();
 
     win.document.write(html);
     win.document.close();
@@ -668,6 +832,54 @@ export class ScheduleReportingComponent implements OnInit {
     anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  private buildIngestPrintableHtml(): string {
+    const range = this.normalizedDateRange();
+    const dateRange = range ? `${displayDateFromIso(range[0])} - ${displayDateFromIso(range[1])}` : '-';
+    const title = `Ingest Raporu — ${dateRange}`;
+    const data = this.ingestRows();
+    let totalDuration = 0;
+
+    const rows = data.map((row, i) => {
+      const dur = (row.plannedStartMinute !== null && row.plannedEndMinute !== null)
+        ? row.plannedEndMinute - row.plannedStartMinute : null;
+      if (dur !== null) totalDuration += dur;
+      const [y, mo, d] = row.dayDate.split('-');
+      return `<tr>
+        <td>${i + 1}</td>
+        <td>${d}.${mo}.${y}</td>
+        <td>${this.escape(describeIngestKey(row.sourceKey))}</td>
+        <td>${this.escape(row.recordingPort ?? '-')}</td>
+        <td style="text-align:right">${minuteToTime(row.plannedStartMinute)}</td>
+        <td style="text-align:right">${minuteToTime(row.plannedEndMinute)}</td>
+        <td style="text-align:right">${dur !== null ? `${dur} dk` : '-'}</td>
+        <td>${this.escape(ingestStatusLabel(row.status))}</td>
+        <td>${this.escape(row.note ?? '')}</td>
+      </tr>`;
+    }).join('');
+
+    return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${this.escape(title)}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+        h1 { font-size: 18px; margin: 0 0 4px; }
+        .meta { color: #555; margin-bottom: 16px; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th, td { border: 1px solid #bbb; padding: 5px 7px; text-align: left; }
+        th { background: #eee; }
+        tfoot td { background: #f5f5f5; font-weight: bold; }
+      </style></head><body>
+      <h1>${this.escape(title)}</h1>
+      <div class="meta">Kayıt sayısı: ${data.length} | Toplam planlanan süre: ${formatHours(totalDuration)}</div>
+      <table>
+        <thead><tr><th>#</th><th>Tarih</th><th>İçerik</th><th>Port</th><th>Başlangıç</th><th>Bitiş</th><th>Süre</th><th>Durum</th><th>Not</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr>
+          <td colspan="6" style="text-align:right">TOPLAM</td>
+          <td style="text-align:right">${totalDuration} dk</td>
+          <td colspan="2"></td>
+        </tr></tfoot>
+      </table></body></html>`;
   }
 
   private buildStudioPrintableHtml(): string {

@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import type { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
 import { z } from 'zod';
@@ -119,6 +120,23 @@ function mapPlanItem(item: {
   };
 }
 
+const PLAN_STATUS_LABELS: Record<string, string> = {
+  WAITING: 'Bekliyor',
+  RECEIVED: 'Alındı',
+  INGEST_STARTED: 'İşlemde',
+  COMPLETED: 'Tamamlandı',
+  ISSUE: 'Sorun',
+};
+
+const reportQuerySchema = {
+  type: 'object',
+  required: ['from', 'to'],
+  properties: {
+    from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+    to:   { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+  },
+};
+
 async function getRecordingPorts(app: FastifyInstance) {
   return app.prisma.recordingPort.findMany({
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
@@ -190,6 +208,95 @@ export async function ingestRoutes(app: FastifyInstance) {
     });
 
     return getRecordingPorts(app);
+  });
+
+  // GET /api/v1/ingest/plan/report?from=YYYY-MM-DD&to=YYYY-MM-DD
+  app.get<{ Querystring: { from: string; to: string } }>('/plan/report', {
+    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    schema: { tags: ['Ingest'], summary: 'Ingest plan raporu (tarih aralığı)', querystring: reportQuerySchema },
+  }, async (request) => {
+    const { from, to } = request.query;
+    const items = await app.prisma.ingestPlanItem.findMany({
+      where: {
+        dayDate: {
+          gte: parseDate(dateSchema.parse(from)),
+          lte: parseDate(dateSchema.parse(to)),
+        },
+      },
+      orderBy: [{ dayDate: 'asc' }, { plannedStartMinute: 'asc' }, { sourceKey: 'asc' }],
+    });
+    return items.map(mapPlanItem);
+  });
+
+  // GET /api/v1/ingest/plan/report/export?from=YYYY-MM-DD&to=YYYY-MM-DD
+  app.get<{ Querystring: { from: string; to: string } }>('/plan/report/export', {
+    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    schema: { tags: ['Ingest'], summary: 'Ingest plan raporunu Excel olarak dışa aktar', querystring: reportQuerySchema },
+  }, async (request, reply) => {
+    const { from, to } = request.query;
+    const items = await app.prisma.ingestPlanItem.findMany({
+      where: {
+        dayDate: {
+          gte: parseDate(dateSchema.parse(from)),
+          lte: parseDate(dateSchema.parse(to)),
+        },
+      },
+      orderBy: [{ dayDate: 'asc' }, { plannedStartMinute: 'asc' }, { sourceKey: 'asc' }],
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'BCMS';
+    const sheet = workbook.addWorksheet('Ingest Raporu');
+
+    sheet.columns = [
+      { header: '#',           width: 6  },
+      { header: 'Tarih',       width: 14 },
+      { header: 'Kaynak Tipi', width: 14 },
+      { header: 'İçerik',      width: 50 },
+      { header: 'Port',        width: 14 },
+      { header: 'Başlangıç',   width: 12 },
+      { header: 'Bitiş',       width: 12 },
+      { header: 'Süre (dk)',   width: 12 },
+      { header: 'Durum',       width: 16 },
+      { header: 'Not',         width: 40 },
+      { header: 'Güncelleyen', width: 20 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    let totalDuration = 0;
+    items.forEach((item, i) => {
+      const mapped = mapPlanItem(item);
+      const dur = (mapped.plannedStartMinute !== null && mapped.plannedEndMinute !== null)
+        ? mapped.plannedEndMinute - mapped.plannedStartMinute
+        : null;
+      if (dur !== null) totalDuration += dur;
+
+      const [y, mo, d] = mapped.dayDate.split('-');
+      sheet.addRow([
+        i + 1,
+        `${d}.${mo}.${y}`,
+        mapped.sourceType,
+        describeSourceKey(mapped.sourceKey),
+        mapped.recordingPort ?? '-',
+        minuteToTime(mapped.plannedStartMinute),
+        minuteToTime(mapped.plannedEndMinute),
+        dur ?? '-',
+        PLAN_STATUS_LABELS[mapped.status] ?? mapped.status,
+        mapped.note ?? '',
+        mapped.updatedBy ?? '-',
+      ]);
+    });
+
+    if (items.length > 0) {
+      const totalRow = sheet.addRow(['', 'TOPLAM', `${items.length} kayıt`, '', '', '', '', totalDuration, '', '', '']);
+      totalRow.font = { bold: true };
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="ingest-report_${from}_${to}.xlsx"`)
+      .send(Buffer.from(buffer));
   });
 
   // GET /api/v1/ingest/plan?date=YYYY-MM-DD — Ingest departmanı plan satırı durumları
