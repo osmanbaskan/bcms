@@ -44,36 +44,13 @@ interface StudioUsageRow {
 
 type FilterMode = 'date-range' | 'league-week';
 
-function todayDisplayDate(): string {
-  const date = new Date();
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  return `${day}.${month}.${date.getFullYear()}`;
-}
-
-function parseDisplayDate(value: string): string | null {
-  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(value ?? '').trim());
-  if (!match) return null;
-
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
-
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function displayDateFromIso(isoDate: string): string {
   const [year, month, day] = isoDate.split('-');
   return `${day}.${month}.${year}`;
-}
-
-function maskDisplayDateInput(value: string): string {
-  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
 }
 
 function formatHours(minutes: number): string {
@@ -142,26 +119,12 @@ function formatHours(minutes: number): string {
         @if (selectedReportId === 'studio-usage' || filterMode === 'date-range') {
           <mat-form-field class="date-field">
             <mat-label>Başlangıç</mat-label>
-            <input matInput
-                   inputmode="numeric"
-                   maxlength="10"
-                   placeholder="gg.aa.yyyy"
-                   [ngModel]="selectedFromDate"
-                   (ngModelChange)="onDateInput('from', $event)"
-                   (change)="load()"
-                   (keyup.enter)="load()">
+            <input matInput type="date" [(ngModel)]="selectedFromDate" (change)="load()">
           </mat-form-field>
 
           <mat-form-field class="date-field">
             <mat-label>Bitiş</mat-label>
-            <input matInput
-                   inputmode="numeric"
-                   maxlength="10"
-                   placeholder="gg.aa.yyyy"
-                   [ngModel]="selectedToDate"
-                   (ngModelChange)="onDateInput('to', $event)"
-                   (change)="load()"
-                   (keyup.enter)="load()">
+            <input matInput type="date" [(ngModel)]="selectedToDate" (change)="load()">
           </mat-form-field>
 
           @if (selectedReportId !== 'studio-usage') {
@@ -425,8 +388,8 @@ export class ScheduleReportingComponent implements OnInit {
 
   selectedReportId = 'live-plan';
   filterMode: FilterMode = 'date-range';
-  selectedFromDate = todayDisplayDate();
-  selectedToDate = todayDisplayDate();
+  selectedFromDate = todayIso();
+  selectedToDate = todayIso();
   selectedLeague: string | null = null;
   selectedSeason: string | null = null;
   selectedWeek: number | null = null;
@@ -470,11 +433,12 @@ export class ScheduleReportingComponent implements OnInit {
   }
 
   filterSummary(): string {
-    if (this.filterMode === 'date-range') {
-      return [
-        `${this.selectedFromDate} - ${this.selectedToDate}`,
-        this.selectedLeague || 'Tüm ligler',
-      ].join(' · ');
+    if (this.selectedReportId === 'studio-usage' || this.filterMode === 'date-range') {
+      const from = this.selectedFromDate ? displayDateFromIso(this.selectedFromDate) : '-';
+      const to   = this.selectedToDate   ? displayDateFromIso(this.selectedToDate)   : '-';
+      const parts: string[] = [`${from} - ${to}`];
+      if (this.selectedReportId !== 'studio-usage') parts.push(this.selectedLeague || 'Tüm ligler');
+      return parts.join(' · ');
     }
 
     const parts = [
@@ -592,15 +556,6 @@ export class ScheduleReportingComponent implements OnInit {
     return this.datePipe.transform(value, 'HH:mm', '+0300') ?? '';
   }
 
-  onDateInput(field: 'from' | 'to', value: string): void {
-    const masked = maskDisplayDateInput(value);
-    if (field === 'from') {
-      this.selectedFromDate = masked;
-    } else {
-      this.selectedToDate = masked;
-    }
-  }
-
   onLeagueChange(league: string | null): void {
     this.selectedLeague = league;
     this.selectedSeason = null;
@@ -698,13 +653,10 @@ export class ScheduleReportingComponent implements OnInit {
   }
 
   private normalizedDateRange(): [string, string] | null {
-    const from = parseDisplayDate(this.selectedFromDate);
-    const to = parseDisplayDate(this.selectedToDate);
+    const from = this.selectedFromDate;
+    const to   = this.selectedToDate;
     if (!from || !to) return null;
-    if (from <= to) {
-      return [from, to];
-    }
-    return [to, from];
+    return from <= to ? [from, to] : [to, from];
   }
 
   private exportSuffix(): string {
