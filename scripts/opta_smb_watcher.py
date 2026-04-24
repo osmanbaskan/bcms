@@ -33,6 +33,11 @@ API_TOKEN = os.getenv("BCMS_API_TOKEN", "")
 DEFAULT_INTERVAL = int(os.getenv("OPTA_POLL_INTERVAL", "3600"))
 STATE_PATH = Path.home() / ".bcms-opta-watcher-state.json"
 
+# Dosya son değişikliğinden bu kadar saniye geçmeden işlenmez (yarım yazma koruması)
+MTIME_SETTLE_SEC = 5
+# Tek bir API isteğinde gönderilecek maksimum maç sayısı
+BATCH_SIZE = 100
+
 _RESULTS_RE = re.compile(r"^srml-(\d+)-(2025|2026)-results\.xml$")
 _SQUADS_RE  = re.compile(r"^srml-(\d+)-(\d+)-squads\.xml$")
 
@@ -185,28 +190,32 @@ def parse_results_file(cfg: dict, filename: str, team_cache: dict) -> list[dict]
 # ── DB işlemleri ──────────────────────────────────────────────────────────────
 
 def upsert_matches(matches: list[dict]) -> tuple[int, int, int]:
-    """(inserted, updated, unchanged) döner. Verileri API'ye HTTP POST atarak aktarır."""
+    """(inserted, updated, unchanged) döner. Verileri BATCH_SIZE'lık parçalar hâlinde API'ye gönderir."""
     if not matches:
         return 0, 0, 0
 
-    req = urllib.request.Request(
-        f"{API_URL}/opta/sync",
-        data=json.dumps({"matches": matches}).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {API_TOKEN}",
-            "Content-Type": "application/json"
-        },
-        method="POST"
-    )
-    
-    try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            res_body = response.read().decode("utf-8")
-            data = json.loads(res_body)
-            return data.get("inserted", 0), data.get("updated", 0), data.get("unchanged", 0)
-    except urllib.error.URLError as e:
-        log.error("API'ye gönderim hatası: %s", e)
-        raise
+    total_ins = total_upd = total_unch = 0
+    for i in range(0, len(matches), BATCH_SIZE):
+        chunk = matches[i:i + BATCH_SIZE]
+        req = urllib.request.Request(
+            f"{API_URL}/opta/sync",
+            data=json.dumps({"matches": chunk}).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {API_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                total_ins  += data.get("inserted", 0)
+                total_upd  += data.get("updated", 0)
+                total_unch += data.get("unchanged", 0)
+        except urllib.error.URLError as e:
+            log.error("API'ye gönderim hatası (batch %d-%d): %s", i, i + len(chunk), e)
+            raise
+    return total_ins, total_upd, total_unch
 
 
 # ── Ana döngü ─────────────────────────────────────────────────────────────────
@@ -240,7 +249,8 @@ def scan_once(cfg: dict, state: dict) -> dict:
             except Exception:
                 mtime = 0.0
 
-            if mtime > state.get(fname, 0.0):
+            now = time.time()
+            if mtime > state.get(fname, 0.0) and (now - mtime) >= MTIME_SETTLE_SEC:
                 changed_files.append((fname, mtime))
                 log.info("Değişiklik algılandı: %s (mtime: %s)", fname,
                          datetime.fromtimestamp(mtime, tz=timezone.utc)
