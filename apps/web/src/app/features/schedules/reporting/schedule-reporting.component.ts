@@ -230,6 +230,30 @@ function formatHours(minutes: number): string {
           <mat-spinner diameter="44"></mat-spinner>
         </div>
       } @else if (selectedReportId === 'studio-usage') {
+        @if (studioRows().length) {
+          <div class="studio-summary-grid">
+            <div class="summary-item">
+              <span class="summary-value">{{ studioRows().length }}</span>
+              <span class="summary-label">Program</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-value">{{ totalSlots() }}</span>
+              <span class="summary-label">Toplam Slot</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-value">{{ totalMinutes() | number:'1.0-0' }}</span>
+              <span class="summary-label">Toplam Dakika</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-value">{{ formatHours(totalMinutes()) }}</span>
+              <span class="summary-label">Toplam Saat</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-value">{{ filterSummary() }}</span>
+              <span class="summary-label">Filtre</span>
+            </div>
+          </div>
+        }
         <div class="table-shell">
           <table class="studio-table">
             <thead>
@@ -361,6 +385,11 @@ function formatHours(minutes: number): string {
       display:flex; align-items:center; justify-content:center; gap:10px;
       padding:32px; color:#9aa2b3;
     }
+    .studio-summary-grid {
+      display:grid; grid-template-columns:repeat(5, minmax(120px, 1fr)); gap:12px; margin-bottom:16px;
+    }
+    @media (max-width: 900px) { .studio-summary-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 580px) { .studio-summary-grid { grid-template-columns: repeat(2, 1fr); } }
     .studio-table {
       width:100%; border-collapse:collapse; font-size:13px;
     }
@@ -443,6 +472,10 @@ export class ScheduleReportingComponent implements OnInit {
 
   hasResults = computed(() =>
     this.selectedReportId === 'studio-usage' ? this.studioRows().length > 0 : this.rows().length > 0,
+  );
+
+  totalSlots = computed(() =>
+    this.studioRows().reduce((s, r) => s + r.slotCount, 0),
   );
 
   leagues = computed(() => (
