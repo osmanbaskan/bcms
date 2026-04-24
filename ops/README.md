@@ -1,11 +1,20 @@
-# BCMS Local Services
+# BCMS Operasyon Scriptleri ve Mimarisi
 
-Bu klasor, BCMS API ve Web servislerini terminale bagli kalmadan calistirmak icindir.
+Bu klasör, projenin operasyonel scriptlerini ve `systemd` gibi eski altyapı bileşenlerini içerir. Proje artık tamamen **Docker Compose** ile yönetildiği için buradaki `systemd` ve `cron` tabanlı kurulum scriptleri **kullanımdan kaldırılmıştır**.
 
-## Onerilen Kurulum
+## Güncel Mimari ve Çalıştırma Yöntemi
+
+Projenin tüm altyapısı (API, Web, veritabanları, mesaj kuyruğu vb.) `docker-compose.yml` dosyasında tanımlanmıştır. Projeyi başlatmak, durdurmak ve yönetmek için Docker komutları kullanılmalıdır.
 
 ```bash
-sudo ./ops/scripts/bcms-install-system-services.sh
+# Projeyi arka planda başlat
+docker compose up -d
+
+# Servislerin loglarını izle
+docker compose logs -f
+
+# Bir servisi yeniden build et (kod değişikliğinden sonra)
+docker compose up -d --build api
 ```
 
 Kurulumdan sonra servisler otomatik baslar. PC restart oldugunda API ve Web yine otomatik ayaga kalkar.
@@ -144,9 +153,8 @@ API mimarisi:
   `incident_severity` olarak korunur. Prisma schema bunlari `BookingStatus`,
   `IngestStatus` ve `IncidentSeverity` enumlarina `@@map` ile baglar.
 - Yeni ve bos PostgreSQL veritabanlari icin
-  `./ops/scripts/bcms-db-bootstrap-empty.sh` kullanilir. Script public schema
-  bos degilse calismayi reddeder, guncel Prisma schema'yi uygular ve mevcut
-  migration'lari applied olarak isaretler.
+  bash tabanli bootstrap scriptleri birakilmis, standart Prisma migration ve
+  seed sureclerine gecilmistir. CI/CD tamamen `prisma migrate deploy` kullanir.
 
 Excel notu:
 
@@ -158,7 +166,8 @@ CI notu:
 
 - GitHub Actions workflow'u `.github/workflows/ci.yml` dosyasindadir.
 - CI bos PostgreSQL DB'yi `./ops/scripts/bcms-db-bootstrap-empty.sh` ile
-  hazirlar ve `npm run smoke:api` calistirir.
+  standart `prisma migrate deploy` komutu ile hazirlar, unit testleri
+  (`npm run test`) ve `npm run smoke:api` calistirir.
 - CI ortaminda watcher/background servisleri `BCMS_BACKGROUND_SERVICES=none`
   ile kapatilir.
 

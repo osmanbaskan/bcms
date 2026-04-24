@@ -71,10 +71,16 @@ jobs:
         run: npm audit --audit-level=high
 
       - name: Generate Prisma client
-        run: npm run db:generate
+        run: |
+          rm -rf node_modules/.prisma node_modules/@prisma/client node_modules/prisma
+          npm install prisma@5.22.0 @prisma/client@5.22.0
+          npx prisma generate --schema=apps/api/prisma/schema.prisma
 
-      - name: Bootstrap empty database
-        run: ./ops/scripts/bcms-db-bootstrap-empty.sh
+      - name: Apply Database Migrations (Standard Prisma)
+        run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
+
+      - name: Run Tests (Unit & Integration)
+        run: npm run test
 
       - name: Build
         run: npm run build

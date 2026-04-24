@@ -234,7 +234,7 @@ const TR_DATE_FORMATS = {
                 [timeLabels]="portBoardTimeLabels()"
                 [gridTemplateRows]="timeGridTemplate()"
                 [fullPage]="true"
-                [columnMinWidth]="48"
+                [columnMinWidth]="24"
                 [rowCount]="5"
                 (requestPrint)="printPortBoard()"
                 (portOrderChange)="setPortBoardOrder($event)"
@@ -619,10 +619,30 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
     return orderedNames
       .filter((name) => this.activeRecordingPorts().some((port) => port.name === name))
-      .sort((a, b) => (portOrder.get(a) ?? Number.MAX_SAFE_INTEGER) - (portOrder.get(b) ?? Number.MAX_SAFE_INTEGER))
-      .map((port) => ({
+      .filter((name) => !['Metus1', 'Metus2'].includes(name) || (grouped.get(name)?.length ?? 0) > 0)
+      .map((port) => {
+        const sourceRows = grouped.get(port) ?? [];
+        const items = this.toPortBoardItems(sourceRows);
+        const earliestStart = sourceRows.length ? Math.min(...sourceRows.map((row) => row.sortMinute)) : Number.MAX_SAFE_INTEGER;
+        const latestEnd = sourceRows.length ? Math.max(...sourceRows.map((row) => row.endMinute)) : Number.MAX_SAFE_INTEGER;
+        return {
+          port,
+          items,
+          earliestStart,
+          latestEnd,
+          hasItems: sourceRows.length > 0,
+          order: portOrder.get(port) ?? Number.MAX_SAFE_INTEGER,
+        };
+      })
+      .sort((a, b) => {
+        if (a.hasItems !== b.hasItems) return a.hasItems ? -1 : 1;
+        if (a.earliestStart !== b.earliestStart) return a.earliestStart - b.earliestStart;
+        if (a.latestEnd !== b.latestEnd) return a.latestEnd - b.latestEnd;
+        return a.order - b.order;
+      })
+      .map(({ port, items }) => ({
         port,
-        items: this.toPortBoardItems(grouped.get(port) ?? []),
+        items,
       }));
   });
 

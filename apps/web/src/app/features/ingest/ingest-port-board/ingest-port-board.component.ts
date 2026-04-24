@@ -86,7 +86,9 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
                     *ngFor="let item of column.items; trackBy: trackItem"
                   >
                     <div class="port-board-time">{{ item.row.startTime }} - {{ item.row.endTime }}</div>
-                    <strong [title]="item.row.title">{{ item.row.title }}</strong>
+                    <strong [title]="item.row.title">
+                      <span class="title-line" *ngFor="let line of titleLines(item.row.title)">{{ line }}</span>
+                    </strong>
                     <span class="port-board-warning" *ngIf="item.overlap">Cakisma</span>
                   </article>
                 </div>
@@ -120,12 +122,13 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-column-tag{position:absolute;top:2px;left:2px;z-index:3;gap:1px;padding:0 2px;background:transparent;color:#f5d24b;font-size:.58rem;cursor:move}
     .port-drag-handle{justify-content:center;width:18px;height:18px;padding:0;border:0;background:transparent;color:#d9e6f2;cursor:move}
     .port-drag-handle mat-icon{font-size:16px;width:16px;height:16px}
-    .port-board-column-body{position:relative;display:grid;padding:0;min-height:260px;background:rgba(189,210,232,.08)}
+    .port-board-column-body{position:relative;display:grid;padding:0;min-height:240px;background:rgba(189,210,232,.08)}
     .port-board-item{z-index:1;margin:1px 0 0;padding:1px 1px 2px;border:1px solid rgba(255,255,255,.08);background:#c7d8ec;color:#17304d;display:flex;flex-direction:column;gap:1px;overflow:hidden}
     .port-board-item:first-of-type{margin-top:10px}
     .port-board-item.overlap{background:#ffd9d9;border-color:#ef5350}
-    .port-board-item strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;font-size:.72rem;line-height:1.02;overflow:hidden;word-break:break-word}
-    .port-board-time,.port-board-warning{font-weight:800;font-size:.54rem;line-height:1}
+    .port-board-item strong{display:flex;flex-direction:column;font-size:1.44rem;line-height:.92;overflow:hidden}
+    .title-line{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .port-board-time,.port-board-warning{font-weight:800;font-size:1rem;line-height:1}
     .port-board-warning{color:#b71c1c}
   `],
 })
@@ -147,13 +150,16 @@ export class IngestPortBoardComponent {
   trackPort = (_: number, column: IngestPortBoardColumnView) => column.port;
   trackItem = (_: number, item: IngestPortBoardItemView) => item.row.id;
 
+  titleLines(title: string): string[] {
+    const parts = title.split(' - ').map((part) => part.trim()).filter(Boolean);
+    return parts.length > 1 ? parts.slice(0, 3) : [title];
+  }
+
   portColumnRows(): IngestPortBoardColumnView[][] {
-    const rows: IngestPortBoardColumnView[][] = Array.from({ length: this.rowCount }, () => []);
-    for (const column of this.columns) {
-      const targetRow = rows.reduce((bestIndex, currentRow, index, allRows) => (
-        currentRow.length < allRows[bestIndex].length ? index : bestIndex
-      ), 0);
-      rows[targetRow].push(column);
+    const chunkSize = Math.max(1, Math.ceil(this.columns.length / this.rowCount));
+    const rows: IngestPortBoardColumnView[][] = [];
+    for (let index = 0; index < this.columns.length; index += chunkSize) {
+      rows.push(this.columns.slice(index, index + chunkSize));
     }
     return rows;
   }
@@ -195,8 +201,8 @@ export class IngestPortBoardComponent {
   }
 
   private currentColumnWidth(): number {
-    if (this.zoom === 'tight') return Math.max(120, this.columnMinWidth - 40);
-    if (this.zoom === 'wide') return this.columnMinWidth + 60;
+    if (this.zoom === 'tight') return Math.max(24, this.columnMinWidth - 12);
+    if (this.zoom === 'wide') return this.columnMinWidth + 12;
     return this.columnMinWidth;
   }
 }

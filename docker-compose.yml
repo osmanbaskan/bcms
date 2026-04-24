@@ -133,11 +133,8 @@ services:
     container_name: bcms_opta_watcher
     restart: unless-stopped
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      BCMS_API_URL: http://api:3000/api/v1
+      BCMS_API_TOKEN: ${OPTA_WATCHER_API_TOKEN}
       OPTA_SMB_SHARE: ${OPTA_SMB_SHARE}
       OPTA_SMB_SUBDIR: ${OPTA_SMB_SUBDIR}
       OPTA_SMB_USERNAME: ${OPTA_SMB_USERNAME}
@@ -145,8 +142,7 @@ services:
       OPTA_SMB_DOMAIN: ${OPTA_SMB_DOMAIN}
       OPTA_POLL_INTERVAL: ${OPTA_POLL_INTERVAL:-3600}
     depends_on:
-      postgres:
-        condition: service_healthy
+      - api
     networks:
       - bcms_net
 

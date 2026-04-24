@@ -1,16 +1,14 @@
 # Notes For Future Codex Sessions
 
-BCMS is intended to stay up after terminal closes and PC restarts. Do not switch it back to `ng serve` or `tsx watch` as the primary runtime unless the user explicitly asks for temporary development mode.
+The project has been fully migrated from a `systemd`-based local runtime to a containerized **Docker Compose** setup. All services (API, Web, DBs, etc.) are defined in `docker-compose.yml`. Do not suggest `systemd` or `ng serve`/`tsx watch` for the primary runtime.
 
-Stable runtime:
+Primary runtime commands:
 
-- API systemd service: `bcms-api-dev.service`
-- Web systemd service: `bcms-web-dev.service`
-- OPTA mount systemd service: `bcms-opta-mount.service`
-- API command: `node /home/ubuntu/Desktop/bcms/apps/api/dist/server.js`
-- Web command: `node /home/ubuntu/Desktop/bcms/ops/scripts/bcms-web-static-server.mjs`
-- Web serves `apps/web/dist/web/browser`
-- Web proxies `/api` and `/webhooks` to `http://127.0.0.1:3000`
+```bash
+docker compose up -d
+docker compose logs -f
+docker compose down
+```
 
 Daily commands:
 
@@ -148,9 +146,8 @@ Prisma DB baseline:
 - If booking/ingest/incident Prisma writes fail with a missing PascalCase enum
   type, check generated client freshness before changing DB enum names.
 - For a brand-new empty PostgreSQL database, use
-  `./ops/scripts/bcms-db-bootstrap-empty.sh`. It refuses to run if the public
-  schema already has tables, applies SQL generated from the current Prisma
-  schema, then marks existing repo migrations applied.
+  standard Prisma migration flow (`prisma migrate deploy`). The old
+  bash-based bootstrap scripts have been deprecated in favor of official tools.
 
 Security/dependency notes:
 
@@ -163,7 +160,8 @@ Security/dependency notes:
 - `npm run smoke:api` runs health, schedule optimistic lock, booking optimistic
   lock, and playout transition guard checks against the local API.
 - GitHub Actions CI lives at `.github/workflows/ci.yml`. It runs npm audit,
-  Prisma generate, empty DB bootstrap, full build, starts the API with
+  Prisma generate, DB migration (`migrate deploy`), unit/integration tests
+  (`npm run test`), full build, starts the API with
   `BCMS_BACKGROUND_SERVICES=none`, and runs `npm run smoke:api`.
 - Angular production build has realistic bundle budgets and allows the two
   CommonJS dependencies currently pulled by Keycloak (`base64-js`, `js-sha256`).

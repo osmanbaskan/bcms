@@ -1,9 +1,10 @@
 # BCMS Developer Guide
 
-Bu dosya gelistirici rehberidir. Gunluk servis kullanimi ve sahadaki baglanti bilgileri icin Desktop uzerindeki operasyon rehberlerini kullan:
+Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana geliştirici rehberidir. Günlük operasyonlar, servis yönetimi ve sahadaki bağlantı bilgileri için masaüstündeki diğer belgelere başvurun.
 
-- `/home/ubuntu/Desktop/BCMS_README.md`
-- `/home/ubuntu/Desktop/BCMS_BAGLANTI_BILGILERI.txt`
+## Proje Felsefesi ve Son Değişiklikler
+
+Proje, `systemd` tabanlı manuel servis yönetiminden, endüstri standardı olan **Docker Compose** tabanlı konteynerize bir yapıya geçirilmiştir. Bu değişiklik, geliştirme ve canlı ortamlar arasındaki tutarlılığı artırır, bağımlılıkları izole eder ve altyapıyı daha öngörülebilir kılar. Ayrıca, CI/CD süreçleri **Turborepo** ile hızlandırılmış ve **otomatize testler** ile kalite güvencesi artırılmıştır. Veritabanı işlemleri artık merkezi bir **Audit Log (Denetim Kaydı)** mekanizması tarafından izlenmektedir.
 
 ## Mimari
 
@@ -11,6 +12,8 @@ Bu dosya gelistirici rehberidir. Gunluk servis kullanimi ve sahadaki baglanti bi
 - Frontend: Angular
 - Auth: Keycloak
 - Shared package: TypeScript tipleri ve ortak yardimcilar
+- Monorepo Build Sistemi: Turborepo
+- Veritabanı Denetimi: Tüm yazma işlemleri için otomatik Audit Log (Prisma Middleware)
 - Schedule veri kapsami: `schedules.usage_scope` kolonu Prisma
   `Schedule.usageScope` alani uzerinden yonetilir.
 - Stüdyo planlari `studio_plans` ve `studio_plan_slots` tablolarinda,
@@ -38,17 +41,12 @@ scripts               OPTA/SMB yardimci scriptleri
 
 ## Lokal Kalici Runtime
 
-Bu makinede ana runtime terminale bagli degildir. Systemd kullanilir.
+Projenin tüm servisleri (API, Web, PostgreSQL, RabbitMQ, Keycloak vb.) **Docker Compose** ile yönetilmektedir. Bu, `systemd` veya `cron` gibi eski yöntemlerin yerini almıştır.
 
-- OPTA mount: `bcms-opta-mount.service`
-- API: `bcms-api-dev.service`
-- Web: `bcms-web-dev.service`
-
-Runtime komutlari:
+Projeyi başlatmak için:
 
 ```bash
-node apps/api/dist/server.js
-node ops/scripts/bcms-web-static-server.mjs
+docker compose up -d
 ```
 
 Ana runtime icin `tsx watch` ve `ng serve` kullanilmaz. Bu komutlar sadece gecici gelistirme/debug ihtiyacinda manuel kullanilmalidir.
@@ -102,7 +100,7 @@ CI:
 
 - GitHub Actions workflow'u `.github/workflows/ci.yml` altindadir.
 - Workflow `npm ci`, `npm audit --audit-level=high`, Prisma generate, bos DB
-  bootstrap, tum repo build ve `npm run smoke:api` adimlarini calistirir.
+  migration deploy, unit/integration testleri, tum repo build ve `npm run smoke:api` adimlarini calistirir.
 - CI PostgreSQL ve RabbitMQ servis container'lari ile calisir; API arka plan
   watcher'lari `BCMS_BACKGROUND_SERVICES=none` ile kapali tutulur.
 
@@ -130,15 +128,11 @@ npm run db:migrate -w apps/api
 npm run db:studio -w apps/api
 ```
 
-Bos DB bootstrap:
+Veritabani Migration (Standart):
 
 ```bash
-./ops/scripts/bcms-db-bootstrap-empty.sh
+npm run db:migrate:prod -w apps/api
 ```
-
-Bu script sadece yeni ve bos PostgreSQL veritabanlari icindir. Public schema
-bos degilse calismayi reddeder. Guncel Prisma schema'dan baseline SQL uretir,
-DB'ye uygular ve repo altindaki migration'lari applied olarak isaretler.
 
 API health:
 
@@ -229,16 +223,11 @@ Prisma Client notu:
 
 - 2026-04-22'de `prisma generate` komutu schema'yi okuyup hata vermeden
   cikmasina ragmen `node_modules/.prisma/client` dosyalarini yenilemiyordu.
-- Temiz kurulumla `node_modules/.prisma`, `node_modules/@prisma/client` ve
-  `node_modules/prisma` silinip `prisma@5.22.0` ve `@prisma/client@5.22.0`
-  yeniden kuruldu.
-- Bu islemden sonra generated client `Schedule.usageScope` alanini yeniden
-  uretmeye basladi.
+  Bu sorun asilmistir: CI islem adimlarina ve lokal build sureclerine Prisma cache
+  temizligi ve force generate islemleri standart olarak eklenmistir.
 - API artik `usage_scope` icin gecici raw SQL koprusu kullanmaz; schedule
   listeleme, export ve ingest hedef kontrolu Prisma `usageScope` field'i ile
   yapilir.
-- Ayni regenerate sorunu tekrar gorulurse once ayni temiz Prisma reinstall
-  proseduru uygulanmalidir; raw SQL koprusu geri eklenmemelidir.
 
 Prisma migration ve enum notu:
 
@@ -253,7 +242,8 @@ Prisma migration ve enum notu:
   ile baglar. Bu nedenle enum tiplerini DB'de yeniden adlandirmadan once Prisma
   schema mapping'i dikkate alinmalidir.
 - Bos yeni ortamlar icin `./ops/scripts/bcms-db-bootstrap-empty.sh`
-  kullanilmalidir; mevcut veri olan DB'lerde bu script calistirilmaz.
+  kullanimi kaldirilmistir. Tum ortamlar icin standart Prisma `migrate deploy`
+  ve `db seed` kullanilmalidir.
 
 Excel import/export notu:
 

@@ -15,29 +15,20 @@ import re
 import signal
 import sys
 import time
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-import psycopg2
-import psycopg2.extras
 import smbclient
 
 # ── Yapılandırma ──────────────────────────────────────────────────────────────
 
 CONFIG_PATH = Path.home() / ".bcms-opta-config.json"
 
-_pg_password = os.getenv("POSTGRES_PASSWORD")
-if not _pg_password:
-    raise RuntimeError("POSTGRES_PASSWORD env değişkeni zorunludur")
-
-DB_PARAMS = dict(
-    host=os.getenv("POSTGRES_HOST", "localhost"),
-    port=int(os.getenv("POSTGRES_PORT", "5432")),
-    dbname=os.getenv("POSTGRES_DB", "bcms"),
-    user=os.getenv("POSTGRES_USER", "bcms_user"),
-    password=_pg_password,
-)
+API_URL = os.getenv("BCMS_API_URL", "http://api:3000/api/v1")
+API_TOKEN = os.getenv("BCMS_API_TOKEN", "")
 
 DEFAULT_INTERVAL = int(os.getenv("OPTA_POLL_INTERVAL", "3600"))
 STATE_PATH = Path.home() / ".bcms-opta-watcher-state.json"
@@ -193,131 +184,29 @@ def parse_results_file(cfg: dict, filename: str, team_cache: dict) -> list[dict]
 
 # ── DB işlemleri ──────────────────────────────────────────────────────────────
 
-class DBConnection:
-    """Tek bir bağlantıyı yeniden kullanan, hata durumunda yeniden bağlanan wrapper."""
-
-    def __init__(self):
-        self._conn = None
-
-    def get(self) -> psycopg2.extensions.connection:
-        if self._conn is None or self._conn.closed:
-            self._conn = psycopg2.connect(**DB_PARAMS)
-        return self._conn
-
-    def close(self):
-        if self._conn and not self._conn.closed:
-            self._conn.close()
-        self._conn = None
-
-
-_db = DBConnection()
-
-
-def ensure_league_bulk(cur, leagues: dict[str, str]) -> dict[str, int]:
-    """
-    {comp_id: comp_name} → {comp_id: league_db_id}
-    Tek sorguda tüm ligleri upsert eder.
-    """
-    if not leagues:
-        return {}
-
-    rows = [(f"opta-{cid}", name) for cid, name in leagues.items()]
-    psycopg2.extras.execute_values(
-        cur,
-        """INSERT INTO leagues (code, name, country, metadata, created_at, updated_at)
-           VALUES %s
-           ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, updated_at = now()
-           RETURNING code, id""",
-        [(code, name, json.dumps({"optaCompId": code.removeprefix("opta-")}))
-         for code, name in rows],
-        template="(%s, %s, '', %s::jsonb, now(), now())",
-    )
-    return {row[0].removeprefix("opta-"): row[1] for row in cur.fetchall()}
-
-
 def upsert_matches(matches: list[dict]) -> tuple[int, int, int]:
-    """(inserted, updated, unchanged) döner. Tek DB round-trip ile toplu upsert."""
+    """(inserted, updated, unchanged) döner. Verileri API'ye HTTP POST atarak aktarır."""
     if not matches:
         return 0, 0, 0
 
-    conn = _db.get()
-    cur  = conn.cursor()
-
-    # 1. Tüm lig kodlarını tek sorguda upsert et
-    leagues = {m["compId"]: m["compName"] for m in matches}
-    league_ids = ensure_league_bulk(cur, leagues)
-
-    # 2. Tüm opta_uid'leri tek sorguda çek
-    opta_uids = [m["matchUid"] for m in matches if m["matchUid"]]
-    if not opta_uids:
-        conn.commit()
-        cur.close()
-        return 0, 0, 0
-
-    cur.execute(
-        "SELECT opta_uid, id, match_date FROM matches WHERE opta_uid = ANY(%s)",
-        (opta_uids,),
+    req = urllib.request.Request(
+        f"{API_URL}/opta/sync",
+        data=json.dumps({"matches": matches}).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {API_TOKEN}",
+            "Content-Type": "application/json"
+        },
+        method="POST"
     )
-    existing = {row[0]: (row[1], row[2]) for row in cur.fetchall()}
-
-    # 3. Yeni ve güncellenecekleri ayır
-    to_insert = []
-    to_update = []
-    unchanged = 0
-
-    for m in matches:
-        uid = m["matchUid"]
-        if not uid:
-            continue
-
-        new_ts = datetime.fromisoformat(
-            m["matchDate"].replace("Z", "+00:00")
-        ).strftime("%Y-%m-%dT%H:%MZ")
-
-        lid = league_ids.get(m["compId"])
-
-        if uid not in existing:
-            to_insert.append((
-                lid, uid,
-                m["homeTeam"] or "?", m["awayTeam"] or "?",
-                m["matchDate"], m["weekNumber"], m["season"], m["venue"] or None,
-            ))
-            log.info("YENİ MAÇ  | %s | %s - %s | %s",
-                     uid, m["homeTeam"], m["awayTeam"], m["matchDate"])
-        else:
-            match_id, old_date = existing[uid]
-            old_ts = old_date.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
-            if old_ts != new_ts:
-                to_update.append((m["matchDate"], match_id))
-                log.info("SAAT DEĞİŞTİ | %s | %s - %s | %s → %s",
-                         uid, m["homeTeam"], m["awayTeam"], old_ts, new_ts)
-            else:
-                unchanged += 1
-
-    # 4. Toplu INSERT
-    if to_insert:
-        psycopg2.extras.execute_values(
-            cur,
-            """INSERT INTO matches
-                 (league_id, opta_uid, home_team_name, away_team_name,
-                  match_date, week_number, season, venue, created_at, updated_at)
-               VALUES %s""",
-            to_insert,
-            template="(%s,%s,%s,%s,%s::timestamptz,%s,%s,%s,now(),now())",
-        )
-
-    # 5. Toplu UPDATE
-    if to_update:
-        psycopg2.extras.execute_values(
-            cur,
-            "UPDATE matches SET match_date = data.dt::timestamptz, updated_at = now() "
-            "FROM (VALUES %s) AS data(dt, id) WHERE matches.id = data.id",
-            to_update,
-        )
-
-    conn.commit()
-    cur.close()
-    return len(to_insert), len(to_update), unchanged
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            res_body = response.read().decode("utf-8")
+            data = json.loads(res_body)
+            return data.get("inserted", 0), data.get("updated", 0), data.get("unchanged", 0)
+    except urllib.error.URLError as e:
+        log.error("API'ye gönderim hatası: %s", e)
+        raise
 
 
 # ── Ana döngü ─────────────────────────────────────────────────────────────────
@@ -384,7 +273,6 @@ def scan_once(cfg: dict, state: dict) -> dict:
         )
     except Exception as e:
         log.error("DB yazma hatası: %s", e)
-        _db.close()
 
     return new_state
 
@@ -418,8 +306,8 @@ def main():
                 if not _running:
                     break
                 time.sleep(1)
-    finally:
-        _db.close()
+    except KeyboardInterrupt:
+        pass
 
     log.info("OPTA SMB Watcher durduruldu.")
 
