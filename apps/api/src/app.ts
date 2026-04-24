@@ -29,7 +29,7 @@ import { startNotificationConsumer } from './modules/notifications/notification.
 import { startIngestWorker } from './modules/ingest/ingest.worker.js';
 import { startIngestWatcher } from './modules/ingest/ingest.watcher.js';
 import { startBxfWatcher } from './modules/bxf/bxf.watcher.js';
-import { startOptaWatcher } from './modules/opta/opta.watcher.js';
+import { startOptaWatcher, getOptaWatcherStatus } from './modules/opta/opta.watcher.js';
 
 const BACKGROUND_SERVICES = [
   'notifications',
@@ -198,10 +198,29 @@ export async function buildApp() {
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }); // max 10 MB
 
   // ── Health check ──────────────────────────────────────────────────────────────
-  app.get('/health', { schema: { hide: true } }, async () => ({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-  }));
+  app.get('/health', { schema: { hide: true } }, async (_req, reply) => {
+    const checks: Record<string, 'ok' | 'degraded'> = {};
+
+    // Database
+    try {
+      await app.prisma.$queryRaw`SELECT 1`;
+      checks.database = 'ok';
+    } catch {
+      checks.database = 'degraded';
+    }
+
+    // RabbitMQ
+    checks.rabbitmq = app.rabbitmq.isConnected() ? 'ok' : 'degraded';
+
+    // OPTA
+    const opta = getOptaWatcherStatus();
+    checks.opta = opta.connected ? 'ok' : 'degraded';
+
+    const degraded = Object.values(checks).some((v) => v === 'degraded');
+    return reply
+      .status(degraded ? 200 : 200)
+      .send({ status: degraded ? 'degraded' : 'ok', checks, timestamp: new Date().toISOString() });
+  });
 
   // ── Consumers & watchers ──────────────────────────────────────────────────────
   await startBackgroundServices(app);

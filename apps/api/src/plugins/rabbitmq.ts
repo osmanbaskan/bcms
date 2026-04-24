@@ -19,6 +19,7 @@ export interface RabbitMQClient {
   publish<T>(queue: QueueName, payload: T): Promise<void>;
   consume<T>(queue: QueueName, handler: (payload: T) => Promise<void>): Promise<void>;
   close(): Promise<void>;
+  isConnected(): boolean;
 }
 
 declare module 'fastify' {
@@ -30,6 +31,7 @@ declare module 'fastify' {
 async function createRabbitMQClient(url: string, logger: FastifyInstance['log']): Promise<RabbitMQClient> {
   let connection: ChannelModel;
   let channel: Channel;
+  let connected = false;
 
   const connect = async (retries = 5): Promise<void> => {
     for (let i = 1; i <= retries; i++) {
@@ -37,16 +39,19 @@ async function createRabbitMQClient(url: string, logger: FastifyInstance['log'])
         connection = await amqplib.connect(url);
         channel = await connection.createChannel();
 
-        // Declare all queues as durable
         for (const queue of Object.values(QUEUES)) {
           await channel.assertQueue(queue, { durable: true });
         }
 
+        connected = true;
+
         connection.on('error', (err) => {
+          connected = false;
           logger.error({ err }, 'RabbitMQ connection error');
         });
 
         connection.on('close', () => {
+          connected = false;
           logger.warn('RabbitMQ connection closed, reconnecting...');
           setTimeout(() => connect(3), 5000);
         });
@@ -64,6 +69,7 @@ async function createRabbitMQClient(url: string, logger: FastifyInstance['log'])
   await connect();
 
   return {
+    isConnected: () => connected,
     async publish<T>(queue: QueueName, payload: T): Promise<void> {
       const content = Buffer.from(JSON.stringify(payload));
       channel.sendToQueue(queue, content, { persistent: true });
@@ -82,6 +88,7 @@ async function createRabbitMQClient(url: string, logger: FastifyInstance['log'])
       });
     },
     async close(): Promise<void> {
+      connected = false;
       await channel.close();
       await connection.close();
     },
@@ -103,8 +110,8 @@ export const rabbitmqPlugin = fp(async (app: FastifyInstance) => {
     }
 
     app.log.error({ err }, 'Failed to connect to RabbitMQ — messages will be lost');
-    // Provide a no-op client so the API still starts without RabbitMQ
     app.decorate('rabbitmq', {
+      isConnected: () => false,
       publish:  async () => { app.log.warn('RabbitMQ unavailable, message dropped'); },
       consume:  async () => { app.log.warn('RabbitMQ unavailable, consumer not started'); },
       close:    async () => {},

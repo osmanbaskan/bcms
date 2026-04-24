@@ -1,31 +1,38 @@
 # BCMS Developer Guide
 
-Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana geliştirici rehberidir. Günlük operasyonlar, servis yönetimi ve sahadaki bağlantı bilgileri için masaüstündeki diğer belgelere başvurun.
+Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana geliştirici rehberidir. Günlük operasyonlar ve bağlantı bilgileri için masaüstündeki diğer belgelere başvurun.
 
-## Proje Felsefesi ve Son Değişiklikler
+## Mimari Kurallar
 
-Proje, `systemd` tabanlı manuel servis yönetiminden, endüstri standardı olan **Docker Compose** tabanlı konteynerize bir yapıya geçirilmiştir. Bu değişiklik, geliştirme ve canlı ortamlar arasındaki tutarlılığı artırır, bağımlılıkları izole eder ve altyapıyı daha öngörülebilir kılar. Ayrıca, CI/CD süreçleri **Turborepo** ile hızlandırılmış ve **otomatize testler** ile kalite güvencesi artırılmıştır. Veritabanı işlemleri artık merkezi bir **Audit Log (Denetim Kaydı)** mekanizması tarafından izlenmektedir.
+1. **Servis izolasyonu**: API ve arka plan worker'ları ayrı Docker konteynerlerinde çalışır. `api` servisi yalnızca HTTP isteklerini karşılar (`BCMS_BACKGROUND_SERVICES=none`). Worker servisi RabbitMQ tüketimi ve dosya izlemeyi üstlenir.
+2. **Graceful shutdown**: `SIGTERM` alındığında Fastify önce yeni istekleri reddeder, devam eden işlemleri bekler, DB ve RabbitMQ bağlantılarını kapatır. Zaman aşımı: 30 sn (API), 60 sn (worker).
+3. **Degraded mod**: OPTA dizini veya RabbitMQ geçici olarak ulaşılamaz olduğunda API çökmez. `/health` endpoint `status: "degraded"` döner; temel DB işlemleri devam eder.
+4. **usageScope kuralı**: `schedules.usage_scope` kolonu karar noktasıdır. `broadcast` = normal yayın, `live-plan` = canlı yayın planı. Metadata JSON filtresi kullanılmaz.
+5. **Prisma üzerinden erişim**: `usage_scope` dahil tüm DB erişimi Prisma Client ile yapılır. Ham SQL köprüsü eklenmez.
+6. **Audit log**: Tüm write işlemleri `apps/api/src/plugins/audit.ts` Prisma middleware ile `audit_logs` tablosuna yazılır. Kullanıcı context AsyncLocalStorage ile taşınır.
+7. **Statik servis**: Angular build dosyaları `infra/docker/nginx.conf` üzerinden nginx ile sunulur. `bcms-web-static-server.mjs` kaldırılmıştır.
+8. **Excel**: Yalnızca `exceljs` kullanılır; `xlsx` paketi güvenlik açığı nedeniyle kaldırılmıştır. Yalnızca `.xlsx` formatı kabul edilir.
 
 ## Mimari
 
-- Backend: Fastify + Prisma + PostgreSQL + RabbitMQ
-- Frontend: Angular
-- Auth: Keycloak
-- Shared package: TypeScript tipleri ve ortak yardimcilar
-- Monorepo Build Sistemi: Turborepo
-- Veritabanı Denetimi: Tüm yazma işlemleri için otomatik Audit Log (Prisma Middleware)
-- Schedule veri kapsami: `schedules.usage_scope` kolonu Prisma
-  `Schedule.usageScope` alani uzerinden yonetilir.
-- Stüdyo planlari `studio_plans` ve `studio_plan_slots` tablolarinda,
-  `schedules` akisini kirletmeden kalici tutulur.
-- Frontend operasyon sekmeleri:
-  - `Stüdyo Planı`: web uzerinde haftalik studyo planlama ve PDF export
-  - `Haftalık Shift`: sol navigasyonda ayrilmis admin sekmesi
-  - `Provys İçerik Kontrol`: sol navigasyonda ayrilmis admin sekmesi
-- Monorepo:
-  - `apps/api`
-  - `apps/web`
-  - `packages/shared`
+- Backend: Fastify + Prisma 5.22.0 + PostgreSQL + RabbitMQ
+- Frontend: Angular (nginx ile statik serve)
+- Auth: Keycloak (realm: bcms)
+- Shared package: `packages/shared` — TypeScript tipleri
+- Build: Turborepo (`turbo.json`)
+- Audit Log: Prisma middleware (`apps/api/src/plugins/audit.ts`)
+
+## Konteyner Yapısı
+
+| Servis | Görevi | `BCMS_BACKGROUND_SERVICES` |
+|---|---|---|
+| `api` | HTTP istekleri, Swagger, health | `none` |
+| `worker` | RabbitMQ consumer, ingest, bxf, notifications | `notifications,ingest-worker,ingest-watcher,bxf-watcher` |
+| `opta-watcher` | SMB → API HTTP sync (Python) | — |
+| `web` | Angular statik dosyalar (nginx) | — |
+| `postgres` | Veritabanı | — |
+| `rabbitmq` | Mesaj kuyruğu | — |
+| `keycloak` | Kimlik doğrulama | — |
 
 ## Dizinler
 
@@ -33,57 +40,54 @@ Proje, `systemd` tabanlı manuel servis yönetiminden, endüstri standardı olan
 apps/api              Fastify API, Prisma schema, background workers
 apps/web              Angular web uygulamasi
 packages/shared       Ortak TypeScript tipleri
-ops/scripts           Lokal operasyon scriptleri
-ops/systemd           Systemd service template dosyalari
-infra                 Docker, nginx, monitoring, mount yardimcilari
-scripts               OPTA/SMB yardimci scriptleri
+ops/scripts           Aktif operasyon scriptleri (bcms-build, bcms-restart, bcms-status, bcms-logs)
+infra/docker          Dockerfile'lar ve nginx.conf
+infra/keycloak        Realm export
+infra/postgres        DB init script
+infra/rabbitmq        RabbitMQ config
+infra/prometheus      Prometheus config
+scripts               OPTA/SMB Python watcher
 ```
 
-## Lokal Kalici Runtime
+## Runtime
 
-Projenin tüm servisleri (API, Web, PostgreSQL, RabbitMQ, Keycloak vb.) **Docker Compose** ile yönetilmektedir. Bu, `systemd` veya `cron` gibi eski yöntemlerin yerini almıştır.
-
-Projeyi başlatmak için:
+Tüm servisler Docker Compose ile yönetilmektedir. `systemd`, `tsx watch`, `ng serve` kullanılmaz.
 
 ```bash
+# Başlat
 docker compose up -d
+
+# Loglar
+docker compose logs -f
+docker compose logs -f api worker
+
+# Kod değişikliğinden sonra build + restart
+docker compose up -d --build api worker
+
+# Durdur
+docker compose down
 ```
 
-Ana runtime icin `tsx watch` ve `ng serve` kullanilmaz. Bu komutlar sadece gecici gelistirme/debug ihtiyacinda manuel kullanilmalidir.
+Adresler:
+- Web: `http://172.28.204.133:4200`
+- API: `http://172.28.204.133:3000`
+- Swagger: `http://172.28.204.133:4200/docs` veya `http://172.28.204.133:3000/docs`
 
-## Gelistirme Akisi
+## Geliştirme Akışı
 
-Kod degisikliginden sonra:
-
-```bash
-./ops/scripts/bcms-restart.sh
-```
-
-Bu script:
-
-1. `packages/shared` build eder.
-2. `apps/api` build eder.
-3. `apps/web` build eder.
-4. Systemd servislerini restart eder.
-
-Sadece build almak icin:
-
-```bash
-./ops/scripts/bcms-build.sh
-```
-
-Tek tek build:
+Kod değişikliğinden sonra:
 
 ```bash
 npm run build -w packages/shared
 npm run build -w apps/api
-npm run build -w apps/web
+docker compose up -d --build api worker
 ```
 
-Tum repo build:
+Ya da:
 
 ```bash
 npm run build
+docker compose up -d --build api worker web
 ```
 
 API smoke test:
@@ -92,96 +96,60 @@ API smoke test:
 npm run smoke:api
 ```
 
-Bu test health endpoint'ini, schedule/booking optimistic lock davranisini ve
-playout state guard'ini kontrol eder. Varsayilan API adresi
-`http://127.0.0.1:3000/api/v1`; farkli ortam icin `BCMS_API_URL` verilebilir.
-
 CI:
 
-- GitHub Actions workflow'u `.github/workflows/ci.yml` altindadir.
-- Workflow `npm ci`, `npm audit --audit-level=high`, Prisma generate, bos DB
-  migration deploy, unit/integration testleri, tum repo build ve `npm run smoke:api` adimlarini calistirir.
-- CI PostgreSQL ve RabbitMQ servis container'lari ile calisir; API arka plan
-  watcher'lari `BCMS_BACKGROUND_SERVICES=none` ile kapali tutulur.
+- GitHub Actions workflow: `.github/workflows/ci.yml`
+- Adımlar: `npm ci`, `npm audit`, Prisma cache temizliği + generate, `prisma migrate deploy`, `npm run test`, full build, `npm run smoke:api`
+- `BCMS_BACKGROUND_SERVICES=none` ile API başlatılır (worker CI'da çalışmaz)
+
+## Health Endpoint
+
+```bash
+curl -fsS http://127.0.0.1:3000/health
+```
+
+Yanıt:
+```json
+{
+  "status": "ok",
+  "checks": { "database": "ok", "rabbitmq": "ok", "opta": "ok" },
+  "timestamp": "..."
+}
+```
+
+OPTA veya RabbitMQ geçici olarak koptuğunda `status: "degraded"` döner, HTTP 200 devam eder. Yalnızca veritabanı `degraded` ise operasyonel etki vardır.
 
 ## API
 
-API kaynak kodu:
-
 ```text
 apps/api/src
+apps/api/dist   (build output)
 ```
 
-API build output:
-
-```text
-apps/api/dist
-```
-
-API komutlari:
+Komutlar:
 
 ```bash
 npm run build -w apps/api
 npm run start -w apps/api
 npm run db:generate -w apps/api
 npm run db:migrate -w apps/api
-npm run db:studio -w apps/api
-```
-
-Veritabani Migration (Standart):
-
-```bash
 npm run db:migrate:prod -w apps/api
-```
-
-API health:
-
-```bash
-curl -fsS http://127.0.0.1:3000/health
-```
-
-Swagger:
-
-```text
-http://172.28.204.133:3000/docs
+npm run db:studio -w apps/api
 ```
 
 ## Canli Yayin Plani Veri Kapsami
 
-Canli yayin plani ekranindan eklenen kayitlar normal yayin akisi kaydi gibi
-kullanilmaz. Bu kayitlar `Schedule.usageScope` kolonu ile ayrilir:
+Canlı yayın planı ekranından eklenen kayıtlar normal yayın akışı kaydı olarak kullanılmaz.
 
 ```text
-usage_scope = 'live-plan'
+schedules.usage_scope = 'live-plan'   → Raporlama ve Ingest
+schedules.usage_scope = 'broadcast'  → Normal yayın (varsayılan)
 ```
 
-Varsayilan deger:
+- `schedules_usage_scope_check` DB constraint yalnızca bu iki değeri kabul eder.
+- Eski `metadata.usageScope` geçiş alanı temizlenmiştir; filtreleme için kullanılmaz.
 
-```text
-usage_scope = 'broadcast'
-```
-
-Kural:
-
-- Canli yayin plani ekraninda eklenen icerikler sadece `Raporlama` ve `Ingest`
-  akislari icindir.
-- Genel `/api/v1/schedules` listesi varsayilan olarak bu kayitlari disarida
-  birakir.
-- Canli yayin plani listesi ve raporlama `usage=live-plan` filtresiyle bu
-  kayitlari okur.
-- Ingest ekrani `/api/v1/schedules/ingest-candidates` endpoint'i ile sadece bu
-  kapsamdaki plan kayitlarini gosterir.
-- Ingest job `targetId` ile bir schedule'a baglanacaksa hedef kaydin
-  `usageScope=live-plan` olmasi gerekir.
-- Eski metadata icindeki `usageScope=reporting-ingest` degeri karar noktasi
-  degildir; gecis sonrasi kanonik kaynak `schedules.usage_scope` kolonudur.
-- Raporlama boyutlari artik JSON metadata path taramasi ile degil,
-  `schedules.report_league`, `schedules.report_season` ve
-  `schedules.report_week_number` kolonlari ile filtrelenir. Bu kolonlar
-  schedule create/update sirasinda metadata icindeki `league`, `season` ve
-  `weekNumber` alanlarindan senkronlanir.
-
-Ilgili endpointler:
+İlgili endpointler:
 
 ```text
 GET  /api/v1/schedules?usage=live-plan
@@ -193,335 +161,102 @@ GET  /api/v1/studio-plans/:weekStart
 PUT  /api/v1/studio-plans/:weekStart
 ```
 
-DB dogrulama:
-
-```sql
-SELECT usage_scope, COUNT(*) FROM schedules GROUP BY usage_scope;
-SELECT report_league, report_season, report_week_number, COUNT(*)
-FROM schedules
-WHERE usage_scope = 'live-plan'
-GROUP BY report_league, report_season, report_week_number;
-```
-
-DB korumalari:
-
-- `schedules_usage_scope_check` constraint'i sadece `broadcast` ve `live-plan`
-  degerlerini kabul eder.
-- `schedules_usage_report_dims_idx` index'i canli yayin plani raporlama
-  filtrelerini destekler.
-- Eski `metadata.usageScope` gecis alani temizlenmistir.
-
-Tutarlilik kurallari:
-
-- Schedule ve booking update islemleri `If-Match` version header'i geldiyse
-  `id + version` kosulu ile atomik uygulanir; stale update `412` doner.
-- Playout gecisleri kontrolludur: sadece `CONFIRMED` kayit `ON_AIR`
-  yapilabilir, sadece `ON_AIR` kayit `COMPLETED` yapilabilir.
-- Ayni anda ayni kanalda ikinci bir `ON_AIR` schedule baslatilamaz.
-
-Prisma Client notu:
-
-- 2026-04-22'de `prisma generate` komutu schema'yi okuyup hata vermeden
-  cikmasina ragmen `node_modules/.prisma/client` dosyalarini yenilemiyordu.
-  Bu sorun asilmistir: CI islem adimlarina ve lokal build sureclerine Prisma cache
-  temizligi ve force generate islemleri standart olarak eklenmistir.
-- API artik `usage_scope` icin gecici raw SQL koprusu kullanmaz; schedule
-  listeleme, export ve ingest hedef kontrolu Prisma `usageScope` field'i ile
-  yapilir.
-
-Prisma migration ve enum notu:
-
-- Bu lokal DB eski Alembic/manual kurulumdan geldigi icin `_prisma_migrations`
-  tablosu yoktu. 2026-04-22'de mevcut DB semasi kontrol edildi ve repo altindaki
-  8 Prisma migration `migrate resolve --applied` ile baseline edildi.
-- `npm run db:migrate:prod -w apps/api` artik temiz sekilde `No pending
-  migrations to apply` sonucunu verir.
-- DB'deki eski PostgreSQL enum tipleri `booking_status`, `ingest_status` ve
-  `incident_severity` olarak durur. Prisma schema bunlari sirasiyla
-  `BookingStatus`, `IngestStatus` ve `IncidentSeverity` enumlarina `@@map`
-  ile baglar. Bu nedenle enum tiplerini DB'de yeniden adlandirmadan once Prisma
-  schema mapping'i dikkate alinmalidir.
-- Bos yeni ortamlar icin `./ops/scripts/bcms-db-bootstrap-empty.sh`
-  kullanimi kaldirilmistir. Tum ortamlar icin standart Prisma `migrate deploy`
-  ve `db seed` kullanilmalidir.
-
-Excel import/export notu:
-
-- `xlsx` paketi bilinen high severity aciklari icin fix sunmadigindan kaldirildi.
-- API Excel islemleri `exceljs` ile yapilir ve import dosyalari sadece `.xlsx`
-  olarak kabul edilir. Eski `.xls` formati desteklenmez.
-
 ## Web
 
-Web kaynak kodu:
-
 ```text
-apps/web/src
-```
-
-Web build output:
-
-```text
-apps/web/dist/web/browser
-```
-
-Web build:
-
-```bash
-npm run build -w apps/web
-```
-
-Kalici runtime'da web, Angular dev server ile degil statik server ile sunulur:
-
-```bash
-node ops/scripts/bcms-web-static-server.mjs
-```
-
-Bu server:
-
-- Angular build dosyalarini sunar.
-- `/api` ve `/webhooks` isteklerini `http://127.0.0.1:3000` adresine proxy eder.
-
-### Ingest Planlama
-
-`Ingest` operasyonu artik iki ayri frontend alanina ayrilmistir:
-
-- `Ingest Planlama`: canli yayin plani ve Stüdyo Planı kayitlarini tek tabloda
-  birlestirir, tarih bazli okur ve satir bazinda kayit portu atar.
-- `Port Görünümü`: ayni plan verisini kayit portlarina gore operasyonel pano
-  seklinde gosterir.
-
-Guncel davranis:
-
-- Kayit portlari backend katalog tablosundan gelir: `recording_ports`.
-- Varsayilan aktif portlar `1..44`, `Metus1`, `Metus2` toplam 46 adettir.
-- Port atamasi kalicidir; veri `ingest_plan_items.recording_port` alanina
-  yazilir.
-- Ayni portta cakisan saat araliklari backend tarafinda engellenir.
-- `Port Görünümü` tum aktif portlari bos olsalar bile gosterir.
-- Pano 5 satirli port dagilimi ile calisir.
-- Tam ekran modu, zoom kontrolleri ve yazdir/export butonu vardir.
-- Kartlarda yalnizca saat ve icerik adi gosterilir; icerik adi 3 satira kadar
-  acilabilir.
-
-Mimari not:
-
-- Pano sunumu ayri standalone Angular component'tedir:
-  `apps/web/src/app/features/ingest/ingest-port-board/ingest-port-board.component.ts`
-- Parent ekran:
-  `apps/web/src/app/features/ingest/ingest-list/ingest-list.component.ts`
-- Kalici plan durumu backend'de `ingest_plan_items` tablosundadir.
-- Kayit port katalogu backend'de `recording_ports` tablosundadir.
-
-### Stüdyo Planı
-
-`Stüdyo Planı` admin rolune acik, web uzerinde hazirlanan haftalik bir operasyon
-ekranidir. Kaynak dosya:
-
-```text
-apps/web/src/app/features/studio-plan/studio-plan.component.ts
-```
-
-Guncel davranis:
-
-- Sol navigasyonda `Stüdyo Planı`, `Haftalık Shift` ve
-  `Provys İçerik Kontrol` admin-only route olarak bulunur.
-- `Stüdyo Planı` Pazartesi-Pazar haftalik gorunum veya tek gun gorunumu sunar.
-- Plan tablosu 06:00-02:00 araliginda 30 dakikalik slotlardan olusur.
-- Her gun 5 studyo kolonuna bolunur: `Stüdyo 1`, `Stüdyo 2`, `Stüdyo 3`,
-  `Stüdyo 4`, `beIN Gurme`.
-- Program secimi ve renk secimi toolbar'daki select box'lardan yapilir.
-- Ayni program ve renk ardisik slotlarda secildiginde gorunumde birlesik
-  blok gibi davranir; metin tekrar etmez ve blok yuksekligine gore kuculur.
-- `Silgi` modu tek bir 30 dakikalik kutucugu temizler.
-- `Bu Haftayı Gelecek Haftaya Taşı` butonu bu haftadaki dolu hucreleri 7 gun
-  ileri tasir ve gorunumu gelecek haftaya alir.
-- `Export PDF` simdilik browser print akisini kullanir.
-- Plan degisiklikleri backend'e kaydedilir; ekran yuklenirken secili
-  Pazartesi haftasinin kaydi API'den okunur.
-
-Mimari not:
-
-- Stüdyo planlari `schedules` tablosundan ayri tutulur. Bu karar bilincli:
-  stüdyo haftalik planlama operasyonel bir hazirlik tablosudur; canli yayin
-  plani, raporlama ve ingest kapsamindaki yayin kayitlariyla ayni lifecycle'a
-  sahip degildir.
-- Backend endpoint'i `GET /api/v1/studio-plans/:weekStart` ile haftayi okur,
-  `PUT /api/v1/studio-plans/:weekStart` ile haftanin tum slotlarini atomik
-  olarak degistirir.
-- Program ve renk secenekleri frontend icinde sabit liste degildir. Backend
-  katalog endpoint'i `GET /api/v1/studio-plans/catalog` ile okunur; admin
-  yazma yetkisiyle `PUT /api/v1/studio-plans/catalog` uzerinden yenilenebilir.
-- `weekStart` sadece Pazartesi tarihi olarak kabul edilir. Slotlar gun tarihi,
-  studyo, baslangic dakikasi, program ve renk degeriyle saklanir.
-- Prisma modelleri `StudioPlan` ve `StudioPlanSlot`; DB tabloları
-  `studio_plans` ve `studio_plan_slots` seklindedir.
-- Katalog modelleri `StudioPlanProgram` ve `StudioPlanColor`; DB tabloları
-  `studio_plan_programs` ve `studio_plan_colors` seklindedir.
-- Bu ozellik icin migration:
-  `apps/api/prisma/migrations/20260423000000_studio_plans/migration.sql`.
-- Katalog migration'i:
-  `apps/api/prisma/migrations/20260423001000_studio_plan_catalog/migration.sql`.
-- Migration uygulanmadan API calistirilirsa Stüdyo Planı endpoint'i veritabani
-  tablo hatasi verebilir. Yerelde PostgreSQL acikken
-  `npm run db:migrate:prod -w apps/api` calistirilmalidir.
-
-## Shared Package
-
-Ortak tipler:
-
-```text
-packages/shared/src
+apps/web/src          Kaynak kod
+apps/web/dist/web/browser  Build output
 ```
 
 Build:
 
 ```bash
-npm run build -w packages/shared
+npm run build -w apps/web
 ```
 
-API veya Web shared tiplerini kullanacaksa once shared build alinmalidir. Operasyon scriptleri bunu otomatik yapar.
+Web nginx üzerinden sunulur. Angular dev server (`ng serve`) sadece geliştirme debug'unda kullanılır.
 
-## Environment
+### Ingest Planlama
 
-Ana ortam dosyasi:
+- `Ingest Planlama`: Canlı yayın planı ve Stüdyo Planı kayıtlarını birleştiren tablo; port ataması burada yapılır.
+- `Port Görünümü`: Port bazlı operasyonel pano (5 satır, tam ekran, zoom, print).
+- Kayıt portları: `recording_ports` backend tablosundan gelir (varsayılan 1-44 + Metus1/Metus2 = 46 port).
+- Port atama kalıcılığı: `ingest_plan_items.recording_port`.
+- Çakışma kontrolü backend tarafında reddedilir.
 
-```text
-.env
-```
+### Stüdyo Planı
 
-Lokal runtime icin onemli degerler:
+- Admin-only, Pazartesi-Pazar haftalık görünüm, 06:00-02:00 arası 30 dakikalık slotlar.
+- 5 stüdyo kolonu: Stüdyo 1-4 + beIN Gurme.
+- Program/renk backend katalogdan: `studio_plan_programs`, `studio_plan_colors`.
+- Veri: `studio_plans` + `studio_plan_slots` (schedules'tan ayrı).
+- Endpoint: `GET/PUT /api/v1/studio-plans/:weekStart`, `GET/PUT /api/v1/studio-plans/catalog`.
+- `weekStart` yalnızca Pazartesi tarihi kabul edilir.
+
+## Yerel Altyapı (Docker)
+
+| Servis | Port | Konteyner |
+|---|---|---|
+| PostgreSQL | 5432 | bcms_postgres |
+| RabbitMQ AMQP | 5672 | bcms_rabbitmq |
+| RabbitMQ UI | 15672 | bcms_rabbitmq |
+| Keycloak | 8080 | bcms_keycloak |
+| Prometheus | 9090 | bcms_prometheus |
+| Grafana | 3001 | bcms_grafana |
+
+## Prisma
+
+- Sürüm: 5.22.0
+- Generate sorunu çözümü: `rm -rf node_modules/.prisma node_modules/@prisma/client node_modules/prisma && npm install prisma@5.22.0 @prisma/client@5.22.0 && npm run db:generate -w apps/api`
+- DB enum isimleri: `booking_status`, `ingest_status`, `incident_severity` (Prisma `@@map` ile bağlı)
+- Local DB 2026-04-22'de 8 migration baseline edildi
+
+## Ortam Değişkenleri
+
+Ana dosya: `.env`
 
 ```bash
-NODE_ENV=development
-SKIP_AUTH=true
-CORS_ORIGIN=http://localhost:4200,http://172.28.204.133:4200
-OPTA_DIR=/mnt/opta-backups/OPTAfromFTP20511
-OPTA_SMB_MOUNT_POINT=/mnt/opta-backups
-KEYCLOAK_ISSUER=http://localhost:8080/realms/bcms
-KEYCLOAK_ALLOWED_CLIENTS=bcms-web,bcms-api
-INGEST_ALLOWED_ROOTS=./tmp/watch,/mnt/opta-backups/OPTAfromFTP20511
-BCMS_BACKGROUND_SERVICES=all
+NODE_ENV=production
+DATABASE_URL=postgresql://...
+RABBITMQ_URL=amqp://...
+KEYCLOAK_CLIENT_ID=bcms-api
+INGEST_CALLBACK_SECRET=...
+INGEST_ALLOWED_ROOTS=/opta,/app/tmp/watch
+BCMS_BACKGROUND_SERVICES=none       # docker-compose'da API için sabit
+OPTA_WATCHER_API_TOKEN=...
+BXF_WATCH_DIR=/app/tmp/bxf
 ```
 
-Not: Lokal auth bypass artik `NODE_ENV=development` olmasina bagli degil; `SKIP_AUTH=true` gerekir.
-Production runtime `KEYCLOAK_CLIENT_ID`, `INGEST_CALLBACK_SECRET` ve
-`INGEST_ALLOWED_ROOTS` olmadan baslamaz. Ingest manuel kaynak yollari sadece
-`INGEST_ALLOWED_ROOTS` icindeki gercek video dosyalarini kabul eder.
-Production'da RabbitMQ baglantisi kurulamazsa API fail-fast davranir ve
-baslamaz. Sadece lokal/gelistirme icin `RABBITMQ_OPTIONAL=true` kullanilabilir.
-`BCMS_BACKGROUND_SERVICES` API process icinde hangi arka plan islerinin
-baslatilacagini belirler: `all`, `none` veya virgullu liste
-(`notifications,ingest-worker,ingest-watcher,bxf-watcher,opta-watcher`).
+Production'da RabbitMQ bağlantısı kurulamazsa API fail-fast davranır. `RABBITMQ_OPTIONAL=true` yalnızca lokal/geliştirme için kullanılabilir.
 
 ## OPTA
 
-Dogru OPTA yolu:
+Doğru OPTA yolu (Docker volume): `/opta`
+Eski/yanlış yol: `/home/ubuntu/opta`, `/mnt/opta-backups/OPTAfromFTP20511`
 
-```text
-/mnt/opta-backups/OPTAfromFTP20511
-```
+OPTA SMB watcher artık ayrı Python konteyneri (`opta-watcher`) olarak çalışır ve verilerini `POST /api/v1/opta/sync` endpoint'ine HTTP ile gönderir. Doğrudan PostgreSQL erişimi yoktur.
 
-Yanlis/eski yol:
-
-```text
-/home/ubuntu/opta
-```
-
-OPTA mount systemd guard:
+## Servis Kontrolü
 
 ```bash
-systemctl status bcms-opta-mount.service
+docker compose ps
+docker compose logs -f
+docker compose logs -f api
+docker compose logs -f worker
+docker compose restart api
+docker compose up -d --build api worker
 ```
 
-OPTA durum scripti:
-
-```bash
-./ops/scripts/bcms-opta-status.sh
-```
-
-API, `/mnt/opta-backups` mount hazir olmadan baslamayacak sekilde ayarlanmistir.
-
-## Servis Kontrolu
-
-Kisa durum:
-
-```bash
-./ops/scripts/bcms-status.sh
-```
-
-Loglar:
-
-```bash
-./ops/scripts/bcms-logs.sh
-./ops/scripts/bcms-logs.sh api
-./ops/scripts/bcms-logs.sh web
-```
-
-Systemd:
-
-```bash
-systemctl status bcms-opta-mount.service bcms-api-dev.service bcms-web-dev.service
-systemctl is-enabled bcms-opta-mount.service bcms-api-dev.service bcms-web-dev.service
-```
-
-Servisleri yeniden kurmak:
-
-```bash
-printf '%s\n' 'ubuntu' | sudo -S ./ops/scripts/bcms-install-system-services.sh
-```
-
-## Dogrulama
+Doğrulama:
 
 ```bash
 curl -fsS http://127.0.0.1:3000/health
 curl -fsS http://127.0.0.1:4200/
 curl -fsS http://127.0.0.1:4200/api/v1/channels
-curl -fsS http://127.0.0.1:3000/api/v1/opta/status
-curl -fsS http://172.28.204.133:3000/health
-curl -fsS http://172.28.204.133:4200/
 ```
 
-Port kontrolu:
+## Operasyon Belgeleri
 
-```bash
-sudo ss -ltnp 'sport = :3000 or sport = :4200'
-```
-
-Beklenen:
-
-- `3000`: `node apps/api/dist/server.js`
-- `4200`: `node ops/scripts/bcms-web-static-server.mjs`
-
-Eski watcher surecleri calismamali:
-
-```bash
-sudo sh -c "pgrep -af 'tsx watch|ng serve' | grep -v pgrep | grep -v 'sh -c' || true"
-```
-
-## Yerel Altyapi
-
-PostgreSQL:
-
-- Service: `snap.postgresql.postgresql.service`
-- Host: `localhost`
-- Port: `5432`
-- DB: `bcms`
-
-RabbitMQ:
-
-- Service: `rabbitmq-server.service`
-- AMQP port: `5672`
-- Management UI: `http://localhost:15672`
-
-Keycloak:
-
-- URL: `http://localhost:8080`
-- Realm: `bcms`
-
-## Operasyon Dokumanlari
-
-- `/home/ubuntu/Desktop/BCMS_README.md`: kullanici/operasyon rehberi
-- `/home/ubuntu/Desktop/BCMS_BAGLANTI_BILGILERI.txt`: tum baglanti ve kimlik bilgileri
-- `ops/README.md`: servis scriptleri ozeti
-- `ops/NOTES_FOR_CODEX.md`: gelecekteki Codex oturumlari icin teknik not
+- `/home/ubuntu/Desktop/BCMS_BAGLANTI_BILGILERI.txt` — bağlantı ve kimlik bilgileri
+- `ops/README.md` — Docker Compose operasyon özeti
+- `ops/NOTES_FOR_CODEX.md` — gelecekteki oturumlar için teknik not

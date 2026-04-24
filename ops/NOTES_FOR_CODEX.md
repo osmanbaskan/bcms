@@ -1,169 +1,130 @@
 # Notes For Future Codex Sessions
 
-The project has been fully migrated from a `systemd`-based local runtime to a containerized **Docker Compose** setup. All services (API, Web, DBs, etc.) are defined in `docker-compose.yml`. Do not suggest `systemd` or `ng serve`/`tsx watch` for the primary runtime.
+## Mimari Kurallar (Değiştirilmez)
 
-Primary runtime commands:
+1. **API/Worker ayrıştırması**: `api` servisi `BCMS_BACKGROUND_SERVICES=none` ile çalışır. Worker servisi `notifications,ingest-worker,ingest-watcher,bxf-watcher` çalıştırır. OPTA Python watcher ayrı konteyner. Bu ayrım bozulmamalı.
+2. **Graceful shutdown**: `server.ts`'de SIGTERM/SIGINT → `app.close()` → 30 sn timeout. Worker için 60 sn. `--force` veya anında kill önerilmez.
+3. **usageScope kanonik**: `schedules.usage_scope` DB kolonudur. Metadata JSON filtresi yoktur. Ham SQL köprüsü eklenmez.
+4. **Nginx static serve**: Angular dosyaları `infra/docker/web.Dockerfile` → nginx:alpine ile sunulur. `bcms-web-static-server.mjs` kaldırıldı.
+5. **Audit log**: `apps/api/src/plugins/audit.ts` tüm write işlemlerini loglar. Bu plugin'i devre dışı bırakma.
+
+## Primary Runtime
 
 ```bash
 docker compose up -d
 docker compose logs -f
 docker compose down
+docker compose up -d --build api worker  # kod değişikliğinden sonra
 ```
 
-Daily commands:
-
-```bash
-./ops/scripts/bcms-status.sh
-./ops/scripts/bcms-restart.sh
-./ops/scripts/bcms-logs.sh
-```
-
-Expected URLs:
-
+Adresler:
 - Web: `http://172.28.204.133:4200`
 - API: `http://172.28.204.133:3000`
+- Swagger: `http://172.28.204.133:4200/docs`
 
-Frontend architecture/current UI notes:
+## Konteyner Yapısı
 
-- Admin navigation includes three new routes:
-  - `Stüdyo Planı` -> `/studio-plan`
-  - `Haftalık Shift` -> `/weekly-shift`
-  - `Provys İçerik Kontrol` -> `/provys-content-control`
-- `apps/web/src/app/features/studio-plan/studio-plan.component.ts` is a
-  standalone Angular component for preparing a weekly studio plan on the web.
-- The studio plan screen persists to backend through
-  `apps/web/src/app/core/services/studio-plan.service.ts`.
-- It intentionally does not read/write `schedules`. Studio planning uses its
-  own Prisma models and tables:
-  - `StudioPlan` -> `studio_plans`
-  - `StudioPlanSlot` -> `studio_plan_slots`
-- API routes live in `apps/api/src/modules/studio-plans/studio-plan.routes.ts`
-  and are registered under `/api/v1/studio-plans`.
-- Supported endpoints:
-  - `GET /api/v1/studio-plans/:weekStart`
-  - `PUT /api/v1/studio-plans/:weekStart`
-  - `GET /api/v1/studio-plans/catalog`
-  - `PUT /api/v1/studio-plans/catalog`
-- Program/color selectors are backend-managed, not hardcoded frontend
-  configuration. Prisma models/tables:
-  - `StudioPlanProgram` -> `studio_plan_programs`
-  - `StudioPlanColor` -> `studio_plan_colors`
-- `weekStart` must be a Monday date. PUT replaces that week's slot set
-  transactionally.
-- It supports Monday-Sunday week view, single day view, 06:00-02:00 half-hour
-  cells, 5 studio columns per day, program/color select boxes, merged visual
-  runs for adjacent same program+color cells, a single-cell eraser, and a
-  button that moves the current week cells to the next week.
-- `Export PDF` currently uses `window.print()` and print CSS.
-- Migration file: `apps/api/prisma/migrations/20260423000000_studio_plans/migration.sql`.
-- Catalog migration file:
-  `apps/api/prisma/migrations/20260423001000_studio_plan_catalog/migration.sql`.
-- On 2026-04-23 Prisma Client generation again required the clean reinstall
-  pattern: delete `node_modules/.prisma`, `node_modules/@prisma/client`, and
-  `node_modules/prisma`, reinstall `prisma@5.22.0` and
-  `@prisma/client@5.22.0`, then run `npm run db:generate -w apps/api`.
-  Generated client includes `studioPlan` and `studioPlanSlot`.
-- `npm run build -w packages/shared`, `npm run build -w apps/api`, and
-  `npm run build -w apps/web` passed after this change.
-- Migration `20260423000000_studio_plans` was applied successfully on the
-  local PostgreSQL DB on 2026-04-23 with
-  `npm run db:migrate:prod -w apps/api`.
-- `weekly-shift` and `provys-content-control` are placeholder feature
-  components until the user defines their business rules.
-- Ingest frontend is split into two work areas:
-  - `Ingest Planlama` for row-level planning and port assignment
-  - `Port Görünümü` for port-based operations board
-- Port board component:
-  `apps/web/src/app/features/ingest/ingest-port-board/ingest-port-board.component.ts`
-- Parent ingest screen:
-  `apps/web/src/app/features/ingest/ingest-list/ingest-list.component.ts`
-- Recording ports are backend-managed through `recording_ports`.
-- Current default/active port set is `1..44`, `Metus1`, `Metus2` (46 total).
-- Plan persistence is `ingest_plan_items`.
-- Current board behavior:
-  - shows all active ports, even empty ones
-  - 5-row port layout
-  - fullscreen and zoom controls
-  - print/export action
-  - cards show only time and title
-  - title may use up to 3 lines
-
-Reinstall services:
-
-```bash
-printf '%s\n' 'ubuntu' | sudo -S ./ops/scripts/bcms-install-system-services.sh
+```
+api        → BCMS_BACKGROUND_SERVICES=none (HTTP only)
+worker     → BCMS_BACKGROUND_SERVICES=notifications,ingest-worker,ingest-watcher,bxf-watcher
+opta-watcher → Python, SMB → POST /api/v1/opta/sync
+web        → nginx, Angular statik
+postgres   → PostgreSQL 16
+rabbitmq   → RabbitMQ 3.12
+keycloak   → Auth
 ```
 
-Expected healthy state:
+## Degraded Mod
 
-- `systemctl is-enabled bcms-api-dev.service bcms-web-dev.service` returns `enabled` for both
-- `curl -fsS http://127.0.0.1:3000/health` succeeds
-- `curl -fsS http://127.0.0.1:4200/` succeeds
-- `curl -fsS http://127.0.0.1:4200/api/v1/channels` succeeds
-- `tsx watch` and `ng serve` should not be running
+OPTA dizini veya RabbitMQ geçici koptuğunda API çökmez:
+- `/health` endpoint `status: "degraded"` ve `checks` objesi döner (HTTP 200)
+- RabbitMQ `rabbitmq.isConnected()` ile sorgulanabilir
+- OPTA `getOptaWatcherStatus()` ile sorgulanabilir
+- DB koptuğunda operasyonel etki vardır
 
-Important local context:
+## Frontend
 
-- PostgreSQL is snap-managed: `snap.postgresql.postgresql.service`
-- RabbitMQ is `rabbitmq-server.service`
-- `.env` uses `SKIP_AUTH=true` for local development
-- Correct OPTA_DIR is `/mnt/opta-backups/OPTAfromFTP20511`, not `/home/ubuntu/opta`
-- API service depends on `/mnt/opta-backups` through `RequiresMountsFor` and `bcms-opta-mount.service`
-- User has provided sudo password as `ubuntu` in this environment
+Admin navigasyonunda üç admin-only route:
+- `Stüdyo Planı` → `/studio-plan`
+- `Haftalık Shift` → `/weekly-shift`
+- `Provys İçerik Kontrol` → `/provys-content-control`
 
-Live plan data rule:
+Stüdyo Planı:
+- `apps/web/src/app/features/studio-plan/studio-plan.component.ts`
+- `studio_plans` + `studio_plan_slots` tabloları (schedules'tan ayrı)
+- `GET/PUT /api/v1/studio-plans/:weekStart`, `GET/PUT /api/v1/studio-plans/catalog`
+- `weekStart` Pazartesi tarihi olmak zorundadır
 
-- Records created from the Canli Yayin Plani UI are not generic broadcast schedule records.
-- They must carry `usageScope="live-plan"` in the `schedules.usage_scope` DB column.
-- `schedules.usage_scope` is the canonical decision point; do not reintroduce metadata JSON filtering for this rule.
-- Normal schedule records use `usageScope="broadcast"`.
-- DB has `schedules_usage_scope_check` allowing only `broadcast` and `live-plan`.
-- Old `metadata.usageScope` transition values were cleaned with migration `20260422000001_cleanup_live_plan_metadata_usage_scope`.
-- On 2026-04-22 a broken Prisma generate state was fixed by deleting
-  `node_modules/.prisma`, `node_modules/@prisma/client`, and
-  `node_modules/prisma`, then reinstalling `prisma@5.22.0` and
-  `@prisma/client@5.22.0`.
-- After that clean reinstall, generated Prisma Client includes
-  `Schedule.usageScope`; API code should use Prisma `usageScope` for
-  list/filter/create/update/export/ingest target validation.
-- Do not bring back the temporary raw SQL bridge for `usage_scope` unless the
-  user explicitly accepts a short-term emergency workaround.
-- Generic schedule consumers should use the default `/api/v1/schedules` behavior, which excludes those records.
-- Live plan UI/reporting/ingest should query `usage=live-plan` or the dedicated endpoints:
-  - `/api/v1/schedules/ingest-candidates`
-  - `/api/v1/schedules/reports/live-plan`
-  - `/api/v1/schedules/reports/live-plan/export`
+Ingest:
+- Port board: `apps/web/src/app/features/ingest/ingest-port-board/ingest-port-board.component.ts`
+- Parent: `apps/web/src/app/features/ingest/ingest-list/ingest-list.component.ts`
+- `ingest_plan_items` kalıcılık tablosu
+- `recording_ports` port katalog tablosu (varsayılan 46 port)
 
-Prisma DB baseline:
+## Prisma
 
-- On 2026-04-22 the local PostgreSQL schema was inspected and the repo's 8
-  Prisma migrations were marked applied with `prisma migrate resolve --applied`.
-- `npm run db:migrate:prod -w apps/api` should now report no pending migrations.
-- The database still uses legacy PostgreSQL enum type names:
-  `booking_status`, `ingest_status`, and `incident_severity`.
-- Prisma schema intentionally maps these to TypeScript enum names
-  `BookingStatus`, `IngestStatus`, and `IncidentSeverity` with enum `@@map`.
-- If booking/ingest/incident Prisma writes fail with a missing PascalCase enum
-  type, check generated client freshness before changing DB enum names.
-- For a brand-new empty PostgreSQL database, use
-  standard Prisma migration flow (`prisma migrate deploy`). The old
-  bash-based bootstrap scripts have been deprecated in favor of official tools.
+Sürüm: 5.22.0
 
-Security/dependency notes:
+Generate sorunu çözümü:
+```bash
+rm -rf node_modules/.prisma node_modules/@prisma/client node_modules/prisma
+npm install prisma@5.22.0 @prisma/client@5.22.0
+npm run db:generate -w apps/api
+```
 
-- On 2026-04-22 `npm audit fix` removed the moderate `@fastify/static`/`ajv`
-  audit findings.
-- The vulnerable `xlsx` package had no fix available and was replaced with
-  `exceljs`.
-- API import accepts `.xlsx` only; do not re-enable `.xls` unless a maintained
-  parser is selected and audited.
-- `npm run smoke:api` runs health, schedule optimistic lock, booking optimistic
-  lock, and playout transition guard checks against the local API.
-- GitHub Actions CI lives at `.github/workflows/ci.yml`. It runs npm audit,
-  Prisma generate, DB migration (`migrate deploy`), unit/integration tests
-  (`npm run test`), full build, starts the API with
-  `BCMS_BACKGROUND_SERVICES=none`, and runs `npm run smoke:api`.
-- Angular production build has realistic bundle budgets and allows the two
-  CommonJS dependencies currently pulled by Keycloak (`base64-js`, `js-sha256`).
-  Google Fonts inlining is disabled so CI builds do not depend on fonts network
-  fetches.
+Bu sorun CI'ya da yansıtıldı (ci.yml'de temiz reinstall adımı var).
+
+DB enum isimleri: `booking_status`, `ingest_status`, `incident_severity` (Prisma `@@map` ile TypeScript enum'lara bağlı).
+
+Local DB 2026-04-22'de 8 migration baseline edildi. `npm run db:migrate:prod -w apps/api` → "No pending migrations" dönmeli.
+
+## OPTA Watcher
+
+- Python konteyneri (`opta-watcher`), SMB'den dosya okur
+- API çağrısı: `POST /api/v1/opta/sync` (Bearer token)
+- Env: `BCMS_API_URL`, `BCMS_API_TOKEN`
+- Doğrudan PostgreSQL erişimi yok; psycopg2 kaldırıldı
+
+## Güvenlik
+
+- `SKIP_AUTH=true` production'da yasak (`validateRuntimeEnv()` fırlatır)
+- `xlsx` paketi kaldırıldı → `exceljs` (sadece `.xlsx` kabul edilir)
+- Production'da required env: `DATABASE_URL`, `RABBITMQ_URL`, `CORS_ORIGIN`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_ADMIN_PASSWORD`, `INGEST_CALLBACK_SECRET`, `INGEST_ALLOWED_ROOTS`
+
+## CI
+
+`.github/workflows/ci.yml`:
+1. npm ci + npm audit
+2. Prisma cache temizliği + reinstall + generate
+3. prisma migrate deploy
+4. npm run test
+5. npm run build (tüm repo)
+6. API başlat (`BCMS_BACKGROUND_SERVICES=none`)
+7. npm run smoke:api
+
+## Lokal Ortam
+
+- PostgreSQL: Docker konteyneri (bcms_postgres)
+- RabbitMQ: Docker konteyneri (bcms_rabbitmq)
+- Sudo şifresi: `ubuntu`
+
+## Kaldırılan Dosyalar (Artık Yok)
+
+- `ops/scripts/bcms-web-static-server.mjs` → nginx kullanılıyor
+- `ops/scripts/bcms-db-bootstrap-empty.sh` → prisma migrate deploy
+- `ops/scripts/bcms-install-cron-fallback.sh` → Docker Compose
+- `ops/scripts/bcms-install-user-services.sh` → Docker Compose
+- `ops/scripts/bcms-supervisor*.sh` → Docker Compose restart policy
+
+## Önemli Dosya Konumları
+
+```
+apps/api/src/server.ts                    → graceful shutdown (SIGTERM)
+apps/api/src/app.ts                       → buildApp, health endpoint (degraded mode)
+apps/api/src/plugins/rabbitmq.ts          → RabbitMQClient, isConnected()
+apps/api/src/plugins/audit.ts             → Prisma audit middleware
+apps/api/src/modules/opta/opta.watcher.ts → OPTA dizin health + getOptaWatcherStatus()
+apps/api/src/modules/opta/opta.sync.routes.ts → POST /api/v1/opta/sync
+infra/docker/nginx.conf                   → Angular serve + API proxy + docs proxy
+docker-compose.yml                        → api + worker ayrıştırması
+```

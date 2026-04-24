@@ -69,7 +69,7 @@ services:
     networks:
       - bcms_net
 
-  # ── API (Fastify) ─────────────────────────────────────────────────────────────
+  # ── API (Fastify — sadece HTTP istekleri, worker'sız) ─────────────────────────
   api:
     build:
       context: .
@@ -77,6 +77,7 @@ services:
       target: production
     container_name: bcms_api
     restart: unless-stopped
+    stop_grace_period: 30s
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
@@ -89,7 +90,7 @@ services:
       INGEST_ALLOWED_ROOTS: ${INGEST_ALLOWED_ROOTS:-/opta,/app/tmp/watch}
       PORT: 3000
       NODE_ENV: production
-      BCMS_BACKGROUND_SERVICES: ${BCMS_BACKGROUND_SERVICES:-all}
+      BCMS_BACKGROUND_SERVICES: none
       LOG_LEVEL: info
       CORS_ORIGIN: http://localhost:4200
       SMTP_HOST: mailhog
@@ -107,6 +108,42 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    networks:
+      - bcms_net
+
+  # ── Worker (arka plan servisleri — ingest, bxf, notifications) ───────────────
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+      target: production
+    container_name: bcms_worker
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      NODE_ENV: production
+      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,bxf-watcher
+      LOG_LEVEL: info
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_SECURE: "false"
+      SMTP_FROM: ${SMTP_FROM:-noreply@bcms.local}
+      STORAGE_HOST: ${STORAGE_HOST}
+      INGEST_ALLOWED_ROOTS: ${INGEST_ALLOWED_ROOTS:-/opta,/app/tmp/watch}
+      BXF_WATCH_DIR: ${BXF_WATCH_DIR:-/app/tmp/bxf}
+      WATCH_FOLDER: /app/tmp/watch
+    volumes:
+      - ingest_watch:/app/tmp/watch
+      - bxf_watch:/app/tmp/bxf
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      api:
+        condition: service_started
     networks:
       - bcms_net
 
@@ -197,6 +234,8 @@ volumes:
   prometheus_data:
   grafana_data:
   opta_data:
+  ingest_watch:
+  bxf_watch:
 
 networks:
   bcms_net:
