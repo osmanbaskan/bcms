@@ -62,12 +62,12 @@ function createAuditMiddleware(prisma: PrismaClient): Prisma.Middleware {
     // Değişiklikleri logla
     await prisma.auditLog.create({
       data: {
-        model: model!,
-        action: action,
-        targetId: String(targetId ?? ''),
-        changes: { before, after },
-        userId: context?.userId,
-        userRoles: context?.userRoles,
+        entityType: model!,
+        entityId: Number(targetId ?? 0),
+        action: action.toUpperCase(),
+        beforePayload: before ?? undefined,
+        afterPayload: after ?? undefined,
+        user: context?.userId ?? 'system',
         ipAddress: context?.ipAddress,
       },
     });

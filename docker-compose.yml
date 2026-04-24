@@ -13,7 +13,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -34,8 +34,8 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./infra/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "5673:5672"
+      - "15673:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 30s
@@ -85,6 +85,7 @@ services:
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8080/realms/bcms}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KEYCLOAK_ALLOWED_CLIENTS: ${KEYCLOAK_ALLOWED_CLIENTS:-bcms-web,bcms-api}
       INGEST_CALLBACK_SECRET: ${INGEST_CALLBACK_SECRET}
       INGEST_ALLOWED_ROOTS: ${INGEST_ALLOWED_ROOTS:-/opta,/app/tmp/watch}
@@ -125,13 +126,17 @@ services:
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       NODE_ENV: production
       BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,bxf-watcher
+      CORS_ORIGIN: http://localhost:4200
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      INGEST_CALLBACK_SECRET: ${INGEST_CALLBACK_SECRET}
+      INGEST_ALLOWED_ROOTS: ${INGEST_ALLOWED_ROOTS:-/opta,/app/tmp/watch}
       LOG_LEVEL: info
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       SMTP_SECURE: "false"
       SMTP_FROM: ${SMTP_FROM:-noreply@bcms.local}
       STORAGE_HOST: ${STORAGE_HOST}
-      INGEST_ALLOWED_ROOTS: ${INGEST_ALLOWED_ROOTS:-/opta,/app/tmp/watch}
       BXF_WATCH_DIR: ${BXF_WATCH_DIR:-/app/tmp/bxf}
       WATCH_FOLDER: /app/tmp/watch
     volumes:

@@ -25,11 +25,15 @@ CMD ["npm", "run", "dev"]
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY package.json package-lock.json* ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/api/package.json ./apps/api/
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 COPY tsconfig.base.json ./
+RUN npm run build -w packages/shared
 WORKDIR /app/apps/api
-RUN npm run build -w packages/shared && npx prisma generate && npm run build
+RUN npx prisma generate && npm run build
 
 # ── Production ────────────────────────────────────────────────────────────────
 FROM base AS production
