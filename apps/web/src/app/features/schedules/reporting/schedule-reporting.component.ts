@@ -33,6 +33,15 @@ interface ReportRow {
   durationMin: number;
 }
 
+interface StudioUsageRow {
+  program: string;
+  color: string;
+  slotCount: number;
+  totalMinutes: number;
+  dayCount: number;
+  studios: { studio: string; slotCount: number; totalMinutes: number }[];
+}
+
 type FilterMode = 'date-range' | 'league-week';
 
 function todayDisplayDate(): string {
@@ -65,6 +74,12 @@ function maskDisplayDateInput(value: string): string {
   if (digits.length <= 2) return digits;
   if (digits.length <= 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
   return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
+}
+
+function formatHours(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h} sa` : `${h} sa ${m} dk`;
 }
 
 @Component({
@@ -107,22 +122,24 @@ function maskDisplayDateInput(value: string): string {
       <section class="filter-band">
         <mat-form-field class="report-field">
           <mat-label>Rapor</mat-label>
-          <mat-select [(ngModel)]="selectedReportId" (selectionChange)="load()">
+          <mat-select [(ngModel)]="selectedReportId" (selectionChange)="onReportChange()">
             @for (report of reportDefinitions; track report.id) {
               <mat-option [value]="report.id" [disabled]="!report.enabled">{{ report.label }}</mat-option>
             }
           </mat-select>
         </mat-form-field>
 
-        <mat-form-field class="mode-field">
-          <mat-label>Filtre Tipi</mat-label>
-          <mat-select [(ngModel)]="filterMode" (selectionChange)="load()">
-            <mat-option value="date-range">Tarihler Arası</mat-option>
-            <mat-option value="league-week">Lig / Hafta</mat-option>
-          </mat-select>
-        </mat-form-field>
+        @if (selectedReportId !== 'studio-usage') {
+          <mat-form-field class="mode-field">
+            <mat-label>Filtre Tipi</mat-label>
+            <mat-select [(ngModel)]="filterMode" (selectionChange)="load()">
+              <mat-option value="date-range">Tarihler Arası</mat-option>
+              <mat-option value="league-week">Lig / Hafta</mat-option>
+            </mat-select>
+          </mat-form-field>
+        }
 
-        @if (filterMode === 'date-range') {
+        @if (selectedReportId === 'studio-usage' || filterMode === 'date-range') {
           <mat-form-field class="date-field">
             <mat-label>Başlangıç</mat-label>
             <input matInput
@@ -147,15 +164,17 @@ function maskDisplayDateInput(value: string): string {
                    (keyup.enter)="load()">
           </mat-form-field>
 
-          <mat-form-field class="league-field">
-            <mat-label>Lig</mat-label>
-            <mat-select [(ngModel)]="selectedLeague" (selectionChange)="onDateRangeLeagueChange($event.value)">
-              <mat-option [value]="null">Tüm ligler</mat-option>
-              @for (league of leagues(); track league) {
-                <mat-option [value]="league">{{ league }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
+          @if (selectedReportId !== 'studio-usage') {
+            <mat-form-field class="league-field">
+              <mat-label>Lig</mat-label>
+              <mat-select [(ngModel)]="selectedLeague" (selectionChange)="onDateRangeLeagueChange($event.value)">
+                <mat-option [value]="null">Tüm ligler</mat-option>
+                @for (league of leagues(); track league) {
+                  <mat-option [value]="league">{{ league }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          }
         } @else {
           <mat-form-field class="league-field">
             <mat-label>Lig</mat-label>
@@ -196,8 +215,8 @@ function maskDisplayDateInput(value: string): string {
 
       <section class="summary-grid">
         <div class="summary-item">
-          <span class="summary-value">{{ rows().length }}</span>
-          <span class="summary-label">Kayıt</span>
+          <span class="summary-value">{{ selectedReportId === 'studio-usage' ? studioRows().length : rows().length }}</span>
+          <span class="summary-label">{{ selectedReportId === 'studio-usage' ? 'Program' : 'Kayıt' }}</span>
         </div>
         <div class="summary-item">
           <span class="summary-value">{{ totalMinutes() | number:'1.0-0' }}</span>
@@ -212,6 +231,49 @@ function maskDisplayDateInput(value: string): string {
       @if (loading()) {
         <div class="loading-state">
           <mat-spinner diameter="44"></mat-spinner>
+        </div>
+      } @else if (selectedReportId === 'studio-usage') {
+        <div class="table-shell">
+          <table class="studio-table">
+            <thead>
+              <tr>
+                <th class="th-rank">#</th>
+                <th class="th-color">Renk</th>
+                <th>Program</th>
+                <th class="th-num">Slot</th>
+                <th class="th-num">Toplam Dk</th>
+                <th class="th-num">Toplam Saat</th>
+                <th class="th-num">Gün</th>
+                <th>Stüdyo Dağılımı</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of studioRows(); track row.program; let i = $index) {
+                <tr>
+                  <td class="th-rank td-muted">{{ i + 1 }}</td>
+                  <td class="th-color">
+                    <span class="color-swatch" [style.background]="row.color"></span>
+                  </td>
+                  <td>{{ row.program }}</td>
+                  <td class="th-num">{{ row.slotCount }}</td>
+                  <td class="th-num">{{ row.totalMinutes }}</td>
+                  <td class="th-num">{{ formatHours(row.totalMinutes) }}</td>
+                  <td class="th-num">{{ row.dayCount }}</td>
+                  <td>
+                    @for (s of row.studios; track s.studio) {
+                      <span class="studio-tag">{{ s.studio }}: {{ s.totalMinutes }} dk</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+          @if (!studioRows().length) {
+            <div class="empty-state">
+              <mat-icon>summarize</mat-icon>
+              <span>Seçili tarih aralığında stüdyo plan verisi bulunamadı.</span>
+            </div>
+          }
         </div>
       } @else {
         <div class="table-shell">
@@ -302,6 +364,32 @@ function maskDisplayDateInput(value: string): string {
       display:flex; align-items:center; justify-content:center; gap:10px;
       padding:32px; color:#9aa2b3;
     }
+    .studio-table {
+      width:100%; border-collapse:collapse; font-size:13px;
+    }
+    .studio-table th {
+      background:#1a1a2e; padding:10px 12px; text-align:left;
+      font-weight:600; color:rgba(255,255,255,.7);
+      border-bottom:1px solid rgba(255,255,255,.1); white-space:nowrap;
+    }
+    .studio-table td {
+      padding:9px 12px; border-bottom:1px solid rgba(255,255,255,.06);
+      vertical-align:middle;
+    }
+    .studio-table tr:hover td { background:rgba(255,255,255,.03); }
+    .th-rank { width:36px; text-align:center; }
+    .th-color { width:48px; text-align:center; }
+    .th-num { text-align:right; white-space:nowrap; }
+    .td-muted { color:rgba(255,255,255,.4); }
+    .color-swatch {
+      display:inline-block; width:20px; height:20px;
+      border-radius:4px; border:1px solid rgba(255,255,255,.2);
+    }
+    .studio-tag {
+      display:inline-block; margin:2px 4px 2px 0;
+      background:rgba(255,255,255,.08); padding:2px 8px;
+      border-radius:10px; font-size:11px; white-space:nowrap;
+    }
     @media (max-width: 760px) {
       .page-header { flex-direction:column; }
       .summary-grid { grid-template-columns:1fr; }
@@ -318,12 +406,20 @@ export class ScheduleReportingComponent implements OnInit {
       exportEndpoint: '/schedules/reports/live-plan/export',
       enabled: true,
     },
+    {
+      id: 'studio-usage',
+      label: 'Stüdyo Kullanım Raporu',
+      endpoint: '/studio-plans/reports/usage',
+      exportEndpoint: '',
+      enabled: true,
+    },
   ];
 
   readonly columns = ['startTime', 'endTime', 'channel', 'title', 'houseNumber', 'duration'];
 
   filterEntries = signal<FixtureCompetition[]>([]);
   rows = signal<ReportRow[]>([]);
+  studioRows = signal<StudioUsageRow[]>([]);
   loading = signal(false);
   exporting = signal(false);
 
@@ -339,9 +435,14 @@ export class ScheduleReportingComponent implements OnInit {
     this.reportDefinitions.find((report) => report.id === this.selectedReportId) ?? this.reportDefinitions[0],
   );
 
-  totalMinutes = computed(() =>
-    this.rows().reduce((total, row) => total + row.durationMin, 0),
-  );
+  totalMinutes = computed(() => {
+    if (this.selectedReportId === 'studio-usage') {
+      return this.studioRows().reduce((total, row) => total + row.totalMinutes, 0);
+    }
+    return this.rows().reduce((total, row) => total + row.durationMin, 0);
+  });
+
+  readonly formatHours = formatHours;
 
   leagues = computed(() => (
     [...new Set(this.filterEntries().map((entry) => entry.league))]
@@ -394,9 +495,24 @@ export class ScheduleReportingComponent implements OnInit {
     this.load();
   }
 
+  onReportChange(): void {
+    if (this.selectedReportId === 'studio-usage') {
+      this.filterMode = 'date-range';
+    }
+    this.load();
+  }
+
   load(): void {
+    this.rows.set([]);
+    this.studioRows.set([]);
+
     const report = this.selectedReport();
     if (!report.enabled) return;
+
+    if (this.selectedReportId === 'studio-usage') {
+      this.loadStudioUsage();
+      return;
+    }
 
     const params = this.queryParams();
     if (!params) return;
@@ -411,6 +527,23 @@ export class ScheduleReportingComponent implements OnInit {
         })));
         this.loading.set(false);
       },
+      error: (err) => {
+        this.loading.set(false);
+        this.snack.open(`Rapor verisi alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+      },
+    });
+  }
+
+  private loadStudioUsage(): void {
+    const range = this.normalizedDateRange();
+    if (!range) {
+      this.snack.open('Tarih formatı gg.aa.yyyy olmalıdır', 'Kapat', { duration: 4000 });
+      return;
+    }
+    const [from, to] = range;
+    this.loading.set(true);
+    this.api.get<StudioUsageRow[]>('/studio-plans/reports/usage', { from, to }).subscribe({
+      next: (data) => { this.studioRows.set(data); this.loading.set(false); },
       error: (err) => {
         this.loading.set(false);
         this.snack.open(`Rapor verisi alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
