@@ -200,7 +200,7 @@ def upsert_matches(matches: list[dict]) -> tuple[int, int, int]:
     )
     
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=30) as response:
             res_body = response.read().decode("utf-8")
             data = json.loads(res_body)
             return data.get("inserted", 0), data.get("updated", 0), data.get("unchanged", 0)
