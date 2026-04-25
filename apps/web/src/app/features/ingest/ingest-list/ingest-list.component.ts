@@ -56,13 +56,12 @@ interface IngestPlanRow {
 }
 
 type PlanFilter = 'all' | 'today' | 'active' | 'unassigned' | 'issues';
-type SourceFilter = 'all' | 'live-plan' | 'studio-plan' | 'ingest-plan';
+type SourceFilter = 'all' | 'Canlı Yayın' | 'Stüdyo Planı';
 
 const SOURCE_FILTERS: Array<{ label: string; value: SourceFilter }> = [
-  { label: 'Tüm Kaynaklar', value: 'all' },
-  { label: 'Canlı Yayın',   value: 'live-plan' },
-  { label: 'Stüdyo Planı',  value: 'studio-plan' },
-  { label: 'Ingest Plan',   value: 'ingest-plan' },
+  { label: 'Tümü',         value: 'all' },
+  { label: 'Canlı Yayın',  value: 'Canlı Yayın' },
+  { label: 'Stüdyo Planı', value: 'Stüdyo Planı' },
 ];
 
 const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING', 'PROXY_GEN', 'QC']);
@@ -650,7 +649,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
     const srcFilter = this.sourceFilter();
     if (srcFilter !== 'all') {
-      rows = rows.filter((row) => row.source === srcFilter);
+      rows = rows.filter((row) => row.sourceLabel === srcFilter);
     }
 
     return rows;
