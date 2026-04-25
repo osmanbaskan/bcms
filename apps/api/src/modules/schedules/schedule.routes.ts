@@ -6,7 +6,7 @@ import {
   scheduleQuerySchema,
 } from './schedule.schema.js';
 import { importSchedulesFromBuffer } from './schedule.import.js';
-import { exportSchedulesToBuffer }   from './schedule.export.js';
+import { exportSchedulesToStream }   from './schedule.export.js';
 import { PERMISSIONS } from '@bcms/shared';
 
 interface LivePlanFilterEntry {
@@ -79,7 +79,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
     const q = request.query as {
       from?: string; to?: string; channelId?: string; title?: string;
     };
-    const buffer = await exportSchedulesToBuffer(app, {
+    const stream = await exportSchedulesToStream(app, {
       from:      q.from,
       to:        q.to,
       channelId: q.channelId ? Number(q.channelId) : undefined,
@@ -90,7 +90,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
     reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="${filename}"`)
-      .send(buffer);
+      .send(stream);
   });
 
   // GET /api/v1/schedules/ingest-candidates — Ingest ekranı için canlı yayın planı kayıtları
@@ -223,7 +223,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
     },
   }, async (request, reply) => {
     const q = request.query as { from?: string; to?: string; channelId?: string; league?: string; season?: string; week?: string; title?: string };
-    const buffer = await exportSchedulesToBuffer(app, {
+    const stream = await exportSchedulesToStream(app, {
       usage:     'live-plan',
       from:      q.from,
       to:        q.to,
@@ -238,7 +238,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
     reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="${filename}"`)
-      .send(buffer);
+      .send(stream);
   });
 
   // GET /api/v1/schedules/:id

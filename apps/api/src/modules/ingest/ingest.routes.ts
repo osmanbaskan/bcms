@@ -1,3 +1,4 @@
+import { PassThrough } from 'node:stream';
 import ExcelJS from 'exceljs';
 import type { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
@@ -292,11 +293,12 @@ export async function ingestRoutes(app: FastifyInstance) {
       totalRow.font = { bold: true };
     }
 
-    const buffer = await workbook.xlsx.writeBuffer();
+    const stream = new PassThrough();
+    workbook.xlsx.write(stream).then(() => stream.end()).catch((err) => stream.destroy(err));
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="ingest-report_${from}_${to}.xlsx"`)
-      .send(Buffer.from(buffer));
+      .send(stream);
   });
 
   // GET /api/v1/ingest/plan?date=YYYY-MM-DD — Ingest departmanı plan satırı durumları

@@ -1,3 +1,4 @@
+import { PassThrough } from 'node:stream';
 import ExcelJS from 'exceljs';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -245,11 +246,12 @@ export async function studioPlanRoutes(app: FastifyInstance) {
     const totalRow = sheet.addRow(['', 'TOPLAM', '', totalSlots, totalMins, fmtHours(totalMins), '', '']);
     totalRow.font = { bold: true };
 
-    const buffer = await workbook.xlsx.writeBuffer();
+    const stream = new PassThrough();
+    workbook.xlsx.write(stream).then(() => stream.end()).catch((err) => stream.destroy(err));
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="studio-usage_${from}_${to}.xlsx"`)
-      .send(Buffer.from(buffer));
+      .send(stream);
   });
 
   app.get('/catalog', {

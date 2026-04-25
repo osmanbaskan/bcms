@@ -29,46 +29,48 @@ const contextPlugin: FastifyPluginAsync = fp(async (fastify) => {
 
 /**
  * Prisma yazma işlemlerini yakalayan ve audit log oluşturan middleware.
+ * - Tekil update/delete: where koşuluna göre findFirst ile before snapshot alır (id varsayımı yok)
+ * - updateMany/deleteMany: işlem öncesi findMany ile etkilenecek ID listesini kaydeder
  */
 function createAuditMiddleware(prisma: PrismaClient): Prisma.Middleware {
   return async (params, next) => {
-    // AuditLog tablosuna yapılan yazma işlemlerini tekrar loglama (sonsuz döngüden kaçın)
-    if (params.model === 'AuditLog') {
-      return next(params);
-    }
+    if (params.model === 'AuditLog') return next(params);
 
     const isWriteAction = ['create', 'update', 'upsert', 'delete', 'createMany', 'updateMany', 'deleteMany'].includes(params.action);
-
-    if (!isWriteAction) {
-      return next(params);
-    }
+    if (!isWriteAction) return next(params);
 
     const { model, action, args } = params;
     const context = als.getStore();
-
-    // Değişiklik öncesi veriyi al (sadece tekil update/delete için)
     let before: any = null;
-    if ((action === 'update' || action === 'delete') && args.where?.id) {
-      before = await (prisma as any)[model!].findUnique({ where: { id: args.where.id } });
+
+    if ((action === 'update' || action === 'delete') && args.where) {
+      try {
+        before = await (prisma as any)[model!].findFirst({ where: args.where });
+      } catch { /* model findFirst desteklemiyorsa yok say */ }
+    } else if ((action === 'updateMany' || action === 'deleteMany') && args.where) {
+      try {
+        const affected: { id: unknown }[] = await (prisma as any)[model!].findMany({
+          where: args.where,
+          select: { id: true },
+        });
+        before = { affectedIds: affected.map((r) => r.id) };
+      } catch { /* composite key / id-siz tablo için yok say */ }
     }
 
-    // Asıl veritabanı işlemini gerçekleştir
     const result = await next(params);
 
-    // Değişiklik sonrası veriyi al
-    const after = (action.startsWith('create') || action.startsWith('update')) ? result : null;
-    const targetId = (result as any)?.id ?? args.where?.id;
+    const after = (action === 'create' || action === 'update' || action === 'upsert') ? result : null;
+    const targetId = (result as any)?.id ?? (args as any)?.where?.id ?? 0;
 
-    // Değişiklikleri logla
     await prisma.auditLog.create({
       data: {
-        entityType: model!,
-        entityId: Number(targetId ?? 0),
-        action: action.toUpperCase(),
-        beforePayload: before ?? undefined,
-        afterPayload: after ?? undefined,
-        user: context?.userId ?? 'system',
-        ipAddress: context?.ipAddress,
+        entityType:    model!,
+        entityId:      Number(targetId),
+        action:        action.toUpperCase(),
+        beforePayload: before   ?? undefined,
+        afterPayload:  after    ?? undefined,
+        user:          context?.userId ?? 'system',
+        ipAddress:     context?.ipAddress,
       },
     });
 

@@ -1,3 +1,4 @@
+import { PassThrough } from 'node:stream';
 import ExcelJS from 'exceljs';
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
@@ -30,10 +31,10 @@ export interface ExportOptions {
   usage?:     'broadcast' | 'live-plan' | 'all';
 }
 
-export async function exportSchedulesToBuffer(
+export async function exportSchedulesToStream(
   app: FastifyInstance,
   opts: ExportOptions,
-): Promise<Buffer> {
+): Promise<PassThrough> {
   const { from, to, channelId, league, season, week, title, usage = 'broadcast' } = opts;
 
   const schedules = await app.prisma.schedule.findMany({
@@ -84,8 +85,9 @@ export async function exportSchedulesToBuffer(
   sheet.getRow(1).font = { bold: true, size: 14 };
   sheet.getRow(2).font = { bold: true };
 
-  const output = await workbook.xlsx.writeBuffer();
-  return Buffer.from(output);
+  const stream = new PassThrough();
+  workbook.xlsx.write(stream).then(() => stream.end()).catch((err) => stream.destroy(err));
+  return stream;
 }
 
 function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' | 'league' | 'season' | 'week' | 'usage'>): Prisma.ScheduleWhereInput {
