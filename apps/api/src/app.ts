@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
@@ -168,6 +169,19 @@ export async function buildApp() {
     credentials: true,
   });
 
+  await app.register(rateLimit, {
+    global: true,
+    max: 300,
+    timeWindow: '1 minute',
+    skipOnError: true,
+    keyGenerator: (req) => req.headers['x-real-ip'] as string ?? req.ip,
+    errorResponseBuilder: (_req, context) => ({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: `Rate limit exceeded. Try again in ${Math.ceil(context.ttl / 1000)}s.`,
+    }),
+  });
+
   // ── API Docs (Swagger) ────────────────────────────────────────────────────────
   await app.register(swagger, {
     openapi: {
@@ -198,7 +212,7 @@ export async function buildApp() {
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }); // max 10 MB
 
   // ── Health check ──────────────────────────────────────────────────────────────
-  app.get('/health', { schema: { hide: true } }, async (_req, reply) => {
+  app.get('/health', { schema: { hide: true }, config: { rateLimit: false } }, async (_req, reply) => {
     const checks: Record<string, 'ok' | 'degraded'> = {};
 
     // Database

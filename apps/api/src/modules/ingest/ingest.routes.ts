@@ -469,6 +469,7 @@ export async function ingestRoutes(app: FastifyInstance) {
   app.post('/callback', {
     preHandler: requireWorkerSecret,
     schema: { tags: ['Ingest'], summary: 'Worker callback on job completion' },
+    config: { rateLimit: false },
   }, async (request, reply) => {
     const dto = callbackSchema.parse(request.body);
 
