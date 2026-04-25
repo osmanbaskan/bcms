@@ -50,7 +50,11 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
   const keycloakUrl  = process.env.KEYCLOAK_URL ?? 'http://localhost:8080';
   const realm        = process.env.KEYCLOAK_REALM ?? 'bcms';
   const clientId     = process.env.KEYCLOAK_CLIENT_ID ?? 'bcms-web';
-  const issuer       = process.env.KEYCLOAK_ISSUER ?? `${keycloakUrl}/realms/${realm}`;
+  const primaryIssuer = process.env.KEYCLOAK_ISSUER ?? `${keycloakUrl}/realms/${realm}`;
+  const allowedIssuers = (process.env.KEYCLOAK_ALLOWED_ISSUERS ?? primaryIssuer)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   const clientIds    = (process.env.KEYCLOAK_ALLOWED_CLIENTS ?? clientId)
     .split(',')
     .map((id) => id.trim())
@@ -88,7 +92,7 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
     try {
       await request.jwtVerify();
       const claims = request.user as TokenClaims;
-      if (claims.iss !== issuer || !hasAudience(claims, clientIds)) {
+      if (!allowedIssuers.includes(claims.iss ?? '') || !hasAudience(claims, clientIds)) {
         throw new Error('Invalid token issuer or client');
       }
     } catch {

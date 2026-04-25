@@ -59,6 +59,8 @@ services:
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: "172.28.204.133"
+      KC_HOSTNAME_PORT: "8080"
     volumes:
       - ./infra/keycloak:/opt/keycloak/data/import
     ports:
@@ -82,7 +84,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8080/realms/bcms}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://172.28.204.133:8080/realms/bcms}
+      KEYCLOAK_ALLOWED_ISSUERS: ${KEYCLOAK_ALLOWED_ISSUERS:-http://172.28.204.133:8080/realms/bcms,http://localhost:8080/realms/bcms}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
