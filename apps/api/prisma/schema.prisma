@@ -177,6 +177,7 @@ model IngestJob {
   startedAt  DateTime?    @map("started_at")
   finishedAt DateTime?    @map("finished_at")
   createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
 
   qcReport QcReport?
 
