@@ -47,7 +47,8 @@ interface IngestPlanRow {
   endTime: string;
   title: string;
   location: string;
-  note: string;
+  note: string;      // kaynak bilgisi (lig/stüdyo) — salt okunur
+  planNote: string;  // operatör notu — düzenlenebilir, ingest_plan_items.note
   recordingPort: string;
   status: IngestPlanStatus;
   jobId?: number | null;
@@ -72,6 +73,14 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
   { label: 'Aktif İşler', value: 'active' },
   { label: 'Port Atanmamış', value: 'unassigned' },
   { label: 'Sorunlular', value: 'issues' },
+];
+
+const PLAN_STATUS_OPTIONS: Array<{ value: IngestPlanStatus; label: string }> = [
+  { value: 'WAITING',        label: 'Bekliyor' },
+  { value: 'RECEIVED',       label: 'Alındı' },
+  { value: 'INGEST_STARTED', label: 'İşlemde' },
+  { value: 'COMPLETED',      label: 'Tamamlandı' },
+  { value: 'ISSUE',          label: 'Sorun' },
 ];
 
 const PORT_BOARD_SLOT_MINUTES = 30;
@@ -191,6 +200,7 @@ const TR_DATE_FORMATS = {
                 <span>İçerik</span>
                 <span>Kanal / Stüdyo</span>
                 <span>Kayıt Portu</span>
+                <span>Durum</span>
                 <span>Not</span>
               </div>
 
@@ -198,7 +208,12 @@ const TR_DATE_FORMATS = {
                 <div class="planning-row">
                   <span class="source-pill" [class.studio]="row.source === 'studio-plan'">{{ row.sourceLabel }}</span>
                   <strong class="time-range">{{ row.startTime }} - {{ row.endTime }}</strong>
-                  <span>{{ row.title }}</span>
+                  <div class="content-cell">
+                    <span>{{ row.title }}</span>
+                    @if (row.note && row.note !== '-') {
+                      <span class="content-meta">{{ row.note }}</span>
+                    }
+                  </div>
                   <span>{{ row.location }}</span>
                   <div class="port-cell" [class.assigned]="row.recordingPort">
                     <span class="port-dot"></span>
@@ -211,7 +226,16 @@ const TR_DATE_FORMATS = {
                       </mat-select>
                     </mat-form-field>
                   </div>
-                  <span>{{ row.note }}</span>
+                  <mat-form-field class="inline-field" appearance="outline">
+                    <mat-select [(ngModel)]="row.status" (selectionChange)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)">
+                      @for (opt of planStatusOptions; track opt.value) {
+                        <mat-option [value]="opt.value">{{ opt.label }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                  <mat-form-field class="inline-field" appearance="outline">
+                    <input matInput [(ngModel)]="row.planNote" placeholder="Not…" (blur)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)" />
+                  </mat-form-field>
                 </div>
               }
             </div>
@@ -453,8 +477,10 @@ const TR_DATE_FORMATS = {
     .planning-tools { padding: 12px 14px 0; }
     .planning-table-wrap { overflow-x: auto; }
     .planning-table { min-width: 920px; }
+    .content-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .content-meta { font-size: 0.72rem; color: #7a8fa8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .planning-head,
-    .planning-row { display: grid; grid-template-columns: 126px 104px minmax(220px, 1fr) 140px 190px minmax(150px, 0.7fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .planning-row { display: grid; grid-template-columns: 116px 100px minmax(170px,1fr) 124px 168px 138px minmax(120px,0.6fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
     .planning-head { color: #9aa2b3; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
     .planning-row { font-size: 0.86rem; }
     .planning-row:nth-child(odd) { background: rgba(255,255,255,0.025); }
@@ -495,9 +521,10 @@ const TR_DATE_FORMATS = {
   `],
 })
 export class IngestListComponent implements OnInit, OnDestroy {
-  columns     = ['id', 'sourcePath', 'status', 'plan', 'qc', 'createdAt', 'expand'];
-  statusTabs  = STATUS_TABS;
-  planFilters = PLAN_FILTERS;
+  columns          = ['id', 'sourcePath', 'status', 'plan', 'qc', 'createdAt', 'expand'];
+  statusTabs       = STATUS_TABS;
+  planFilters      = PLAN_FILTERS;
+  planStatusOptions = PLAN_STATUS_OPTIONS;
 
   jobs        = signal<IngestJob[]>([]);
   livePlanCandidates = signal<Schedule[]>([]);
@@ -547,6 +574,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
         .join(' · ') || '-',
       recordingPort: planItemMap.get(`live:${schedule.id}`)?.recordingPort ?? '',
       status: planItemMap.get(`live:${schedule.id}`)?.status ?? 'WAITING' as IngestPlanStatus,
+      planNote: planItemMap.get(`live:${schedule.id}`)?.note ?? '',
       jobId: planItemMap.get(`live:${schedule.id}`)?.jobId,
       scheduleId: schedule.id,
     }));
@@ -950,6 +978,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
         title: first.program,
         location: first.studio,
         note: 'Stüdyo programı',
+        planNote: planItem?.note ?? '',
         recordingPort: planItem?.recordingPort ?? '',
         status: planItem?.status ?? 'WAITING',
         jobId: planItem?.jobId,
@@ -1016,6 +1045,8 @@ export class IngestListComponent implements OnInit, OnDestroy {
       recordingPort: row.recordingPort || null,
       plannedStartMinute: row.sortMinute,
       plannedEndMinute: row.endMinute,
+      status: row.status,
+      note: row.planNote || null,
     }).subscribe({
       next: (item) => {
         this.ingestPlanItems.update((items) => {
