@@ -13,6 +13,7 @@ export interface IngestPortBoardItemView {
     endTime: string;
     title: string;
     location: string;
+    planNote: string;
   };
   gridRow: string;
   overlap: boolean;
@@ -89,6 +90,7 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
                     <strong [title]="item.row.title">
                       <span class="title-line" *ngFor="let line of titleLines(item.row.title)">{{ line }}</span>
                     </strong>
+                    <span class="port-board-note" *ngIf="item.row.planNote">{{ item.row.planNote }}</span>
                     <span class="port-board-warning" *ngIf="item.overlap">Cakisma</span>
                   </article>
                 </div>
@@ -126,10 +128,11 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-item{z-index:1;margin:1px 0 0;padding:1px 1px 2px;border:1px solid rgba(255,255,255,.08);background:#c7d8ec;color:#17304d;display:flex;flex-direction:column;gap:1px;overflow:hidden}
     .port-board-item:first-of-type{margin-top:10px}
     .port-board-item.overlap{background:#ffd9d9;border-color:#ef5350}
-    .port-board-item strong{display:flex;flex-direction:column;font-size:1.44rem;line-height:.92;overflow:hidden}
+    .port-board-item strong{display:flex;flex-direction:column;font-size:2.16rem;line-height:.92;overflow:hidden}
     .title-line{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .port-board-time,.port-board-warning{font-weight:800;font-size:1rem;line-height:1}
+    .port-board-time,.port-board-warning{font-weight:800;font-size:1.5rem;line-height:1}
     .port-board-warning{color:#b71c1c}
+    .port-board-note{font-size:1.2rem;font-weight:600;color:#2a4a6a;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   `],
 })
 export class IngestPortBoardComponent {

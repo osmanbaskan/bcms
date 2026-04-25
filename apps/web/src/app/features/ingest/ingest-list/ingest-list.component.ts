@@ -785,6 +785,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
               <div class="item ${item.overlap ? 'overlap' : ''}" style="grid-row:${item.gridRow}">
                 <div class="t">${item.row.startTime} - ${item.row.endTime}</div>
                 <div class="ttl">${this.escapeHtml(item.row.title)}</div>
+                ${item.row.planNote ? `<div class="nt">${this.escapeHtml(item.row.planNote)}</div>` : ''}
                 ${item.overlap ? '<div class="w">Cakisma</div>' : ''}
               </div>
             `).join('')}
@@ -817,6 +818,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
       .item.overlap { background: #ffe0e0; border-color: #d94242; }
       .t { font-size: 11px; font-weight: 700; }
       .ttl { font-size: 12px; font-weight: 700; line-height: 1.2; }
+      .nt { font-size: 11px; font-weight: 600; color: #2a4a6a; }
       .m { font-size: 11px; }
       .w { font-size: 11px; font-weight: 700; color: #b71c1c; }
     </style>
