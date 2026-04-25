@@ -198,10 +198,9 @@ const TR_DATE_FORMATS = {
                 <span>Kaynak</span>
                 <span>Saat</span>
                 <span>İçerik</span>
-                <span>Kanal / Stüdyo</span>
                 <span>Kayıt Portu</span>
                 <span>Durum</span>
-                <span>Not</span>
+                <span>Açıklama</span>
               </div>
 
               @for (row of filteredPlanningRows(); track row.id) {
@@ -214,7 +213,6 @@ const TR_DATE_FORMATS = {
                       <span class="content-meta">{{ row.note }}</span>
                     }
                   </div>
-                  <span>{{ row.location }}</span>
                   <div class="port-cell" [class.assigned]="row.recordingPort">
                     <span class="port-dot"></span>
                     <mat-form-field class="inline-field" appearance="outline">
@@ -234,7 +232,7 @@ const TR_DATE_FORMATS = {
                     </mat-select>
                   </mat-form-field>
                   <mat-form-field class="inline-field" appearance="outline">
-                    <input matInput [(ngModel)]="row.planNote" placeholder="Not…" (blur)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)" />
+                    <input matInput [(ngModel)]="row.planNote" placeholder="Açıklama…" maxlength="30" (blur)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)" />
                   </mat-form-field>
                 </div>
               }
@@ -480,7 +478,7 @@ const TR_DATE_FORMATS = {
     .content-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
     .content-meta { font-size: 0.72rem; color: #7a8fa8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .planning-head,
-    .planning-row { display: grid; grid-template-columns: 116px 100px minmax(170px,1fr) 124px 168px 138px minmax(120px,0.6fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .planning-row { display: grid; grid-template-columns: 116px 100px minmax(200px,1fr) 180px 148px minmax(140px,0.5fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
     .planning-head { color: #9aa2b3; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
     .planning-row { font-size: 0.86rem; }
     .planning-row:nth-child(odd) { background: rgba(255,255,255,0.025); }
