@@ -40,8 +40,8 @@ const savePlanItemSchema = z.object({
   day: dateSchema,
   sourcePath: z.string().trim().optional().nullable(),
   recordingPort: z.string().trim().max(50).optional().nullable(),
-  plannedStartMinute: z.number().int().min(0).max(26 * 60).optional().nullable(),
-  plannedEndMinute: z.number().int().min(0).max(26 * 60).optional().nullable(),
+  plannedStartMinute: z.number().int().min(0).max(48 * 60).optional().nullable(),
+  plannedEndMinute: z.number().int().min(0).max(48 * 60).optional().nullable(),
   status: ingestPlanStatusSchema.optional(),
   note: z.string().trim().optional().nullable(),
 });
@@ -385,6 +385,20 @@ export async function ingestRoutes(app: FastifyInstance) {
     });
 
     return mapPlanItem(item);
+  });
+
+  // DELETE /api/v1/ingest/plan/:sourceKey — ingest-plan satırını sil
+  app.delete<{ Params: { sourceKey: string } }>('/plan/:sourceKey', {
+    preHandler: app.requireRole(...PERMISSIONS.ingest.write),
+    schema: { tags: ['Ingest'], summary: 'Delete an ingest plan item (ingest-plan source only)' },
+  }, async (request, reply) => {
+    const sourceKey = decodeURIComponent(request.params.sourceKey);
+    const item = await app.prisma.ingestPlanItem.findUnique({ where: { sourceKey }, select: { sourceType: true } });
+    if (!item) {
+      throw Object.assign(new Error('Kayıt bulunamadı'), { statusCode: 404 });
+    }
+    await app.prisma.ingestPlanItem.delete({ where: { sourceKey } });
+    reply.code(204).send();
   });
 
   // POST /api/v1/ingest — Trigger new ingest job (watch folder or manual)

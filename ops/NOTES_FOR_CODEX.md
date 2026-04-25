@@ -85,6 +85,16 @@ Ingest Port Board:
 - Parent: `apps/web/src/app/features/ingest/ingest-list/ingest-list.component.ts`
 - `ingest_plan_items` kalıcılık tablosu
 - `recording_ports` port katalog tablosu (varsayılan 46 port)
+- Port board tarih seçici: `portBoardDate` signal, `loadPortBoardData()`, planlama tabından bağımsız
+- Port board lazy render: `<ng-template matTabContent>` (46 CDK kolon tab aktif olana kadar render edilmez)
+- Burst polling: `startBurstPoll()` — kayıt/sekme değişince 6×10 sn, değişiklik yoksa durur
+- Saat düzenleme: tüm satır tipleri için (live/studio/ingest-plan), 5 dk adımlı `input[type=time step=300]`
+  - `onStartTimeChange/onEndTimeChange` → `Math.round(.../ 5) * 5` → `savePlanRow`
+  - `planningRows` ve `portBoardAllRows`: `planItem?.plannedStartMinute ?? srcMinute` (kayıtlı saat kaynağı geçer)
+  - API şema limiti: `max(48 * 60)` (sabaha karşı shift için)
+- Satır silme: `DELETE /api/v1/ingest/plan/:sourceKey` — tüm sourceType için izin verilir
+  - ingest-plan → satır tamamen silinir; live/studio-plan → port+not temizlenir, satır görünmeye devam eder
+- savePlanRow optimizasyonu: port + not + saat değişmemişse API çağrısı atlanır
 
 ## Prisma
 

@@ -9,13 +9,13 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MAT_DATE_FORMATS, MAT_DATE_LOCALE, MatNativeDateModule } from '@angular/material/core';
+import { DateAdapter, MAT_DATE_FORMATS, MAT_DATE_LOCALE, MatNativeDateModule, NativeDateAdapter } from '@angular/material/core';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { interval, Subscription } from 'rxjs';
-import { switchMap } from 'rxjs/operators';
+import { switchMap, take } from 'rxjs/operators';
 
 import { ApiService } from '../../../core/services/api.service';
 import {
@@ -93,16 +93,33 @@ const PLAN_STATUS_OPTIONS: Array<{ value: IngestPlanStatus; label: string }> = [
 const PORT_BOARD_SLOT_MINUTES = 30;
 
 const TR_DATE_FORMATS = {
-  parse: {
-    dateInput: { day: '2-digit', month: '2-digit', year: 'numeric' },
-  },
+  parse: { dateInput: 'dd.MM.yyyy' },
   display: {
-    dateInput: { day: '2-digit', month: '2-digit', year: 'numeric' },
+    dateInput: 'dd.MM.yyyy',
     monthYearLabel: { month: 'short', year: 'numeric' },
-    dateA11yLabel: { day: '2-digit', month: '2-digit', year: 'numeric' },
+    dateA11yLabel: { day: '2-digit', month: 'long', year: 'numeric' },
     monthYearA11yLabel: { month: 'long', year: 'numeric' },
   },
 };
+
+class TrDateAdapter extends NativeDateAdapter {
+  override parse(value: string | null, _parseFormat: unknown): Date | null {
+    if (!value) return null;
+    const match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(value.trim());
+    if (match) {
+      const date = new Date(+match[3], +match[2] - 1, +match[1]);
+      return isNaN(date.getTime()) ? null : date;
+    }
+    return super.parse(value, _parseFormat);
+  }
+
+  override format(date: Date, displayFormat: unknown): string {
+    if (displayFormat === 'dd.MM.yyyy') {
+      return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()}`;
+    }
+    return super.format(date, displayFormat as object);
+  }
+}
 
 
 @Component({
@@ -111,6 +128,7 @@ const TR_DATE_FORMATS = {
   providers: [
     { provide: MAT_DATE_LOCALE, useValue: 'tr-TR' },
     { provide: MAT_DATE_FORMATS, useValue: TR_DATE_FORMATS },
+    { provide: DateAdapter, useClass: TrDateAdapter, deps: [MAT_DATE_LOCALE] },
   ],
   imports: [
     CommonModule,
@@ -147,7 +165,7 @@ const TR_DATE_FORMATS = {
         </div>
       </div>
 
-      <mat-tab-group class="workspace-tabs">
+      <mat-tab-group class="workspace-tabs" (selectedIndexChange)="onWorkspaceTabChange($event)">
         <mat-tab label="Ingest Planlama">
       <div class="planning-board">
         <div class="planning-board-header">
@@ -224,7 +242,10 @@ const TR_DATE_FORMATS = {
               @for (row of filteredPlanningRows(); track row.id) {
                 <div class="planning-row">
                   <span class="source-pill" [class.studio]="row.source === 'studio-plan' || (row.source === 'ingest-plan' && row.sourceLabel === 'Stüdyo Planı')" [class.ingest-plan]="row.source === 'ingest-plan'">{{ row.sourceLabel }}</span>
-                  <strong class="time-range">{{ row.startTime }} - {{ row.endTime }}</strong>
+                  <div class="time-edit">
+                    <input type="time" step="300" class="time-input" [value]="row.startTime" (change)="onStartTimeChange(row, $event)" [disabled]="isSavingPlanRow(row.sourceKey)" />
+                    <input type="time" step="300" class="time-input" [value]="row.endTime" (change)="onEndTimeChange(row, $event)" [disabled]="isSavingPlanRow(row.sourceKey)" />
+                  </div>
                   <div class="content-cell">
                     <span>{{ row.title }}</span>
                     @if (row.note && row.note !== '-') {
@@ -244,11 +265,16 @@ const TR_DATE_FORMATS = {
                   </div>
                   <div class="note-cell">
                     <mat-form-field class="inline-field" appearance="outline">
-                      <input matInput [(ngModel)]="row.planNote" placeholder="Açıklama…" maxlength="30" (blur)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)" />
+                      <input matInput [(ngModel)]="row.planNote" placeholder="" maxlength="30" (blur)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)" />
                     </mat-form-field>
                     <button mat-icon-button class="duplicate-btn" (click)="duplicateRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)" title="Satırı çoğalt">
                       <mat-icon>add</mat-icon>
                     </button>
+                    @if (row.source === 'ingest-plan' || row.recordingPort || row.planNote) {
+                      <button mat-icon-button class="delete-btn" (click)="deleteRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)" [title]="row.source === 'ingest-plan' ? 'Satırı sil' : 'Port / açıklama kaydını temizle'">
+                        <mat-icon>{{ row.source === 'ingest-plan' ? 'delete' : 'backspace' }}</mat-icon>
+                      </button>
+                    }
                   </div>
                 </div>
               }
@@ -260,25 +286,37 @@ const TR_DATE_FORMATS = {
         </mat-tab>
 
         <mat-tab label="Port Görünümü">
-          <div class="port-board-page">
-            @if (assignedPortColumns().length === 0) {
-              <div class="port-board-empty">
-                <h2>Port Görünümü</h2>
-                <p>Seçili tarih ve filtre için atanmış port bulunamadı.</p>
+          <ng-template matTabContent>
+            <div class="port-board-page">
+              <div class="port-board-date-bar">
+                <mat-form-field class="port-board-date-picker">
+                  <mat-label>Tarih</mat-label>
+                  <input matInput [matDatepicker]="portBoardDatePicker"
+                         [(ngModel)]="portBoardDateValue"
+                         (dateChange)="onPortBoardDateChange($event.value)" />
+                  <mat-datepicker-toggle matIconSuffix [for]="portBoardDatePicker"></mat-datepicker-toggle>
+                  <mat-datepicker #portBoardDatePicker></mat-datepicker>
+                </mat-form-field>
               </div>
-            } @else {
-              <app-ingest-port-board
-                [columns]="assignedPortColumns()"
-                [timeLabels]="portBoardTimeLabels()"
-                [gridTemplateRows]="timeGridTemplate()"
-                [fullPage]="true"
-                [columnMinWidth]="24"
-                [rowCount]="5"
-                (requestPrint)="printPortBoard()"
-                (portOrderChange)="setPortBoardOrder($event)"
-              />
-            }
-          </div>
+              @if (assignedPortColumns().length === 0) {
+                <div class="port-board-empty">
+                  <h2>Port Görünümü</h2>
+                  <p>Seçili tarih için atanmış port bulunamadı.</p>
+                </div>
+              } @else {
+                <app-ingest-port-board
+                  [columns]="assignedPortColumns()"
+                  [timeLabels]="portBoardTimeLabels()"
+                  [gridTemplateRows]="timeGridTemplate()"
+                  [fullPage]="true"
+                  [columnMinWidth]="24"
+                  [rowCount]="5"
+                  (requestPrint)="printPortBoard()"
+                  (portOrderChange)="setPortBoardOrder($event)"
+                />
+              }
+            </div>
+          </ng-template>
         </mat-tab>
 
         <mat-tab label="Ingest">
@@ -478,6 +516,8 @@ const TR_DATE_FORMATS = {
     .empty-live-plan { margin: 6px 0 0; color: #9aa2b3; font-size: 0.85rem; }
     .planning-board { margin: 14px 0 18px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); border-radius: 8px; overflow: hidden; }
     .port-board-page { margin-top: 14px; }
+    .port-board-date-bar { display: flex; align-items: center; gap: 12px; padding: 0 0 8px; }
+    .port-board-date-picker { flex-shrink: 0; }
     .port-board-empty { min-height: calc(100vh - 260px); display: flex; flex-direction: column; justify-content: center; padding: 24px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); }
     .port-board-empty h2 { margin: 0 0 8px; }
     .port-board-empty p { margin: 0; color: #9aa2b3; }
@@ -498,10 +538,14 @@ const TR_DATE_FORMATS = {
     .content-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
     .content-meta { font-size: 0.72rem; color: #7a8fa8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .planning-head,
-    .planning-row { display: grid; grid-template-columns: 116px 100px minmax(200px,1fr) 190px minmax(170px,0.6fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .planning-row { display: grid; grid-template-columns: 116px 86px minmax(200px,1fr) 190px minmax(170px,0.6fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
     .note-cell { display: flex; align-items: center; gap: 2px; }
     .note-cell .inline-field { flex: 1; }
     .duplicate-btn { flex-shrink: 0; width: 32px; height: 32px; line-height: 32px; color: #9bd3ff; }
+    .delete-btn { flex-shrink: 0; width: 32px; height: 32px; line-height: 32px; color: #ef9a9a; }
+    .time-edit { display: flex; flex-direction: column; gap: 2px; }
+    .time-input { width: 80px; padding: 2px 3px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; color: inherit; font-size: .8rem; font-weight: 600; font-variant-numeric: tabular-nums; color-scheme: dark; }
+    .time-input:disabled { opacity: .45; }
     .source-pill.ingest-plan { color: #0d2b1a; background: #66bb6a; }
     .planning-head { color: #9aa2b3; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
     .planning-row { font-size: 0.86rem; }
@@ -570,6 +614,12 @@ export class IngestListComponent implements OnInit, OnDestroy {
   selectedScheduleId: number | null = null;
   livePlanSourcePath = '';
 
+  portBoardDate = signal<string>(this.todayDate());
+  portBoardDateValue: Date = new Date(`${this.todayDate()}T00:00:00`);
+  portBoardLivePlan = signal<Schedule[]>([]);
+  portBoardStudioPlan = signal<StudioPlanSlot[]>([]);
+  portBoardIngestItems = signal<IngestPlanItem[]>([]);
+
   filteredJobs = computed(() => {
     const tab = STATUS_TABS[this.selectedTab()];
     if (!tab?.value) return this.jobs();
@@ -581,27 +631,34 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   planningRows = computed<IngestPlanRow[]>(() => {
     const planItemMap = new Map(this.ingestPlanItems().map((item) => [item.sourceKey, item]));
-    const liveRows = this.livePlanCandidates().map((schedule) => ({
+    const liveRows = this.livePlanCandidates().map((schedule) => {
+      const planItem = planItemMap.get(`live:${schedule.id}`);
+      const srcStart = this.sortMinuteFromDate(schedule.startTime);
+      const srcEnd = this.sortMinuteFromDate(schedule.endTime);
+      const startMin = planItem?.plannedStartMinute ?? srcStart;
+      const endMin = planItem?.plannedEndMinute ?? srcEnd;
+      return {
       id: `live-${schedule.id}`,
       source: 'live-plan' as const,
       sourceLabel: 'Canlı Yayın',
       sourceKey: `live:${schedule.id}`,
       day: this.livePlanDate,
-      sortMinute: this.sortMinuteFromDate(schedule.startTime),
-      endMinute: this.sortMinuteFromDate(schedule.endTime),
-      startTime: this.formatTime(schedule.startTime),
-      endTime: this.formatTime(schedule.endTime),
+      sortMinute: startMin,
+      endMinute: endMin,
+      startTime: this.minuteToTime(startMin),
+      endTime: this.minuteToTime(endMin),
       title: this.scheduleTitle(schedule),
       location: schedule.channel?.name ?? '-',
       note: [schedule.reportLeague, schedule.reportSeason, schedule.reportWeekNumber ? `${schedule.reportWeekNumber}. Hafta` : '']
         .filter(Boolean)
         .join(' · ') || '-',
-      recordingPort: planItemMap.get(`live:${schedule.id}`)?.recordingPort ?? '',
-      status: planItemMap.get(`live:${schedule.id}`)?.status ?? 'WAITING' as IngestPlanStatus,
-      planNote: planItemMap.get(`live:${schedule.id}`)?.note ?? '',
-      jobId: planItemMap.get(`live:${schedule.id}`)?.jobId,
+      recordingPort: planItem?.recordingPort ?? '',
+      status: planItem?.status ?? 'WAITING' as IngestPlanStatus,
+      planNote: planItem?.note ?? '',
+      jobId: planItem?.jobId,
       scheduleId: schedule.id,
-    }));
+      };
+    });
 
     const manualRows: IngestPlanRow[] = this.ingestPlanItems()
       .filter((item) => item.sourceType === 'ingest-plan')
@@ -655,7 +712,90 @@ export class IngestListComponent implements OnInit, OnDestroy {
     return rows;
   });
 
-  portBoardRows = computed(() => this.filteredPlanningRows().filter((row) => !!row.recordingPort));
+  portBoardAllRows = computed<IngestPlanRow[]>(() => {
+    const planItems = this.portBoardIngestItems();
+    const planItemMap = new Map(planItems.map((item) => [item.sourceKey, item]));
+    const date = this.portBoardDate();
+
+    const liveRows = this.portBoardLivePlan().map((schedule) => {
+      const planItem = planItemMap.get(`live:${schedule.id}`);
+      const srcStart = this.sortMinuteFromDate(schedule.startTime);
+      const srcEnd = this.sortMinuteFromDate(schedule.endTime);
+      const startMin = planItem?.plannedStartMinute ?? srcStart;
+      const endMin = planItem?.plannedEndMinute ?? srcEnd;
+      return {
+        id: `live-${schedule.id}`,
+        source: 'live-plan' as const,
+        sourceLabel: 'Canlı Yayın',
+        sourceKey: `live:${schedule.id}`,
+        day: date,
+        sortMinute: startMin,
+        endMinute: endMin,
+        startTime: this.minuteToTime(startMin),
+        endTime: this.minuteToTime(endMin),
+        title: this.scheduleTitle(schedule),
+        location: schedule.channel?.name ?? '-',
+        note: [schedule.reportLeague, schedule.reportSeason, schedule.reportWeekNumber ? `${schedule.reportWeekNumber}. Hafta` : '']
+          .filter(Boolean).join(' · ') || '-',
+        recordingPort: planItem?.recordingPort ?? '',
+        status: planItem?.status ?? 'WAITING' as IngestPlanStatus,
+        planNote: planItem?.note ?? '',
+        jobId: planItem?.jobId,
+        scheduleId: schedule.id,
+      };
+    });
+
+    const studioSlots = [...this.portBoardStudioPlan()].sort((a, b) =>
+      a.studio.localeCompare(b.studio, 'tr') || a.startMinute - b.startMinute || a.program.localeCompare(b.program, 'tr')
+    );
+    const studioRows: IngestPlanRow[] = [];
+    const usedSlots = new Set<number>();
+    for (let i = 0; i < studioSlots.length; i++) {
+      if (usedSlots.has(i)) continue;
+      const first = studioSlots[i];
+      let endMinute = first.startMinute + 30;
+      usedSlots.add(i);
+      for (let j = i + 1; j < studioSlots.length; j++) {
+        const next = studioSlots[j];
+        if (usedSlots.has(j) || next.studio !== first.studio || next.program !== first.program || next.color !== first.color || next.startMinute !== endMinute) continue;
+        endMinute += 30;
+        usedSlots.add(j);
+      }
+      const sourceKey = `studio:${first.day}:${first.studio}:${first.startMinute}:${first.program}`;
+      const planItem = planItemMap.get(sourceKey);
+      const pbStartMin = planItem?.plannedStartMinute ?? first.startMinute;
+      const pbEndMin = planItem?.plannedEndMinute ?? endMinute;
+      studioRows.push({
+        id: `studio-${first.day}-${first.studio}-${first.startMinute}-${first.program}`,
+        source: 'studio-plan', sourceLabel: 'Stüdyo Planı', sourceKey,
+        day: first.day, sortMinute: pbStartMin, endMinute: pbEndMin,
+        startTime: this.minuteToTime(pbStartMin), endTime: this.minuteToTime(pbEndMin),
+        title: first.program, location: first.studio, note: 'Stüdyo programı',
+        planNote: planItem?.note ?? '', recordingPort: planItem?.recordingPort ?? '',
+        status: planItem?.status ?? 'WAITING', jobId: planItem?.jobId,
+      });
+    }
+
+    const manualRows: IngestPlanRow[] = planItems
+      .filter((item) => item.sourceType === 'ingest-plan')
+      .map((item) => {
+        const parts = (item.sourcePath ?? '').split('\t');
+        return {
+          id: `ingest-plan-${item.sourceKey}`,
+          source: 'ingest-plan' as const, sourceLabel: parts[0] || 'Ingest Plan',
+          sourceKey: item.sourceKey, day: item.dayDate,
+          sortMinute: item.plannedStartMinute ?? 0, endMinute: item.plannedEndMinute ?? 0,
+          startTime: this.minuteToTime(item.plannedStartMinute ?? 0), endTime: this.minuteToTime(item.plannedEndMinute ?? 0),
+          title: parts.slice(1).join('\t') || 'Kopya', location: '', note: '',
+          planNote: item.note ?? '', recordingPort: item.recordingPort ?? '',
+          status: item.status, jobId: item.jobId,
+        };
+      });
+
+    return [...liveRows, ...studioRows, ...manualRows].sort((a, b) => a.sortMinute - b.sortMinute);
+  });
+
+  portBoardRows = computed(() => this.portBoardAllRows().filter((row) => !!row.recordingPort));
 
   portBoardStartMinute = computed(() => {
     const rows = this.portBoardRows();
@@ -692,7 +832,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
     const portOrder = new Map(orderedNames.map((name, index) => [name, index]));
     const grouped = new Map<string, IngestPlanRow[]>();
 
-    for (const row of this.filteredPlanningRows()) {
+    for (const row of this.portBoardAllRows()) {
       if (!row.recordingPort) continue;
       const rows = grouped.get(row.recordingPort) ?? [];
       rows.push(row);
@@ -704,24 +844,13 @@ export class IngestListComponent implements OnInit, OnDestroy {
       .filter((name) => !['Metus1', 'Metus2'].includes(name) || (grouped.get(name)?.length ?? 0) > 0)
       .map((port) => {
         const sourceRows = grouped.get(port) ?? [];
-        const items = this.toPortBoardItems(sourceRows);
-        const earliestStart = sourceRows.length ? Math.min(...sourceRows.map((row) => row.sortMinute)) : Number.MAX_SAFE_INTEGER;
-        const latestEnd = sourceRows.length ? Math.max(...sourceRows.map((row) => row.endMinute)) : Number.MAX_SAFE_INTEGER;
         return {
           port,
-          items,
-          earliestStart,
-          latestEnd,
-          hasItems: sourceRows.length > 0,
+          items: this.toPortBoardItems(sourceRows),
           order: portOrder.get(port) ?? Number.MAX_SAFE_INTEGER,
         };
       })
-      .sort((a, b) => {
-        if (a.hasItems !== b.hasItems) return a.hasItems ? -1 : 1;
-        if (a.earliestStart !== b.earliestStart) return a.earliestStart - b.earliestStart;
-        if (a.latestEnd !== b.latestEnd) return a.latestEnd - b.latestEnd;
-        return a.order - b.order;
-      })
+      .sort((a, b) => a.order - b.order)
       .map(({ port, items }) => ({
         port,
         items,
@@ -732,6 +861,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   private pollSub?: Subscription;
   private planPollSub?: Subscription;
+  private portBoardPollSub?: Subscription;
 
   constructor(private api: ApiService, private snack: MatSnackBar) {}
 
@@ -751,14 +881,26 @@ export class IngestListComponent implements OnInit, OnDestroy {
     this.planPollSub = interval(10000)
       .pipe(switchMap(() => this.api.get<IngestPlanItem[]>('/ingest/plan', { date: this.livePlanDate })))
       .subscribe({
-        next: (items) => this.ingestPlanItems.set(Array.isArray(items) ? items : []),
+        next: (items) => {
+          const next = Array.isArray(items) ? items : [];
+          const current = this.ingestPlanItems();
+          if (JSON.stringify(next) !== JSON.stringify(current)) {
+            this.ingestPlanItems.set(next);
+            if (this.portBoardDate() === this.livePlanDate) {
+              this.portBoardIngestItems.set(next);
+            }
+          }
+        },
         error: () => {},
       });
+
+    this.loadPortBoardData(this.livePlanDate);
   }
 
   ngOnDestroy() {
     this.pollSub?.unsubscribe();
     this.planPollSub?.unsubscribe();
+    this.portBoardPollSub?.unsubscribe();
   }
 
   load() {
@@ -800,6 +942,56 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   setPortBoardOrder(nextOrder: string[]) {
     this.portBoardOrder.set(nextOrder);
+  }
+
+  onWorkspaceTabChange(index: number) {
+    if (index === 1) this.startBurstPoll();
+  }
+
+  private startBurstPoll() {
+    this.portBoardPollSub?.unsubscribe();
+    this.portBoardPollSub = interval(10000)
+      .pipe(
+        take(6),
+        switchMap(() => this.api.get<IngestPlanItem[]>('/ingest/plan', { date: this.portBoardDate() })),
+      )
+      .subscribe({
+        next: (items) => {
+          const next = Array.isArray(items) ? items : [];
+          const current = this.portBoardIngestItems();
+          if (JSON.stringify(next) !== JSON.stringify(current)) {
+            this.portBoardIngestItems.set(next);
+            this.startBurstPoll();
+          }
+        },
+        error: () => {},
+      });
+  }
+
+  onPortBoardDateChange(value: Date | null) {
+    if (!value) return;
+    const dateStr = this.dateToInputValue(value);
+    this.portBoardDate.set(dateStr);
+    this.portBoardDateValue = value;
+    this.loadPortBoardData(dateStr);
+  }
+
+  loadPortBoardData(dateValue: string) {
+    const from = new Date(`${dateValue}T00:00:00+03:00`).toISOString();
+    const to = new Date(`${dateValue}T23:59:59+03:00`).toISOString();
+    this.api.get<PaginatedResponse<Schedule>>('/schedules/ingest-candidates', { from, to, page: 1, pageSize: 200 }).subscribe({
+      next: (res) => this.portBoardLivePlan.set(res.data ?? []),
+      error: () => {},
+    });
+    const weekStart = this.mondayFor(dateValue);
+    this.api.get<StudioPlan>(`/studio-plans/${weekStart}`).subscribe({
+      next: (plan) => this.portBoardStudioPlan.set((plan.slots ?? []).filter((slot) => slot.day === dateValue)),
+      error: () => this.portBoardStudioPlan.set([]),
+    });
+    this.api.get<IngestPlanItem[]>('/ingest/plan', { date: dateValue }).subscribe({
+      next: (items) => this.portBoardIngestItems.set(Array.isArray(items) ? items : []),
+      error: () => {},
+    });
   }
 
   planFilterCount(filter: PlanFilter): number {
@@ -1030,16 +1222,18 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
       const sourceKey = `studio:${first.day}:${first.studio}:${first.startMinute}:${first.program}`;
       const planItem = planItemMap.get(sourceKey);
+      const startMin = planItem?.plannedStartMinute ?? first.startMinute;
+      const endMin = planItem?.plannedEndMinute ?? endMinute;
       rows.push({
         id: `studio-${first.day}-${first.studio}-${first.startMinute}-${first.program}`,
         source: 'studio-plan',
         sourceLabel: 'Stüdyo Planı',
         sourceKey,
         day: first.day,
-        sortMinute: first.startMinute,
-        endMinute,
-        startTime: this.minuteToTime(first.startMinute),
-        endTime: this.minuteToTime(endMinute),
+        sortMinute: startMin,
+        endMinute: endMin,
+        startTime: this.minuteToTime(startMin),
+        endTime: this.minuteToTime(endMin),
         title: first.program,
         location: first.studio,
         note: 'Stüdyo programı',
@@ -1099,6 +1293,40 @@ export class IngestListComponent implements OnInit, OnDestroy {
     return this.savingPlanKeys().has(sourceKey);
   }
 
+  onStartTimeChange(row: IngestPlanRow, event: Event) {
+    const value = (event.target as HTMLInputElement).value;
+    if (!value) return;
+    const [h, m] = value.split(':').map(Number);
+    row.sortMinute = Math.round((h * 60 + m) / 5) * 5;
+    row.startTime = this.minuteToTime(row.sortMinute);
+    this.savePlanRow(row);
+  }
+
+  onEndTimeChange(row: IngestPlanRow, event: Event) {
+    const value = (event.target as HTMLInputElement).value;
+    if (!value) return;
+    const [h, m] = value.split(':').map(Number);
+    row.endMinute = Math.round((h * 60 + m) / 5) * 5;
+    row.endTime = this.minuteToTime(row.endMinute);
+    this.savePlanRow(row);
+  }
+
+  deleteRow(row: IngestPlanRow) {
+    this.api.delete<void>(`/ingest/plan/${encodeURIComponent(row.sourceKey)}`).subscribe({
+      next: () => {
+        this.ingestPlanItems.update((items) => items.filter((item) => item.sourceKey !== row.sourceKey));
+        if (this.portBoardDate() === this.livePlanDate) {
+          this.portBoardIngestItems.update((items) => items.filter((item) => item.sourceKey !== row.sourceKey));
+        }
+        const msg = row.source === 'ingest-plan' ? 'Satır silindi' : 'Port / açıklama kaydı temizlendi';
+        this.snack.open(msg, 'Kapat', { duration: 2000 });
+      },
+      error: (err) => {
+        this.snack.open(`Silme hatası: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+      },
+    });
+  }
+
   duplicateRow(row: IngestPlanRow) {
     const sourceKey = `ingest-plan:${row.day}:${row.sortMinute}:${row.endMinute}:${Date.now()}`;
     this.api.put<IngestPlanItem>(`/ingest/plan/${encodeURIComponent(sourceKey)}`, {
@@ -1111,6 +1339,10 @@ export class IngestListComponent implements OnInit, OnDestroy {
     }).subscribe({
       next: (item) => {
         this.ingestPlanItems.update((items) => [...items, item]);
+        if (this.portBoardDate() === this.livePlanDate) {
+          this.portBoardIngestItems.update((items) => [...items, item]);
+        }
+        this.startBurstPoll();
         this.snack.open('Satır çoğaltıldı', 'Kapat', { duration: 2000 });
       },
       error: (err) => {
@@ -1120,6 +1352,13 @@ export class IngestListComponent implements OnInit, OnDestroy {
   }
 
   savePlanRow(row: IngestPlanRow) {
+    const existing = this.ingestPlanItems().find((item) => item.sourceKey === row.sourceKey);
+    const portUnchanged = (existing?.recordingPort ?? '') === (row.recordingPort ?? '');
+    const noteUnchanged = (existing?.note ?? '') === (row.planNote ?? '');
+    const startUnchanged = existing?.plannedStartMinute != null ? existing.plannedStartMinute === row.sortMinute : false;
+    const endUnchanged = existing?.plannedEndMinute != null ? existing.plannedEndMinute === row.endMinute : false;
+    if (existing && portUnchanged && noteUnchanged && startUnchanged && endUnchanged) return;
+
     const nextSaving = new Set(this.savingPlanKeys());
     nextSaving.add(row.sourceKey);
     this.savingPlanKeys.set(nextSaving);
@@ -1139,6 +1378,13 @@ export class IngestListComponent implements OnInit, OnDestroy {
           const otherItems = items.filter((current) => current.sourceKey !== item.sourceKey);
           return [...otherItems, item];
         });
+        if (this.portBoardDate() === this.livePlanDate) {
+          this.portBoardIngestItems.update((items) => {
+            const otherItems = items.filter((current) => current.sourceKey !== item.sourceKey);
+            return [...otherItems, item];
+          });
+        }
+        this.startBurstPoll();
         this.savingPlanKeys.update((keys) => {
           const updated = new Set(keys);
           updated.delete(row.sourceKey);
@@ -1223,7 +1469,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
-    }).format(new Date(`${this.livePlanDate}T12:00:00`));
+    }).format(new Date(`${this.portBoardDate()}T12:00:00`));
   }
 
   private escapeHtml(value: string): string {

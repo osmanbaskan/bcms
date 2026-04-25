@@ -217,10 +217,13 @@ Bağımsız navigasyon öğesi — üç rapor tipi desteklenir:
 ### Ingest Planlama
 
 - `Ingest Planlama`: Canlı yayın planı ve Stüdyo Planı kayıtlarını birleştiren tablo; port ataması burada yapılır.
-- `Port Görünümü`: Port bazlı operasyonel pano (5 satır, tam ekran, zoom, print).
+- `Port Görünümü`: Port bazlı operasyonel pano — bağımsız tarih seçici, 5 satır, katalog sırası, tam ekran, zoom, print. Lazy render (`<ng-template matTabContent>`).
 - Kayıt portları: `recording_ports` backend tablosundan gelir (varsayılan 1-44 + Metus1/Metus2 = 46 port).
 - Port atama kalıcılığı: `ingest_plan_items.recording_port`.
 - Çakışma kontrolü backend tarafında reddedilir.
+- **Saat düzenleme**: Tüm satır tipleri (live-plan, studio-plan, ingest-plan) için 5 dk adımlı time input. Kaydedilen `plannedStartMinute`/`plannedEndMinute` kaynak sistemin saatini geçersiz kılar.
+- **Satır silme/temizleme**: `DELETE /api/v1/ingest/plan/:sourceKey` — ingest-plan satırı tamamen silinir; live/studio-plan satırında sadece port ve not temizlenir, satır kaynak veriden gelmeye devam eder.
+- **Burst polling**: Kayıt yapılınca veya Port Görünümü sekmesine geçince 6×10 sn sorgu (1 dk), değişiklik yoksa durur.
 - Rapor endpointleri: `GET /api/v1/ingest/plan/report` (JSON) ve `/plan/report/export` (xlsx).
 
 ## Yerel Altyapı (Docker)
