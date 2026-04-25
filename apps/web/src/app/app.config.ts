@@ -11,7 +11,6 @@ import { authInterceptor } from './core/interceptors/auth.interceptor';
 
 function initKeycloak(keycloak: KeycloakService) {
   return async () => {
-    if (environment.skipAuth) return;
     await keycloak.init({
       config: {
         url:      environment.keycloak.url,

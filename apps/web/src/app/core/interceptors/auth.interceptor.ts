@@ -11,9 +11,6 @@ function isApiRequest(url: string): boolean {
 }
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
-  // skipAuth modunda token ekleme
-  if (environment.skipAuth) return next(req);
-
   const keycloak = inject(KeycloakService);
 
   if (!isApiRequest(req.url)) {

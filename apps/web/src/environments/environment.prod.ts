@@ -1,6 +1,5 @@
 export const environment = {
   production: true,
-  skipAuth: false,
   timezone:  'Europe/Istanbul',
   utcOffset: '+03:00',
   apiUrl: '/api/v1',
