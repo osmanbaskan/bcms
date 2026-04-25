@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+import fs from 'node:fs/promises';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -234,7 +234,7 @@ export async function buildApp() {
       checks.opta = 'ok';
     } else {
       try {
-        fs.statSync(opta.dir);
+        await fs.stat(opta.dir);
         checks.opta = 'ok';
       } catch {
         checks.opta = 'degraded';
