@@ -1,4 +1,21 @@
 import { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
+
+const matchItemSchema = z.object({
+  matchUid:   z.string().min(1),
+  compId:     z.string().min(1),
+  compName:   z.string().default(''),
+  homeTeam:   z.string().optional(),
+  awayTeam:   z.string().optional(),
+  matchDate:  z.string().datetime({ offset: true }),
+  weekNumber: z.number().int().nullable().optional(),
+  season:     z.string().optional(),
+  venue:      z.string().nullable().optional(),
+});
+
+const syncBodySchema = z.object({
+  matches: z.array(matchItemSchema),
+});
 
 export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/sync', async (request, reply) => {
@@ -12,13 +29,12 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(401).send({ error: 'Yetkisiz.' });
     }
 
-    const body = request.body as { matches: any[] };
-
-    if (!body || !Array.isArray(body.matches)) {
-      return reply.code(400).send({ error: 'Geçersiz payload, matches dizisi zorunludur.' });
+    const parsed = syncBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Geçersiz payload.', issues: parsed.error.issues });
     }
 
-    const validMatches = body.matches.filter((m) => m.matchUid);
+    const validMatches = parsed.data.matches;
     if (validMatches.length === 0) return { inserted: 0, updated: 0, unchanged: 0 };
 
     // 1. Benzersiz ligleri tek seferde upsert et
@@ -78,7 +94,7 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
             awayTeamName: m.awayTeam || '?',
             matchDate:    new Date(m.matchDate),
             weekNumber:   m.weekNumber || null,
-            season:       m.season,
+            season:       m.season ?? '',
             venue:        m.venue || null,
           },
         }),

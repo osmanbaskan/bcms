@@ -7,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { CommonModule } from '@angular/common';
 import { KeycloakService } from 'keycloak-angular';
+import { environment } from '../environments/environment';
 
 interface NavItem {
   label:      string;
@@ -147,6 +148,11 @@ export class AppComponent implements OnInit {
   constructor(private keycloak: KeycloakService, private cdr: ChangeDetectorRef) {}
 
   async ngOnInit() {
+    if (environment.skipAuth) {
+      this.username = 'dev-admin';
+      this.userRoles.set(['admin']);
+      return;
+    }
     // tokenParsed'dan username ve rolleri oku — network çağrısı gerektirmez
     const kc = this.keycloak.getKeycloakInstance();
     const parsed: any = kc?.tokenParsed ?? {};
@@ -159,6 +165,7 @@ export class AppComponent implements OnInit {
   }
 
   logout() {
+    if (environment.skipAuth) return;
     this.keycloak.logout(window.location.origin);
   }
 }

@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { PERMISSIONS } from '@bcms/shared';
 
+const rundownQuerySchema = z.object({
+  channelId: z.coerce.number().int().positive().optional(),
+  date:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
 const goLiveSchema = z.object({
   tcIn: z.string().regex(/^\d{2}:\d{2}:\d{2}[:;]\d{2}$/).optional(),
   note: z.string().optional(),
@@ -58,7 +63,7 @@ export async function playoutRoutes(app: FastifyInstance) {
     preHandler: app.requireRole(...PERMISSIONS.schedules.read),
     schema: { tags: ['Playout'], summary: 'Bugünün yayın akışı (tüm kanallar)' },
   }, async (request) => {
-    const q = request.query as { channelId?: string; date?: string };
+    const q = rundownQuerySchema.parse(request.query);
 
     const base  = q.date ? new Date(q.date) : new Date();
     const start = new Date(base); start.setHours(0, 0, 0, 0);
@@ -67,7 +72,7 @@ export async function playoutRoutes(app: FastifyInstance) {
     return app.prisma.schedule.findMany({
       where: {
         startTime: { gte: start, lte: end },
-        ...(q.channelId && { channelId: Number(q.channelId) }),
+        ...(q.channelId && { channelId: q.channelId }),
         status: { not: 'CANCELLED' },
       },
       include: { channel: { select: { id: true, name: true, type: true } } },

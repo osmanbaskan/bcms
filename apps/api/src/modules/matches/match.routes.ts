@@ -1,5 +1,13 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { PERMISSIONS } from '@bcms/shared';
+
+const matchListQuerySchema = z.object({
+  leagueId: z.coerce.number().int().positive().optional(),
+  from:     z.string().datetime({ offset: true }).optional(),
+  to:       z.string().datetime({ offset: true }).optional(),
+  season:   z.string().optional(),
+});
 
 export async function matchRoutes(app: FastifyInstance) {
   // GET /api/v1/matches/leagues — Tüm ligleri döndür
@@ -33,17 +41,12 @@ export async function matchRoutes(app: FastifyInstance) {
       },
     },
   }, async (request) => {
-    const q = request.query as {
-      leagueId?: number;
-      from?: string;
-      to?: string;
-      season?: string;
-    };
+    const q = matchListQuerySchema.parse(request.query);
 
     const matches = await app.prisma.match.findMany({
       where: {
-        ...(q.leagueId ? { leagueId: Number(q.leagueId) } : {}),
-        ...(q.season   ? { season: q.season }               : {}),
+        ...(q.leagueId ? { leagueId: q.leagueId } : {}),
+        ...(q.season   ? { season: q.season }      : {}),
         matchDate: {
           ...(q.from ? { gte: new Date(q.from) } : {}),
           ...(q.to   ? { lte: new Date(q.to)   } : {}),

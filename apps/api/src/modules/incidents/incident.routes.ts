@@ -3,6 +3,12 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { PERMISSIONS } from '@bcms/shared';
 
+const listIncidentsQuerySchema = z.object({
+  scheduleId: z.coerce.number().int().positive().optional(),
+  resolved:   z.enum(['true', 'false']).optional(),
+  severity:   z.enum(['INFO', 'WARNING', 'ERROR', 'CRITICAL']).optional(),
+});
+
 const createIncidentSchema = z.object({
   scheduleId:  z.number().int().positive().optional(),
   eventType:   z.string().min(1).max(50),
@@ -24,10 +30,10 @@ export async function incidentRoutes(app: FastifyInstance) {
     preHandler: app.requireRole(...PERMISSIONS.incidents.read),
     schema: { tags: ['Incidents'] },
   }, async (request) => {
-    const q = request.query as { scheduleId?: string; resolved?: string; severity?: string };
+    const q = listIncidentsQuerySchema.parse(request.query);
     return app.prisma.incident.findMany({
       where: {
-        ...(q.scheduleId && { scheduleId: Number(q.scheduleId) }),
+        ...(q.scheduleId && { scheduleId: q.scheduleId }),
         ...(q.resolved !== undefined && { resolved: q.resolved === 'true' }),
         ...(q.severity  && { severity: q.severity as never }),
       },

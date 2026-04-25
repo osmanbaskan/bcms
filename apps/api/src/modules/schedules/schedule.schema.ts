@@ -42,6 +42,32 @@ export const scheduleQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
 
+export const importQuerySchema = z.object({
+  durationMin: z.coerce.number().int().positive().optional(),
+});
+
+export const exportQuerySchema = z.object({
+  from:      z.string().datetime({ offset: true }).optional(),
+  to:        z.string().datetime({ offset: true }).optional(),
+  channelId: z.coerce.number().int().positive().optional(),
+  title:     z.string().optional(),
+});
+
+export const livePlanQuerySchema = z.object({
+  channelId: z.coerce.number().int().positive().optional(),
+  from:      z.string().datetime({ offset: true }).optional(),
+  to:        z.string().datetime({ offset: true }).optional(),
+  league:    z.string().trim().min(1).optional(),
+  season:    z.string().trim().min(1).optional(),
+  week:      z.coerce.number().int().positive().optional(),
+  page:      z.coerce.number().int().min(1).default(1),
+  pageSize:  z.coerce.number().int().min(1).max(1000).default(500),
+});
+
+export const livePlanExportQuerySchema = livePlanQuerySchema.extend({
+  title: z.string().optional(),
+});
+
 export type CreateScheduleDto = z.infer<typeof createScheduleSchema>;
 export type UpdateScheduleDto = z.infer<typeof updateScheduleSchema>;
 export type ScheduleQuery     = z.infer<typeof scheduleQuerySchema>;

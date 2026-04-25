@@ -1,7 +1,14 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { BookingService } from './booking.service.js';
 import { createBookingSchema, updateBookingSchema } from './booking.schema.js';
 import { PERMISSIONS } from '@bcms/shared';
+
+const listBookingsQuerySchema = z.object({
+  scheduleId: z.coerce.number().int().positive().optional(),
+  page:       z.coerce.number().int().positive().default(1),
+  pageSize:   z.coerce.number().int().positive().max(200).default(50),
+});
 
 export async function bookingRoutes(app: FastifyInstance) {
   const svc = new BookingService(app);
@@ -10,12 +17,8 @@ export async function bookingRoutes(app: FastifyInstance) {
     preHandler: app.requireRole(...PERMISSIONS.bookings.read),
     schema: { tags: ['Bookings'] },
   }, async (request) => {
-    const q = request.query as { scheduleId?: string; page?: string; pageSize?: string };
-    return svc.findAll(
-      q.scheduleId ? Number(q.scheduleId) : undefined,
-      q.page     ? Number(q.page)     : 1,
-      q.pageSize ? Number(q.pageSize) : 50,
-    );
+    const q = listBookingsQuerySchema.parse(request.query);
+    return svc.findAll(q.scheduleId, q.page, q.pageSize);
   });
 
   app.get<{ Params: { id: string } }>('/:id', {

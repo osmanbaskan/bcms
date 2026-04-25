@@ -38,7 +38,7 @@ keycloak   → Auth
 ## Degraded Mod
 
 OPTA dizini veya RabbitMQ geçici koptuğunda API çökmez:
-- `/health` endpoint `status: "degraded"` ve `checks` objesi döner (HTTP 200)
+- `/health` endpoint `status: "degraded"` ve `checks` objesi döner (HTTP **503**)
 - RabbitMQ `rabbitmq.isConnected()` ile sorgulanabilir
 - OPTA `getOptaWatcherStatus()` ile sorgulanabilir
 - DB koptuğunda operasyonel etki vardır

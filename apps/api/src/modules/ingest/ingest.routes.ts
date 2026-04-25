@@ -11,6 +11,16 @@ import { validateIngestSourcePath } from './ingest.paths.js';
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const ingestPlanStatusSchema = z.enum(['WAITING', 'RECEIVED', 'INGEST_STARTED', 'COMPLETED', 'ISSUE']);
 
+const listQuerySchema = z.object({
+  status:   z.enum(['PENDING','PROCESSING','PROXY_GEN','QC','COMPLETED','FAILED']).optional(),
+  page:     z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(200).default(50),
+});
+
+const planQuerySchema = z.object({
+  date: dateSchema.optional(),
+});
+
 const createIngestSchema = z.object({
   sourcePath: z.string().min(1),
   targetId:   z.number().int().positive().optional(),
@@ -163,9 +173,8 @@ export async function ingestRoutes(app: FastifyInstance) {
     preHandler: app.requireRole(...PERMISSIONS.ingest.read),
     schema: { tags: ['Ingest'] },
   }, async (request) => {
-    const q = request.query as { status?: string; page?: string; pageSize?: string };
-    const page     = q.page     ? Number(q.page)     : 1;
-    const pageSize = q.pageSize ? Number(q.pageSize) : 50;
+    const q = listQuerySchema.parse(request.query);
+    const { page, pageSize } = q;
     const skip = (page - 1) * pageSize;
 
     const where = q.status ? { status: q.status as never } : {};
@@ -306,7 +315,7 @@ export async function ingestRoutes(app: FastifyInstance) {
     preHandler: app.requireRole(...PERMISSIONS.ingest.read),
     schema: { tags: ['Ingest'], summary: 'Get ingest planning item states for one day' },
   }, async (request) => {
-    const q = request.query as { date?: string };
+    const q = planQuerySchema.parse(request.query);
     const day = dateSchema.parse(q.date);
     const items = await app.prisma.ingestPlanItem.findMany({
       where: { dayDate: parseDate(day) },

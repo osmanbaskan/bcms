@@ -4,6 +4,10 @@ import {
   createScheduleSchema,
   updateScheduleSchema,
   scheduleQuerySchema,
+  importQuerySchema,
+  exportQuerySchema,
+  livePlanQuerySchema,
+  livePlanExportQuerySchema,
 } from './schedule.schema.js';
 import { importSchedulesFromBuffer } from './schedule.import.js';
 import { exportSchedulesToStream }   from './schedule.export.js';
@@ -63,9 +67,9 @@ export async function scheduleRoutes(app: FastifyInstance) {
     const buffer = Buffer.concat(chunks);
 
     const user   = (request.user as { preferred_username?: string })?.preferred_username ?? 'import';
-    const q      = request.query as { durationMin?: string };
+    const q      = importQuerySchema.parse(request.query);
     const result = await importSchedulesFromBuffer(buffer, app, user, {
-      defaultDurationMin: q.durationMin ? Number(q.durationMin) : 120,
+      defaultDurationMin: q.durationMin ?? 120,
     });
 
     reply.status(200).send(result);
@@ -76,13 +80,11 @@ export async function scheduleRoutes(app: FastifyInstance) {
     preHandler: app.requireRole(...PERMISSIONS.schedules.read),
     schema: { tags: ['Schedules'], summary: 'Programları Excel olarak dışa aktar' },
   }, async (request, reply) => {
-    const q = request.query as {
-      from?: string; to?: string; channelId?: string; title?: string;
-    };
+    const q = exportQuerySchema.parse(request.query);
     const stream = await exportSchedulesToStream(app, {
       from:      q.from,
       to:        q.to,
-      channelId: q.channelId ? Number(q.channelId) : undefined,
+      channelId: q.channelId,
       title:     q.title,
     });
 
@@ -111,17 +113,14 @@ export async function scheduleRoutes(app: FastifyInstance) {
       },
     },
   }, async (request) => {
-    const q = request.query as {
-      channelId?: string; from?: string; to?: string; page?: string; pageSize?: string;
-    };
-
+    const q = livePlanQuerySchema.parse(request.query);
     return svc.findAll({
       usage:    'live-plan',
-      channel:  q.channelId ? Number(q.channelId) : undefined,
+      channel:  q.channelId,
       from:     q.from,
       to:       q.to,
-      page:     q.page ? Number(q.page) : 1,
-      pageSize: q.pageSize ? Number(q.pageSize) : 200,
+      page:     q.page,
+      pageSize: q.pageSize,
     });
   });
 
@@ -197,20 +196,17 @@ export async function scheduleRoutes(app: FastifyInstance) {
       },
     },
   }, async (request) => {
-    const q = request.query as {
-      channelId?: string; from?: string; to?: string; league?: string; season?: string; week?: string; page?: string; pageSize?: string;
-    };
-
+    const q = livePlanQuerySchema.parse(request.query);
     return svc.findAll({
       usage:    'live-plan',
-      channel:  q.channelId ? Number(q.channelId) : undefined,
+      channel:  q.channelId,
       from:     q.from,
       to:       q.to,
       league:   q.league,
       season:   q.season,
-      week:     q.week ? Number(q.week) : undefined,
-      page:     q.page ? Number(q.page) : 1,
-      pageSize: q.pageSize ? Number(q.pageSize) : 500,
+      week:     q.week,
+      page:     q.page,
+      pageSize: q.pageSize,
     });
   });
 
@@ -222,15 +218,15 @@ export async function scheduleRoutes(app: FastifyInstance) {
       summary: 'Canlı yayın plan raporunu Excel olarak dışa aktar',
     },
   }, async (request, reply) => {
-    const q = request.query as { from?: string; to?: string; channelId?: string; league?: string; season?: string; week?: string; title?: string };
+    const q = livePlanExportQuerySchema.parse(request.query);
     const stream = await exportSchedulesToStream(app, {
       usage:     'live-plan',
       from:      q.from,
       to:        q.to,
-      channelId: q.channelId ? Number(q.channelId) : undefined,
+      channelId: q.channelId,
       league:    q.league,
       season:    q.season,
-      week:      q.week ? Number(q.week) : undefined,
+      week:      q.week,
       title:     q.title,
     });
 
