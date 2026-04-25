@@ -731,6 +731,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
   hasActiveJobs = computed(() => this.jobs().some((j) => ACTIVE_STATUSES.has(j.status)));
 
   private pollSub?: Subscription;
+  private planPollSub?: Subscription;
 
   constructor(private api: ApiService, private snack: MatSnackBar) {}
 
@@ -746,10 +747,18 @@ export class IngestListComponent implements OnInit, OnDestroy {
         this.jobs.set(res.data);
         this.total.set(res.total);
       });
+
+    this.planPollSub = interval(10000)
+      .pipe(switchMap(() => this.api.get<IngestPlanItem[]>('/ingest/plan', { date: this.livePlanDate })))
+      .subscribe({
+        next: (items) => this.ingestPlanItems.set(Array.isArray(items) ? items : []),
+        error: () => {},
+      });
   }
 
   ngOnDestroy() {
     this.pollSub?.unsubscribe();
+    this.planPollSub?.unsubscribe();
   }
 
   load() {
