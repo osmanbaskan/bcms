@@ -37,7 +37,7 @@ import type {
 
 interface IngestPlanRow {
   id: string;
-  source: 'live-plan' | 'studio-plan';
+  source: 'live-plan' | 'studio-plan' | 'manual';
   sourceLabel: string;
   sourceKey: string;
   day: string;
@@ -199,7 +199,6 @@ const TR_DATE_FORMATS = {
                 <span>Saat</span>
                 <span>İçerik</span>
                 <span>Kayıt Portu</span>
-                <span>Durum</span>
                 <span>Açıklama</span>
               </div>
 
@@ -224,16 +223,14 @@ const TR_DATE_FORMATS = {
                       </mat-select>
                     </mat-form-field>
                   </div>
-                  <mat-form-field class="inline-field" appearance="outline">
-                    <mat-select [(ngModel)]="row.status" (selectionChange)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)">
-                      @for (opt of planStatusOptions; track opt.value) {
-                        <mat-option [value]="opt.value">{{ opt.label }}</mat-option>
-                      }
-                    </mat-select>
-                  </mat-form-field>
-                  <mat-form-field class="inline-field" appearance="outline">
-                    <input matInput [(ngModel)]="row.planNote" placeholder="Açıklama…" maxlength="30" (blur)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)" />
-                  </mat-form-field>
+                  <div class="note-cell">
+                    <mat-form-field class="inline-field" appearance="outline">
+                      <input matInput [(ngModel)]="row.planNote" placeholder="Açıklama…" maxlength="30" (blur)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)" />
+                    </mat-form-field>
+                    <button mat-icon-button class="duplicate-btn" (click)="duplicateRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)" title="Satırı çoğalt">
+                      <mat-icon>add</mat-icon>
+                    </button>
+                  </div>
                 </div>
               }
             </div>
@@ -478,7 +475,11 @@ const TR_DATE_FORMATS = {
     .content-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
     .content-meta { font-size: 0.72rem; color: #7a8fa8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .planning-head,
-    .planning-row { display: grid; grid-template-columns: 116px 100px minmax(200px,1fr) 180px 148px minmax(140px,0.5fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .planning-row { display: grid; grid-template-columns: 116px 100px minmax(200px,1fr) 190px minmax(170px,0.6fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .note-cell { display: flex; align-items: center; gap: 2px; }
+    .note-cell .inline-field { flex: 1; }
+    .duplicate-btn { flex-shrink: 0; width: 32px; height: 32px; line-height: 32px; color: #9bd3ff; }
+    .source-pill.manual { color: #0d2b1a; background: #66bb6a; }
     .planning-head { color: #9aa2b3; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
     .planning-row { font-size: 0.86rem; }
     .planning-row:nth-child(odd) { background: rgba(255,255,255,0.025); }
@@ -577,7 +578,28 @@ export class IngestListComponent implements OnInit, OnDestroy {
       scheduleId: schedule.id,
     }));
 
-    return [...liveRows, ...this.studioPlanRows()].sort((a, b) => a.sortMinute - b.sortMinute);
+    const manualRows: IngestPlanRow[] = this.ingestPlanItems()
+      .filter((item) => item.sourceType === 'manual')
+      .map((item) => ({
+        id: `manual-${item.sourceKey}`,
+        source: 'manual' as const,
+        sourceLabel: 'Manuel',
+        sourceKey: item.sourceKey,
+        day: item.dayDate,
+        sortMinute: item.plannedStartMinute ?? 0,
+        endMinute: item.plannedEndMinute ?? 0,
+        startTime: this.minuteToTime(item.plannedStartMinute ?? 0),
+        endTime: this.minuteToTime(item.plannedEndMinute ?? 0),
+        title: item.sourcePath || 'Manuel Kopya',
+        location: '',
+        note: '',
+        planNote: item.note ?? '',
+        recordingPort: item.recordingPort ?? '',
+        status: item.status,
+        jobId: item.jobId,
+      }));
+
+    return [...liveRows, ...this.studioPlanRows(), ...manualRows].sort((a, b) => a.sortMinute - b.sortMinute);
   });
 
   filteredPlanningRows = computed<IngestPlanRow[]>(() => {
@@ -1034,6 +1056,26 @@ export class IngestListComponent implements OnInit, OnDestroy {
     return this.savingPlanKeys().has(sourceKey);
   }
 
+  duplicateRow(row: IngestPlanRow) {
+    const sourceKey = `manual:${row.day}:${row.sortMinute}:${row.endMinute}:${Date.now()}`;
+    this.api.put<IngestPlanItem>(`/ingest/plan/${encodeURIComponent(sourceKey)}`, {
+      sourceType: 'manual',
+      day: row.day,
+      sourcePath: row.title,
+      plannedStartMinute: row.sortMinute,
+      plannedEndMinute: row.endMinute,
+      status: 'WAITING',
+    }).subscribe({
+      next: (item) => {
+        this.ingestPlanItems.update((items) => [...items, item]);
+        this.snack.open('Satır çoğaltıldı', 'Kapat', { duration: 2000 });
+      },
+      error: (err) => {
+        this.snack.open(`Çoğaltma hatası: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+      },
+    });
+  }
+
   savePlanRow(row: IngestPlanRow) {
     const nextSaving = new Set(this.savingPlanKeys());
     nextSaving.add(row.sourceKey);
@@ -1042,6 +1084,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
     this.api.put<IngestPlanItem>(`/ingest/plan/${encodeURIComponent(row.sourceKey)}`, {
       sourceType: row.source,
       day: row.day,
+      ...(row.source === 'manual' ? { sourcePath: row.title } : {}),
       recordingPort: row.recordingPort || null,
       plannedStartMinute: row.sortMinute,
       plannedEndMinute: row.endMinute,
