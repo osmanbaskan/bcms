@@ -583,7 +583,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
       .map((item) => ({
         id: `manual-${item.sourceKey}`,
         source: 'manual' as const,
-        sourceLabel: 'Manuel',
+        sourceLabel: 'Ingest Plan',
         sourceKey: item.sourceKey,
         day: item.dayDate,
         sortMinute: item.plannedStartMinute ?? 0,
