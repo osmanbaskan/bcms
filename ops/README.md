@@ -175,6 +175,31 @@ KEYCLOAK_ALLOWED_ISSUERS=http://172.28.204.133:8080/realms/bcms,http://localhost
 
 Bu sayede hem `localhost:4200` hem `172.28.204.133:4200` üzerinden login yapılabilir.
 
+## Güvenlik
+
+### API Rate Limiting
+
+API global olarak dakikada **300 istek** sınırına tabidir (`@fastify/rate-limit`).
+
+- Sınır aşıldığında HTTP **429** döner, yanıtta kalan süre belirtilir.
+- Muaf endpoint'ler: `/health` (Docker healthcheck) ve `/api/v1/ingest/callback` (worker iç çağrısı).
+- nginx'in `X-Real-IP` header'ı gerçek istemci IP'si olarak tanınır.
+
+### nginx Güvenlik Header'ları
+
+`infra/docker/nginx.conf` — tüm frontend yanıtlarına eklenen header'lar:
+
+```
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=(), microphone=(), camera=()
+X-Robots-Tag: noindex, nofollow
+```
+
+Web imajı rebuild edilmeden değişiklik yansımaz: `docker compose up -d --build web`
+
 ## Aktif Ops Scriptleri
 
 ```text

@@ -13,6 +13,9 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 7. **Statik servis**: Angular build dosyaları `infra/docker/nginx.conf` üzerinden nginx ile sunulur. `bcms-web-static-server.mjs` kaldırılmıştır.
 8. **Excel**: Yalnızca `exceljs` kullanılır; `xlsx` paketi güvenlik açığı nedeniyle kaldırılmıştır. Yalnızca `.xlsx` formatı kabul edilir.
 9. **Angular production ortamı**: `apps/web/angular.json`'da production konfigürasyonunda `fileReplacements` tanımlı olmalıdır (`environment.ts` → `environment.prod.ts`). Bu olmadan Docker build `skipAuth: true` ile çalışır ("dev-admin" görünür, tüm API çağrıları 401 döner).
+10. **Rate limiting**: API global olarak dakikada 300 istek sınırına tabidir (`@fastify/rate-limit`). `/health` ve ingest `/callback` muaftır. Aşımda HTTP 429 döner.
+11. **Güvenlik header'ları**: nginx tüm yanıtlara `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy` ekler.
+12. **Input validation**: Tüm API route'ları Zod ile doğrulama yapar. `request.query as {...}` cast'i kullanılmaz.
 
 ## Mimari
 
@@ -243,6 +246,7 @@ Bağımsız navigasyon öğesi — üç rapor tipi desteklenir:
 - Generate sorunu çözümü: `rm -rf node_modules/.prisma node_modules/@prisma/client node_modules/prisma && npm install prisma@5.22.0 @prisma/client@5.22.0 && npm run db:generate -w apps/api`
 - DB enum isimleri: `booking_status`, `ingest_status`, `incident_severity` (Prisma `@@map` ile bağlı)
 - Local DB 2026-04-22'de 8 migration baseline edildi
+- 2026-04-25: `20260425000000_add_ingest_job_updated_at` — `ingest_jobs.updated_at` kolonu eklendi
 
 ## Ortam Değişkenleri
 
