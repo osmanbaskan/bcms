@@ -185,6 +185,33 @@ API global olarak dakikada **300 istek** sınırına tabidir (`@fastify/rate-lim
 - Muaf endpoint'ler: `/health` (Docker healthcheck) ve `/api/v1/ingest/callback` (worker iç çağrısı).
 - nginx'in `X-Real-IP` header'ı gerçek istemci IP'si olarak tanınır.
 
+### Docker HEALTHCHECK
+
+`api` container'ı artık Docker'ın health check mekanizmasını kullanıyor:
+
+```bash
+# Durum sorgula
+docker inspect bcms_api --format='{{.State.Health.Status}}'
+# Beklenen çıktı: healthy
+```
+
+Olası durumlar: `starting` (ilk 15 sn) → `healthy` (normal) → `unhealthy` (API yanıt vermez).
+
+### Port Erişim Kısıtlaması
+
+| Servis | Port | Erişim |
+|---|---|---|
+| RabbitMQ AMQP | 5673 | Tüm arayüzler (uygulama bağlantısı) |
+| RabbitMQ UI | **127.0.0.1**:15673 | Sadece localhost |
+| Prometheus | **127.0.0.1**:9090 | Sadece localhost |
+| Grafana | 3001 | Tüm arayüzler |
+
+Uzaktan RabbitMQ UI veya Prometheus'a erişmek için SSH tüneli:
+```bash
+ssh -L 15673:localhost:15673 ubuntu@172.28.204.133
+# Tarayıcıda: http://localhost:15673
+```
+
 ### nginx Güvenlik Header'ları
 
 `infra/docker/nginx.conf` — tüm frontend yanıtlarına eklenen header'lar:

@@ -173,6 +173,21 @@ KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:-8080}
 - `xlsx` paketi kaldırıldı → `exceljs` (sadece `.xlsx` kabul edilir)
 - Production'da required env: `DATABASE_URL`, `RABBITMQ_URL`, `CORS_ORIGIN`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_ADMIN_PASSWORD`, `INGEST_CALLBACK_SECRET`, `INGEST_ALLOWED_ROOTS`
 
+### Dockerfile HEALTHCHECK (2026-04-25)
+- `infra/docker/api.Dockerfile` production stage'e HEALTHCHECK eklendi
+- `wget --spider http://localhost:3000/health` — 30s interval, 5s timeout, 15s start-period, 3 retry
+- Docker artık sessiz API çökmelerini detect eder; `docker ps` sütununda `(healthy)` görünür
+- `docker inspect bcms_api --format='{{.State.Health.Status}}'` ile durum sorgulanabilir
+
+### Signal Simulate Endpoint (2026-04-25)
+- `/api/v1/signals/simulate` production'da koşulsuz `403 Forbidden` döner
+- `ENABLE_SIGNAL_SIMULATE` env bypass'ı kaldırıldı — production'da açılamaz
+
+### Port Binding Güvenliği (2026-04-25)
+- RabbitMQ management UI: `15673:15672` → `127.0.0.1:15673:15672` (LAN kapalı)
+- Prometheus: `9090:9090` → `127.0.0.1:9090:9090` (LAN kapalı)
+- Bu servislere sadece sunucu üzerinden erişilebilir (SSH tüneli ile uzaktan görülebilir)
+
 ### Rate Limiting (2026-04-25)
 - `@fastify/rate-limit` global: 300 istek/dk, HTTP 429 + kalan süre mesajı
 - Muaf: `/health` ve ingest `/callback` — `config: { rateLimit: false }`
