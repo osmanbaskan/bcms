@@ -100,8 +100,8 @@ export async function signalRoutes(app: FastifyInstance) {
     preHandler: app.requireRole(...PERMISSIONS.monitoring.write),
     schema: { tags: ['Signals'], summary: 'Tüm aktif kanallar için simüle edilmiş telemetri gönder' },
   }, async (_req, reply) => {
-    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_SIGNAL_SIMULATE !== 'true') {
-      throw Object.assign(new Error('Signal simulation is disabled in production'), { statusCode: 404 });
+    if (process.env.NODE_ENV === 'production') {
+      throw Object.assign(new Error('Signal simulation is not available in production'), { statusCode: 403 });
     }
 
     const channels = await app.prisma.channel.findMany({ where: { active: true } });
