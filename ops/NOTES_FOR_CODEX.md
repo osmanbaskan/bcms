@@ -85,6 +85,12 @@ Ingest Port Board:
 - Parent: `apps/web/src/app/features/ingest/ingest-list/ingest-list.component.ts`
 - `ingest_plan_items` kalıcılık tablosu
 - `recording_ports` port katalog tablosu (varsayılan 46 port)
+- Portlar her zaman katalog/numerik sıradadır (`a.order - b.order`), yayın saatine göre sıralanmaz
+- Port board'da bağımsız tarih seçici (`portBoardDate` signal) — planlama tablosundan farklı gün gösterebilir
+- Port board 10 sn'de bir otomatik yenilenir (`portBoardPollSub`)
+- Planlama tablosu tarih: TrDateAdapter + MAT_DATE_FORMATS (dd.MM.yyyy, mat-datepicker)
+- Satır çoğaltma: `+` butonu → `ingest-plan` sourceType, `sourcePath="{sourceLabel}\t{title}"`
+- Kaynak filtresi: `row.sourceLabel` bazında (Canlı Yayın / Stüdyo Planı), çoğaltılanlar orijinaliyle aynı filtre
 
 ## Prisma
 
@@ -171,6 +177,8 @@ apps/api/src/modules/studio-plans/studio-plan.routes.ts → GET /reports/usage +
 apps/web/src/app/app.component.ts                → navItems (Raporlama bağımsız, Stüdyo Planı tek öğe)
 apps/web/src/app/app.routes.ts                   → route tanımları (studio-plan/report yok)
 apps/web/src/app/features/schedules/reporting/schedule-reporting.component.ts → Raporlama sayfası
+apps/web/src/app/features/ingest/ingest-list/ingest-list.component.ts        → Ingest planlama, TrDateAdapter, portBoardDate signal
+apps/web/src/app/features/ingest/ingest-port-board/ingest-port-board.component.ts → Port board, bağımsız tarih seçici
 apps/web/angular.json                            → fileReplacements (environment.prod.ts aktif edilmeli!)
 apps/web/src/environments/environment.ts             → skipAuth: true  (SADECE ng serve için)
 apps/web/src/environments/environment.prod.ts        → skipAuth: false (Docker build için)

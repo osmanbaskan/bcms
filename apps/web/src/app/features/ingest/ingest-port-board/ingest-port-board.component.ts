@@ -1,8 +1,39 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, EventEmitter, HostListener, Input, Output, ViewChild } from '@angular/core';
+import { Component, ElementRef, EventEmitter, HostListener, Inject, Input, Optional, Output, ViewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { CdkDrag, CdkDragDrop, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { DateAdapter, MAT_DATE_FORMATS, MAT_DATE_LOCALE, MatNativeDateModule, NativeDateAdapter } from '@angular/material/core';
+
+const PB_TR_DATE_FORMATS = {
+  parse: { dateInput: 'dd.MM.yyyy' },
+  display: {
+    dateInput: 'dd.MM.yyyy',
+    monthYearLabel: 'MMM yyyy',
+    dateA11yLabel: 'dd.MM.yyyy',
+    monthYearA11yLabel: 'MMMM yyyy',
+  },
+};
+
+class PbTrDateAdapter extends NativeDateAdapter {
+  constructor(@Optional() @Inject(MAT_DATE_LOCALE) locale: string) { super(locale); }
+  override parse(value: string): Date | null {
+    if (!value) return null;
+    const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(String(value).trim());
+    if (m) {
+      const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+      if (!isNaN(d.getTime())) return d;
+    }
+    return super.parse(value);
+  }
+  override format(date: Date): string {
+    return `${String(date.getDate()).padStart(2,'0')}.${String(date.getMonth()+1).padStart(2,'0')}.${date.getFullYear()}`;
+  }
+}
 
 export interface IngestPortBoardItemView {
   row: {
@@ -34,7 +65,13 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
 @Component({
   selector: 'app-ingest-port-board',
   standalone: true,
-  imports: [CommonModule, CdkDropList, CdkDrag, MatButtonModule, MatIconModule],
+  providers: [
+    { provide: MAT_DATE_LOCALE, useValue: 'tr-TR' },
+    { provide: MAT_DATE_FORMATS, useValue: PB_TR_DATE_FORMATS },
+    { provide: DateAdapter, useClass: PbTrDateAdapter, deps: [MAT_DATE_LOCALE] },
+  ],
+  imports: [CommonModule, FormsModule, CdkDropList, CdkDrag, MatButtonModule, MatIconModule,
+            MatDatepickerModule, MatFormFieldModule, MatInputModule, MatNativeDateModule],
   template: `
     <div class="port-board-section" [class.full-page]="fullPage" [class.is-fullscreen]="isFullscreen" *ngIf="columns.length > 0" #boardRoot>
       <div class="port-board-header">
@@ -43,6 +80,12 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
           <p>Atanmış portlara göre ingest plan akışı</p>
         </div>
         <div class="port-board-actions">
+          <mat-form-field class="port-board-date-field" appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Tarih</mat-label>
+            <input matInput [matDatepicker]="boardDatePicker" [ngModel]="dateValue" (dateChange)="onDatePickerChange($event.value)" placeholder="gg.aa.yyyy" />
+            <mat-datepicker-toggle matIconSuffix [for]="boardDatePicker"></mat-datepicker-toggle>
+            <mat-datepicker #boardDatePicker></mat-datepicker>
+          </mat-form-field>
           <div class="port-board-zoom" role="group" aria-label="Zoom Seviyesi">
             <button type="button" [class.active]="zoom === 'tight'" (click)="setZoom('tight')">Sıkı</button>
             <button type="button" [class.active]="zoom === 'normal'" (click)="setZoom('normal')">Normal</button>
@@ -107,6 +150,8 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-section.full-page{margin:0;border-radius:0;border-left:0;border-right:0}
     .port-board-header{justify-content:space-between;gap:16px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
     .port-board-header h3,.port-board-header p{margin:0}
+    .port-board-date-field{width:150px;--mdc-outlined-text-field-container-height:36px}
+    .port-board-date-field .mat-mdc-form-field-infix{padding-top:6px!important;padding-bottom:6px!important}
     .port-board-header p{color:#9aa2b3;font-size:.8rem}
     .port-board-actions{gap:12px;flex-wrap:wrap;justify-content:flex-end}
     .port-board-zoom{display:inline-flex;border:1px solid rgba(255,255,255,.14);border-radius:999px;overflow:hidden}
@@ -143,12 +188,29 @@ export class IngestPortBoardComponent {
   @Input() fullPage = false;
   @Input() columnMinWidth = 220;
   @Input() rowCount = 5;
+  @Input() date = '';
 
   @Output() requestPrint = new EventEmitter<void>();
   @Output() portOrderChange = new EventEmitter<string[]>();
+  @Output() dateChange = new EventEmitter<string>();
 
   zoom: PortBoardZoom = 'normal';
   isFullscreen = false;
+
+  get dateValue(): Date | null {
+    if (!this.date) return null;
+    const parts = this.date.split('-');
+    if (parts.length === 3) return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return null;
+  }
+
+  onDatePickerChange(value: Date | null) {
+    if (!value) return;
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    this.dateChange.emit(`${y}-${m}-${d}`);
+  }
 
   trackPort = (_: number, column: IngestPortBoardColumnView) => column.port;
   trackItem = (_: number, item: IngestPortBoardItemView) => item.row.id;

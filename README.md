@@ -217,7 +217,13 @@ Bağımsız navigasyon öğesi — üç rapor tipi desteklenir:
 ### Ingest Planlama
 
 - `Ingest Planlama`: Canlı yayın planı ve Stüdyo Planı kayıtlarını birleştiren tablo; port ataması burada yapılır.
-- `Port Görünümü`: Port bazlı operasyonel pano (5 satır, tam ekran, zoom, print).
+- Tarih seçimi `dd.MM.yyyy` formatındadır (TrDateAdapter + tr-TR locale, mat-datepicker).
+- Kaynak filtresi: Canlı Yayın / Stüdyo Planı — bağımsız ingest-plan kopyaları aynı filtre altında görünür.
+- `+` butonuyla herhangi bir satır bağımsız "ingest-plan" kaydı olarak çoğaltılabilir; `sourcePath` alanına `{sourceLabel}\t{title}` formatında yazılır.
+- `Port Görünümü`: Port bazlı operasyonel pano (5 satır, tam ekran, zoom, print/export).
+  - Portlar her zaman katalog/numarik sıradadır (yayın saatine göre sıralanmaz).
+  - Bağımsız tarih seçici: planlama tablosundan farklı bir günün port durumunu gösterebilir.
+  - 10 saniyede bir otomatik yenilenir (çok kullanıcılı ortam).
 - Kayıt portları: `recording_ports` backend tablosundan gelir (varsayılan 1-44 + Metus1/Metus2 = 46 port).
 - Port atama kalıcılığı: `ingest_plan_items.recording_port`.
 - Çakışma kontrolü backend tarafında reddedilir.

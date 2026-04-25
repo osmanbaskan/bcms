@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
+import { Component, Inject, OnInit, OnDestroy, Optional, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
@@ -9,7 +9,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MAT_DATE_FORMATS, MAT_DATE_LOCALE, MatNativeDateModule } from '@angular/material/core';
+import { DateAdapter, MAT_DATE_FORMATS, MAT_DATE_LOCALE, MatNativeDateModule, NativeDateAdapter } from '@angular/material/core';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -93,17 +93,39 @@ const PLAN_STATUS_OPTIONS: Array<{ value: IngestPlanStatus; label: string }> = [
 const PORT_BOARD_SLOT_MINUTES = 30;
 
 const TR_DATE_FORMATS = {
-  parse: {
-    dateInput: { day: '2-digit', month: '2-digit', year: 'numeric' },
-  },
+  parse: { dateInput: 'dd.MM.yyyy' },
   display: {
-    dateInput: { day: '2-digit', month: '2-digit', year: 'numeric' },
-    monthYearLabel: { month: 'short', year: 'numeric' },
-    dateA11yLabel: { day: '2-digit', month: '2-digit', year: 'numeric' },
-    monthYearA11yLabel: { month: 'long', year: 'numeric' },
+    dateInput: 'dd.MM.yyyy',
+    monthYearLabel: 'MMM yyyy',
+    dateA11yLabel: 'dd.MM.yyyy',
+    monthYearA11yLabel: 'MMMM yyyy',
   },
 };
 
+class TrDateAdapter extends NativeDateAdapter {
+  constructor(@Optional() @Inject(MAT_DATE_LOCALE) locale: string) {
+    super(locale);
+  }
+
+  override parse(value: string): Date | null {
+    if (!value) return null;
+    const match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(String(value).trim());
+    if (match) {
+      const d = Number(match[1]);
+      const m = Number(match[2]) - 1;
+      const y = Number(match[3]);
+      const date = new Date(y, m, d);
+      if (date.getFullYear() === y && date.getMonth() === m && date.getDate() === d) return date;
+    }
+    return super.parse(value);
+  }
+
+  override format(date: Date, _displayFormat: object): string {
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    return `${d}.${m}.${date.getFullYear()}`;
+  }
+}
 
 @Component({
   selector: 'app-ingest-list',
@@ -111,6 +133,7 @@ const TR_DATE_FORMATS = {
   providers: [
     { provide: MAT_DATE_LOCALE, useValue: 'tr-TR' },
     { provide: MAT_DATE_FORMATS, useValue: TR_DATE_FORMATS },
+    { provide: DateAdapter, useClass: TrDateAdapter, deps: [MAT_DATE_LOCALE] },
   ],
   imports: [
     CommonModule,
@@ -274,6 +297,8 @@ const TR_DATE_FORMATS = {
                 [fullPage]="true"
                 [columnMinWidth]="24"
                 [rowCount]="5"
+                [date]="portBoardDate()"
+                (dateChange)="onPortBoardDateChange($event)"
                 (requestPrint)="printPortBoard()"
                 (portOrderChange)="setPortBoardOrder($event)"
               />
@@ -555,6 +580,10 @@ export class IngestListComponent implements OnInit, OnDestroy {
   ingestPlanItems = signal<IngestPlanItem[]>([]);
   recordingPorts = signal<RecordingPort[]>([]);
   portBoardOrder = signal<string[]>([]);
+  portBoardDate  = signal<string>(this.todayDate());
+  portBoardLivePlan   = signal<Schedule[]>([]);
+  portBoardStudioPlan = signal<StudioPlanSlot[]>([]);
+  portBoardIngestItems = signal<IngestPlanItem[]>([]);
   savingPlanKeys = signal<Set<string>>(new Set());
   total       = signal(0);
   selectedTab = signal(0);
@@ -655,7 +684,99 @@ export class IngestListComponent implements OnInit, OnDestroy {
     return rows;
   });
 
-  portBoardRows = computed(() => this.filteredPlanningRows().filter((row) => !!row.recordingPort));
+  portBoardPlanningRows = computed<IngestPlanRow[]>(() => {
+    const date = this.portBoardDate();
+    const planItemMap = new Map(this.portBoardIngestItems().map((item) => [item.sourceKey, item]));
+
+    const liveRows = this.portBoardLivePlan().map((schedule) => ({
+      id: `live-${schedule.id}`,
+      source: 'live-plan' as const,
+      sourceLabel: 'Canlı Yayın',
+      sourceKey: `live:${schedule.id}`,
+      day: date,
+      sortMinute: this.sortMinuteFromDate(schedule.startTime),
+      endMinute: this.sortMinuteFromDate(schedule.endTime),
+      startTime: this.formatTime(schedule.startTime),
+      endTime: this.formatTime(schedule.endTime),
+      title: this.scheduleTitle(schedule),
+      location: schedule.channel?.name ?? '-',
+      note: [schedule.reportLeague, schedule.reportSeason, schedule.reportWeekNumber ? `${schedule.reportWeekNumber}. Hafta` : '']
+        .filter(Boolean).join(' · ') || '-',
+      recordingPort: planItemMap.get(`live:${schedule.id}`)?.recordingPort ?? '',
+      status: planItemMap.get(`live:${schedule.id}`)?.status ?? 'WAITING' as IngestPlanStatus,
+      planNote: planItemMap.get(`live:${schedule.id}`)?.note ?? '',
+      jobId: planItemMap.get(`live:${schedule.id}`)?.jobId,
+      scheduleId: schedule.id,
+    }));
+
+    const slots = [...this.portBoardStudioPlan()].sort((a, b) => (
+      a.studio.localeCompare(b.studio, 'tr') || a.startMinute - b.startMinute || a.program.localeCompare(b.program, 'tr')
+    ));
+    const studioRows: IngestPlanRow[] = [];
+    const used = new Set<number>();
+    for (let i = 0; i < slots.length; i++) {
+      if (used.has(i)) continue;
+      const first = slots[i];
+      let endMinute = first.startMinute + 30;
+      used.add(i);
+      for (let j = i + 1; j < slots.length; j++) {
+        const next = slots[j];
+        if (used.has(j) || next.studio !== first.studio || next.program !== first.program || next.color !== first.color || next.startMinute !== endMinute) continue;
+        endMinute += 30;
+        used.add(j);
+      }
+      const sourceKey = `studio:${first.day}:${first.studio}:${first.startMinute}:${first.program}`;
+      const planItem = planItemMap.get(sourceKey);
+      studioRows.push({
+        id: `studio-${first.day}-${first.studio}-${first.startMinute}-${first.program}`,
+        source: 'studio-plan',
+        sourceLabel: 'Stüdyo Planı',
+        sourceKey,
+        day: first.day,
+        sortMinute: first.startMinute,
+        endMinute,
+        startTime: this.minuteToTime(first.startMinute),
+        endTime: this.minuteToTime(endMinute),
+        title: first.program,
+        location: first.studio,
+        note: 'Stüdyo programı',
+        planNote: planItem?.note ?? '',
+        recordingPort: planItem?.recordingPort ?? '',
+        status: planItem?.status ?? 'WAITING',
+        jobId: planItem?.jobId,
+      });
+    }
+
+    const manualRows: IngestPlanRow[] = this.portBoardIngestItems()
+      .filter((item) => item.sourceType === 'ingest-plan')
+      .map((item) => {
+        const parts = (item.sourcePath ?? '').split('\t');
+        const srcLabel = parts[0] || 'Ingest Plan';
+        const title = parts.slice(1).join('\t') || 'Kopya';
+        return {
+          id: `ingest-plan-${item.sourceKey}`,
+          source: 'ingest-plan' as const,
+          sourceLabel: srcLabel,
+          sourceKey: item.sourceKey,
+          day: item.dayDate,
+          sortMinute: item.plannedStartMinute ?? 0,
+          endMinute: item.plannedEndMinute ?? 0,
+          startTime: this.minuteToTime(item.plannedStartMinute ?? 0),
+          endTime: this.minuteToTime(item.plannedEndMinute ?? 0),
+          title,
+          location: '',
+          note: '',
+          planNote: item.note ?? '',
+          recordingPort: item.recordingPort ?? '',
+          status: item.status ?? 'WAITING',
+          jobId: item.jobId,
+        };
+      });
+
+    return [...liveRows, ...studioRows, ...manualRows].sort((a, b) => a.sortMinute - b.sortMinute);
+  });
+
+  portBoardRows = computed(() => this.portBoardPlanningRows().filter((row) => !!row.recordingPort));
 
   portBoardStartMinute = computed(() => {
     const rows = this.portBoardRows();
@@ -692,7 +813,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
     const portOrder = new Map(orderedNames.map((name, index) => [name, index]));
     const grouped = new Map<string, IngestPlanRow[]>();
 
-    for (const row of this.filteredPlanningRows()) {
+    for (const row of this.portBoardPlanningRows()) {
       if (!row.recordingPort) continue;
       const rows = grouped.get(row.recordingPort) ?? [];
       rows.push(row);
@@ -716,12 +837,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
           order: portOrder.get(port) ?? Number.MAX_SAFE_INTEGER,
         };
       })
-      .sort((a, b) => {
-        if (a.hasItems !== b.hasItems) return a.hasItems ? -1 : 1;
-        if (a.earliestStart !== b.earliestStart) return a.earliestStart - b.earliestStart;
-        if (a.latestEnd !== b.latestEnd) return a.latestEnd - b.latestEnd;
-        return a.order - b.order;
-      })
+      .sort((a, b) => a.order - b.order)
       .map(({ port, items }) => ({
         port,
         items,
@@ -732,11 +848,13 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   private pollSub?: Subscription;
   private planPollSub?: Subscription;
+  private portBoardPollSub?: Subscription;
 
   constructor(private api: ApiService, private snack: MatSnackBar) {}
 
   ngOnInit() {
     this.loadLivePlanCandidates();
+    this.loadPortBoardData(this.portBoardDate());
     this.loadRecordingPorts();
     this.load();
     // Poll every 5 s when there are active jobs; when no active jobs the computed signal
@@ -754,11 +872,19 @@ export class IngestListComponent implements OnInit, OnDestroy {
         next: (items) => this.ingestPlanItems.set(Array.isArray(items) ? items : []),
         error: () => {},
       });
+
+    this.portBoardPollSub = interval(10000)
+      .pipe(switchMap(() => this.api.get<IngestPlanItem[]>('/ingest/plan', { date: this.portBoardDate() })))
+      .subscribe({
+        next: (items) => this.portBoardIngestItems.set(Array.isArray(items) ? items : []),
+        error: () => {},
+      });
   }
 
   ngOnDestroy() {
     this.pollSub?.unsubscribe();
     this.planPollSub?.unsubscribe();
+    this.portBoardPollSub?.unsubscribe();
   }
 
   load() {
@@ -800,6 +926,11 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   setPortBoardOrder(nextOrder: string[]) {
     this.portBoardOrder.set(nextOrder);
+  }
+
+  onPortBoardDateChange(dateStr: string) {
+    this.portBoardDate.set(dateStr);
+    this.loadPortBoardData(dateStr);
   }
 
   planFilterCount(filter: PlanFilter): number {
@@ -952,6 +1083,24 @@ export class IngestListComponent implements OnInit, OnDestroy {
         this.livePlanLoading.set(false);
         this.snack.open(`Canlı yayın planı alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
       },
+    });
+  }
+
+  loadPortBoardData(dateValue: string) {
+    const from = new Date(`${dateValue}T00:00:00+03:00`).toISOString();
+    const to = new Date(`${dateValue}T23:59:59+03:00`).toISOString();
+    this.api.get<PaginatedResponse<Schedule>>('/schedules/ingest-candidates', { from, to, page: 1, pageSize: 200 }).subscribe({
+      next: (res) => this.portBoardLivePlan.set(res.data ?? []),
+      error: () => this.portBoardLivePlan.set([]),
+    });
+    const weekStart = this.mondayFor(dateValue);
+    this.api.get<StudioPlan>(`/studio-plans/${weekStart}`).subscribe({
+      next: (plan) => this.portBoardStudioPlan.set((plan.slots ?? []).filter((slot) => slot.day === dateValue)),
+      error: () => this.portBoardStudioPlan.set([]),
+    });
+    this.api.get<IngestPlanItem[]>('/ingest/plan', { date: dateValue }).subscribe({
+      next: (items) => this.portBoardIngestItems.set(Array.isArray(items) ? items : []),
+      error: () => this.portBoardIngestItems.set([]),
     });
   }
 
@@ -1218,12 +1367,12 @@ export class IngestListComponent implements OnInit, OnDestroy {
     });
   }
 
-  private formatBoardDateLabel(): string {
+  formatBoardDateLabel(): string {
     return new Intl.DateTimeFormat('tr-TR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
-    }).format(new Date(`${this.livePlanDate}T12:00:00`));
+    }).format(new Date(`${this.portBoardDate()}T12:00:00`));
   }
 
   private escapeHtml(value: string): string {

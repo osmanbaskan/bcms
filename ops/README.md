@@ -95,7 +95,10 @@ curl -fsS http://127.0.0.1:3000/health
 - Kayıt port katalogu: `recording_ports` (varsayılan 1-44 + Metus1/Metus2 = 46 port).
 - Plan kalıcılığı: `ingest_plan_items`.
 - Port çakışması backend'de reddedilir.
-- Port görünümü: 5 satırlı düzen, tam ekran, zoom, print/export.
+- Tarih seçimi `dd.MM.yyyy` formatındadır (TrDateAdapter, mat-datepicker).
+- Port görünümü: 5 satırlı düzen, her zaman katalog sırası, tam ekran, zoom, print/export, 10 sn otomatik yenileme.
+- Port görünümünde bağımsız tarih seçici: planlama tablosundan farklı gün görüntülenebilir.
+- Satır çoğaltma: `+` butonu ile satır bağımsız `ingest-plan` kaydı olarak kopyalanır.
 - Rapor endpointleri:
   - `GET /api/v1/ingest/plan/report?from=YYYY-MM-DD&to=YYYY-MM-DD` → JSON
   - `GET /api/v1/ingest/plan/report/export?from=YYYY-MM-DD&to=YYYY-MM-DD` → xlsx (TOPLAM satırı dahil)
