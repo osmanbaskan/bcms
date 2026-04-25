@@ -136,6 +136,27 @@ N+1 sorgu problemi giderildi. Yeni akış:
 - Tarayıcı eski token'ı kullanmaya devam ederse → Ctrl+Shift+R (hard refresh) + yeniden giriş.
 - Test kullanıcısı: `admin` / `admin123`
 
+## LAN Erişimi ve Çoklu Issuer Desteği (2026-04-25)
+
+**Sorun:** `KC_HOSTNAME_STRICT=false` ile Keycloak token `iss` değerini isteği yapan IP'ye göre yazar.
+- `localhost:4200` → `iss: http://localhost:8080/realms/bcms`
+- `172.28.204.133:4200` → `iss: http://172.28.204.133:8080/realms/bcms`
+
+**Çözüm:** `auth.ts` artık `KEYCLOAK_ALLOWED_ISSUERS` env değişkenini okur ve hepsini kabul eder:
+```
+KEYCLOAK_ALLOWED_ISSUERS=http://172.28.204.133:8080/realms/bcms,http://localhost:8080/realms/bcms
+```
+
+**Redirect URI:** `infra/keycloak/realm-export.json` ve Keycloak Admin API ile `bcms-web` client'ına `http://172.28.204.133:4200/*` eklendi.
+
+**docker-compose.yml:** `KC_HOSTNAME` ve `KC_HOSTNAME_PORT` artık `.env`'den env var olarak okunuyor (hardcoded değil):
+```yaml
+KC_HOSTNAME: ${KC_HOSTNAME:-172.28.204.133}
+KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:-8080}
+```
+
+**auth.ts değişikliği:** `issuer` tek string yerine `allowedIssuers` array — `allowedIssuers.includes(claims.iss ?? '')`
+
 ## Güvenlik
 
 - `SKIP_AUTH=true` production'da yasak (`validateRuntimeEnv()` fırlatır)

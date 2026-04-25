@@ -253,6 +253,9 @@ NODE_ENV=production
 DATABASE_URL=postgresql://...
 RABBITMQ_URL=amqp://...
 KEYCLOAK_CLIENT_ID=bcms-api
+KEYCLOAK_ALLOWED_ISSUERS=http://<LAN_IP>:8080/realms/bcms,http://localhost:8080/realms/bcms
+KC_HOSTNAME=<LAN_IP>         # Keycloak token issuer'ı için sabit IP (docker-compose Keycloak servisi)
+KC_HOSTNAME_PORT=8080
 INGEST_CALLBACK_SECRET=...
 INGEST_ALLOWED_ROOTS=/opta,/app/tmp/watch
 BCMS_BACKGROUND_SERVICES=none       # docker-compose'da API için sabit
@@ -261,6 +264,13 @@ BXF_WATCH_DIR=/app/tmp/bxf
 ```
 
 Production'da RabbitMQ bağlantısı kurulamazsa API fail-fast davranır. `RABBITMQ_OPTIONAL=true` yalnızca lokal/geliştirme için kullanılabilir.
+
+### LAN / Ağ Erişimi
+
+Farklı bir bilgisayardan erişimde iki ayar zorunludur:
+
+1. **Keycloak redirect_uri**: `infra/keycloak/realm-export.json`'da `bcms-web` client'ının `redirectUris` ve `webOrigins` listesine `http://<LAN_IP>:4200/*` eklenmeli. Çalışan Keycloak'a Keycloak Admin REST API ile de uygulanabilir (restart gerekmez).
+2. **Token issuer**: `KC_HOSTNAME_STRICT=false` ile Keycloak token `iss` değerini isteği yapan IP'ye göre yazar (localhost ↔ LAN farklı issuer). API `KEYCLOAK_ALLOWED_ISSUERS` env değişkeni ile birden fazla issuer kabul eder. `.env`'de hem LAN IP hem `localhost` issueri tanımlanmalıdır.
 
 ## OPTA
 

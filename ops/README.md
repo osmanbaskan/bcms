@@ -138,6 +138,43 @@ Web imajı yeniden derlenir ve doğru environment ile çalışır.
 
 Keycloak oturumu Docker restart sonrası geçersiz kalır (in-memory session). Tarayıcıda hard refresh (Ctrl+Shift+R) yapıp yeniden login olunmalıdır.
 
+## LAN / Ağ Erişimi (Farklı Bilgisayardan)
+
+`http://172.28.204.133:4200` adresine başka bir PC'den bağlanmak için iki yapılandırma gereklidir:
+
+### 1. Keycloak redirect_uri
+
+`bcms-web` client'ına LAN IP eklenmeli. Bu `infra/keycloak/realm-export.json`'da kalıcıdır.
+Çalışan instance'a restart gerekmeden Keycloak Admin API ile uygulanabilir:
+
+```bash
+# Admin token al
+TOKEN=$(curl -s -X POST "http://localhost:8080/realms/master/protocol/openid-connect/token" \
+  -d "client_id=admin-cli&grant_type=password&username=admin&password=changeme_kc" \
+  -H "Content-Type: application/x-www-form-urlencoded" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# bcms-web client UUID'sini al
+UUID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/admin/realms/bcms/clients?clientId=bcms-web" | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])")
+
+# redirectUris ve webOrigins güncelle (içeriği ihtiyaca göre değiştir)
+curl -s -o /dev/null -w "%{http_code}" -X PUT \
+  "http://localhost:8080/admin/realms/bcms/clients/$UUID" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"clientId":"bcms-web","publicClient":true,"redirectUris":["http://localhost:4200/*","http://localhost/*","http://172.28.204.133:4200/*","http://172.28.204.133/*"],"webOrigins":["http://localhost:4200","http://localhost","http://172.28.204.133:4200","http://172.28.204.133"]}'
+```
+
+### 2. Token Issuer (Çoklu Issuer Desteği)
+
+`KC_HOSTNAME_STRICT=false` Keycloak, token `iss` değerini isteği yapan IP'ye göre yazar.
+API `KEYCLOAK_ALLOWED_ISSUERS` ile birden fazla issuer kabul eder — `.env` dosyasına şu satır eklenmiştir:
+
+```bash
+KEYCLOAK_ALLOWED_ISSUERS=http://172.28.204.133:8080/realms/bcms,http://localhost:8080/realms/bcms
+```
+
+Bu sayede hem `localhost:4200` hem `172.28.204.133:4200` üzerinden login yapılabilir.
+
 ## Aktif Ops Scriptleri
 
 ```text

@@ -59,8 +59,8 @@ services:
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
-      KC_HOSTNAME: "172.28.204.133"
-      KC_HOSTNAME_PORT: "8080"
+      KC_HOSTNAME: ${KC_HOSTNAME:-172.28.204.133}
+      KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:-8080}
     volumes:
       - ./infra/keycloak:/opt/keycloak/data/import
     ports:
