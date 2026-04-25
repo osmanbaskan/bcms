@@ -130,9 +130,9 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-item.overlap{background:#ffd9d9;border-color:#ef5350}
     .port-board-item strong{display:flex;flex-direction:column;font-size:2.16rem;line-height:.92;overflow:hidden}
     .title-line{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .port-board-time,.port-board-warning{font-weight:800;font-size:1.5rem;line-height:1}
-    .port-board-warning{color:#b71c1c}
-    .port-board-note{font-size:1.2rem;font-weight:600;color:#2a4a6a;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .port-board-time{font-weight:800;font-size:1.5rem;line-height:1;color:#e65100}
+    .port-board-warning{font-weight:800;font-size:1.5rem;line-height:1;color:#b71c1c}
+    .port-board-note{font-size:1.2rem;font-weight:600;color:#4a148c;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   `],
 })
 export class IngestPortBoardComponent {
