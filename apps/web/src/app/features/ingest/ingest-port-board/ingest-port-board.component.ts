@@ -121,7 +121,7 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-grid{display:grid;min-width:max-content}
     .port-board-column{min-height:100%;border-right:1px solid rgba(255,255,255,.08);background:rgba(19,38,64,.72)}
     .port-board-column:last-child{border-right:0}
-    .port-board-column-tag{position:absolute;top:2px;left:2px;z-index:3;gap:1px;padding:0 2px;background:transparent;color:#f5d24b;font-size:.58rem;cursor:move}
+    .port-board-column-tag{position:absolute;top:2px;left:2px;z-index:3;gap:1px;padding:0 2px;background:transparent;color:#f5d24b;font-size:.87rem;cursor:move}
     .port-drag-handle{justify-content:center;width:18px;height:18px;padding:0;border:0;background:transparent;color:#d9e6f2;cursor:move}
     .port-drag-handle mat-icon{font-size:16px;width:16px;height:16px}
     .port-board-column-body{position:relative;display:grid;padding:0;min-height:240px;background:rgba(189,210,232,.08)}
