@@ -56,6 +56,14 @@ interface IngestPlanRow {
 }
 
 type PlanFilter = 'all' | 'today' | 'active' | 'unassigned' | 'issues';
+type SourceFilter = 'all' | 'live-plan' | 'studio-plan' | 'ingest-plan';
+
+const SOURCE_FILTERS: Array<{ label: string; value: SourceFilter }> = [
+  { label: 'Tüm Kaynaklar', value: 'all' },
+  { label: 'Canlı Yayın',   value: 'live-plan' },
+  { label: 'Stüdyo Planı',  value: 'studio-plan' },
+  { label: 'Ingest Plan',   value: 'ingest-plan' },
+];
 
 const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING', 'PROXY_GEN', 'QC']);
 const ACTIVE_PLAN_STATUSES = new Set<IngestPlanStatus>(['WAITING', 'RECEIVED', 'INGEST_STARTED']);
@@ -162,6 +170,18 @@ const TR_DATE_FORMATS = {
               {{ filter.label }}
               <span>{{ planFilterCount(filter.value) }}</span>
             </button>
+          }
+        </div>
+
+        <div class="source-filter-bar">
+          <span class="source-filter-label">Kaynak:</span>
+          @for (sf of sourceFilters; track sf.value) {
+            <button
+              type="button"
+              class="source-filter-button"
+              [class.active]="sourceFilter() === sf.value"
+              (click)="sourceFilter.set(sf.value)"
+            >{{ sf.label }}</button>
           }
         </div>
 
@@ -469,6 +489,10 @@ const TR_DATE_FORMATS = {
     .plan-filter-button { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; background: rgba(255,255,255,0.04); color: #c8d3e5; }
     .plan-filter-button span { min-width: 22px; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.1); color: #ffffff; font-size: 0.72rem; font-weight: 800; text-align: center; }
     .plan-filter-button.active { border-color: #9bd3ff; background: rgba(155,211,255,0.14); color: #ffffff; }
+    .source-filter-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 14px 0; }
+    .source-filter-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #7a8fa8; margin-right: 2px; }
+    .source-filter-button { height: 28px; padding: 0 10px; border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; background: transparent; color: #9aa2b3; font-size: 0.78rem; cursor: pointer; }
+    .source-filter-button.active { border-color: #66bb6a; background: rgba(102,187,106,0.14); color: #fff; }
     .planning-tools { padding: 12px 14px 0; }
     .planning-table-wrap { overflow-x: auto; }
     .planning-table { min-width: 920px; }
@@ -523,6 +547,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
   columns          = ['id', 'sourcePath', 'status', 'plan', 'qc', 'createdAt', 'expand'];
   statusTabs       = STATUS_TABS;
   planFilters      = PLAN_FILTERS;
+  sourceFilters    = SOURCE_FILTERS;
   planStatusOptions = PLAN_STATUS_OPTIONS;
 
   jobs        = signal<IngestJob[]>([]);
@@ -534,7 +559,8 @@ export class IngestListComponent implements OnInit, OnDestroy {
   savingPlanKeys = signal<Set<string>>(new Set());
   total       = signal(0);
   selectedTab = signal(0);
-  planFilter = signal<PlanFilter>('all');
+  planFilter   = signal<PlanFilter>('all');
+  sourceFilter = signal<SourceFilter>('all');
   expandedId  = signal<number | null>(null);
   triggering  = signal(false);
   livePlanLoading = signal(false);
@@ -608,21 +634,25 @@ export class IngestListComponent implements OnInit, OnDestroy {
   });
 
   filteredPlanningRows = computed<IngestPlanRow[]>(() => {
-    const rows = this.planningRows();
+    let rows = this.planningRows();
     const filter = this.planFilter();
+
     if (filter === 'today') {
       const today = this.todayDate();
-      return rows.filter((row) => row.day === today);
+      rows = rows.filter((row) => row.day === today);
+    } else if (filter === 'active') {
+      rows = rows.filter((row) => ACTIVE_PLAN_STATUSES.has(row.status));
+    } else if (filter === 'unassigned') {
+      rows = rows.filter((row) => !row.recordingPort);
+    } else if (filter === 'issues') {
+      rows = rows.filter((row) => row.status === 'ISSUE');
     }
-    if (filter === 'active') {
-      return rows.filter((row) => ACTIVE_PLAN_STATUSES.has(row.status));
+
+    const srcFilter = this.sourceFilter();
+    if (srcFilter !== 'all') {
+      rows = rows.filter((row) => row.source === srcFilter);
     }
-    if (filter === 'unassigned') {
-      return rows.filter((row) => !row.recordingPort);
-    }
-    if (filter === 'issues') {
-      return rows.filter((row) => row.status === 'ISSUE');
-    }
+
     return rows;
   });
 
