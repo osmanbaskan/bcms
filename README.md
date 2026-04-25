@@ -261,10 +261,23 @@ Production'da RabbitMQ bağlantısı kurulamazsa API fail-fast davranır. `RABBI
 
 ## OPTA
 
-Doğru OPTA yolu (Docker volume): `/opta`
-Eski/yanlış yol: `/home/ubuntu/opta`, `/mnt/opta-backups/OPTAfromFTP20511`
+OPTA SMB watcher ayrı Python konteyneri (`opta-watcher`) olarak çalışır, verilerini `POST /api/v1/opta/sync` endpoint'ine HTTP ile gönderir. Doğrudan PostgreSQL erişimi yoktur.
 
-OPTA SMB watcher artık ayrı Python konteyneri (`opta-watcher`) olarak çalışır ve verilerini `POST /api/v1/opta/sync` endpoint'ine HTTP ile gönderir. Doğrudan PostgreSQL erişimi yoktur.
+### Watcher davranışı (`scripts/opta_smb_watcher.py`)
+
+- `MTIME_SETTLE_SEC = 5`: Dosyanın son değişiminden bu kadar saniye geçmeden işlenmez — SMB üzerinden yarım yazılmış XML'i okumayı önler.
+- `BATCH_SIZE = 100`: Büyük XML dosyalarındaki maç listesi 100'er maçlık parçalara bölünür, her parça ayrı POST isteği ile gönderilir — Fastify payload limitini (varsayılan 1 MB) aşmayı önler.
+- Tarama aralığı: `OPTA_POLL_INTERVAL` (varsayılan 3600 sn).
+
+### Sync endpoint davranışı (`apps/api/src/modules/opta/opta.sync.routes.ts`)
+
+- Gelen `matches` dizisindeki benzersiz ligler önce toplu upsert edilir.
+- Mevcut maçlar tek sorguda çekilir; insert/update/unchanged listeleri ayrıştırılır.
+- Tüm insertlar ve updatelar tek bir Prisma `$transaction` içinde yazılır (N+1 sorgu yok).
+
+### docker-compose
+
+`opta-watcher` servisi `network_mode: host` ile çalışır; `BCMS_API_URL=http://localhost:3000/api/v1`.
 
 ## Servis Kontrolü
 

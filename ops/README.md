@@ -100,6 +100,20 @@ curl -fsS http://127.0.0.1:3000/health
   - `GET /api/v1/ingest/plan/report?from=YYYY-MM-DD&to=YYYY-MM-DD` → JSON
   - `GET /api/v1/ingest/plan/report/export?from=YYYY-MM-DD&to=YYYY-MM-DD` → xlsx (TOPLAM satırı dahil)
 
+## OPTA SMB Watcher
+
+- Konteyner: `bcms_opta_watcher` (Python, `scripts/opta_smb_watcher.py`)
+- Ağ: `network_mode: host` → API'ye `http://localhost:3000/api/v1` üzerinden erişir
+- SMB'de değişen her `srml-*-results.xml` dosyası taranır; `POST /api/v1/opta/sync` ile senkronize edilir
+- **Yarım yazma koruması**: `MTIME_SETTLE_SEC=5` — dosya son değişiminden 5 sn geçmeden işlenmez
+- **Payload limit koruması**: `BATCH_SIZE=100` — maç listesi 100'er parçaya bölünür, her biri ayrı POST
+- Tarama aralığı: `OPTA_POLL_INTERVAL` env (varsayılan 3600 sn)
+
+```bash
+docker compose logs -f opta-watcher
+docker compose restart opta-watcher
+```
+
 ## Canli Yayin Plani Kapsami
 
 ```text

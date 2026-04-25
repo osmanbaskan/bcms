@@ -107,8 +107,18 @@ Local DB 2026-04-22'de 8 migration baseline edildi. `npm run db:migrate:prod -w 
 
 - Python konteyneri (`opta-watcher`), SMB'den dosya okur
 - API çağrısı: `POST /api/v1/opta/sync` (Bearer token)
-- Env: `BCMS_API_URL`, `BCMS_API_TOKEN`
+- Env: `BCMS_API_URL=http://localhost:3000/api/v1`, `BCMS_API_TOKEN`
 - Doğrudan PostgreSQL erişimi yok; psycopg2 kaldırıldı
+- `network_mode: host` — bridge DNS sorunu olmadan API'ye localhost üzerinden erişir
+- `MTIME_SETTLE_SEC=5` — SMB yarım yazma koruması; dosya son mtime'dan 5 sn geçmeden işlenmez
+- `BATCH_SIZE=100` — büyük payload'ları 100'er maçlık chunk'lara böler; Fastify 1 MB limitini önler
+
+### Sync Endpoint (`opta.sync.routes.ts`) — 2026-04-25
+
+N+1 sorgu problemi giderildi. Yeni akış:
+1. Gelen `matches` dizisinden benzersiz ligler çıkarılır, `Promise.all` ile toplu upsert
+2. Tüm `matchUid`'ler tek `findMany` ile çekilir → insert/update/unchanged ayrıştırılır
+3. Tüm yazma tek `$transaction([...creates, ...updates])` içinde
 
 ## Keycloak / Auth
 
