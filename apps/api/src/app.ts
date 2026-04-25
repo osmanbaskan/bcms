@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -23,6 +24,7 @@ import { playoutRoutes } from './modules/playout/playout.routes.js';
 import { auditRoutes } from './modules/audit/audit.routes.js';
 import { matchRoutes } from './modules/matches/match.routes.js';
 import { optaRoutes }  from './modules/opta/opta.routes.js';
+import { optaSyncRoutes } from './modules/opta/opta.sync.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
 import { broadcastTypeRoutes } from './modules/broadcast-types/broadcast-type.routes.js';
 import { studioPlanRoutes } from './modules/studio-plans/studio-plan.routes.js';
@@ -226,9 +228,18 @@ export async function buildApp() {
     // RabbitMQ
     checks.rabbitmq = app.rabbitmq.isConnected() ? 'ok' : 'degraded';
 
-    // OPTA
+    // OPTA — watcher aktif değilse (API none modunda) dizin varlığını kontrol et
     const opta = getOptaWatcherStatus();
-    checks.opta = opta.connected ? 'ok' : 'degraded';
+    if (opta.connected) {
+      checks.opta = 'ok';
+    } else {
+      try {
+        fs.statSync(opta.dir);
+        checks.opta = 'ok';
+      } catch {
+        checks.opta = 'degraded';
+      }
+    }
 
     const degraded = Object.values(checks).some((v) => v === 'degraded');
     return reply
@@ -262,6 +273,7 @@ export async function buildApp() {
   await app.register(auditRoutes,    { prefix: '/api/v1/audit' });
   await app.register(matchRoutes,    { prefix: '/api/v1/matches' });
   await app.register(optaRoutes,     { prefix: '/api/v1/opta' });
+  await app.register(optaSyncRoutes, { prefix: '/api/v1/opta' });
   await app.register(usersRoutes,          { prefix: '/api/v1/users' });
   await app.register(broadcastTypeRoutes,  { prefix: '/api/v1/broadcast-types' });
   await app.register(studioPlanRoutes,     { prefix: '/api/v1/studio-plans' });
