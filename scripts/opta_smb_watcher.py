@@ -38,7 +38,7 @@ MTIME_SETTLE_SEC = 5
 # Tek bir API isteğinde gönderilecek maksimum maç sayısı
 BATCH_SIZE = 100
 
-_RESULTS_RE = re.compile(r"^srml-(\d+)-(2025|2026)-results\.xml$")
+_RESULTS_RE = re.compile(r"^srml-(\d+)-(\d{4})-results\.xml$")
 _SQUADS_RE  = re.compile(r"^srml-(\d+)-(\d+)-squads\.xml$")
 
 logging.basicConfig(

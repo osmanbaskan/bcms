@@ -2,6 +2,16 @@ import { FastifyPluginAsync } from 'fastify';
 
 export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/sync', async (request, reply) => {
+    const secret = process.env.OPTA_SYNC_SECRET;
+    if (!secret) {
+      return reply.code(500).send({ error: 'OPTA_SYNC_SECRET yapılandırılmamış.' });
+    }
+
+    const auth = request.headers.authorization;
+    if (!auth || auth !== `Bearer ${secret}`) {
+      return reply.code(401).send({ error: 'Yetkisiz.' });
+    }
+
     const body = request.body as { matches: any[] };
 
     if (!body || !Array.isArray(body.matches)) {

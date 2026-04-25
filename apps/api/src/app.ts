@@ -11,6 +11,7 @@ import { ZodError } from 'zod';
 
 import { prismaPlugin } from './plugins/prisma.js';
 import { authPlugin } from './plugins/auth.js';
+import { auditPlugin } from './plugins/audit.js';
 import { rabbitmqPlugin } from './plugins/rabbitmq.js';
 import { metricsPlugin } from './plugins/metrics.js';
 
@@ -209,6 +210,7 @@ export async function buildApp() {
   // ── Plugins ───────────────────────────────────────────────────────────────────
   await app.register(prismaPlugin);
   await app.register(authPlugin);
+  await app.register(auditPlugin);
   await app.register(rabbitmqPlugin);
   await app.register(metricsPlugin);
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }); // max 10 MB
@@ -243,7 +245,7 @@ export async function buildApp() {
 
     const degraded = Object.values(checks).some((v) => v === 'degraded');
     return reply
-      .status(degraded ? 200 : 200)
+      .status(degraded ? 503 : 200)
       .send({ status: degraded ? 'degraded' : 'ok', checks, timestamp: new Date().toISOString() });
   });
 

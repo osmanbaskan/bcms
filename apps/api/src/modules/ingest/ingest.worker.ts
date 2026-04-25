@@ -6,6 +6,7 @@ import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import type { FastifyInstance } from 'fastify';
 import { QUEUES } from '../../plugins/rabbitmq.js';
+import { validateIngestSourcePath } from './ingest.paths.js';
 
 ffmpeg.setFfmpegPath(ffmpegPath.path);
 ffmpeg.setFfprobePath(ffprobePath.path);
@@ -127,23 +128,26 @@ export async function startIngestWorker(app: FastifyInstance): Promise<void> {
     });
 
     try {
-      // 1. Checksum
-      const checksum = await computeChecksum(sourcePath);
+      // 1. Path güvenlik kontrolü (path traversal engellemek için)
+      const safePath = validateIngestSourcePath(sourcePath);
+
+      // 2. Checksum
+      const checksum = await computeChecksum(safePath);
       await app.prisma.ingestJob.update({ where: { id: jobId }, data: { checksum } });
 
-      // 2. ffprobe analizi
-      const mediaInfo = await probeFile(sourcePath);
+      // 3. ffprobe analizi
+      const mediaInfo = await probeFile(safePath);
       app.log.info({ jobId, mediaInfo }, 'ffprobe tamamlandı');
 
       // ── PROXY_GEN ───────────────────────────────────────────────────────
       await app.prisma.ingestJob.update({ where: { id: jobId }, data: { status: 'PROXY_GEN' } });
-      const proxyPath = await generateProxy(sourcePath, jobId);
+      const proxyPath = await generateProxy(safePath, jobId);
       await app.prisma.ingestJob.update({ where: { id: jobId }, data: { proxyPath } });
       app.log.info({ jobId, proxyPath }, 'Proxy üretildi');
 
       // ── QC ──────────────────────────────────────────────────────────────
       await app.prisma.ingestJob.update({ where: { id: jobId }, data: { status: 'QC' } });
-      const loudness = await measureLoudness(sourcePath);
+      const loudness = await measureLoudness(safePath);
 
       const errors:   string[] = [];
       const warnings: string[] = [];
