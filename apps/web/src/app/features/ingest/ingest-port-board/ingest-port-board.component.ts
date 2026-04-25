@@ -7,7 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 export interface IngestPortBoardItemView {
   row: {
     id: string;
-    source: 'live-plan' | 'studio-plan' | 'manual';
+    source: 'live-plan' | 'studio-plan' | 'ingest-plan';
     sourceLabel: string;
     startTime: string;
     endTime: string;

@@ -37,7 +37,7 @@ import type {
 
 interface IngestPlanRow {
   id: string;
-  source: 'live-plan' | 'studio-plan' | 'manual';
+  source: 'live-plan' | 'studio-plan' | 'ingest-plan';
   sourceLabel: string;
   sourceKey: string;
   day: string;
@@ -204,7 +204,7 @@ const TR_DATE_FORMATS = {
 
               @for (row of filteredPlanningRows(); track row.id) {
                 <div class="planning-row">
-                  <span class="source-pill" [class.studio]="row.source === 'studio-plan'">{{ row.sourceLabel }}</span>
+                  <span class="source-pill" [class.studio]="row.source === 'studio-plan' || (row.source === 'ingest-plan' && row.sourceLabel === 'Stüdyo Planı')" [class.ingest-plan]="row.source === 'ingest-plan'">{{ row.sourceLabel }}</span>
                   <strong class="time-range">{{ row.startTime }} - {{ row.endTime }}</strong>
                   <div class="content-cell">
                     <span>{{ row.title }}</span>
@@ -479,7 +479,7 @@ const TR_DATE_FORMATS = {
     .note-cell { display: flex; align-items: center; gap: 2px; }
     .note-cell .inline-field { flex: 1; }
     .duplicate-btn { flex-shrink: 0; width: 32px; height: 32px; line-height: 32px; color: #9bd3ff; }
-    .source-pill.manual { color: #0d2b1a; background: #66bb6a; }
+    .source-pill.ingest-plan { color: #0d2b1a; background: #66bb6a; }
     .planning-head { color: #9aa2b3; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
     .planning-row { font-size: 0.86rem; }
     .planning-row:nth-child(odd) { background: rgba(255,255,255,0.025); }
@@ -579,25 +579,30 @@ export class IngestListComponent implements OnInit, OnDestroy {
     }));
 
     const manualRows: IngestPlanRow[] = this.ingestPlanItems()
-      .filter((item) => item.sourceType === 'manual')
-      .map((item) => ({
-        id: `manual-${item.sourceKey}`,
-        source: 'manual' as const,
-        sourceLabel: 'Ingest Plan',
-        sourceKey: item.sourceKey,
-        day: item.dayDate,
-        sortMinute: item.plannedStartMinute ?? 0,
-        endMinute: item.plannedEndMinute ?? 0,
-        startTime: this.minuteToTime(item.plannedStartMinute ?? 0),
-        endTime: this.minuteToTime(item.plannedEndMinute ?? 0),
-        title: item.sourcePath || 'Manuel Kopya',
-        location: '',
-        note: '',
-        planNote: item.note ?? '',
-        recordingPort: item.recordingPort ?? '',
-        status: item.status,
-        jobId: item.jobId,
-      }));
+      .filter((item) => item.sourceType === 'ingest-plan')
+      .map((item) => {
+        const parts = (item.sourcePath ?? '').split('\t');
+        const srcLabel = parts[0] || 'Ingest Plan';
+        const title    = parts.slice(1).join('\t') || 'Kopya';
+        return {
+          id: `ingest-plan-${item.sourceKey}`,
+          source: 'ingest-plan' as const,
+          sourceLabel: srcLabel,
+          sourceKey: item.sourceKey,
+          day: item.dayDate,
+          sortMinute: item.plannedStartMinute ?? 0,
+          endMinute: item.plannedEndMinute ?? 0,
+          startTime: this.minuteToTime(item.plannedStartMinute ?? 0),
+          endTime: this.minuteToTime(item.plannedEndMinute ?? 0),
+          title,
+          location: '',
+          note: '',
+          planNote: item.note ?? '',
+          recordingPort: item.recordingPort ?? '',
+          status: item.status,
+          jobId: item.jobId,
+        };
+      });
 
     return [...liveRows, ...this.studioPlanRows(), ...manualRows].sort((a, b) => a.sortMinute - b.sortMinute);
   });
@@ -1057,11 +1062,11 @@ export class IngestListComponent implements OnInit, OnDestroy {
   }
 
   duplicateRow(row: IngestPlanRow) {
-    const sourceKey = `manual:${row.day}:${row.sortMinute}:${row.endMinute}:${Date.now()}`;
+    const sourceKey = `ingest-plan:${row.day}:${row.sortMinute}:${row.endMinute}:${Date.now()}`;
     this.api.put<IngestPlanItem>(`/ingest/plan/${encodeURIComponent(sourceKey)}`, {
-      sourceType: 'manual',
+      sourceType: 'ingest-plan',
       day: row.day,
-      sourcePath: row.title,
+      sourcePath: `${row.sourceLabel}\t${row.title}`,
       plannedStartMinute: row.sortMinute,
       plannedEndMinute: row.endMinute,
       status: 'WAITING',
@@ -1084,7 +1089,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
     this.api.put<IngestPlanItem>(`/ingest/plan/${encodeURIComponent(row.sourceKey)}`, {
       sourceType: row.source,
       day: row.day,
-      ...(row.source === 'manual' ? { sourcePath: row.title } : {}),
+      ...(row.source === 'ingest-plan' ? { sourcePath: `${row.sourceLabel}\t${row.title}` } : {}),
       recordingPort: row.recordingPort || null,
       plannedStartMinute: row.sortMinute,
       plannedEndMinute: row.endMinute,
