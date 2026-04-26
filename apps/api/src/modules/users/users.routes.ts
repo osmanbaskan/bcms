@@ -3,7 +3,7 @@ import { PERMISSIONS } from '@bcms/shared';
 
 const BCMS_GROUPS = [
   'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama', 'SystemEng',
-  'Ingest', 'Kurgu', 'MCR', 'PCR', 'Ses', 'Studyo',
+  'Ingest', 'Kurgu', 'MCR', 'PCR', 'Ses', 'StudyoSefi',
 ];
 
 let adminToken: string | null = null;

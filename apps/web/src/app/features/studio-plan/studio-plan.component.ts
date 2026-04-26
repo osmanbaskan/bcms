@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { KeycloakService } from 'keycloak-angular';
 import { finalize } from 'rxjs';
 import { StudioPlanService } from '../../core/services/studio-plan.service';
 import type { StudioPlan, StudioPlanSlot } from '@bcms/shared';
@@ -105,6 +106,8 @@ function toDateInputValue(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+const STUDIO_EDIT_GROUPS = ['SystemEng', 'StudyoSefi'];
+
 @Component({
   selector: 'app-studio-plan',
   standalone: true,
@@ -121,6 +124,13 @@ function toDateInputValue(date: Date): string {
 })
 export class StudioPlanComponent implements OnInit {
   private readonly studioPlanService = inject(StudioPlanService);
+  private readonly keycloak = inject(KeycloakService);
+
+  readonly canEdit = computed(() => {
+    const parsed = this.keycloak.getKeycloakInstance().tokenParsed as { groups?: string[] } | undefined;
+    const userGroups: string[] = parsed?.groups ?? [];
+    return STUDIO_EDIT_GROUPS.some((g) => userGroups.includes(g));
+  });
 
   readonly days = signal<StudioPlanDay[]>([]);
   readonly studios = STUDIOS;
@@ -196,6 +206,9 @@ export class StudioPlanComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    if (!this.canEdit()) {
+      this.viewMode.set('list');
+    }
     this.loadCatalog();
     this.onWeekStartChange();
   }

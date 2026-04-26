@@ -9,6 +9,7 @@
   </mat-form-field>
 
   <mat-button-toggle-group
+    *ngIf="!readonly"
     [value]="viewMode"
     (change)="viewModeChange.emit($event.value)"
     aria-label="Görünüm"
@@ -17,51 +18,53 @@
     <mat-button-toggle value="list">Liste</mat-button-toggle>
   </mat-button-toggle-group>
 
-  <mat-form-field appearance="outline" class="program-select">
-    <mat-label>Program</mat-label>
-    <mat-select [ngModel]="selectedProgram" (ngModelChange)="selectedProgramChange.emit($event)">
-      <mat-option *ngFor="let program of programs" [value]="program">{{ program }}</mat-option>
-    </mat-select>
-  </mat-form-field>
+  <ng-container *ngIf="!readonly">
+    <mat-form-field appearance="outline" class="program-select">
+      <mat-label>Program</mat-label>
+      <mat-select [ngModel]="selectedProgram" (ngModelChange)="selectedProgramChange.emit($event)">
+        <mat-option *ngFor="let program of programs" [value]="program">{{ program }}</mat-option>
+      </mat-select>
+    </mat-form-field>
 
-  <mat-form-field appearance="outline" class="color-select">
-    <mat-label>Renk</mat-label>
-    <mat-select [ngModel]="selectedColor" (ngModelChange)="selectedColorChange.emit($event)">
-      <mat-select-trigger>
-        <span class="color-option">
-          <span class="color-swatch" [style.background]="selectedColor"></span>
-          {{ colorLabel(selectedColor) }}
-        </span>
-      </mat-select-trigger>
-      <mat-option *ngFor="let color of colors" [value]="color.value">
-        <span class="color-option">
-          <span class="color-swatch" [style.background]="color.value"></span>
-          {{ color.label }}
-        </span>
-      </mat-option>
-    </mat-select>
-  </mat-form-field>
+    <mat-form-field appearance="outline" class="color-select">
+      <mat-label>Renk</mat-label>
+      <mat-select [ngModel]="selectedColor" (ngModelChange)="selectedColorChange.emit($event)">
+        <mat-select-trigger>
+          <span class="color-option">
+            <span class="color-swatch" [style.background]="selectedColor"></span>
+            {{ colorLabel(selectedColor) }}
+          </span>
+        </mat-select-trigger>
+        <mat-option *ngFor="let color of colors" [value]="color.value">
+          <span class="color-option">
+            <span class="color-swatch" [style.background]="color.value"></span>
+            {{ color.label }}
+          </span>
+        </mat-option>
+      </mat-select>
+    </mat-form-field>
 
-  <button class="action-button danger-action" mat-stroked-button type="button" (click)="clearSelection.emit()">
-    <mat-icon>backspace</mat-icon>
-    Seçili Programı Temizle
-  </button>
+    <button class="action-button danger-action" mat-stroked-button type="button" (click)="clearSelection.emit()">
+      <mat-icon>backspace</mat-icon>
+      Seçili Programı Temizle
+    </button>
 
-  <button class="action-button copy-action" mat-stroked-button type="button" (click)="moveCurrentWeekToNextWeek.emit()">
-    <mat-icon>event_repeat</mat-icon>
-    Bu Haftayı Gelecek Haftaya Kopyala
-  </button>
+    <button class="action-button copy-action" mat-stroked-button type="button" (click)="moveCurrentWeekToNextWeek.emit()">
+      <mat-icon>event_repeat</mat-icon>
+      Bu Haftayı Gelecek Haftaya Kopyala
+    </button>
 
-  <button
-    class="action-button eraser-action"
-    mat-stroked-button
-    type="button"
-    [class.active-tool]="eraserMode"
-    (click)="eraserModeChange.emit(!eraserMode)"
-  >
-    <mat-icon>ink_eraser</mat-icon>
-    Silgi
-  </button>
+    <button
+      class="action-button eraser-action"
+      mat-stroked-button
+      type="button"
+      [class.active-tool]="eraserMode"
+      (click)="eraserModeChange.emit(!eraserMode)"
+    >
+      <mat-icon>ink_eraser</mat-icon>
+      Silgi
+    </button>
+  </ng-container>
 
   <span class="save-state" *ngIf="loading">Yükleniyor...</span>
   <span class="save-state" *ngIf="saving">Kaydediliyor...</span>

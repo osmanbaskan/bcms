@@ -19,13 +19,14 @@
     [colors]="colors()"
     [selectedProgram]="selectedProgram"
     [selectedColor]="selectedColor"
+    [readonly]="!canEdit()"
     [eraserMode]="eraserMode()"
     [loading]="loading()"
     [saving]="saving()"
     [saveError]="saveError()"
     [lastSavedAt]="lastSavedAt()"
     (weekStartChange)="onWeekStartChange($event)"
-    (viewModeChange)="viewMode.set($event)"
+    (viewModeChange)="canEdit() && viewMode.set($event)"
     (selectedProgramChange)="selectedProgram = $event"
     (selectedColorChange)="selectedColor = $event"
     (clearSelection)="clearSelection()"
@@ -40,7 +41,7 @@
     </div>
 
     <app-studio-plan-table
-      *ngIf="viewMode() !== 'list'"
+      *ngIf="canEdit() && viewMode() !== 'list'"
       [days]="visibleDays()"
       [studios]="studios"
       [timeSlots]="timeSlots"
@@ -49,7 +50,7 @@
     ></app-studio-plan-table>
 
     <app-studio-plan-list
-      *ngIf="viewMode() === 'list'"
+      *ngIf="!canEdit() || viewMode() === 'list'"
       [entries]="listEntries()"
     ></app-studio-plan-list>
   </div>

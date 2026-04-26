@@ -28,7 +28,7 @@ interface KcUser {
 
 const ALL_GROUPS = [
   'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama', 'SystemEng',
-  'Ingest', 'Kurgu', 'MCR', 'PCR', 'Ses', 'Studyo',
+  'Ingest', 'Kurgu', 'MCR', 'PCR', 'Ses', 'StudyoSefi',
 ] as const;
 
 const GROUP_COLORS: Record<string, string> = {
@@ -42,7 +42,7 @@ const GROUP_COLORS: Record<string, string> = {
   MCR:           '#4527a0',
   PCR:           '#0277bd',
   Ses:           '#558b2f',
-  Studyo:        '#37474f',
+  StudyoSefi:    '#37474f',
 };
 
 // ── Grup Düzenleme Dialog ─────────────────────────────────────────────────────
@@ -141,6 +141,9 @@ export class UserGroupDialogComponent {
           }
         </div>
       </div>
+      @if (errorMsg()) {
+        <p style="color:#f44336;font-size:12px;margin:8px 0 0">{{ errorMsg() }}</p>
+      }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>İptal</button>
@@ -155,7 +158,9 @@ export class UserGroupDialogComponent {
 export class NewUserDialogComponent {
   dialogRef      = inject(MatDialogRef<NewUserDialogComponent>);
   api            = inject(ApiService);
+  snack          = inject(MatSnackBar);
   saving         = signal(false);
+  errorMsg       = signal('');
   allGroups      = ALL_GROUPS;
   selectedGroups = new Set<string>();
   f = { username: '', email: '', firstName: '', lastName: '', password: '' };
@@ -169,9 +174,14 @@ export class NewUserDialogComponent {
   save() {
     if (!this.canSave()) return;
     this.saving.set(true);
+    this.errorMsg.set('');
     this.api.post('/users', { ...this.f, groups: [...this.selectedGroups] }).subscribe({
       next:  () => { this.saving.set(false); this.dialogRef.close(true); },
-      error: () => { this.saving.set(false); },
+      error: (err) => {
+        this.saving.set(false);
+        const msg = err?.error?.message ?? err?.message ?? 'Kullanıcı oluşturulamadı';
+        this.errorMsg.set(msg);
+      },
     });
   }
 }

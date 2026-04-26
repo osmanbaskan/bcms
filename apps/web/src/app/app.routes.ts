@@ -19,7 +19,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/bookings/bookings.routes').then((m) => m.bookingsRoutes),
     canActivate: [AuthGuard],
-    data: { groups: [] },
+    data: { groups: ['SystemEng'] },
   },
   {
     path: 'studio-plan',
@@ -40,35 +40,35 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/provys-content-control/provys-content-control.component').then((m) => m.ProvysContentControlComponent),
     canActivate: [AuthGuard],
-    data: { groups: [] },
+    data: { groups: ['SystemEng'] },
   },
   {
     path: 'channels',
     loadChildren: () =>
       import('./features/channels/channels.routes').then((m) => m.channelsRoutes),
     canActivate: [AuthGuard],
-    data: { groups: [] },
+    data: { groups: ['SystemEng'] },
   },
   {
     path: 'ingest',
     loadChildren: () =>
       import('./features/ingest/ingest.routes').then((m) => m.ingestRoutes),
     canActivate: [AuthGuard],
-    data: { groups: [] },
+    data: { groups: ['SystemEng', 'Ingest'] },
   },
   {
     path: 'monitoring',
     loadChildren: () =>
       import('./features/monitoring/monitoring.routes').then((m) => m.monitoringRoutes),
     canActivate: [AuthGuard],
-    data: { groups: [] },
+    data: { groups: ['SystemEng'] },
   },
   {
     path: 'mcr',
     loadChildren: () =>
       import('./features/mcr/mcr.routes').then((m) => m.mcrRoutes),
     canActivate: [AuthGuard],
-    data: { groups: [] },
+    data: { groups: ['SystemEng', 'MCR'] },
   },
   {
     path: 'users',

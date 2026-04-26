@@ -80,16 +80,38 @@ curl -fsS http://127.0.0.1:3000/health
 - Grafana: `http://localhost:3001`
 - Prometheus: `http://localhost:9090`
 
-## Frontend Operasyon Sekmeleri (Admin)
+## Grup Tabanlı Erişim Özeti
 
-- `Stüdyo Planı` → `/studio-plan` (Haftalık Plan)
-- `Haftalık Shift` → `/weekly-shift`
-- `Provys İçerik Kontrol` → `/provys-content-control`
-- `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab)
+| Sekme | Erişim |
+|---|---|
+| Yayın Planı (liste) | Tüm authenticated |
+| Raporlama | Tüm authenticated |
+| Stüdyo Planı (görüntüle) | Tüm authenticated |
+| Stüdyo Planı (düzenle) | SystemEng, StudyoSefi |
+| Ingest | SystemEng, Ingest |
+| MCR | SystemEng, MCR |
+| Rezervasyonlar | SystemEng |
+| Provys, Kanallar, Monitoring | SystemEng |
+| Kullanıcılar, Ayarlar | SystemEng |
+
+**Not:** `Günlük Yayın Raporu` sekmesi kaldırılmıştır. Raporlama `/schedules/reporting` üzerinden erişilir.
+
+## Frontend Operasyon Sekmeleri
+
+- `Yayın Planı` → `/schedules` (Canlı Yayın Plan Listesi — tüm authenticated)
 - `Raporlama` → `/schedules/reporting` — **bağımsız** navigasyon öğesi, rapor tipi seçilebilir:
   - `Canlı Yayın Planı` — tarih aralığı veya lig/hafta filtresi, Excel + PDF export
   - `Stüdyo Kullanım Raporu` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
   - `Ingest` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
+- `Stüdyo Planı` → `/studio-plan` (StudyoSefi+SystemEng düzenler; diğerleri liste görür)
+- `Haftalık Shift` → `/weekly-shift`
+- `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab) — SystemEng + Ingest
+- `MCR` → `/mcr` — SystemEng + MCR
+- `Provys İçerik Kontrol` → `/provys-content-control` — SystemEng
+- `Kanallar` → `/channels` — SystemEng
+- `Monitoring` → `/monitoring` — SystemEng
+- `Rezervasyonlar` → `/bookings` — SystemEng
+- `Kullanıcılar` → `/users` — SystemEng
 
 ## Ingest Operasyon Mimarisi
 

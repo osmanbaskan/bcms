@@ -10,13 +10,6 @@ export const schedulesRoutes: Routes = [
       import('./schedule-list/schedule-list.component').then((m) => m.ScheduleListComponent),
   },
   {
-    path: 'daily-report',
-    canActivate: [AuthGuard],
-    data: { groups: [] },
-    loadComponent: () =>
-      import('./daily-report/daily-report.component').then((m) => m.DailyReportComponent),
-  },
-  {
     path: 'reporting',
     canActivate: [AuthGuard],
     data: { groups: [] },

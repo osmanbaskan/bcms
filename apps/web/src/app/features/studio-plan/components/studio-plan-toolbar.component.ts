@@ -31,6 +31,7 @@ export class StudioPlanToolbarComponent {
   @Input({ required: true }) colors: StudioPlanColor[] = [];
   @Input({ required: true }) selectedProgram = '';
   @Input({ required: true }) selectedColor = '';
+  @Input() readonly = false;
   @Input() eraserMode = false;
   @Input() loading = false;
   @Input() saving = false;

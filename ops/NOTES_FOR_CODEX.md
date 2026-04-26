@@ -43,17 +43,52 @@ OPTA dizini veya RabbitMQ geçici koptuğunda API çökmez:
 - OPTA `getOptaWatcherStatus()` ile sorgulanabilir
 - DB koptuğunda operasyonel etki vardır
 
+## Grup Tabanlı Auth (2026-04-26 — TAM GEÇİŞ TAMAMLANDI)
+
+Auth sistemi rol tabanlıdan **grup tabanlıya** geçirildi.
+
+### Gruplar (11 adet)
+`Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`
+
+### Mimari
+- Keycloak: `oidc-group-membership-mapper` → JWT `groups` claim
+- API: `requireGroup(...groups)` — boş array = tüm authenticated, doluysa grup üyeliği zorunlu
+- Frontend: `tokenParsed.groups` + `computed()` sinyaller (`app.component.ts`)
+- Kaynak: `packages/shared/src/types/rbac.ts` → `BcmsGroup` tipi + `PERMISSIONS` matrisi
+
+### Yetki Matrisi
+```
+schedules.read:          [] (tüm authenticated)
+schedules.add:           ['SystemEng', 'Booking', 'YayınPlanlama']
+schedules.edit:          ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama']
+schedules.technicalEdit: ['SystemEng', 'Transmisyon', 'Booking']
+schedules.duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking']
+schedules.delete:        ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama']
+studioPlans.read:        [] (tüm authenticated)
+studioPlans.write/delete:['SystemEng', 'StudyoSefi']
+```
+
+### Kullanıcı Yönetimi — KRİTİK
+Keycloak Admin API kullanır. `docker-compose.yml` api servisinde `KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}` ZORUNLU.
+Eksikse production'da admin token alınamaz → kullanıcı oluşturma sessizce başarısız.
+
 ## Frontend
 
-Admin navigasyonunda:
-- `Yayın Planı` (grup) → Canlı Yayın Plan Listesi `/schedules` + Günlük Yayın Raporu `/schedules/daily-report`
-- `Rezervasyonlar` → `/bookings`
-- `Raporlama` → `/schedules/reporting` (**bağımsız** öğe — Yayın Planı grubunun altında değil)
-- `Stüdyo Planı` → `/studio-plan` (tek öğe, artık grup değil; `/studio-plan/report` route'u kaldırıldı)
+Admin navigasyonunda (2026-04-26 güncel):
+- `Yayın Planı` (grup) → yalnızca Canlı Yayın Plan Listesi `/schedules` (**Günlük Yayın Raporu kaldırıldı**)
+- `Raporlama` → `/schedules/reporting` (**bağımsız** öğe)
+- `Stüdyo Planı` → `/studio-plan` (tek öğe, alt öğe yok)
 - `Haftalık Shift` → `/weekly-shift`
-- `Provys İçerik Kontrol` → `/provys-content-control`
+- `Ingest Planlama` → `/ingest` — SystemEng, Ingest
+- `MCR` → `/mcr` — SystemEng, MCR
+- `Rezervasyonlar` → `/bookings` — SystemEng
+- `Provys İçerik Kontrol` → `/provys-content-control` — SystemEng
+- `Kanallar` → `/channels` — SystemEng
+- `Monitoring` → `/monitoring` — SystemEng
+- `Kullanıcılar` → `/users` — SystemEng
+- `Ayarlar` → `/settings` — SystemEng
 
-**KRİTİK nav kuralı:** `Raporlama` bağımsız nav öğesidir. `Yayın Planı` grubuna veya `Stüdyo Planı` grubuna eklenmez. `Stüdyo Planı`'nın alt öğesi yoktur.
+**KRİTİK nav kuralı:** `Raporlama` bağımsız nav öğesidir. `Yayın Planı` grubuna eklenmez. `Stüdyo Planı`'nın alt öğesi yoktur. `Günlük Yayın Raporu` (**kaldırıldı** — component + route + klasör silindi).
 
 Stüdyo Planı:
 - `apps/web/src/app/features/studio-plan/studio-plan.component.ts`

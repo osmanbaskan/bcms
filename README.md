@@ -21,8 +21,8 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 
 - Backend: Fastify + Prisma 5.22.0 + PostgreSQL + RabbitMQ
 - Frontend: Angular (nginx ile statik serve)
-- Auth: Keycloak (realm: bcms)
-- Shared package: `packages/shared` — TypeScript tipleri
+- Auth: Keycloak (realm: bcms) — **grup tabanlı yetkilendirme** (`groups` JWT claim)
+- Shared package: `packages/shared` — TypeScript tipleri + `PERMISSIONS` matrisi
 - Build: Turborepo (`turbo.json`)
 - Audit Log: Prisma middleware (`apps/api/src/plugins/audit.ts`)
 
@@ -169,6 +169,11 @@ GET  /api/v1/studio-plans/reports/usage?from=YYYY-MM-DD&to=YYYY-MM-DD
 GET  /api/v1/studio-plans/reports/usage/export?from=YYYY-MM-DD&to=YYYY-MM-DD
 ```
 
+## Ortam Değişkenleri — Kritik Notlar
+
+Production'da `KEYCLOAK_ADMIN` env'i zorunludur (Kullanıcı yönetimi Keycloak Admin API kullanır).
+`docker-compose.yml` api servisinde `KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}` tanımlıdır.
+
 ## Web
 
 ```text
@@ -192,9 +197,36 @@ docker compose up -d --build web
 
 Tarayıcıda "dev-admin" kullanıcısı görünüyorsa → web imajı `environment.ts` (`skipAuth: true`) ile derlenmiş demektir. `--build web` ile yeniden derle.
 
+### Grup Tabanlı Yetkilendirme (RBAC)
+
+11 grup: `Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`
+
+`SystemEng` her zaman tüm ekranlara tam erişimlidir.
+
+| Sekme / Özellik | Erişim |
+|---|---|
+| Yayın Planı listesi | Tüm authenticated |
+| Yeni Ekle | SystemEng, Booking, YayınPlanlama |
+| Düzenle | SystemEng, Tekyon, Transmisyon, Booking, YayınPlanlama |
+| Teknik Detay | SystemEng, Transmisyon, Booking |
+| Çoğaltma | SystemEng, Tekyon, Transmisyon, Booking |
+| Silme | SystemEng, Tekyon, Transmisyon, Booking, YayınPlanlama |
+| Stüdyo Planı görüntüle | Tüm authenticated |
+| Stüdyo Planı düzenle | SystemEng, StudyoSefi |
+| Rezervasyonlar | SystemEng |
+| Ingest | SystemEng, Ingest |
+| MCR | SystemEng, MCR |
+| Kullanıcılar | SystemEng |
+| Ayarlar | SystemEng |
+| Provys, Kanallar, Monitoring | SystemEng |
+
+Yetki matrisi: `packages/shared/src/types/rbac.ts` → `PERMISSIONS` sabiti.
+API: `app.requireGroup(...groups)` — boş array = tüm authenticated, doluysa grup üyeliği zorunlu.
+Frontend: `tokenParsed.groups` + `computed()` sinyaller.
+
 ### Stüdyo Planı
 
-- Admin-only, Pazartesi-Pazar haftalık görünüm, 06:00-02:00 arası 30 dakikalık slotlar.
+- StudyoSefi ve SystemEng tam yetkili; diğerleri yalnızca liste görünümü.
 - 5 stüdyo kolonu: Stüdyo 1-4 + beIN Gurme.
 - Program/renk backend katalogdan: `studio_plan_programs`, `studio_plan_colors`.
 - Veri: `studio_plans` + `studio_plan_slots` (schedules'tan ayrı).

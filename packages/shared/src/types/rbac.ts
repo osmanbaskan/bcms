@@ -9,7 +9,7 @@ export type BcmsGroup =
   | 'MCR'
   | 'PCR'
   | 'Ses'
-  | 'Studyo';
+  | 'StudyoSefi';
 
 export interface JwtPayload {
   sub: string;
@@ -64,8 +64,8 @@ export const PERMISSIONS = {
     export: ['SystemEng'] as BcmsGroup[],
   },
   studioPlans: {
-    read:   ['SystemEng'] as BcmsGroup[],
-    write:  ['SystemEng'] as BcmsGroup[],
-    delete: ['SystemEng'] as BcmsGroup[],
+    read:   [] as BcmsGroup[],
+    write:  ['SystemEng', 'StudyoSefi'] as BcmsGroup[],
+    delete: ['SystemEng', 'StudyoSefi'] as BcmsGroup[],
   },
 } as const;
