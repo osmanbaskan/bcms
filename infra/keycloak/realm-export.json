@@ -9,6 +9,18 @@
   "resetPasswordAllowed": true,
   "bruteForceProtected": true,
   "accessTokenLifespan": 1800,
+  "groups": [
+    { "name": "Tekyon" },
+    { "name": "Transmisyon" },
+    { "name": "Booking" },
+    { "name": "YayınPlanlama" },
+    { "name": "SystemEng" },
+    { "name": "Ingest" },
+    { "name": "Kurgu" },
+    { "name": "MCR" },
+    { "name": "PCR" },
+    { "name": "Ses" }
+  ],
   "roles": {
     "realm": [
       { "name": "admin",            "description": "Full system access" },
