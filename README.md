@@ -6,10 +6,10 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 
 1. **Servis izolasyonu**: API ve arka plan worker'ları ayrı Docker konteynerlerinde çalışır. `api` servisi yalnızca HTTP isteklerini karşılar (`BCMS_BACKGROUND_SERVICES=none`). Worker servisi RabbitMQ tüketimi ve dosya izlemeyi üstlenir.
 2. **Graceful shutdown**: `SIGTERM` alındığında Fastify önce yeni istekleri reddeder, devam eden işlemleri bekler, DB ve RabbitMQ bağlantılarını kapatır. Zaman aşımı: 30 sn (API), 60 sn (worker).
-3. **Degraded mod**: OPTA dizini veya RabbitMQ geçici olarak ulaşılamaz olduğunda API çökmez. `/health` endpoint `status: "degraded"` döner; temel DB işlemleri devam eder.
+3. **Degraded mod**: OPTA dizini veya RabbitMQ geçici olarak ulaşılamaz olduğunda API çökmez. `/health` endpoint `status: "degraded"` + HTTP **503** döner; temel DB işlemleri devam eder.
 4. **usageScope kuralı**: `schedules.usage_scope` kolonu karar noktasıdır. `broadcast` = normal yayın, `live-plan` = canlı yayın planı. Metadata JSON filtresi kullanılmaz.
 5. **Prisma üzerinden erişim**: `usage_scope` dahil tüm DB erişimi Prisma Client ile yapılır. Ham SQL köprüsü eklenmez.
-6. **Audit log**: Tüm write işlemleri `apps/api/src/plugins/audit.ts` Prisma middleware ile `audit_logs` tablosuna yazılır. Kullanıcı context AsyncLocalStorage ile taşınır.
+6. **Audit log**: Tüm write işlemleri `apps/api/src/plugins/audit.ts` Prisma `$extends` ile `audit_logs` tablosuna yazılır. Kullanıcı bilgisi `onRequest`'te store oluşturulur, `preHandler`'da (JWT doğrulamasından sonra) doldurulur. `$use()` deprecated olduğu için kaldırılmıştır.
 7. **Statik servis**: Angular build dosyaları `infra/docker/nginx.conf` üzerinden nginx ile sunulur. `bcms-web-static-server.mjs` kaldırılmıştır.
 8. **Excel**: Yalnızca `exceljs` kullanılır; `xlsx` paketi güvenlik açığı nedeniyle kaldırılmıştır. Yalnızca `.xlsx` formatı kabul edilir.
 9. **Angular production ortamı**: `apps/web/angular.json`'da production konfigürasyonunda `fileReplacements` tanımlı olmalıdır (`environment.ts` → `environment.prod.ts`). Bu olmadan Docker build `skipAuth: true` ile çalışır ("dev-admin" görünür, tüm API çağrıları 401 döner).
@@ -121,7 +121,7 @@ Yanıt:
 }
 ```
 
-OPTA veya RabbitMQ geçici olarak koptuğunda `status: "degraded"` döner, HTTP 200 devam eder. Yalnızca veritabanı `degraded` ise operasyonel etki vardır.
+OPTA veya RabbitMQ geçici olarak koptuğunda `status: "degraded"` döner, HTTP **503** döner. Yalnızca veritabanı `degraded` ise operasyonel etki vardır.
 
 ## API
 
@@ -231,14 +231,17 @@ Bağımsız navigasyon öğesi — üç rapor tipi desteklenir:
 
 ## Yerel Altyapı (Docker)
 
-| Servis | Port | Konteyner |
-|---|---|---|
-| PostgreSQL | **5433** (host) / 5432 (container) | bcms_postgres |
-| RabbitMQ AMQP | **5673** (host) / 5672 (container) | bcms_rabbitmq |
-| RabbitMQ UI | **15673** (host) / 15672 (container) | bcms_rabbitmq |
-| Keycloak | 8080 | bcms_keycloak |
-| Prometheus | 9090 | bcms_prometheus |
-| Grafana | 3001 | bcms_grafana |
+| Servis | Port | Erişim | Konteyner |
+|---|---|---|---|
+| API | **127.0.0.1:3000** | Sadece localhost | bcms_api |
+| PostgreSQL | **5433** (host) / 5432 (container) | Tüm arayüzler | bcms_postgres |
+| RabbitMQ AMQP | **5673** (host) / 5672 (container) | Tüm arayüzler | bcms_rabbitmq |
+| RabbitMQ UI | **127.0.0.1:15673** | Sadece localhost | bcms_rabbitmq |
+| Keycloak | 8080 | Tüm arayüzler | bcms_keycloak |
+| Prometheus | **127.0.0.1:9090** | Sadece localhost | bcms_prometheus |
+| Grafana | 3001 | Tüm arayüzler | bcms_grafana |
+
+> **Not:** API portu `127.0.0.1:3000` olarak bağlanmıştır — doğrudan LAN erişimine kapalıdır. Web uygulaması `/api` proxy üzerinden erişir; dış erişim için nginx veya SSH tüneli kullanılmalıdır.
 
 ## Prisma
 
@@ -247,6 +250,7 @@ Bağımsız navigasyon öğesi — üç rapor tipi desteklenir:
 - DB enum isimleri: `booking_status`, `ingest_status`, `incident_severity` (Prisma `@@map` ile bağlı)
 - Local DB 2026-04-22'de 8 migration baseline edildi
 - 2026-04-25: `20260425000000_add_ingest_job_updated_at` — `ingest_jobs.updated_at` kolonu eklendi
+- 2026-04-26: 10 adet tekrar eden index kaldırıldı (`audit_logs_entity`, `audit_logs_ts`, `audit_logs_user`, `incidents_resolved_sev`, `incidents_schedule_sev`, `ingest_jobs_status`, `matches_league_date`, `schedules_channel_time`, `schedules_status`, `signal_telemetry_channel_time`)
 
 ## Ortam Değişkenleri
 
@@ -258,13 +262,14 @@ DATABASE_URL=postgresql://...
 RABBITMQ_URL=amqp://...
 KEYCLOAK_CLIENT_ID=bcms-api
 KEYCLOAK_ALLOWED_ISSUERS=http://<LAN_IP>:8080/realms/bcms,http://localhost:8080/realms/bcms
-KC_HOSTNAME=<LAN_IP>         # Keycloak token issuer'ı için sabit IP (docker-compose Keycloak servisi)
+KC_HOSTNAME=<LAN_IP>         # Keycloak token issuer'ı için sabit IP
 KC_HOSTNAME_PORT=8080
 INGEST_CALLBACK_SECRET=...
 INGEST_ALLOWED_ROOTS=/opta,/app/tmp/watch
 BCMS_BACKGROUND_SERVICES=none       # docker-compose'da API için sabit
-OPTA_WATCHER_API_TOKEN=...
+OPTA_WATCHER_API_TOKEN=...          # POST /opta/sync Bearer token (API=OPTA_SYNC_SECRET)
 BXF_WATCH_DIR=/app/tmp/bxf
+CORS_ORIGIN=http://<LAN_IP>:4200,http://localhost:4200
 ```
 
 Production'da RabbitMQ bağlantısı kurulamazsa API fail-fast davranır. `RABBITMQ_OPTIONAL=true` yalnızca lokal/geliştirme için kullanılabilir.
@@ -279,6 +284,8 @@ Farklı bir bilgisayardan erişimde iki ayar zorunludur:
 ## OPTA
 
 OPTA SMB watcher ayrı Python konteyneri (`opta-watcher`) olarak çalışır, verilerini `POST /api/v1/opta/sync` endpoint'ine HTTP ile gönderir. Doğrudan PostgreSQL erişimi yoktur.
+
+`POST /api/v1/opta/sync` endpoint'i **Bearer token** kimlik doğrulaması gerektirir. Token `OPTA_SYNC_SECRET` env değişkeninden okunur (`docker-compose.yml`'de `OPTA_WATCHER_API_TOKEN` değişkenine eşlenir, `.env`'de tanımlıdır).
 
 ### Watcher davranışı (`scripts/opta_smb_watcher.py`)
 

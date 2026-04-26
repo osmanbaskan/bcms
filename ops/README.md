@@ -64,10 +64,12 @@ curl -fsS http://127.0.0.1:3000/health
 { "status": "ok", "checks": { "database": "ok", "rabbitmq": "ok", "opta": "ok" } }
 ```
 
-Örnek yanıt (OPTA kopuk, API çalışmaya devam ediyor):
+Örnek yanıt (OPTA kopuk):
 ```json
 { "status": "degraded", "checks": { "database": "ok", "rabbitmq": "ok", "opta": "degraded" } }
 ```
+
+> **Not:** Degraded durumda HTTP **503** döner (önceden 200'dü). Monitoring araçları 503'ü alarm tetikleyici olarak kullanabilir.
 
 ## Adresler
 
@@ -108,6 +110,8 @@ curl -fsS http://127.0.0.1:3000/health
 - Konteyner: `bcms_opta_watcher` (Python, `scripts/opta_smb_watcher.py`)
 - Ağ: `network_mode: host` → API'ye `http://localhost:3000/api/v1` üzerinden erişir
 - SMB'de değişen her `srml-*-results.xml` dosyası taranır; `POST /api/v1/opta/sync` ile senkronize edilir
+- **Kimlik doğrulama**: `Authorization: Bearer <OPTA_WATCHER_API_TOKEN>` — endpoint token olmadan 401 döner
+- **Year regex**: `(\d{4})` — yıl sabit değil, tüm yılları tanır (2027+)
 - **Yarım yazma koruması**: `MTIME_SETTLE_SEC=5` — dosya son değişiminden 5 sn geçmeden işlenmez
 - **Payload limit koruması**: `BATCH_SIZE=100` — maç listesi 100'er parçaya bölünür, her biri ayrı POST
 - Tarama aralığı: `OPTA_POLL_INTERVAL` env (varsayılan 3600 sn)
@@ -126,7 +130,7 @@ schedules.usage_scope = 'broadcast'  → Normal yayın
 
 ## Web / Frontend
 
-Angular production build `environment.prod.ts` kullanmalıdır (`skipAuth: false`). Bu `angular.json`'daki `fileReplacements` ile sağlanır.
+Angular production build `environment.prod.ts` kullanmalıdır (`skipAuth: false`). Dev build (`ng serve`) `environment.ts` kullanır (`skipAuth: true` → "dev-admin" bypass). Bu `angular.json`'daki `fileReplacements` ile sağlanır.
 
 **"dev-admin" görünüyorsa veya tüm API çağrıları 401 dönüyorsa:**
 
@@ -201,6 +205,7 @@ Olası durumlar: `starting` (ilk 15 sn) → `healthy` (normal) → `unhealthy` (
 
 | Servis | Port | Erişim |
 |---|---|---|
+| API | **127.0.0.1**:3000 | Sadece localhost |
 | RabbitMQ AMQP | 5673 | Tüm arayüzler (uygulama bağlantısı) |
 | RabbitMQ UI | **127.0.0.1**:15673 | Sadece localhost |
 | Prometheus | **127.0.0.1**:9090 | Sadece localhost |

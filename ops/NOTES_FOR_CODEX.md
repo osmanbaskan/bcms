@@ -6,7 +6,7 @@
 2. **Graceful shutdown**: `server.ts`'de SIGTERM/SIGINT → `app.close()` → 30 sn timeout. Worker için 60 sn. `--force` veya anında kill önerilmez.
 3. **usageScope kanonik**: `schedules.usage_scope` DB kolonudur. Metadata JSON filtresi yoktur. Ham SQL köprüsü eklenmez.
 4. **Nginx static serve**: Angular dosyaları `infra/docker/web.Dockerfile` → nginx:alpine ile sunulur. `bcms-web-static-server.mjs` kaldırıldı.
-5. **Audit log**: `apps/api/src/plugins/audit.ts` tüm write işlemlerini loglar. Bu plugin'i devre dışı bırakma.
+5. **Audit log**: `apps/api/src/plugins/audit.ts` Prisma `$extends` ile tüm write işlemlerini loglar (`$use()` deprecated olduğu için kaldırıldı). Bu plugin'i devre dışı bırakma.
 6. **Angular production environment**: `apps/web/angular.json` production konfigürasyonunda `fileReplacements` ile `environment.ts` → `environment.prod.ts` değişimi tanımlı olmalı. Aksi hâlde Docker build `skipAuth: true` ile çalışır ("dev-admin" görünür, tüm API çağrıları 401 döner). Web imajı rebuild: `docker compose up -d --build web`.
 
 ## Primary Runtime
@@ -116,6 +116,12 @@ Local DB 2026-04-22'de 8 migration baseline edildi. `npm run db:migrate:prod -w 
 **Migration listesi (güncel):**
 - `20260423000000_studio_plans` … `20260423005000_recording_ports_1_44_metus` (stüdyo + ingest)
 - `20260425000000_add_ingest_job_updated_at` — `ingest_jobs.updated_at TIMESTAMP NOT NULL DEFAULT NOW()`
+- `20260426000000_btree_gist_port_conflict` — `btree_gist` extension + EXCLUDE port çakışma constraint
+
+**DB index temizliği (2026-04-26):** 10 duplicate index `DROP INDEX` ile silindi:
+`audit_logs_entity`, `audit_logs_ts`, `audit_logs_user`, `incidents_resolved_sev`,
+`incidents_schedule_sev`, `ingest_jobs_status`, `matches_league_date`,
+`schedules_channel_time`, `schedules_status`, `signal_telemetry_channel_time`
 
 **Önemli:** `migrate dev` container içinde shadow DB gerektirdiğinden çalışmaz. Yeni migration için:
 1. Migration SQL dosyasını `prisma/migrations/<tarih_isim>/migration.sql` olarak oluştur
@@ -133,12 +139,13 @@ Local DB 2026-04-22'de 8 migration baseline edildi. `npm run db:migrate:prod -w 
 - `MTIME_SETTLE_SEC=5` — SMB yarım yazma koruması; dosya son mtime'dan 5 sn geçmeden işlenmez
 - `BATCH_SIZE=100` — büyük payload'ları 100'er maçlık chunk'lara böler; Fastify 1 MB limitini önler
 
-### Sync Endpoint (`opta.sync.routes.ts`) — 2026-04-25
+### Sync Endpoint (`opta.sync.routes.ts`) — 2026-04-26 güncel
 
-N+1 sorgu problemi giderildi. Yeni akış:
-1. Gelen `matches` dizisinden benzersiz ligler çıkarılır, `Promise.all` ile toplu upsert
-2. Tüm `matchUid`'ler tek `findMany` ile çekilir → insert/update/unchanged ayrıştırılır
-3. Tüm yazma tek `$transaction([...creates, ...updates])` içinde
+- **Kimlik doğrulama**: `Authorization: Bearer <OPTA_SYNC_SECRET>` zorunludur — eksikse 401
+  - API'de `OPTA_SYNC_SECRET` env, docker-compose'da `${OPTA_WATCHER_API_TOKEN}` üzerinden gelir
+  - Python watcher'da `BCMS_API_TOKEN` env → `Authorization: Bearer ...` header
+- **Body validasyonu**: Zod `matchItemSchema` ile tam tip kontrolü — `any[]` cast kaldırıldı
+- **N+1 giderildi**: benzersiz ligler toplu upsert → tek `findMany` → tek `$transaction`
 
 ## Keycloak / Auth
 
@@ -167,11 +174,17 @@ KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:-8080}
 
 **auth.ts değişikliği:** `issuer` tek string yerine `allowedIssuers` array — `allowedIssuers.includes(claims.iss ?? '')`
 
-## Güvenlik
+## Güvenlik (2026-04-26 güncel)
 
 - `SKIP_AUTH=true` production'da yasak (`validateRuntimeEnv()` fırlatır)
 - `xlsx` paketi kaldırıldı → `exceljs` (sadece `.xlsx` kabul edilir)
 - Production'da required env: `DATABASE_URL`, `RABBITMQ_URL`, `CORS_ORIGIN`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_ADMIN_PASSWORD`, `INGEST_CALLBACK_SECRET`, `INGEST_ALLOWED_ROOTS`
+- Keycloak production modunda: `start --import-realm` (`start-dev` kaldırıldı — production-unsafe)
+- `CORS_ORIGIN` docker-compose'da `${CORS_ORIGIN}` env olarak alınır (hardcoded değil)
+- Worker'a `KEYCLOAK_URL: http://keycloak:8080` ve `KEYCLOAK_REALM: ${KEYCLOAK_REALM}` eklendi
+- `OPTA_WATCHER_API_TOKEN` .env'de tanımlı; API'de `OPTA_SYNC_SECRET` adıyla okunur
+- `ingest.worker.ts`: `validateIngestSourcePath()` çağrısı `computeChecksum`'dan önce — path traversal engeli
+- Audit plugin: `$use()` deprecated → `$extends`; `userId` `preHandler`'dan doldurulur (JWT sonrası)
 
 ### Dockerfile HEALTHCHECK (2026-04-25)
 - `infra/docker/api.Dockerfile` production stage'e HEALTHCHECK eklendi
@@ -183,7 +196,8 @@ KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:-8080}
 - `/api/v1/signals/simulate` production'da koşulsuz `403 Forbidden` döner
 - `ENABLE_SIGNAL_SIMULATE` env bypass'ı kaldırıldı — production'da açılamaz
 
-### Port Binding Güvenliği (2026-04-25)
+### Port Binding Güvenliği (2026-04-26 güncel)
+- API: `3000:3000` → `127.0.0.1:3000:3000` (LAN kapalı — web nginx proxy üzerinden erişir)
 - RabbitMQ management UI: `15673:15672` → `127.0.0.1:15673:15672` (LAN kapalı)
 - Prometheus: `9090:9090` → `127.0.0.1:9090:9090` (LAN kapalı)
 - Bu servislere sadece sunucu üzerinden erişilebilir (SSH tüneli ile uzaktan görülebilir)
@@ -200,13 +214,16 @@ KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:-8080}
   `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-Robots-Tag`
 - Web imajı rebuild gerekir: `docker compose up -d --build web`
 
-### Input Validation Kuralı (2026-04-25)
-- `audit.routes.ts`: `auditQuerySchema` (Zod) eklendi — `request.query as {...}` kaldırıldı
-  - `from`/`to`: `z.string().datetime({ offset: true })` — geçersiz tarih 400 döner
-  - `entityId`: `z.coerce.number().int().positive()` — NaN riski giderildi
-  - `user contains`: `mode: 'insensitive'` eklendi
-  - `pageSize`: max 500 ile sınırlandırıldı
-- Kural: Tüm yeni route'larda `request.query as {...}` cast KULLANILMAZ, Zod schema yazılır
+### Input Validation (2026-04-26 güncel — TÜM ROTALAR)
+- `request.query as {...}` cast kaldırıldı, Zod schema eklendi:
+  - `ingest.routes.ts`: `listQuerySchema`, `planQuerySchema`
+  - `incidents.routes.ts`: `listIncidentsQuerySchema`
+  - `bookings.routes.ts`: `listBookingsQuerySchema`
+  - `matches.routes.ts`: `matchListQuerySchema`
+  - `playout.routes.ts`: `rundownQuerySchema`
+  - `schedule.routes.ts`: `importQuerySchema`, `exportQuerySchema`, `livePlanQuerySchema`, `livePlanExportQuerySchema` (schema.ts'e eklendi)
+  - `opta.sync.routes.ts`: `matchItemSchema` + `syncBodySchema` ile body validasyonu
+- **Kural**: `request.query as {...}` veya `request.body as {...}` cast kesinlikle kullanılmaz
 
 ## CI
 
@@ -240,7 +257,7 @@ apps/api/src/server.ts                           → graceful shutdown (SIGTERM)
 apps/api/src/app.ts                              → buildApp, health, rate-limit, CORS, helmet
 apps/api/src/plugins/auth.ts                     → JWT doğrulama, allowedIssuers (çoklu issuer)
 apps/api/src/plugins/rabbitmq.ts                 → RabbitMQClient, isConnected()
-apps/api/src/plugins/audit.ts                    → Prisma audit middleware
+apps/api/src/plugins/audit.ts                    → Prisma audit $extends (userId preHandler'dan)
 apps/api/src/modules/audit/audit.routes.ts       → auditQuerySchema (Zod) ile validate
 apps/api/src/modules/opta/opta.watcher.ts        → OPTA dizin health + getOptaWatcherStatus()
 apps/api/src/modules/opta/opta.sync.routes.ts    → POST /api/v1/opta/sync
@@ -256,5 +273,6 @@ apps/web/src/environments/environment.ts             → skipAuth: true  (SADECE
 apps/web/src/environments/environment.prod.ts        → skipAuth: false (Docker build için)
 infra/docker/nginx.conf                          → Angular serve + API proxy + 6 güvenlik header
 infra/keycloak/realm-export.json                 → bcms-web client: LAN IP redirect_uri eklendi
-docker-compose.yml                               → api+worker ayrıştırması; KC_HOSTNAME env var'dan
+apps/api/src/modules/schedules/schedule.schema.ts → livePlanQuerySchema, exportQuerySchema vb.
+docker-compose.yml                               → api:127.0.0.1:3000; KC start; CORS env var
 ```
