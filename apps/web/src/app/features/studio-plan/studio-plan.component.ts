@@ -164,8 +164,10 @@ export class StudioPlanComponent implements OnInit {
 
   readonly listEntries = computed(() => {
     const entries: StudioPlanListEntry[] = [];
+    const today = toDateInputValue(new Date());
 
     for (const day of this.days()) {
+      if (day.id < today) continue;
       for (const studio of this.studios) {
         let cursor = 0;
         while (cursor < this.timeSlots.length) {

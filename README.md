@@ -229,6 +229,7 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 ### Stüdyo Planı
 
 - StudyoSefi ve SystemEng tam yetkili; diğerleri yalnızca liste görünümü.
+- **Liste görünümünde geçmiş günler gizlenir** (`listEntries` computed'da `day.id < today` filtresi).
 - 5 stüdyo kolonu: Stüdyo 1-4 + beIN Gurme.
 - Program/renk backend katalogdan: `studio_plan_programs`, `studio_plan_colors`.
 - Veri: `studio_plans` + `studio_plan_slots` (schedules'tan ayrı).

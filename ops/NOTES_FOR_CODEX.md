@@ -93,9 +93,9 @@ Frontend: `apps/web/src/app/features/schedules/schedule-list/schedule-list.compo
 ## Frontend
 
 Admin navigasyonunda (2026-04-26 güncel):
-- `Yayın Planı` (grup) → yalnızca Canlı Yayın Plan Listesi `/schedules` (**Günlük Yayın Raporu kaldırıldı**)
+- `Canlı Yayın Plan Listesi` → `/schedules` (üst düzey öğe, **Yayın Planı grup etiketi kaldırıldı**)
 - `Raporlama` → `/schedules/reporting` (**bağımsız** öğe)
-- `Stüdyo Planı` → `/studio-plan` (tek öğe, alt öğe yok)
+- `Stüdyo Planı` → `/studio-plan` (tek öğe, alt öğe yok — **liste görünümünde geçmiş günler gizlenir**)
 - `Haftalık Shift` → `/weekly-shift`
 - `Ingest Planlama` → `/ingest` — SystemEng, Ingest
 - `MCR` → `/mcr` — SystemEng, MCR
@@ -106,7 +106,7 @@ Admin navigasyonunda (2026-04-26 güncel):
 - `Kullanıcılar` → `/users` — SystemEng
 - `Ayarlar` → `/settings` — SystemEng
 
-**KRİTİK nav kuralı:** `Raporlama` bağımsız nav öğesidir. `Yayın Planı` grubuna eklenmez. `Stüdyo Planı`'nın alt öğesi yoktur. `Günlük Yayın Raporu` (**kaldırıldı** — component + route + klasör silindi).
+**KRİTİK nav kuralı:** `Raporlama` bağımsız nav öğesidir. `Canlı Yayın Plan Listesi` üst düzey bağımsız öğedir (`Yayın Planı` grup etiketi kaldırıldı). `Stüdyo Planı`'nın alt öğesi yoktur. `Günlük Yayın Raporu` (**kaldırıldı** — component + route + klasör silindi). Stüdyo Planı liste görünümünde geçmiş günler gizlenir (`listEntries` computed, `day.id < today` filtresi).
 
 Stüdyo Planı:
 - `apps/web/src/app/features/studio-plan/studio-plan.component.ts`

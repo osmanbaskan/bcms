@@ -99,12 +99,12 @@ curl -fsS http://127.0.0.1:3000/health
 
 ## Frontend Operasyon Sekmeleri
 
-- `Yayın Planı` → `/schedules` (Canlı Yayın Plan Listesi — tüm authenticated)
+- `Canlı Yayın Plan Listesi` → `/schedules` (üst düzey öğe, tüm authenticated — **Yayın Planı grup etiketi kaldırıldı**)
 - `Raporlama` → `/schedules/reporting` — **bağımsız** navigasyon öğesi, rapor tipi seçilebilir:
   - `Canlı Yayın Planı` — tarih aralığı veya lig/hafta filtresi, Excel + PDF export
   - `Stüdyo Kullanım Raporu` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
   - `Ingest` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
-- `Stüdyo Planı` → `/studio-plan` (StudyoSefi+SystemEng düzenler; diğerleri liste görür)
+- `Stüdyo Planı` → `/studio-plan` (StudyoSefi+SystemEng düzenler; diğerleri liste görür — **liste görünümünde geçmiş günler gizlenir**)
 - `Haftalık Shift` → `/weekly-shift`
 - `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab) — SystemEng + Ingest
 - `MCR` → `/mcr` — SystemEng + MCR

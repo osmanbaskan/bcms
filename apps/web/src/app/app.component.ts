@@ -112,13 +112,7 @@ export class AppComponent implements OnInit {
   userGroups = signal<string[]>([]);
 
   readonly navItems: NavItem[] = [
-    {
-      label: 'Yayın Planı', icon: 'calendar_today', route: '/schedules',
-      groups: [],
-      children: [
-        { label: 'Canlı Yayın Plan Listesi', icon: 'list', route: '/schedules', groups: [], exactMatch: true },
-      ],
-    },
+    { label: 'Canlı Yayın Plan Listesi', icon: 'list', route: '/schedules', groups: [], exactMatch: true },
     { label: 'Rezervasyonlar',        icon: 'book_online',    route: '/bookings',               groups: ['SystemEng'] },
     { label: 'Raporlama',             icon: 'summarize',      route: '/schedules/reporting',    groups: [] },
     { label: 'Stüdyo Planı',          icon: 'event_seat',     route: '/studio-plan',            groups: [] },
