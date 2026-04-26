@@ -19,7 +19,8 @@
     { "name": "Kurgu" },
     { "name": "MCR" },
     { "name": "PCR" },
-    { "name": "Ses" }
+    { "name": "Ses" },
+    { "name": "Studyo" }
   ],
   "roles": {
     "realm": [
