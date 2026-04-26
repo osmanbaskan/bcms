@@ -84,5 +84,12 @@ export const routes: Routes = [
     canActivate: [AuthGuard],
     data: { groups: ['SystemEng'] },
   },
+  {
+    path: 'audit-logs',
+    loadComponent: () =>
+      import('./features/audit/audit-log.component').then((m) => m.AuditLogComponent),
+    canActivate: [AuthGuard],
+    data: { groups: ['SystemEng'] },
+  },
   { path: '**', redirectTo: '/schedules' },
 ];

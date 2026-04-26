@@ -124,6 +124,7 @@ export class AppComponent implements OnInit {
     { label: 'MCR',                   icon: 'videocam',       route: '/mcr',                    groups: ['SystemEng', 'MCR'] },
     { label: 'Kullanıcılar',          icon: 'manage_accounts',route: '/users',                  groups: ['SystemEng'] },
     { label: 'Ayarlar',               icon: 'settings',       route: '/settings',               groups: ['SystemEng'] },
+    { label: 'Audit Logları',         icon: 'manage_search',  route: '/audit-logs',             groups: ['SystemEng'] },
   ];
 
   visibleNavItems = computed(() => {

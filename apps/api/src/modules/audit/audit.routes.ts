@@ -5,6 +5,7 @@ import { PERMISSIONS } from '@bcms/shared';
 const auditQuerySchema = z.object({
   entityType: z.string().trim().max(100).optional(),
   entityId:   z.coerce.number().int().positive().optional(),
+  action:     z.string().trim().max(50).optional(),
   user:       z.string().trim().max(100).optional(),
   from:       z.string().datetime({ offset: true }).optional(),
   to:         z.string().datetime({ offset: true }).optional(),
@@ -24,6 +25,7 @@ export async function auditRoutes(app: FastifyInstance) {
     const where = {
       ...(q.entityType && { entityType: q.entityType }),
       ...(q.entityId   && { entityId:   q.entityId }),
+      ...(q.action     && { action: q.action }),
       ...(q.user       && { user: { contains: q.user, mode: 'insensitive' as const } }),
       ...(q.from || q.to
         ? {
