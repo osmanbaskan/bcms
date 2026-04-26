@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Prisma } from '@prisma/client';
+import { Prisma, IncidentSeverity } from '@prisma/client';
 import { PERMISSIONS } from '@bcms/shared';
 
 const listIncidentsQuerySchema = z.object({
@@ -35,7 +35,7 @@ export async function incidentRoutes(app: FastifyInstance) {
       where: {
         ...(q.scheduleId && { scheduleId: q.scheduleId }),
         ...(q.resolved !== undefined && { resolved: q.resolved === 'true' }),
-        ...(q.severity  && { severity: q.severity as never }),
+        ...(q.severity  && { severity: q.severity as IncidentSeverity }),
       },
       include: { schedule: { select: { title: true, channelId: true } } },
       orderBy: { createdAt: 'desc' },

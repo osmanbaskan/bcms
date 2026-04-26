@@ -21,8 +21,8 @@ function allowedRoots(): string[] {
   const raw = process.env.INGEST_ALLOWED_ROOTS;
   const roots = raw
     ? raw.split(',').map((entry) => entry.trim()).filter(Boolean)
-    : DEFAULT_ALLOWED_ROOTS;
-  return roots.map(resolveRoot);
+    : [];
+  return (roots.length > 0 ? roots : DEFAULT_ALLOWED_ROOTS).map(resolveRoot);
 }
 
 function isInsideRoot(filePath: string, root: string): boolean {

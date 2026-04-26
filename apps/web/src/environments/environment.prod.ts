@@ -5,7 +5,7 @@ export const environment = {
   utcOffset: '+03:00',
   apiUrl: '/api/v1',
   keycloak: {
-    url:      window.location.origin.replace(':4200', ':8080'),
+    url:      `${window.location.protocol}//${window.location.hostname}:8080`,
     realm:    'bcms',
     clientId: 'bcms-web',
   },

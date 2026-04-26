@@ -22,25 +22,37 @@ function buildTransport() {
   });
 }
 
+const MAX_EMAIL_RETRIES = 3;
+
+interface EmailPayloadWithMeta extends EmailPayload {
+  _retries?: number;
+}
+
 export async function startNotificationConsumer(app: FastifyInstance): Promise<void> {
   const transport = buildTransport();
   const from = process.env.SMTP_FROM ?? 'noreply@bcms.local';
 
-  await app.rabbitmq.consume<EmailPayload>(QUEUES.NOTIFICATIONS_EMAIL, async (payload) => {
-    if (transport) {
-      await transport.sendMail({
-        from,
-        to: payload.to,
-        subject: payload.subject,
-        text: payload.body,
-      });
-      app.log.info({ to: payload.to, subject: payload.subject }, 'Email sent');
-    } else {
-      // SMTP yapılandırılmamışsa sadece logla
+  await app.rabbitmq.consume<EmailPayloadWithMeta>(QUEUES.NOTIFICATIONS_EMAIL, async (payload) => {
+    if (!transport) {
       app.log.info(
         { to: payload.to, subject: payload.subject, body: payload.body },
         '[NOTIFICATION] Email simüle edildi (SMTP_HOST tanımlı değil)',
       );
+      return;
+    }
+
+    const attempt = (payload._retries ?? 0) + 1;
+    try {
+      await transport.sendMail({ from, to: payload.to, subject: payload.subject, text: payload.body });
+      app.log.info({ to: payload.to, subject: payload.subject }, 'Email sent');
+    } catch (err) {
+      if (attempt < MAX_EMAIL_RETRIES) {
+        app.log.warn({ to: payload.to, attempt, err }, 'Email gönderilemedi, yeniden denenecek');
+        // Retry by re-publishing with incremented counter
+        await app.rabbitmq.publish(QUEUES.NOTIFICATIONS_EMAIL, { ...payload, _retries: attempt });
+      } else {
+        app.log.error({ to: payload.to, subject: payload.subject, attempt, err }, 'Email max deneme aşıldı, mesaj silindi');
+      }
     }
   });
 

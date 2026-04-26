@@ -61,6 +61,7 @@ function validateRuntimeEnv(): void {
     'KEYCLOAK_ADMIN_PASSWORD',
     'INGEST_CALLBACK_SECRET',
     'INGEST_ALLOWED_ROOTS',
+    'OPTA_SYNC_SECRET',
   ];
 
   const missing = required.filter((name) => !process.env[name]);

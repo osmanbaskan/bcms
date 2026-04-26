@@ -12,6 +12,11 @@ const TR_DAYS = [
   'Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi',
 ];
 
+function sanitizeCell(value: string): string {
+  // Guard against CSV/Excel formula injection
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
 function formatTurkishDate(d: Date): string {
   return `${d.getDate()} ${TR_MONTHS[d.getMonth()]} ${d.getFullYear()} ${TR_DAYS[d.getDay()]}`;
 }
@@ -64,8 +69,8 @@ export async function exportSchedulesToStream(
     ...schedules.map((s) => [
       formatTurkishDate(new Date(s.startTime)),
       formatTime(new Date(s.startTime)),
-      s.title,
-      s.channel?.name ?? '',
+      sanitizeCell(s.title),
+      sanitizeCell(s.channel?.name ?? ''),
     ]),
   ];
 

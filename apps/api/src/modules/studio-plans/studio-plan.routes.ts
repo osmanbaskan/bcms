@@ -184,9 +184,21 @@ async function getCatalog(app: FastifyInstance): Promise<StudioPlanCatalog> {
   };
 }
 
+const usageQuerySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+}).refine((d) => d.from <= d.to, { message: 'from must be ≤ to', path: ['to'] })
+  .refine(
+    (d) => {
+      const diffMs = new Date(d.to).getTime() - new Date(d.from).getTime();
+      return diffMs <= 366 * 24 * 60 * 60 * 1000;
+    },
+    { message: 'Tarih aralığı en fazla 366 gün olabilir', path: ['to'] },
+  );
+
 export async function studioPlanRoutes(app: FastifyInstance) {
 
-  const usageQuerySchema = {
+  const fastifyUsageQuerySchema = {
     type: 'object',
     required: ['from', 'to'],
     properties: {
@@ -196,20 +208,20 @@ export async function studioPlanRoutes(app: FastifyInstance) {
   };
 
   // GET /api/v1/studio-plans/reports/usage?from=YYYY-MM-DD&to=YYYY-MM-DD
-  app.get<{ Querystring: { from: string; to: string } }>('/reports/usage', {
+  app.get('/reports/usage', {
     preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
-    schema: { tags: ['Studio Plans'], summary: 'Program bazlı stüdyo kullanım raporu', querystring: usageQuerySchema },
+    schema: { tags: ['Studio Plans'], summary: 'Program bazlı stüdyo kullanım raporu', querystring: fastifyUsageQuerySchema },
   }, async (request) => {
-    const { from, to } = request.query;
+    const { from, to } = usageQuerySchema.parse(request.query);
     return queryStudioUsage(app, from, to);
   });
 
   // GET /api/v1/studio-plans/reports/usage/export?from=YYYY-MM-DD&to=YYYY-MM-DD
-  app.get<{ Querystring: { from: string; to: string } }>('/reports/usage/export', {
+  app.get('/reports/usage/export', {
     preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
-    schema: { tags: ['Studio Plans'], summary: 'Stüdyo kullanım raporunu Excel olarak dışa aktar', querystring: usageQuerySchema },
+    schema: { tags: ['Studio Plans'], summary: 'Stüdyo kullanım raporunu Excel olarak dışa aktar', querystring: fastifyUsageQuerySchema },
   }, async (request, reply) => {
-    const { from, to } = request.query;
+    const { from, to } = usageQuerySchema.parse(request.query);
     const data = await queryStudioUsage(app, from, to);
 
     const workbook = new ExcelJS.Workbook();

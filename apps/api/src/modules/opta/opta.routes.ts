@@ -1,9 +1,26 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import { buildCompetitionList, loadMatches, clearOptaCache, buildFixtureCompetitions, loadFixtures } from './opta.parser.js';
 import { getOptaWatcherStatus } from './opta.watcher.js';
 import { readSmbConfig, writeSmbConfig, type SmbConfig } from './opta.smb-config.js';
 import { PERMISSIONS } from '@bcms/shared';
+
+const matchesQuerySchema = z.object({
+  competitionId: z.string().min(1),
+  season:        z.string().min(1),
+  unscheduled:   z.enum(['true', 'false']).default('true'),
+});
+
+const fixturesQuerySchema = z.object({
+  competitionId: z.string().min(1),
+  season:        z.string().min(1),
+  from:          z.string().datetime({ offset: true }).optional(),
+});
+
+const leagueTeamsQuerySchema = z.object({
+  competitionId: z.string().min(1),
+});
 
 export async function optaRoutes(app: FastifyInstance) {
 
@@ -49,7 +66,7 @@ export async function optaRoutes(app: FastifyInstance) {
       },
     },
   }, async (request) => {
-    const { competitionId, season, unscheduled = 'true' } = request.query;
+    const { competitionId, season, unscheduled } = matchesQuerySchema.parse(request.query);
 
     const rows = await app.prisma.match.findMany({
       where: {
@@ -114,8 +131,9 @@ export async function optaRoutes(app: FastifyInstance) {
       ...noMatchLeagues.map((l) => ({ id: l.code.replace(/^(opta|custom)-/, ''), name: l.name, season: '-', code: l.code })),
     ];
 
+    const featuredOrder = new Map(FEATURED.map((code, i) => [code, i]));
     return mapped
-      .sort((a, b) => FEATURED.indexOf(a.code) - FEATURED.indexOf(b.code))
+      .sort((a, b) => (featuredOrder.get(a.code) ?? 999) - (featuredOrder.get(b.code) ?? 999))
       .map(({ code: _c, ...rest }) => rest);
   });
 
@@ -136,7 +154,7 @@ export async function optaRoutes(app: FastifyInstance) {
       },
     },
   }, async (request) => {
-    const { competitionId, season, from } = request.query;
+    const { competitionId, season, from } = fixturesQuerySchema.parse(request.query);
     const afterDate = from ? new Date(from) : undefined;
 
     const rows = await app.prisma.match.findMany({
@@ -175,7 +193,7 @@ export async function optaRoutes(app: FastifyInstance) {
       },
     },
   }, async (request) => {
-    const { competitionId } = request.query;
+    const { competitionId } = leagueTeamsQuerySchema.parse(request.query);
     const league = await app.prisma.league.findFirst({
       where: { code: { in: [`opta-${competitionId}`, `custom-${competitionId}`] } },
       select: { metadata: true },

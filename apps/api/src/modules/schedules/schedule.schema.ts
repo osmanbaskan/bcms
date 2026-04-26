@@ -60,7 +60,7 @@ export const livePlanQuerySchema = z.object({
   league:    z.string().trim().min(1).optional(),
   season:    z.string().trim().min(1).optional(),
   week:      z.coerce.number().int().positive().optional(),
-  page:      z.coerce.number().int().min(1).default(1),
+  page:      z.coerce.number().int().min(1).max(500).default(1),
   pageSize:  z.coerce.number().int().min(1).max(1000).default(500),
 });
 

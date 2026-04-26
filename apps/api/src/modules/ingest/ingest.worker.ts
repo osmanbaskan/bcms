@@ -8,8 +8,8 @@ import type { FastifyInstance } from 'fastify';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { validateIngestSourcePath } from './ingest.paths.js';
 
-ffmpeg.setFfmpegPath(ffmpegPath.path);
-ffmpeg.setFfprobePath(ffprobePath.path);
+ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH ?? ffmpegPath.path);
+ffmpeg.setFfprobePath(process.env.FFPROBE_PATH ?? ffprobePath.path);
 
 // ── QC eşikleri ───────────────────────────────────────────────────────────────
 const QC_THRESHOLDS = {

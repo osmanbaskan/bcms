@@ -77,6 +77,10 @@ function parseDate(value: string): Date {
   return new Date(`${value}T00:00:00.000Z`);
 }
 
+function sanitizeCell(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
 function dateOnly(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
@@ -147,6 +151,17 @@ const reportQuerySchema = {
     to:   { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
   },
 };
+
+const reportZodSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+}).refine(
+  (d) => {
+    const diffMs = new Date(d.to).getTime() - new Date(d.from).getTime();
+    return diffMs >= 0 && diffMs <= 366 * 24 * 60 * 60 * 1000;
+  },
+  { message: 'Tarih aralığı en fazla 366 gün olabilir', path: ['to'] },
+);
 
 async function getRecordingPorts(app: FastifyInstance) {
   return app.prisma.recordingPort.findMany({
@@ -221,11 +236,11 @@ export async function ingestRoutes(app: FastifyInstance) {
   });
 
   // GET /api/v1/ingest/plan/report?from=YYYY-MM-DD&to=YYYY-MM-DD
-  app.get<{ Querystring: { from: string; to: string } }>('/plan/report', {
+  app.get('/plan/report', {
     preHandler: app.requireRole(...PERMISSIONS.ingest.read),
     schema: { tags: ['Ingest'], summary: 'Ingest plan raporu (tarih aralığı)', querystring: reportQuerySchema },
   }, async (request) => {
-    const { from, to } = request.query;
+    const { from, to } = reportZodSchema.parse(request.query);
     const items = await app.prisma.ingestPlanItem.findMany({
       where: {
         dayDate: {
@@ -239,11 +254,11 @@ export async function ingestRoutes(app: FastifyInstance) {
   });
 
   // GET /api/v1/ingest/plan/report/export?from=YYYY-MM-DD&to=YYYY-MM-DD
-  app.get<{ Querystring: { from: string; to: string } }>('/plan/report/export', {
+  app.get('/plan/report/export', {
     preHandler: app.requireRole(...PERMISSIONS.ingest.read),
     schema: { tags: ['Ingest'], summary: 'Ingest plan raporunu Excel olarak dışa aktar', querystring: reportQuerySchema },
   }, async (request, reply) => {
-    const { from, to } = request.query;
+    const { from, to } = reportZodSchema.parse(request.query);
     const items = await app.prisma.ingestPlanItem.findMany({
       where: {
         dayDate: {
@@ -286,13 +301,13 @@ export async function ingestRoutes(app: FastifyInstance) {
         i + 1,
         `${d}.${mo}.${y}`,
         mapped.sourceType,
-        describeSourceKey(mapped.sourceKey),
+        sanitizeCell(describeSourceKey(mapped.sourceKey)),
         mapped.recordingPort ?? '-',
         minuteToTime(mapped.plannedStartMinute),
         minuteToTime(mapped.plannedEndMinute),
         dur ?? '-',
         PLAN_STATUS_LABELS[mapped.status] ?? mapped.status,
-        mapped.note ?? '',
+        sanitizeCell(mapped.note ?? ''),
         mapped.updatedBy ?? '-',
       ]);
     });

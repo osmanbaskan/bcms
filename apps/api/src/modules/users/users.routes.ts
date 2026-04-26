@@ -6,6 +6,21 @@ const REALM_ROLES = ['admin', 'planner', 'scheduler', 'ingest_operator', 'monito
 let adminToken: string | null = null;
 let tokenExpiry = 0;
 
+// Realm role-mappings cache (60 s TTL) — avoids N+1 per user list request
+const roleMappingCache = new Map<string, { roles: string[]; expiresAt: number }>();
+const ROLE_CACHE_TTL_MS = 60_000;
+
+function getCachedRoles(userId: string): string[] | null {
+  const entry = roleMappingCache.get(userId);
+  if (entry && Date.now() < entry.expiresAt) return entry.roles;
+  roleMappingCache.delete(userId);
+  return null;
+}
+
+function setCachedRoles(userId: string, roles: string[]): void {
+  roleMappingCache.set(userId, { roles, expiresAt: Date.now() + ROLE_CACHE_TTL_MS });
+}
+
 function envOrDefault(name: string, fallback: string): string {
   const value = process.env[name];
   if (value) return value;
@@ -66,12 +81,14 @@ export async function usersRoutes(app: FastifyInstance) {
   }, async () => {
     const users: any[] = await kcFetch('/users?max=200');
 
-    // Her kullanıcının realm rollerini çek
+    // Her kullanıcının realm rollerini çek — önce cache'e bak, cache miss olanları batch al
     const withRoles = await Promise.all(users.map(async (u) => {
-      const roleMappings: any[] = await kcFetch(`/users/${u.id}/role-mappings/realm`);
-      const roles = roleMappings
-        .map((r) => r.name as string)
-        .filter((r) => REALM_ROLES.includes(r));
+      let roles = getCachedRoles(u.id);
+      if (roles === null) {
+        const roleMappings: any[] = await kcFetch(`/users/${u.id}/role-mappings/realm`);
+        roles = roleMappings.map((r) => r.name as string).filter((r) => REALM_ROLES.includes(r));
+        setCachedRoles(u.id, roles);
+      }
       return {
         id:        u.id,
         username:  u.username,
@@ -82,6 +99,10 @@ export async function usersRoutes(app: FastifyInstance) {
         roles,
       };
     }));
+    // Süresi dolan cache girdilerini temizle
+    for (const [id, entry] of roleMappingCache.entries()) {
+      if (Date.now() >= entry.expiresAt) roleMappingCache.delete(id);
+    }
 
     return withRoles;
   });
@@ -126,6 +147,7 @@ export async function usersRoutes(app: FastifyInstance) {
       await kcFetch(`/users/${id}/role-mappings/realm`, { method: 'POST', body: JSON.stringify(toAdd) });
     }
 
+    roleMappingCache.delete(id);
     return { ok: true };
   });
 

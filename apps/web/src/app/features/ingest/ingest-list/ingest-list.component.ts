@@ -298,7 +298,12 @@ class TrDateAdapter extends NativeDateAdapter {
                   <mat-datepicker #portBoardDatePicker></mat-datepicker>
                 </mat-form-field>
               </div>
-              @if (assignedPortColumns().length === 0) {
+              @if (portBoardLoadError()) {
+                <div class="port-board-empty">
+                  <h2>Yükleme Hatası</h2>
+                  <p>{{ portBoardLoadError() }}</p>
+                </div>
+              } @else if (assignedPortColumns().length === 0) {
                 <div class="port-board-empty">
                   <h2>Port Görünümü</h2>
                   <p>Seçili tarih için atanmış port bulunamadı.</p>
@@ -619,6 +624,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
   portBoardLivePlan = signal<Schedule[]>([]);
   portBoardStudioPlan = signal<StudioPlanSlot[]>([]);
   portBoardIngestItems = signal<IngestPlanItem[]>([]);
+  portBoardLoadError = signal<string | null>(null);
 
   filteredJobs = computed(() => {
     const tab = STATUS_TABS[this.selectedTab()];
@@ -977,11 +983,12 @@ export class IngestListComponent implements OnInit, OnDestroy {
   }
 
   loadPortBoardData(dateValue: string) {
+    this.portBoardLoadError.set(null);
     const from = new Date(`${dateValue}T00:00:00+03:00`).toISOString();
     const to = new Date(`${dateValue}T23:59:59+03:00`).toISOString();
     this.api.get<PaginatedResponse<Schedule>>('/schedules/ingest-candidates', { from, to, page: 1, pageSize: 200 }).subscribe({
       next: (res) => this.portBoardLivePlan.set(res.data ?? []),
-      error: () => {},
+      error: () => this.portBoardLoadError.set('Canlı yayın planı yüklenemedi'),
     });
     const weekStart = this.mondayFor(dateValue);
     this.api.get<StudioPlan>(`/studio-plans/${weekStart}`).subscribe({
@@ -990,7 +997,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
     });
     this.api.get<IngestPlanItem[]>('/ingest/plan', { date: dateValue }).subscribe({
       next: (items) => this.portBoardIngestItems.set(Array.isArray(items) ? items : []),
-      error: () => {},
+      error: () => this.portBoardLoadError.set('Ingest plan öğeleri yüklenemedi'),
     });
   }
 
