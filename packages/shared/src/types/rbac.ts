@@ -25,6 +25,7 @@ export interface JwtPayload {
 export const PERMISSIONS = {
   schedules: {
     read:          [] as BcmsGroup[],                                                                      // all authenticated
+    add:           ['SystemEng', 'Booking', 'YayınPlanlama'] as BcmsGroup[],                              // yeni ekle butonu
     edit:          ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],     // düzenle
     technicalEdit: ['SystemEng', 'Transmisyon', 'Booking'] as BcmsGroup[],                                // teknik detay
     duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking'] as BcmsGroup[],                      // çoğaltma

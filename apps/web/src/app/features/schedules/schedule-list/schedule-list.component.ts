@@ -30,6 +30,7 @@ import type { Schedule } from '@bcms/shared';
 
 // Canlı Yayın Planlama buton izinleri
 const SCHEDULE_PERMS = {
+  add:           ['SystemEng', 'Booking', 'YayınPlanlama'],
   edit:          ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'],
   technicalEdit: ['SystemEng', 'Transmisyon', 'Booking'],
   duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking'],
@@ -1453,9 +1454,11 @@ export class ScheduleTechnicalDialogComponent {
         </div>
 
         <div class="top-actions">
-          <button mat-raised-button color="primary" (click)="openAddDialog()">
-            <mat-icon>add</mat-icon> Yeni Ekle
-          </button>
+          @if (canAdd()) {
+            <button mat-raised-button color="primary" (click)="openAddDialog()">
+              <mat-icon>add</mat-icon> Yeni Ekle
+            </button>
+          }
         </div>
       </div>
 
@@ -1653,6 +1656,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   selectedDate      = new Date().toISOString().slice(0, 10);
   private _userGroups = signal<string[]>([]);
 
+  canAdd           = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.add));
   canEdit          = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.edit));
   canTechnicalEdit = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.technicalEdit));
   canDuplicate     = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.duplicate));
