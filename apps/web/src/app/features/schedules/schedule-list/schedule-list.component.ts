@@ -28,12 +28,12 @@ import { ScheduleService } from '../../../core/services/schedule.service';
 import { ApiService } from '../../../core/services/api.service';
 import type { Schedule } from '@bcms/shared';
 
-// Canlı Yayın Planlama buton izinleri — gruplara göre güncellenir
+// Canlı Yayın Planlama buton izinleri
 const SCHEDULE_PERMS = {
-  edit:          ['SystemEng'] as string[],
-  technicalEdit: ['SystemEng'] as string[],
-  duplicate:     ['SystemEng'] as string[],
-  delete:        ['SystemEng'] as string[],
+  edit:          ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'],
+  technicalEdit: ['SystemEng', 'Transmisyon', 'Booking'],
+  duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking'],
+  delete:        ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'],
 };
 function hasGroup(userGroups: string[], required: string[]): boolean {
   return required.length === 0 || required.some((g) => userGroups.includes(g));

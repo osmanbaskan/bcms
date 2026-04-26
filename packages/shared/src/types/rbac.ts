@@ -24,12 +24,12 @@ export interface JwtPayload {
  *  Initially only SystemEng has access; update as department permissions are defined. */
 export const PERMISSIONS = {
   schedules: {
-    read:          [] as BcmsGroup[],            // all authenticated users
-    edit:          ['SystemEng'] as BcmsGroup[], // düzenle butonu
-    technicalEdit: ['SystemEng'] as BcmsGroup[], // teknik detay butonu
-    duplicate:     ['SystemEng'] as BcmsGroup[], // çoğaltma butonu
-    delete:        ['SystemEng'] as BcmsGroup[], // silme butonu
-    write:         ['SystemEng'] as BcmsGroup[], // API write (edit+technicalEdit+duplicate union)
+    read:          [] as BcmsGroup[],                                                                      // all authenticated
+    edit:          ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],     // düzenle
+    technicalEdit: ['SystemEng', 'Transmisyon', 'Booking'] as BcmsGroup[],                                // teknik detay
+    duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking'] as BcmsGroup[],                      // çoğaltma
+    delete:        ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],     // silme
+    write:         ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],     // API PATCH/POST
   },
   bookings: {
     read:   ['SystemEng'] as BcmsGroup[],
