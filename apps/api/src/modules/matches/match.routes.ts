@@ -12,7 +12,7 @@ const matchListQuerySchema = z.object({
 export async function matchRoutes(app: FastifyInstance) {
   // GET /api/v1/matches/leagues — Tüm ligleri döndür
   app.get('/leagues', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['Matches'],
       summary: 'Mevcut ligleri listele',
@@ -26,7 +26,7 @@ export async function matchRoutes(app: FastifyInstance) {
 
   // GET /api/v1/matches — Fikstür maçlarını listele (leagueId, from, to filtresi)
   app.get('/', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['Matches'],
       summary: 'Fikstür maçlarını listele',

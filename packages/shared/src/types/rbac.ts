@@ -1,63 +1,67 @@
-export type Role =
-  | 'admin'
-  | 'planner'
-  | 'scheduler'
-  | 'expert'
-  | 'ingest_operator'
-  | 'monitoring'
-  | 'viewer';
+export type BcmsGroup =
+  | 'Tekyon'
+  | 'Transmisyon'
+  | 'Booking'
+  | 'YayınPlanlama'
+  | 'SystemEng'
+  | 'Ingest'
+  | 'Kurgu'
+  | 'MCR'
+  | 'PCR'
+  | 'Ses'
+  | 'Studyo';
 
 export interface JwtPayload {
   sub: string;
   preferred_username: string;
   email: string;
-  realm_access: { roles: Role[] };
-  resource_access: Record<string, { roles: string[] }>;
+  groups: string[];
   iat: number;
   exp: number;
 }
 
-/** Permissions matrix */
+/** Permissions matrix — groups allowed for each action.
+ *  Initially only SystemEng has access; update as department permissions are defined. */
 export const PERMISSIONS = {
   schedules: {
-    read:   ['admin', 'planner', 'scheduler', 'monitoring', 'viewer'] as Role[],
-    write:  ['admin', 'planner', 'scheduler'] as Role[],
-    delete: ['admin'] as Role[],
+    read:   ['SystemEng'] as BcmsGroup[],
+    write:  ['SystemEng'] as BcmsGroup[],
+    delete: ['SystemEng'] as BcmsGroup[],
   },
   bookings: {
-    read:   ['admin', 'planner', 'scheduler', 'viewer'] as Role[],
-    write:  ['admin', 'planner'] as Role[],
-    delete: ['admin'] as Role[],
+    read:   ['SystemEng'] as BcmsGroup[],
+    write:  ['SystemEng'] as BcmsGroup[],
+    delete: ['SystemEng'] as BcmsGroup[],
   },
   ingest: {
-    read:   ['admin', 'ingest_operator', 'monitoring'] as Role[],
-    write:  ['admin', 'ingest_operator'] as Role[],
-    delete: ['admin'] as Role[],
+    read:   ['SystemEng'] as BcmsGroup[],
+    write:  ['SystemEng'] as BcmsGroup[],
+    delete: ['SystemEng'] as BcmsGroup[],
   },
   channels: {
-    read:   ['admin', 'planner', 'scheduler', 'monitoring', 'viewer', 'expert'] as Role[],
-    write:  ['admin'] as Role[],
-    delete: ['admin'] as Role[],
+    read:   ['SystemEng'] as BcmsGroup[],
+    write:  ['SystemEng'] as BcmsGroup[],
+    delete: ['SystemEng'] as BcmsGroup[],
   },
   incidents: {
-    read:   ['admin', 'planner', 'monitoring', 'viewer'] as Role[],
-    write:  ['admin', 'monitoring'] as Role[],
-    delete: ['admin'] as Role[],
+    read:   ['SystemEng'] as BcmsGroup[],
+    write:  ['SystemEng'] as BcmsGroup[],
+    delete: ['SystemEng'] as BcmsGroup[],
   },
   monitoring: {
-    read:   ['admin', 'monitoring', 'viewer'] as Role[],
-    write:  ['admin', 'monitoring'] as Role[],
+    read:   ['SystemEng'] as BcmsGroup[],
+    write:  ['SystemEng'] as BcmsGroup[],
   },
   auditLogs: {
-    read:   ['admin'] as Role[],
+    read:   ['SystemEng'] as BcmsGroup[],
   },
   reports: {
-    read:   ['admin', 'expert'] as Role[],
-    export: ['admin', 'expert'] as Role[],
+    read:   ['SystemEng'] as BcmsGroup[],
+    export: ['SystemEng'] as BcmsGroup[],
   },
   studioPlans: {
-    read:   ['admin'] as Role[],
-    write:  ['admin'] as Role[],
-    delete: ['admin'] as Role[],
+    read:   ['SystemEng'] as BcmsGroup[],
+    write:  ['SystemEng'] as BcmsGroup[],
+    delete: ['SystemEng'] as BcmsGroup[],
   },
 } as const;

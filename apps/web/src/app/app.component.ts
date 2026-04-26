@@ -13,7 +13,7 @@ interface NavItem {
   label:      string;
   icon:       string;
   route:      string;
-  roles:      string[];
+  groups:     string[];
   exactMatch?: boolean;
   children?:  NavItem[];
 }
@@ -109,39 +109,41 @@ interface NavItem {
 })
 export class AppComponent implements OnInit {
   username = '';
-  userRoles = signal<string[]>([]);
+  userGroups = signal<string[]>([]);
 
   readonly navItems: NavItem[] = [
     {
       label: 'Yayın Planı', icon: 'calendar_today', route: '/schedules',
-      roles: ['admin','planner','scheduler','viewer'],
+      groups: [],
       children: [
-        { label: 'Canlı Yayın Plan Listesi', icon: 'list', route: '/schedules', roles: ['admin','planner','scheduler','viewer'], exactMatch: true },
-        { label: 'Günlük Yayın Raporu', icon: 'bar_chart', route: '/schedules/daily-report', roles: ['admin','planner','scheduler','viewer'] },
+        { label: 'Canlı Yayın Plan Listesi', icon: 'list', route: '/schedules', groups: [], exactMatch: true },
+        { label: 'Günlük Yayın Raporu', icon: 'bar_chart', route: '/schedules/daily-report', groups: [] },
       ],
     },
-    { label: 'Rezervasyonlar', icon: 'book_online',         route: '/bookings',   roles: ['admin','planner','scheduler','viewer'] },
-    { label: 'Raporlama',     icon: 'summarize',            route: '/schedules/reporting', roles: ['admin','expert'] },
-    { label: 'Stüdyo Planı', icon: 'event_seat',            route: '/studio-plan', roles: ['admin'] },
-    { label: 'Haftalık Shift',  icon: 'groups',              route: '/weekly-shift', roles: ['admin'] },
-    { label: 'Provys İçerik Kontrol', icon: 'fact_check',    route: '/provys-content-control', roles: ['admin'] },
-    { label: 'Kanallar',       icon: 'live_tv',             route: '/channels',   roles: ['admin'] },
-    { label: 'Ingest',         icon: 'cloud_upload',        route: '/ingest',     roles: ['admin','ingest_operator'] },
-    { label: 'Monitoring',     icon: 'monitor_heart',       route: '/monitoring', roles: ['admin','monitoring','viewer'] },
-    { label: 'MCR',            icon: 'videocam',            route: '/mcr',        roles: ['admin','monitoring'] },
-    { label: 'Kullanıcılar',  icon: 'manage_accounts',     route: '/users',      roles: ['admin'] },
-    { label: 'Ayarlar',       icon: 'settings',            route: '/settings',   roles: ['admin'] },
+    { label: 'Rezervasyonlar',        icon: 'book_online',    route: '/bookings',               groups: [] },
+    { label: 'Raporlama',             icon: 'summarize',      route: '/schedules/reporting',    groups: [] },
+    { label: 'Stüdyo Planı',          icon: 'event_seat',     route: '/studio-plan',            groups: [] },
+    { label: 'Haftalık Shift',        icon: 'groups',         route: '/weekly-shift',           groups: [] },
+    { label: 'Provys İçerik Kontrol', icon: 'fact_check',     route: '/provys-content-control', groups: [] },
+    { label: 'Kanallar',              icon: 'live_tv',        route: '/channels',               groups: [] },
+    { label: 'Ingest',                icon: 'cloud_upload',   route: '/ingest',                 groups: [] },
+    { label: 'Monitoring',            icon: 'monitor_heart',  route: '/monitoring',             groups: [] },
+    { label: 'MCR',                   icon: 'videocam',       route: '/mcr',                    groups: [] },
+    { label: 'Kullanıcılar',          icon: 'manage_accounts',route: '/users',                  groups: ['SystemEng'] },
+    { label: 'Ayarlar',               icon: 'settings',       route: '/settings',               groups: ['SystemEng'] },
   ];
 
   visibleNavItems = computed(() => {
-    const roles = this.userRoles();
+    const groups = this.userGroups();
     return this.navItems
       .map((item) => {
-        const children = item.children?.filter((child) => child.roles.some((r) => roles.includes(r)));
+        const children = item.children?.filter(
+          (child) => child.groups.length === 0 || child.groups.some((g) => groups.includes(g)),
+        );
         return { ...item, children };
       })
       .filter((item) =>
-        item.children?.length || item.roles.some((r) => roles.includes(r)),
+        item.groups.length === 0 || item.groups.some((g) => groups.includes(g)) || item.children?.length,
       );
   });
 
@@ -150,17 +152,14 @@ export class AppComponent implements OnInit {
   async ngOnInit() {
     if (environment.skipAuth) {
       this.username = 'dev-admin';
-      this.userRoles.set(['admin']);
+      this.userGroups.set(['SystemEng']);
       return;
     }
-    // tokenParsed'dan username ve rolleri oku — network çağrısı gerektirmez
+    // tokenParsed'dan username ve grupları oku — network çağrısı gerektirmez
     const kc = this.keycloak.getKeycloakInstance();
     const parsed: any = kc?.tokenParsed ?? {};
     this.username = parsed['preferred_username'] ?? '';
-    const realmRoles: string[]    = parsed?.realm_access?.roles ?? [];
-    const resourceRoles: string[] = Object.values(parsed?.resource_access ?? {})
-      .flatMap((r: any) => r?.roles ?? []);
-    this.userRoles.set([...new Set([...realmRoles, ...resourceRoles])]);
+    this.userGroups.set(parsed?.groups ?? []);
     this.cdr.detectChanges();
   }
 

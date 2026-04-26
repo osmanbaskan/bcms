@@ -12,7 +12,7 @@ const createChannelSchema = z.object({
 
 export async function channelRoutes(app: FastifyInstance) {
   app.get('/', {
-    preHandler: app.requireRole(...PERMISSIONS.channels.read),
+    preHandler: app.requireGroup(...PERMISSIONS.channels.read),
     schema: { tags: ['Channels'], summary: 'List all active channels' },
   }, async () => {
     return app.prisma.channel.findMany({
@@ -22,7 +22,7 @@ export async function channelRoutes(app: FastifyInstance) {
   });
 
   app.get<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.channels.read),
+    preHandler: app.requireGroup(...PERMISSIONS.channels.read),
     schema: { tags: ['Channels'] },
   }, async (request) => {
     const channel = await app.prisma.channel.findUnique({ where: { id: Number(request.params.id) } });
@@ -31,7 +31,7 @@ export async function channelRoutes(app: FastifyInstance) {
   });
 
   app.post('/', {
-    preHandler: app.requireRole(...PERMISSIONS.channels.write),
+    preHandler: app.requireGroup(...PERMISSIONS.channels.write),
     schema: { tags: ['Channels'] },
   }, async (request, reply) => {
     const dto = createChannelSchema.parse(request.body);
@@ -40,7 +40,7 @@ export async function channelRoutes(app: FastifyInstance) {
   });
 
   app.patch<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.channels.write),
+    preHandler: app.requireGroup(...PERMISSIONS.channels.write),
     schema: { tags: ['Channels'] },
   }, async (request) => {
     const dto = createChannelSchema.partial().parse(request.body);
@@ -48,7 +48,7 @@ export async function channelRoutes(app: FastifyInstance) {
   });
 
   app.delete<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.channels.delete),
+    preHandler: app.requireGroup(...PERMISSIONS.channels.delete),
     schema: { tags: ['Channels'] },
   }, async (request, reply) => {
     // Soft delete

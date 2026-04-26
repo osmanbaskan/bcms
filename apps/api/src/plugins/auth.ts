@@ -2,7 +2,7 @@ import fp from 'fastify-plugin';
 import jwt from '@fastify/jwt';
 import jwksRsa from 'jwks-rsa';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { JwtPayload, Role } from '@bcms/shared';
+import type { JwtPayload, BcmsGroup } from '@bcms/shared';
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
@@ -13,7 +13,7 @@ declare module '@fastify/jwt' {
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate: (request: FastifyRequest) => Promise<void>;
-    requireRole: (...roles: Role[]) => (request: FastifyRequest) => Promise<void>;
+    requireGroup: (...groups: BcmsGroup[]) => (request: FastifyRequest) => Promise<void>;
   }
 }
 
@@ -21,8 +21,7 @@ const DEV_USER: JwtPayload = {
   sub:                'dev-admin',
   preferred_username: 'dev-admin',
   email:              'dev@bcms.local',
-  realm_access:       { roles: ['admin', 'planner', 'scheduler', 'ingest_operator', 'monitoring', 'viewer'] },
-  resource_access:    {},
+  groups:             ['SystemEng'],
   iat: 0,
   exp: 9999999999,
 };
@@ -80,7 +79,7 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
   });
 
   if (skipAuth) {
-    app.log.warn('Auth bypass aktif — tüm istekler dev-admin olarak işleniyor');
+    app.log.warn('Auth bypass aktif — tüm istekler dev-admin (SystemEng) olarak işleniyor');
   }
 
   // ── Decorators ──────────────────────────────────────────────────────────────
@@ -100,13 +99,12 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
     }
   });
 
-  app.decorate('requireRole', (...roles: Role[]) => async (request: FastifyRequest) => {
+  app.decorate('requireGroup', (...groups: BcmsGroup[]) => async (request: FastifyRequest) => {
     await app.authenticate(request);
-    const userRoles: string[] = (request.user as JwtPayload)?.realm_access?.roles ?? [];
-    const hasRole = roles.some((r) => userRoles.includes(r));
-    if (!hasRole) {
-      const err = Object.assign(new Error('Insufficient permissions'), { statusCode: 403 });
-      throw err;
+    const userGroups: string[] = (request.user as JwtPayload)?.groups ?? [];
+    const hasGroup = groups.some((g) => userGroups.includes(g));
+    if (!hasGroup) {
+      throw Object.assign(new Error('Insufficient permissions'), { statusCode: 403 });
     }
   });
 });

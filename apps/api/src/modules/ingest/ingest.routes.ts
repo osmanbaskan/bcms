@@ -185,7 +185,7 @@ export async function ingestRoutes(app: FastifyInstance) {
 
   // GET /api/v1/ingest
   app.get('/', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.read),
     schema: { tags: ['Ingest'] },
   }, async (request) => {
     const q = listQuerySchema.parse(request.query);
@@ -202,7 +202,7 @@ export async function ingestRoutes(app: FastifyInstance) {
 
   // GET /api/v1/ingest/:id
   app.get<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.read),
     schema: { tags: ['Ingest'] },
   }, async (request) => {
     const job = await app.prisma.ingestJob.findUnique({
@@ -215,12 +215,12 @@ export async function ingestRoutes(app: FastifyInstance) {
 
   // GET /api/v1/ingest/recording-ports — Kayıt portu kataloğu
   app.get('/recording-ports', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.read),
     schema: { tags: ['Ingest'], summary: 'Get recording port catalog' },
   }, async () => getRecordingPorts(app));
 
   app.put('/recording-ports', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.write),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.write),
     schema: { tags: ['Ingest'], summary: 'Replace recording port catalog' },
   }, async (request) => {
     const dto = saveRecordingPortsSchema.parse(request.body) satisfies SaveRecordingPortsDto;
@@ -237,7 +237,7 @@ export async function ingestRoutes(app: FastifyInstance) {
 
   // GET /api/v1/ingest/plan/report?from=YYYY-MM-DD&to=YYYY-MM-DD
   app.get('/plan/report', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.read),
     schema: { tags: ['Ingest'], summary: 'Ingest plan raporu (tarih aralığı)', querystring: reportQuerySchema },
   }, async (request) => {
     const { from, to } = reportZodSchema.parse(request.query);
@@ -255,7 +255,7 @@ export async function ingestRoutes(app: FastifyInstance) {
 
   // GET /api/v1/ingest/plan/report/export?from=YYYY-MM-DD&to=YYYY-MM-DD
   app.get('/plan/report/export', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.read),
     schema: { tags: ['Ingest'], summary: 'Ingest plan raporunu Excel olarak dışa aktar', querystring: reportQuerySchema },
   }, async (request, reply) => {
     const { from, to } = reportZodSchema.parse(request.query);
@@ -327,7 +327,7 @@ export async function ingestRoutes(app: FastifyInstance) {
 
   // GET /api/v1/ingest/plan?date=YYYY-MM-DD — Ingest departmanı plan satırı durumları
   app.get('/plan', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.read),
     schema: { tags: ['Ingest'], summary: 'Get ingest planning item states for one day' },
   }, async (request) => {
     const q = planQuerySchema.parse(request.query);
@@ -341,7 +341,7 @@ export async function ingestRoutes(app: FastifyInstance) {
 
   // PUT /api/v1/ingest/plan/:sourceKey — Kaynak dosya ve operasyon durumunu kaydet
   app.put<{ Params: { sourceKey: string } }>('/plan/:sourceKey', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.write),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.write),
     schema: { tags: ['Ingest'], summary: 'Upsert one ingest planning item state' },
   }, async (request) => {
     const sourceKey = decodeURIComponent(request.params.sourceKey);
@@ -415,7 +415,7 @@ export async function ingestRoutes(app: FastifyInstance) {
 
   // DELETE /api/v1/ingest/plan/:sourceKey — ingest-plan satırını sil
   app.delete<{ Params: { sourceKey: string } }>('/plan/:sourceKey', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.write),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.write),
     schema: { tags: ['Ingest'], summary: 'Delete an ingest plan item (ingest-plan source only)' },
   }, async (request, reply) => {
     const sourceKey = decodeURIComponent(request.params.sourceKey);
@@ -429,7 +429,7 @@ export async function ingestRoutes(app: FastifyInstance) {
 
   // POST /api/v1/ingest — Trigger new ingest job (watch folder or manual)
   app.post('/', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.write),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.write),
     schema: { tags: ['Ingest'], summary: 'Trigger a new ingest job' },
   }, async (request, reply) => {
     const dto = createIngestSchema.parse(request.body);
@@ -478,7 +478,7 @@ export async function ingestRoutes(app: FastifyInstance) {
 
   // DELETE /api/v1/ingest/:id
   app.delete<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.delete),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.delete),
     schema: { tags: ['Ingest'], summary: 'Delete ingest job' },
   }, async (request, reply) => {
     const id = Number(request.params.id);

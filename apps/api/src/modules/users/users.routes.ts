@@ -1,25 +1,33 @@
 import type { FastifyInstance } from 'fastify';
 import { PERMISSIONS } from '@bcms/shared';
 
-const REALM_ROLES = ['admin', 'planner', 'scheduler', 'ingest_operator', 'monitoring', 'viewer'];
+const BCMS_GROUPS = [
+  'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama', 'SystemEng',
+  'Ingest', 'Kurgu', 'MCR', 'PCR', 'Ses', 'Studyo',
+];
 
 let adminToken: string | null = null;
 let tokenExpiry = 0;
 
-// Realm role-mappings cache (60 s TTL) — avoids N+1 per user list request
-const roleMappingCache = new Map<string, { roles: string[]; expiresAt: number }>();
-const ROLE_CACHE_TTL_MS = 60_000;
+// User-group membership cache (60 s TTL)
+const groupMembershipCache = new Map<string, { groups: string[]; expiresAt: number }>();
+const GROUP_CACHE_TTL_MS = 60_000;
 
-function getCachedRoles(userId: string): string[] | null {
-  const entry = roleMappingCache.get(userId);
-  if (entry && Date.now() < entry.expiresAt) return entry.roles;
-  roleMappingCache.delete(userId);
+function getCachedGroups(userId: string): string[] | null {
+  const entry = groupMembershipCache.get(userId);
+  if (entry && Date.now() < entry.expiresAt) return entry.groups;
+  groupMembershipCache.delete(userId);
   return null;
 }
 
-function setCachedRoles(userId: string, roles: string[]): void {
-  roleMappingCache.set(userId, { roles, expiresAt: Date.now() + ROLE_CACHE_TTL_MS });
+function setCachedGroups(userId: string, groups: string[]): void {
+  groupMembershipCache.set(userId, { groups, expiresAt: Date.now() + GROUP_CACHE_TTL_MS });
 }
+
+// Group name → ID map cache (5 min TTL — group names rarely change)
+let groupIdMapCache: Map<string, string> | null = null;
+let groupIdMapExpiry = 0;
+const GROUP_ID_MAP_TTL_MS = 5 * 60_000;
 
 function envOrDefault(name: string, fallback: string): string {
   const value = process.env[name];
@@ -41,12 +49,7 @@ async function getAdminToken(): Promise<string> {
   const res = await fetch(`${url}/realms/master/protocol/openid-connect/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'password',
-      client_id:  'admin-cli',
-      username,
-      password,
-    }),
+    body: new URLSearchParams({ grant_type: 'password', client_id: 'admin-cli', username, password }),
   });
 
   if (!res.ok) throw Object.assign(new Error('Keycloak admin auth failed'), { statusCode: 502 });
@@ -72,22 +75,29 @@ async function kcFetch(path: string, options: RequestInit = {}) {
   return text ? JSON.parse(text) : null;
 }
 
+async function getGroupIdMap(): Promise<Map<string, string>> {
+  if (groupIdMapCache && Date.now() < groupIdMapExpiry) return groupIdMapCache;
+  const groups: any[] = await kcFetch('/groups');
+  groupIdMapCache = new Map(groups.map((g: any) => [g.name as string, g.id as string]));
+  groupIdMapExpiry = Date.now() + GROUP_ID_MAP_TTL_MS;
+  return groupIdMapCache;
+}
+
 export async function usersRoutes(app: FastifyInstance) {
 
   // GET /api/v1/users
   app.get('/', {
-    preHandler: app.requireRole(...PERMISSIONS.auditLogs.read), // admin only
+    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
     schema: { tags: ['Users'], summary: 'Keycloak kullanıcı listesi' },
   }, async () => {
     const users: any[] = await kcFetch('/users?max=200');
 
-    // Her kullanıcının realm rollerini çek — önce cache'e bak, cache miss olanları batch al
-    const withRoles = await Promise.all(users.map(async (u) => {
-      let roles = getCachedRoles(u.id);
-      if (roles === null) {
-        const roleMappings: any[] = await kcFetch(`/users/${u.id}/role-mappings/realm`);
-        roles = roleMappings.map((r) => r.name as string).filter((r) => REALM_ROLES.includes(r));
-        setCachedRoles(u.id, roles);
+    const withGroups = await Promise.all(users.map(async (u) => {
+      let groups = getCachedGroups(u.id);
+      if (groups === null) {
+        const kcGroups: any[] = await kcFetch(`/users/${u.id}/groups`);
+        groups = kcGroups.map((g: any) => g.name as string).filter((n) => BCMS_GROUPS.includes(n));
+        setCachedGroups(u.id, groups);
       }
       return {
         id:        u.id,
@@ -96,64 +106,68 @@ export async function usersRoutes(app: FastifyInstance) {
         firstName: u.firstName ?? '',
         lastName:  u.lastName ?? '',
         enabled:   u.enabled ?? true,
-        roles,
+        groups,
       };
     }));
+
     // Süresi dolan cache girdilerini temizle
-    for (const [id, entry] of roleMappingCache.entries()) {
-      if (Date.now() >= entry.expiresAt) roleMappingCache.delete(id);
+    for (const [id, entry] of groupMembershipCache.entries()) {
+      if (Date.now() >= entry.expiresAt) groupMembershipCache.delete(id);
     }
 
-    return withRoles;
+    return withGroups;
   });
 
-  // GET /api/v1/users/roles  — atanabilir roller listesi
-  app.get('/roles', {
-    preHandler: app.requireRole(...PERMISSIONS.auditLogs.read),
-    schema: { tags: ['Users'], summary: 'Atanabilir rol listesi' },
-  }, async () => REALM_ROLES);
+  // GET /api/v1/users/groups  — atanabilir grup listesi
+  app.get('/groups', {
+    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
+    schema: { tags: ['Users'], summary: 'Atanabilir grup listesi' },
+  }, async () => BCMS_GROUPS);
 
-  // PUT /api/v1/users/:id/roles  — roller güncelle
-  app.put<{ Params: { id: string }; Body: { roles: string[] } }>('/:id/roles', {
-    preHandler: app.requireRole(...PERMISSIONS.auditLogs.read),
+  // PUT /api/v1/users/:id/groups  — grupları güncelle
+  app.put<{ Params: { id: string }; Body: { groups: string[] } }>('/:id/groups', {
+    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
     schema: {
       tags: ['Users'],
-      summary: 'Kullanıcı rollerini güncelle',
+      summary: 'Kullanıcı gruplarını güncelle',
       params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-      body:   { type: 'object', properties: { roles: { type: 'array', items: { type: 'string' } } }, required: ['roles'] },
+      body:   { type: 'object', properties: { groups: { type: 'array', items: { type: 'string' } } }, required: ['groups'] },
     },
   }, async (request) => {
     const { id } = request.params;
-    const { roles: newRoles } = request.body;
+    const { groups: newGroups } = request.body;
 
-    // Mevcut roller
-    const current: any[] = await kcFetch(`/users/${id}/role-mappings/realm`);
-    const currentBcms = current.filter((r) => REALM_ROLES.includes(r.name));
+    const groupIdMap = await getGroupIdMap();
 
-    // Tüm realm rollerinin id/name listesini al
-    const allRoles: any[] = await kcFetch('/roles');
-    const roleMap = new Map(allRoles.map((r) => [r.name, { id: r.id, name: r.name }]));
+    const currentKcGroups: any[] = await kcFetch(`/users/${id}/groups`);
+    const currentSet = new Set(
+      currentKcGroups.map((g: any) => g.name as string).filter((n) => BCMS_GROUPS.includes(n)),
+    );
+    const newSet = new Set(newGroups.filter((n) => BCMS_GROUPS.includes(n)));
 
     // Kaldırılacaklar
-    const toRemove = currentBcms.filter((r) => !newRoles.includes(r.name));
-    if (toRemove.length > 0) {
-      await kcFetch(`/users/${id}/role-mappings/realm`, { method: 'DELETE', body: JSON.stringify(toRemove) });
+    for (const name of currentSet) {
+      if (!newSet.has(name)) {
+        const gid = groupIdMap.get(name);
+        if (gid) await kcFetch(`/users/${id}/groups/${gid}`, { method: 'DELETE' });
+      }
     }
 
     // Eklenecekler
-    const currentNames = new Set(currentBcms.map((r) => r.name));
-    const toAdd = newRoles.filter((r) => !currentNames.has(r) && roleMap.has(r)).map((r) => roleMap.get(r)!);
-    if (toAdd.length > 0) {
-      await kcFetch(`/users/${id}/role-mappings/realm`, { method: 'POST', body: JSON.stringify(toAdd) });
+    for (const name of newSet) {
+      if (!currentSet.has(name)) {
+        const gid = groupIdMap.get(name);
+        if (gid) await kcFetch(`/users/${id}/groups/${gid}`, { method: 'PUT' });
+      }
     }
 
-    roleMappingCache.delete(id);
+    groupMembershipCache.delete(id);
     return { ok: true };
   });
 
   // PATCH /api/v1/users/:id/enabled  — aktif/pasif
   app.patch<{ Params: { id: string }; Body: { enabled: boolean } }>('/:id/enabled', {
-    preHandler: app.requireRole(...PERMISSIONS.auditLogs.read),
+    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
     schema: {
       tags: ['Users'],
       params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
@@ -166,28 +180,29 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   // POST /api/v1/users  — yeni kullanıcı
-  app.post<{ Body: { username: string; email: string; firstName?: string; lastName?: string; password: string; roles: string[] } }>('/', {
-    preHandler: app.requireRole(...PERMISSIONS.auditLogs.read),
+  app.post<{
+    Body: { username: string; email: string; firstName?: string; lastName?: string; password: string; groups: string[] };
+  }>('/', {
+    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
     schema: {
       tags: ['Users'],
       summary: 'Yeni kullanıcı oluştur',
       body: {
         type: 'object',
-        required: ['username', 'email', 'password', 'roles'],
+        required: ['username', 'email', 'password', 'groups'],
         properties: {
           username:  { type: 'string' },
           email:     { type: 'string' },
           firstName: { type: 'string' },
           lastName:  { type: 'string' },
           password:  { type: 'string' },
-          roles:     { type: 'array', items: { type: 'string' } },
+          groups:    { type: 'array', items: { type: 'string' } },
         },
       },
     },
   }, async (request) => {
-    const { username, email, firstName, lastName, password, roles } = request.body;
+    const { username, email, firstName, lastName, password, groups } = request.body;
 
-    // Kullanıcıyı oluştur
     const url   = process.env.KEYCLOAK_URL   ?? 'http://localhost:8080';
     const realm = process.env.KEYCLOAK_REALM ?? 'bcms';
     const token = await getAdminToken();
@@ -207,18 +222,15 @@ export async function usersRoutes(app: FastifyInstance) {
       throw Object.assign(new Error(`Kullanıcı oluşturulamadı: ${text}`), { statusCode: createRes.status });
     }
 
-    // Oluşturulan kullanıcının id'sini al (Location header'dan)
     const location = createRes.headers.get('Location') ?? '';
     const newId = location.split('/').pop()!;
 
-    // Rolleri ata
-    if (roles.length > 0) {
-      const allRoles: any[] = await kcFetch('/roles');
-      const toAdd = roles
-        .map((r) => allRoles.find((ar) => ar.name === r))
-        .filter(Boolean);
-      if (toAdd.length > 0) {
-        await kcFetch(`/users/${newId}/role-mappings/realm`, { method: 'POST', body: JSON.stringify(toAdd) });
+    // Gruplara ekle
+    if (groups.length > 0) {
+      const groupIdMap = await getGroupIdMap();
+      for (const name of groups.filter((n) => BCMS_GROUPS.includes(n))) {
+        const gid = groupIdMap.get(name);
+        if (gid) await kcFetch(`/users/${newId}/groups/${gid}`, { method: 'PUT' });
       }
     }
 

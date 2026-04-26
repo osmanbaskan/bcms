@@ -15,7 +15,7 @@ const submitSchema = z.object({
 export async function signalRoutes(app: FastifyInstance) {
   // GET /api/v1/signals/latest — Her kanal için en son okunan telemetri
   app.get('/latest', {
-    preHandler: app.requireRole(...PERMISSIONS.monitoring.read),
+    preHandler: app.requireGroup(...PERMISSIONS.monitoring.read),
     schema: { tags: ['Signals'], summary: 'En son sinyal okumalarını getir (kanal başına)' },
   }, async () => {
     // Her kanal için en güncel kaydı getir
@@ -42,7 +42,7 @@ export async function signalRoutes(app: FastifyInstance) {
 
   // GET /api/v1/signals/:channelId/history — Geçmiş okumalar (son 1 saat)
   app.get<{ Params: { channelId: string } }>('/:channelId/history', {
-    preHandler: app.requireRole(...PERMISSIONS.monitoring.read),
+    preHandler: app.requireGroup(...PERMISSIONS.monitoring.read),
     schema: { tags: ['Signals'], summary: 'Kanal sinyal geçmişi (son 1 saat)' },
   }, async (request) => {
     const channelId = Number(request.params.channelId);
@@ -57,7 +57,7 @@ export async function signalRoutes(app: FastifyInstance) {
 
   // POST /api/v1/signals — MCR ekipmanından veya simülatörden yeni okuma
   app.post('/', {
-    preHandler: app.requireRole(...PERMISSIONS.monitoring.write),
+    preHandler: app.requireGroup(...PERMISSIONS.monitoring.write),
     schema: { tags: ['Signals'], summary: 'Yeni sinyal telemetri kaydı oluştur' },
   }, async (request, reply) => {
     const dto = submitSchema.parse(request.body);
@@ -97,7 +97,7 @@ export async function signalRoutes(app: FastifyInstance) {
 
   // POST /api/v1/signals/simulate — Demo/test amaçlı rastgele telemetri üret
   app.post('/simulate', {
-    preHandler: app.requireRole(...PERMISSIONS.monitoring.write),
+    preHandler: app.requireGroup(...PERMISSIONS.monitoring.write),
     schema: { tags: ['Signals'], summary: 'Tüm aktif kanallar için simüle edilmiş telemetri gönder' },
   }, async (_req, reply) => {
     if (process.env.NODE_ENV === 'production') {

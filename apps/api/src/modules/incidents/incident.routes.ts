@@ -27,7 +27,7 @@ const timelineEventSchema = z.object({
 export async function incidentRoutes(app: FastifyInstance) {
   // ── Incidents ──────────────────────────────────────────────────────────────
   app.get('/', {
-    preHandler: app.requireRole(...PERMISSIONS.incidents.read),
+    preHandler: app.requireGroup(...PERMISSIONS.incidents.read),
     schema: { tags: ['Incidents'] },
   }, async (request) => {
     const q = listIncidentsQuerySchema.parse(request.query);
@@ -43,7 +43,7 @@ export async function incidentRoutes(app: FastifyInstance) {
   });
 
   app.post('/', {
-    preHandler: app.requireRole(...PERMISSIONS.incidents.write),
+    preHandler: app.requireGroup(...PERMISSIONS.incidents.write),
     schema: { tags: ['Incidents'] },
   }, async (request, reply) => {
     const dto = createIncidentSchema.parse(request.body);
@@ -52,7 +52,7 @@ export async function incidentRoutes(app: FastifyInstance) {
   });
 
   app.delete<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.incidents.delete),
+    preHandler: app.requireGroup(...PERMISSIONS.incidents.delete),
     schema: { tags: ['Incidents'], summary: 'Delete incident' },
   }, async (request, reply) => {
     const id = Number(request.params.id);
@@ -63,7 +63,7 @@ export async function incidentRoutes(app: FastifyInstance) {
   });
 
   app.patch<{ Params: { id: string } }>('/:id/resolve', {
-    preHandler: app.requireRole(...PERMISSIONS.incidents.write),
+    preHandler: app.requireGroup(...PERMISSIONS.incidents.write),
     schema: { tags: ['Incidents'], summary: 'Mark incident as resolved' },
   }, async (request) => {
     const user = (request.user as { preferred_username: string }).preferred_username;
@@ -75,7 +75,7 @@ export async function incidentRoutes(app: FastifyInstance) {
 
   // ── Timeline Events ────────────────────────────────────────────────────────
   app.get<{ Params: { scheduleId: string } }>('/timeline/:scheduleId', {
-    preHandler: app.requireRole(...PERMISSIONS.incidents.read),
+    preHandler: app.requireGroup(...PERMISSIONS.incidents.read),
     schema: { tags: ['Timeline'] },
   }, async (request) => {
     return app.prisma.timelineEvent.findMany({
@@ -85,7 +85,7 @@ export async function incidentRoutes(app: FastifyInstance) {
   });
 
   app.post<{ Params: { scheduleId: string } }>('/timeline/:scheduleId', {
-    preHandler: app.requireRole(...PERMISSIONS.incidents.write),
+    preHandler: app.requireGroup(...PERMISSIONS.incidents.write),
     schema: { tags: ['Timeline'] },
   }, async (request, reply) => {
     const dto = timelineEventSchema.parse(request.body);

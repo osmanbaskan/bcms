@@ -14,7 +14,7 @@ export async function bookingRoutes(app: FastifyInstance) {
   const svc = new BookingService(app);
 
   app.get('/', {
-    preHandler: app.requireRole(...PERMISSIONS.bookings.read),
+    preHandler: app.requireGroup(...PERMISSIONS.bookings.read),
     schema: { tags: ['Bookings'] },
   }, async (request) => {
     const q = listBookingsQuerySchema.parse(request.query);
@@ -22,12 +22,12 @@ export async function bookingRoutes(app: FastifyInstance) {
   });
 
   app.get<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.bookings.read),
+    preHandler: app.requireGroup(...PERMISSIONS.bookings.read),
     schema: { tags: ['Bookings'] },
   }, async (request) => svc.findById(Number(request.params.id)));
 
   app.post('/', {
-    preHandler: app.requireRole(...PERMISSIONS.bookings.write),
+    preHandler: app.requireGroup(...PERMISSIONS.bookings.write),
     schema: { tags: ['Bookings'] },
   }, async (request, reply) => {
     const dto = createBookingSchema.parse(request.body);
@@ -35,7 +35,7 @@ export async function bookingRoutes(app: FastifyInstance) {
   });
 
   app.patch<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.bookings.write),
+    preHandler: app.requireGroup(...PERMISSIONS.bookings.write),
     schema: { tags: ['Bookings'] },
   }, async (request) => {
     const dto = updateBookingSchema.parse(request.body);
@@ -44,7 +44,7 @@ export async function bookingRoutes(app: FastifyInstance) {
   });
 
   app.delete<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.bookings.delete),
+    preHandler: app.requireGroup(...PERMISSIONS.bookings.delete),
     schema: { tags: ['Bookings'], summary: 'Delete booking' },
   }, async (request, reply) => {
     await svc.remove(Number(request.params.id));
@@ -53,7 +53,7 @@ export async function bookingRoutes(app: FastifyInstance) {
 
   // ── Excel toplu import ──────────────────────────────────────────────────────
   app.post('/import', {
-    preHandler: app.requireRole(...PERMISSIONS.bookings.write),
+    preHandler: app.requireGroup(...PERMISSIONS.bookings.write),
     schema: { tags: ['Bookings'], consumes: ['multipart/form-data'] },
   }, async (request, reply) => {
     const data = await request.file();

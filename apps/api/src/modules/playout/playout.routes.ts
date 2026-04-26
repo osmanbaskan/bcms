@@ -28,7 +28,7 @@ export async function playoutRoutes(app: FastifyInstance) {
   // ── GET /api/v1/playout/current ──────────────────────────────────────────
   // Şu an ON_AIR olan schedule'ları döner (kanal bilgisiyle birlikte)
   app.get('/current', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: { tags: ['Playout'], summary: 'Şu an yayındaki programları getir' },
   }, async () => {
     return app.prisma.schedule.findMany({
@@ -41,7 +41,7 @@ export async function playoutRoutes(app: FastifyInstance) {
   // ── GET /api/v1/playout/next ─────────────────────────────────────────────
   // Sonraki 2 saatte başlayacak CONFIRMED schedule'lar
   app.get('/next', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: { tags: ['Playout'], summary: 'Yaklaşan programları getir (2 saat)' },
   }, async () => {
     const now  = new Date();
@@ -60,7 +60,7 @@ export async function playoutRoutes(app: FastifyInstance) {
   // ── GET /api/v1/playout/rundown ──────────────────────────────────────────
   // Bugünün tüm schedule'ları — MCR rundown listesi
   app.get('/rundown', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: { tags: ['Playout'], summary: 'Bugünün yayın akışı (tüm kanallar)' },
   }, async (request) => {
     const q = rundownQuerySchema.parse(request.query);
@@ -83,7 +83,7 @@ export async function playoutRoutes(app: FastifyInstance) {
   // ── POST /api/v1/playout/:id/go-live ────────────────────────────────────
   // Schedule'ı ON_AIR durumuna al + timeline event + otomatik incident kapat
   app.post<{ Params: { id: string } }>('/:id/go-live', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.write),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
     schema: { tags: ['Playout'], summary: 'Programı yayına al (ON_AIR)' },
   }, async (request, reply) => {
     const id  = Number(request.params.id);
@@ -139,7 +139,7 @@ export async function playoutRoutes(app: FastifyInstance) {
   // ── POST /api/v1/playout/:id/end ─────────────────────────────────────────
   // Schedule'ı COMPLETED durumuna al + timeline event
   app.post<{ Params: { id: string } }>('/:id/end', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.write),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
     schema: { tags: ['Playout'], summary: 'Programı bitir (COMPLETED)' },
   }, async (request, reply) => {
     const id  = Number(request.params.id);
@@ -178,7 +178,7 @@ export async function playoutRoutes(app: FastifyInstance) {
   // ── GET /api/v1/playout/:id/timeline ────────────────────────────────────
   // Schedule'a ait timeline eventleri
   app.get<{ Params: { id: string } }>('/:id/timeline', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: { tags: ['Playout'], summary: 'Program zaman tüneli olayları' },
   }, async (request) => {
     return app.prisma.timelineEvent.findMany({
@@ -190,7 +190,7 @@ export async function playoutRoutes(app: FastifyInstance) {
   // ── POST /api/v1/playout/:id/timeline ───────────────────────────────────
   // Yeni timeline event ekle (TD / teknik yönetmen notu)
   app.post<{ Params: { id: string } }>('/:id/timeline', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.write),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
     schema: { tags: ['Playout'], summary: 'Zaman tüneline not ekle' },
   }, async (request, reply) => {
     const id = Number(request.params.id);

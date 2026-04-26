@@ -26,7 +26,7 @@ export async function optaRoutes(app: FastifyInstance) {
 
   // GET /api/v1/opta/competitions — DB'deki leagues tablosundan döner
   app.get('/competitions', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['OPTA'],
       summary: 'DB\'deki competition listesi',
@@ -51,7 +51,7 @@ export async function optaRoutes(app: FastifyInstance) {
 
   // GET /api/v1/opta/matches?competitionId=X&season=Y[&unscheduled=false]
   app.get<{ Querystring: { competitionId: string; season: string; unscheduled?: string } }>('/matches', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['OPTA'],
       summary: 'Belirli bir competition + season için maç listesi',
@@ -103,7 +103,7 @@ export async function optaRoutes(app: FastifyInstance) {
 
   // GET /api/v1/opta/fixture-competitions — DB'den seçili competition listesi
   app.get('/fixture-competitions', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['OPTA'],
       summary: 'Yayın planında kullanılan competition listesi',
@@ -139,7 +139,7 @@ export async function optaRoutes(app: FastifyInstance) {
 
   // GET /api/v1/opta/fixtures?competitionId=X&season=Y[&from=ISO]
   app.get<{ Querystring: { competitionId: string; season: string; from?: string } }>('/fixtures', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['OPTA'],
       summary: 'Gelecek fikstürleri DB\'den getir',
@@ -182,7 +182,7 @@ export async function optaRoutes(app: FastifyInstance) {
 
   // GET /api/v1/opta/league-teams?competitionId=X — ligin takım listesini döner (metadata.teams)
   app.get<{ Querystring: { competitionId: string } }>('/league-teams', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['OPTA'],
       summary: 'Ligin takımlarını getir (metadata.teams alanından)',
@@ -204,7 +204,7 @@ export async function optaRoutes(app: FastifyInstance) {
 
   // POST /api/v1/opta/cache/clear — cache'i zorla yenile
   app.post('/cache/clear', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.write),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
     schema: { tags: ['OPTA'], summary: 'OPTA dosya cache\'ini temizle' },
   }, async () => {
     clearOptaCache();
@@ -213,7 +213,7 @@ export async function optaRoutes(app: FastifyInstance) {
 
   // GET /api/v1/opta/status — watcher bağlantı durumu
   app.get('/status', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: { tags: ['OPTA'], summary: 'OPTA watcher bağlantı durumu' },
   }, async () => {
     const status = getOptaWatcherStatus();
@@ -222,7 +222,7 @@ export async function optaRoutes(app: FastifyInstance) {
 
   // GET /api/v1/opta/smb-config — SMB bağlantı ayarlarını getir (şifre maskelenmiş)
   app.get('/smb-config', {
-    preHandler: app.requireRole(...PERMISSIONS.channels.write),
+    preHandler: app.requireGroup(...PERMISSIONS.channels.write),
     schema: { tags: ['OPTA'], summary: 'SMB bağlantı ayarlarını getir' },
   }, async () => {
     const cfg = readSmbConfig();
@@ -231,7 +231,7 @@ export async function optaRoutes(app: FastifyInstance) {
 
   // POST /api/v1/opta/smb-config — SMB bağlantı ayarlarını kaydet
   app.post<{ Body: Partial<SmbConfig> }>('/smb-config', {
-    preHandler: app.requireRole(...PERMISSIONS.channels.write),
+    preHandler: app.requireGroup(...PERMISSIONS.channels.write),
     schema: {
       tags: ['OPTA'],
       summary: 'SMB bağlantı ayarlarını kaydet ve cred dosyasını güncelle',

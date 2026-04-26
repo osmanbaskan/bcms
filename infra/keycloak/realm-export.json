@@ -22,16 +22,6 @@
     { "name": "Ses" },
     { "name": "Studyo" }
   ],
-  "roles": {
-    "realm": [
-      { "name": "admin",            "description": "Full system access" },
-      { "name": "planner",          "description": "Create/edit schedules and bookings" },
-      { "name": "scheduler",        "description": "Manage broadcast schedule" },
-      { "name": "ingest_operator",  "description": "Manage ingest jobs" },
-      { "name": "monitoring",       "description": "View monitoring dashboards" },
-      { "name": "viewer",           "description": "Read-only access" }
-    ]
-  },
   "clients": [
     {
       "clientId": "bcms-api",
@@ -58,7 +48,22 @@
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
-      "defaultClientScopes": ["openid", "profile", "email", "roles"]
+      "defaultClientScopes": ["openid", "profile", "email", "roles"],
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "groups",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -68,7 +73,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [{ "type": "password", "value": "admin123", "temporary": true }],
-      "realmRoles": ["admin"]
+      "groups": ["SystemEng"]
     },
     {
       "username": "planner1",
@@ -76,7 +81,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [{ "type": "password", "value": "planner123", "temporary": true }],
-      "realmRoles": ["planner"]
+      "groups": ["YayınPlanlama"]
     },
     {
       "username": "viewer1",
@@ -84,7 +89,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [{ "type": "password", "value": "viewer123", "temporary": true }],
-      "realmRoles": ["viewer"]
+      "groups": []
     }
   ]
 }

@@ -209,7 +209,7 @@ export async function studioPlanRoutes(app: FastifyInstance) {
 
   // GET /api/v1/studio-plans/reports/usage?from=YYYY-MM-DD&to=YYYY-MM-DD
   app.get('/reports/usage', {
-    preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
+    preHandler: app.requireGroup(...PERMISSIONS.studioPlans.read),
     schema: { tags: ['Studio Plans'], summary: 'Program bazlı stüdyo kullanım raporu', querystring: fastifyUsageQuerySchema },
   }, async (request) => {
     const { from, to } = usageQuerySchema.parse(request.query);
@@ -218,7 +218,7 @@ export async function studioPlanRoutes(app: FastifyInstance) {
 
   // GET /api/v1/studio-plans/reports/usage/export?from=YYYY-MM-DD&to=YYYY-MM-DD
   app.get('/reports/usage/export', {
-    preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
+    preHandler: app.requireGroup(...PERMISSIONS.studioPlans.read),
     schema: { tags: ['Studio Plans'], summary: 'Stüdyo kullanım raporunu Excel olarak dışa aktar', querystring: fastifyUsageQuerySchema },
   }, async (request, reply) => {
     const { from, to } = usageQuerySchema.parse(request.query);
@@ -267,12 +267,12 @@ export async function studioPlanRoutes(app: FastifyInstance) {
   });
 
   app.get('/catalog', {
-    preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
+    preHandler: app.requireGroup(...PERMISSIONS.studioPlans.read),
     schema: { tags: ['Studio Plans'], summary: 'Get studio plan program and color catalog' },
   }, async () => getCatalog(app));
 
   app.put('/catalog', {
-    preHandler: app.requireRole(...PERMISSIONS.studioPlans.write),
+    preHandler: app.requireGroup(...PERMISSIONS.studioPlans.write),
     schema: { tags: ['Studio Plans'], summary: 'Replace studio plan program and color catalog' },
   }, async (request) => {
     const dto = saveCatalogSchema.parse(request.body) satisfies SaveStudioPlanCatalogDto;
@@ -293,7 +293,7 @@ export async function studioPlanRoutes(app: FastifyInstance) {
   });
 
   app.get<{ Params: { weekStart: string } }>('/:weekStart', {
-    preHandler: app.requireRole(...PERMISSIONS.studioPlans.read),
+    preHandler: app.requireGroup(...PERMISSIONS.studioPlans.read),
     schema: { tags: ['Studio Plans'], summary: 'Get one weekly studio plan' },
   }, async (request) => {
     const weekStart = dateSchema.parse(request.params.weekStart);
@@ -316,7 +316,7 @@ export async function studioPlanRoutes(app: FastifyInstance) {
   });
 
   app.put<{ Params: { weekStart: string } }>('/:weekStart', {
-    preHandler: app.requireRole(...PERMISSIONS.studioPlans.write),
+    preHandler: app.requireGroup(...PERMISSIONS.studioPlans.write),
     schema: { tags: ['Studio Plans'], summary: 'Replace one weekly studio plan' },
   }, async (request) => {
     const weekStart = dateSchema.parse(request.params.weekStart);

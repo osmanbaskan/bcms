@@ -23,45 +23,46 @@ interface KcUser {
   firstName: string;
   lastName:  string;
   enabled:   boolean;
-  roles:     string[];
+  groups:    string[];
 }
 
-const ALL_ROLES = ['admin','planner','scheduler','ingest_operator','monitoring','viewer'] as const;
-const ROLE_LABELS: Record<string, string> = {
-  admin:           'Admin',
-  planner:         'Planner',
-  scheduler:       'Scheduler',
-  ingest_operator: 'Ingest Op.',
-  monitoring:      'Monitoring',
-  viewer:          'Viewer',
-};
-const ROLE_COLORS: Record<string, string> = {
-  admin:           '#b71c1c',
-  planner:         '#1565c0',
-  scheduler:       '#2e7d32',
-  ingest_operator: '#e65100',
-  monitoring:      '#4a148c',
-  viewer:          '#37474f',
+const ALL_GROUPS = [
+  'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama', 'SystemEng',
+  'Ingest', 'Kurgu', 'MCR', 'PCR', 'Ses', 'Studyo',
+] as const;
+
+const GROUP_COLORS: Record<string, string> = {
+  Tekyon:        '#1565c0',
+  Transmisyon:   '#6a1b9a',
+  Booking:       '#2e7d32',
+  YayınPlanlama: '#e65100',
+  SystemEng:     '#b71c1c',
+  Ingest:        '#00695c',
+  Kurgu:         '#f57f17',
+  MCR:           '#4527a0',
+  PCR:           '#0277bd',
+  Ses:           '#558b2f',
+  Studyo:        '#37474f',
 };
 
-// ── Rol Düzenleme Dialog ──────────────────────────────────────────────────────
+// ── Grup Düzenleme Dialog ─────────────────────────────────────────────────────
 @Component({
-  selector: 'app-user-role-dialog',
+  selector: 'app-user-group-dialog',
   standalone: true,
   imports: [CommonModule, FormsModule, MatDialogModule, MatButtonModule,
             MatCheckboxModule, MatProgressSpinnerModule],
   template: `
-    <h2 mat-dialog-title>Rolleri Düzenle — {{ data.user.username }}</h2>
+    <h2 mat-dialog-title>Grupları Düzenle — {{ data.user.username }}</h2>
     <mat-dialog-content style="min-width:320px">
       <p style="color:#aaa;font-size:12px;margin:0 0 12px">
         {{ data.user.email }}
       </p>
       <div style="display:flex;flex-direction:column;gap:8px">
-        @for (role of allRoles; track role) {
+        @for (group of allGroups; track group) {
           <mat-checkbox
-            [checked]="selected.has(role)"
-            (change)="toggle(role, $event.checked)">
-            {{ roleLabel(role) }}
+            [checked]="selected.has(group)"
+            (change)="toggle(group, $event.checked)">
+            {{ group }}
           </mat-checkbox>
         }
       </div>
@@ -76,23 +77,21 @@ const ROLE_COLORS: Record<string, string> = {
     </mat-dialog-actions>
   `,
 })
-export class UserRoleDialogComponent {
+export class UserGroupDialogComponent {
   data      = inject<{ user: KcUser }>(MAT_DIALOG_DATA);
-  dialogRef = inject(MatDialogRef<UserRoleDialogComponent>);
+  dialogRef = inject(MatDialogRef<UserGroupDialogComponent>);
   api       = inject(ApiService);
   saving    = signal(false);
-  allRoles  = ALL_ROLES;
-  selected  = new Set(this.data.user.roles);
+  allGroups = ALL_GROUPS;
+  selected  = new Set(this.data.user.groups);
 
-  roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
-
-  toggle(role: string, checked: boolean) {
-    checked ? this.selected.add(role) : this.selected.delete(role);
+  toggle(group: string, checked: boolean) {
+    checked ? this.selected.add(group) : this.selected.delete(group);
   }
 
   save() {
     this.saving.set(true);
-    this.api.put(`/users/${this.data.user.id}/roles`, { roles: [...this.selected] }).subscribe({
+    this.api.put(`/users/${this.data.user.id}/groups`, { groups: [...this.selected] }).subscribe({
       next:  () => { this.saving.set(false); this.dialogRef.close(true); },
       error: () => { this.saving.set(false); },
     });
@@ -131,13 +130,13 @@ export class UserRoleDialogComponent {
           <mat-label>Geçici Şifre *</mat-label>
           <input matInput type="password" [(ngModel)]="f.password" name="pw">
         </mat-form-field>
-        <p style="font-size:12px;color:#aaa;margin:4px 0">Roller</p>
+        <p style="font-size:12px;color:#aaa;margin:4px 0">Gruplar</p>
         <div style="display:flex;flex-wrap:wrap;gap:8px">
-          @for (role of allRoles; track role) {
+          @for (group of allGroups; track group) {
             <mat-checkbox
-              [checked]="selectedRoles.has(role)"
-              (change)="toggleRole(role, $event.checked)">
-              {{ roleLabel(role) }}
+              [checked]="selectedGroups.has(group)"
+              (change)="toggleGroup(group, $event.checked)">
+              {{ group }}
             </mat-checkbox>
           }
         </div>
@@ -154,24 +153,23 @@ export class UserRoleDialogComponent {
   `,
 })
 export class NewUserDialogComponent {
-  dialogRef    = inject(MatDialogRef<NewUserDialogComponent>);
-  api          = inject(ApiService);
-  saving       = signal(false);
-  allRoles     = ALL_ROLES;
-  selectedRoles = new Set<string>();
+  dialogRef      = inject(MatDialogRef<NewUserDialogComponent>);
+  api            = inject(ApiService);
+  saving         = signal(false);
+  allGroups      = ALL_GROUPS;
+  selectedGroups = new Set<string>();
   f = { username: '', email: '', firstName: '', lastName: '', password: '' };
 
-  roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
-  canSave   = () => !!(this.f.username && this.f.email && this.f.password);
+  canSave = () => !!(this.f.username && this.f.email && this.f.password);
 
-  toggleRole(role: string, checked: boolean) {
-    checked ? this.selectedRoles.add(role) : this.selectedRoles.delete(role);
+  toggleGroup(group: string, checked: boolean) {
+    checked ? this.selectedGroups.add(group) : this.selectedGroups.delete(group);
   }
 
   save() {
     if (!this.canSave()) return;
     this.saving.set(true);
-    this.api.post('/users', { ...this.f, roles: [...this.selectedRoles] }).subscribe({
+    this.api.post('/users', { ...this.f, groups: [...this.selectedGroups] }).subscribe({
       next:  () => { this.saving.set(false); this.dialogRef.close(true); },
       error: () => { this.saving.set(false); },
     });
@@ -223,18 +221,18 @@ export class NewUserDialogComponent {
           <td mat-cell *matCellDef="let u">{{ u.email }}</td>
         </ng-container>
 
-        <!-- Roller -->
-        <ng-container matColumnDef="roles">
-          <th mat-header-cell *matHeaderCellDef>Roller</th>
+        <!-- Gruplar -->
+        <ng-container matColumnDef="groups">
+          <th mat-header-cell *matHeaderCellDef>Gruplar</th>
           <td mat-cell *matCellDef="let u">
-            <div class="role-chips">
-              @for (r of u.roles; track r) {
-                <span class="role-chip" [style.background]="roleColor(r)">
-                  {{ roleLabel(r) }}
+            <div class="group-chips">
+              @for (g of u.groups; track g) {
+                <span class="group-chip" [style.background]="groupColor(g)">
+                  {{ g }}
                 </span>
               }
-              @if (u.roles.length === 0) {
-                <span class="no-role">—</span>
+              @if (u.groups.length === 0) {
+                <span class="no-group">—</span>
               }
             </div>
           </td>
@@ -256,7 +254,7 @@ export class NewUserDialogComponent {
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
           <td mat-cell *matCellDef="let u">
-            <button mat-icon-button matTooltip="Rolleri düzenle" (click)="openRoleEdit(u)">
+            <button mat-icon-button matTooltip="Grupları düzenle" (click)="openGroupEdit(u)">
               <mat-icon>manage_accounts</mat-icon>
             </button>
           </td>
@@ -275,26 +273,25 @@ export class NewUserDialogComponent {
     .user-name-cell { display:flex; align-items:center; gap:10px; }
     .avatar-icon { font-size:32px; height:32px; width:32px; color:#555; }
     .sub-text { font-size:11px; color:#888; }
-    .role-chips { display:flex; flex-wrap:wrap; gap:4px; }
-    .role-chip {
+    .group-chips { display:flex; flex-wrap:wrap; gap:4px; }
+    .group-chip {
       font-size:10px; padding:2px 8px; border-radius:10px;
       color:#fff; font-weight:600; white-space:nowrap;
     }
-    .no-role { color:#555; font-size:12px; }
+    .no-group { color:#555; font-size:12px; }
     .disabled-row { opacity:.45; }
   `],
 })
 export class UsersListComponent implements OnInit {
-  private api   = inject(ApiService);
+  private api    = inject(ApiService);
   private dialog = inject(MatDialog);
   private snack  = inject(MatSnackBar);
 
   users   = signal<KcUser[]>([]);
   loading = signal(true);
-  cols    = ['username', 'email', 'roles', 'enabled', 'actions'];
+  cols    = ['username', 'email', 'groups', 'enabled', 'actions'];
 
-  roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
-  roleColor = (r: string) => ROLE_COLORS[r] ?? '#555';
+  groupColor = (g: string) => GROUP_COLORS[g] ?? '#555';
 
   ngOnInit() { this.load(); }
 
@@ -306,10 +303,10 @@ export class UsersListComponent implements OnInit {
     });
   }
 
-  openRoleEdit(user: KcUser) {
-    this.dialog.open(UserRoleDialogComponent, { data: { user }, width: '360px' })
+  openGroupEdit(user: KcUser) {
+    this.dialog.open(UserGroupDialogComponent, { data: { user }, width: '360px' })
       .afterClosed().subscribe((ok) => {
-        if (ok) { this.snack.open('Roller güncellendi', 'Kapat', { duration: 3000 }); this.load(); }
+        if (ok) { this.snack.open('Gruplar güncellendi', 'Kapat', { duration: 3000 }); this.load(); }
       });
   }
 

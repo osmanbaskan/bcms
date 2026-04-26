@@ -12,77 +12,77 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/schedules/schedules.routes').then((m) => m.schedulesRoutes),
     canActivate: [AuthGuard],
-    data: { roles: ['admin', 'planner', 'scheduler', 'viewer', 'expert'] },
+    data: { groups: [] },
   },
   {
     path: 'bookings',
     loadChildren: () =>
       import('./features/bookings/bookings.routes').then((m) => m.bookingsRoutes),
     canActivate: [AuthGuard],
-    data: { roles: ['admin', 'planner', 'scheduler', 'viewer'] },
+    data: { groups: [] },
   },
   {
     path: 'studio-plan',
     loadComponent: () =>
       import('./features/studio-plan/studio-plan.component').then((m) => m.StudioPlanComponent),
     canActivate: [AuthGuard],
-    data: { roles: ['admin'] },
+    data: { groups: [] },
   },
   {
     path: 'weekly-shift',
     loadComponent: () =>
       import('./features/weekly-shift/weekly-shift.component').then((m) => m.WeeklyShiftComponent),
     canActivate: [AuthGuard],
-    data: { roles: ['admin'] },
+    data: { groups: [] },
   },
   {
     path: 'provys-content-control',
     loadComponent: () =>
       import('./features/provys-content-control/provys-content-control.component').then((m) => m.ProvysContentControlComponent),
     canActivate: [AuthGuard],
-    data: { roles: ['admin'] },
+    data: { groups: [] },
   },
   {
     path: 'channels',
     loadChildren: () =>
       import('./features/channels/channels.routes').then((m) => m.channelsRoutes),
     canActivate: [AuthGuard],
-    data: { roles: ['admin'] },
+    data: { groups: [] },
   },
   {
     path: 'ingest',
     loadChildren: () =>
       import('./features/ingest/ingest.routes').then((m) => m.ingestRoutes),
     canActivate: [AuthGuard],
-    data: { roles: ['admin', 'ingest_operator'] },
+    data: { groups: [] },
   },
   {
     path: 'monitoring',
     loadChildren: () =>
       import('./features/monitoring/monitoring.routes').then((m) => m.monitoringRoutes),
     canActivate: [AuthGuard],
-    data: { roles: ['admin', 'monitoring', 'viewer'] },
+    data: { groups: [] },
   },
   {
     path: 'mcr',
     loadChildren: () =>
       import('./features/mcr/mcr.routes').then((m) => m.mcrRoutes),
     canActivate: [AuthGuard],
-    data: { roles: ['admin', 'monitoring'] },
+    data: { groups: [] },
   },
   {
     path: 'users',
     loadChildren: () =>
       import('./features/users/users.routes').then((m) => m.usersRoutes),
     canActivate: [AuthGuard],
-    data: { roles: ['admin'] },
+    data: { groups: ['SystemEng'] },
   },
   {
     path: 'settings',
     loadComponent: () =>
       import('./features/settings/settings.component').then((m) => m.SettingsComponent),
     canActivate: [AuthGuard],
-    data: { roles: ['admin'] },
+    data: { groups: ['SystemEng'] },
   },
   { path: '**', redirectTo: '/schedules' },
 ];

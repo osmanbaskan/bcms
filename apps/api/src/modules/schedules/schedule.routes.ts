@@ -24,7 +24,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // GET /api/v1/schedules
   app.get('/', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['Schedules'],
       summary: 'List schedules with optional filters',
@@ -51,7 +51,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // POST /api/v1/schedules/import — Türkçe Excel formatından toplu import
   app.post('/import', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.write),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
     schema: { tags: ['Schedules'], summary: 'Excel dosyasından program yükle (TARİH/SAAT/MAÇ/KANAL)' },
   }, async (request, reply) => {
     const data = await request.file();
@@ -77,7 +77,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // GET /api/v1/schedules/export — Programları Türkçe Excel formatında indir
   app.get('/export', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: { tags: ['Schedules'], summary: 'Programları Excel olarak dışa aktar' },
   }, async (request, reply) => {
     const q = exportQuerySchema.parse(request.query);
@@ -97,7 +97,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // GET /api/v1/schedules/ingest-candidates — Ingest ekranı için canlı yayın planı kayıtları
   app.get('/ingest-candidates', {
-    preHandler: app.requireRole(...PERMISSIONS.ingest.read),
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.read),
     schema: {
       tags: ['Schedules'],
       summary: 'Ingest için canlı yayın planı aday kayıtları',
@@ -126,7 +126,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // GET /api/v1/schedules/reports/live-plan — Expert raporlama önizleme verisi
   app.get('/reports/live-plan/filters', {
-    preHandler: app.requireRole(...PERMISSIONS.reports.read),
+    preHandler: app.requireGroup(...PERMISSIONS.reports.read),
     schema: {
       tags: ['Schedules'],
       summary: 'Canlı yayın plan raporu filtre seçenekleri',
@@ -177,7 +177,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // GET /api/v1/schedules/reports/live-plan — Expert raporlama önizleme verisi
   app.get('/reports/live-plan', {
-    preHandler: app.requireRole(...PERMISSIONS.reports.read),
+    preHandler: app.requireGroup(...PERMISSIONS.reports.read),
     schema: {
       tags: ['Schedules'],
       summary: 'Canlı yayın plan raporu verisi',
@@ -212,7 +212,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // GET /api/v1/schedules/reports/live-plan/export — Expert Excel export
   app.get('/reports/live-plan/export', {
-    preHandler: app.requireRole(...PERMISSIONS.reports.export),
+    preHandler: app.requireGroup(...PERMISSIONS.reports.export),
     schema: {
       tags: ['Schedules'],
       summary: 'Canlı yayın plan raporunu Excel olarak dışa aktar',
@@ -239,7 +239,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // GET /api/v1/schedules/:id
   app.get<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: { tags: ['Schedules'], summary: 'Get schedule by ID' },
   }, async (request) => {
     return svc.findById(Number(request.params.id));
@@ -247,7 +247,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // POST /api/v1/schedules
   app.post('/', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.write),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
     schema: { tags: ['Schedules'], summary: 'Create schedule (conflict check included)' },
   }, async (request, reply) => {
     const dto = createScheduleSchema.parse(request.body);
@@ -257,7 +257,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // PATCH /api/v1/schedules/:id
   app.patch<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.write),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
     schema: { tags: ['Schedules'], summary: 'Update schedule (optimistic locking via If-Match)' },
   }, async (request) => {
     const dto = updateScheduleSchema.parse(request.body);
@@ -268,7 +268,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // DELETE /api/v1/schedules/:id
   app.delete<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireRole(...PERMISSIONS.schedules.delete),
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.delete),
     schema: { tags: ['Schedules'], summary: 'Delete schedule' },
   }, async (request, reply) => {
     await svc.remove(Number(request.params.id), request);

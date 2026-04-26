@@ -24,11 +24,13 @@ export class AuthGuard extends KeycloakAuthGuard {
       return false;
     }
 
-    const requiredRoles: string[] = route.data['roles'] ?? [];
-    if (requiredRoles.length === 0) return true;
+    const requiredGroups: string[] = route.data['groups'] ?? [];
+    if (requiredGroups.length === 0) return true;
 
-    const hasRole = requiredRoles.some((r) => this.roles.includes(r));
-    if (!hasRole) return this.router.parseUrl('/schedules');
+    const tokenParsed = this.keycloak.getKeycloakInstance().tokenParsed as any;
+    const userGroups: string[] = tokenParsed?.groups ?? [];
+    const hasGroup = requiredGroups.some((g) => userGroups.includes(g));
+    if (!hasGroup) return this.router.parseUrl('/schedules');
 
     return true;
   }

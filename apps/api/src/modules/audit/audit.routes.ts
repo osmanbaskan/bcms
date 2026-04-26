@@ -14,7 +14,7 @@ const auditQuerySchema = z.object({
 
 export async function auditRoutes(app: FastifyInstance) {
   app.get('/', {
-    preHandler: app.requireRole(...PERMISSIONS.auditLogs.read),
+    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
     schema: { tags: ['Audit'], summary: 'Query audit logs (admin only)' },
   }, async (request) => {
     const q = auditQuerySchema.parse(request.query);
