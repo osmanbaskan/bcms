@@ -35,6 +35,7 @@ const SCHEDULE_PERMS = {
   technicalEdit: ['SystemEng', 'Transmisyon', 'Booking'],
   duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking'],
   delete:        ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'],
+  reportIssue:   ['SystemEng', 'Tekyon', 'Transmisyon'],
 };
 function hasGroup(userGroups: string[], required: string[]): boolean {
   return required.length === 0 || required.some((g) => userGroups.includes(g));
@@ -1425,6 +1426,91 @@ export class ScheduleTechnicalDialogComponent {
   }
 }
 
+// ── Sorun Bildir Dialog ───────────────────────────────────────────────────────
+@Component({
+  selector: 'app-report-issue-dialog',
+  standalone: true,
+  imports: [CommonModule, FormsModule, MatDialogModule, MatButtonModule,
+            MatFormFieldModule, MatInputModule, MatProgressSpinnerModule],
+  template: `
+    <h2 mat-dialog-title style="display:flex;align-items:center;gap:8px">
+      <span style="color:#f44336;font-size:20px;line-height:1">⚠</span>
+      Sorun Bildir
+    </h2>
+    <mat-dialog-content style="min-width:420px;max-width:560px">
+      <!-- İçerik Bilgileri -->
+      <div style="background:#1e1e1e;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:13px;line-height:1.8">
+        <div><span style="color:#888">İçerik:</span>&nbsp;<strong>{{ data.schedule.title }}</strong></div>
+        <div><span style="color:#888">Tarih:</span>&nbsp;{{ formatDate(data.schedule.startTime) }}</div>
+        <div><span style="color:#888">Saat:</span>&nbsp;{{ formatTime(data.schedule.startTime) }} – {{ formatTime(data.schedule.endTime) }}</div>
+        @if (data.schedule.channel?.name) {
+          <div><span style="color:#888">Kanal:</span>&nbsp;{{ data.schedule.channel!.name }}</div>
+        }
+      </div>
+
+      <!-- Sorun Açıklaması -->
+      <mat-form-field appearance="outline" style="width:100%">
+        <mat-label>Sorun Açıklaması</mat-label>
+        <textarea matInput
+                  [(ngModel)]="description"
+                  rows="5"
+                  maxlength="2000"
+                  placeholder="Yayında yaşanan sorunu kısaca açıklayın…"></textarea>
+        <mat-hint align="end">{{ description.length }}/2000</mat-hint>
+      </mat-form-field>
+
+      @if (errorMsg()) {
+        <p style="color:#f44336;font-size:12px;margin:4px 0 0">{{ errorMsg() }}</p>
+      }
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>İptal</button>
+      <button mat-raised-button color="warn"
+              [disabled]="saving() || !description.trim()"
+              (click)="save()">
+        @if (saving()) { <mat-spinner diameter="18" style="display:inline-block"></mat-spinner> }
+        @else { Gönder }
+      </button>
+    </mat-dialog-actions>
+  `,
+})
+export class ReportIssueDialogComponent {
+  data      = inject<{ schedule: Schedule }>(MAT_DIALOG_DATA);
+  dialogRef = inject(MatDialogRef<ReportIssueDialogComponent>);
+  api       = inject(ApiService);
+  saving    = signal(false);
+  errorMsg  = signal('');
+  description = '';
+
+  formatDate(iso: string): string {
+    return new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(iso));
+  }
+  formatTime(iso: string): string {
+    return new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
+  }
+
+  save() {
+    if (!this.description.trim()) return;
+    this.saving.set(true);
+    this.errorMsg.set('');
+    const s = this.data.schedule;
+    this.api.post('/incidents/report', {
+      scheduleId:  s.id,
+      title:       s.title,
+      startTime:   s.startTime,
+      endTime:     s.endTime,
+      channel:     s.channel?.name ?? '',
+      description: this.description.trim(),
+    }).subscribe({
+      next:  () => { this.saving.set(false); this.dialogRef.close(true); },
+      error: (e) => {
+        this.saving.set(false);
+        this.errorMsg.set(e?.error?.message ?? 'Sorun bildirilemedi, tekrar deneyin.');
+      },
+    });
+  }
+}
+
 // ── Ana Liste Bileşeni ────────────────────────────────────────────────────────
 @Component({
   selector: 'app-schedule-list',
@@ -1532,6 +1618,14 @@ export class ScheduleTechnicalDialogComponent {
                               matTooltip="Materyali çoğalt"
                               (click)="duplicateSchedule(s)">
                         <mat-icon>add</mat-icon>
+                      </button>
+                    }
+                    @if (canReportIssue()) {
+                      <button mat-icon-button
+                              matTooltip="Sorun Bildir"
+                              style="color:#ff7043"
+                              (click)="openReportIssueDialog(s)">
+                        <mat-icon>report_problem</mat-icon>
                       </button>
                     }
                     @if (canDelete()) {
@@ -1661,6 +1755,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   canTechnicalEdit = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.technicalEdit));
   canDuplicate     = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.duplicate));
   canDelete        = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.delete));
+  canReportIssue   = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.reportIssue));
 
   pageSize = 100;
   page     = 1;
@@ -1793,6 +1888,18 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
         this.snack.open('Teknik detaylar güncellendi', 'Kapat', { duration: 3000 });
         this.load();
       }
+    });
+  }
+
+  openReportIssueDialog(s: Schedule) {
+    const ref = this.dialog.open(ReportIssueDialogComponent, {
+      data: { schedule: s },
+      width: '560px',
+      maxWidth: '98vw',
+      panelClass: 'dark-dialog',
+    });
+    ref.afterClosed().subscribe((ok) => {
+      if (ok) this.snack.open('Sorun bildirildi', 'Kapat', { duration: 3000 });
     });
   }
 

@@ -38,9 +38,10 @@ export const PERMISSIONS = {
     delete: ['SystemEng'] as BcmsGroup[],
   },
   ingest: {
-    read:   ['SystemEng'] as BcmsGroup[],
-    write:  ['SystemEng'] as BcmsGroup[],
-    delete: ['SystemEng'] as BcmsGroup[],
+    read:         ['SystemEng', 'Ingest'] as BcmsGroup[],
+    write:        ['SystemEng', 'Ingest'] as BcmsGroup[],
+    delete:       ['SystemEng', 'Ingest'] as BcmsGroup[],
+    reportIssue:  [] as BcmsGroup[],                       // tüm authenticated — her rol yayın sorunu bildirebilir
   },
   channels: {
     read:   ['SystemEng'] as BcmsGroup[],
@@ -48,9 +49,10 @@ export const PERMISSIONS = {
     delete: ['SystemEng'] as BcmsGroup[],
   },
   incidents: {
-    read:   ['SystemEng'] as BcmsGroup[],
-    write:  ['SystemEng'] as BcmsGroup[],
-    delete: ['SystemEng'] as BcmsGroup[],
+    read:        ['SystemEng'] as BcmsGroup[],
+    write:       ['SystemEng'] as BcmsGroup[],
+    delete:      ['SystemEng'] as BcmsGroup[],
+    reportIssue: ['SystemEng', 'Tekyon', 'Transmisyon'] as BcmsGroup[],
   },
   monitoring: {
     read:   ['SystemEng'] as BcmsGroup[],

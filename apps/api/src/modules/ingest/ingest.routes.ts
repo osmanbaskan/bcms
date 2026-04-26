@@ -491,6 +491,62 @@ export async function ingestRoutes(app: FastifyInstance) {
     reply.status(204).send();
   });
 
+  // POST /api/v1/ingest/report-issue — Operatör tarafından yayın sorunu bildirimi
+  app.post('/report-issue', {
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.reportIssue),
+    schema: {
+      tags: ['Ingest'],
+      summary: 'Yayın sorunu bildir (incidents tablosuna INGEST_ISSUE olarak kaydedilir)',
+      body: {
+        type: 'object',
+        required: ['sourceKey', 'description'],
+        properties: {
+          sourceKey:   { type: 'string' },
+          title:       { type: 'string' },
+          date:        { type: 'string' },
+          startTime:   { type: 'string' },
+          endTime:     { type: 'string' },
+          port:        { type: 'string' },
+          sourceLabel: { type: 'string' },
+          description: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const body = z.object({
+      sourceKey:   z.string().min(1),
+      title:       z.string().optional(),
+      date:        z.string().optional(),
+      startTime:   z.string().optional(),
+      endTime:     z.string().optional(),
+      port:        z.string().optional(),
+      sourceLabel: z.string().optional(),
+      description: z.string().min(1).max(2000),
+    }).parse(request.body);
+
+    const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'unknown';
+
+    const incident = await app.prisma.incident.create({
+      data: {
+        eventType:   'INGEST_ISSUE',
+        description: body.description,
+        severity:    'ERROR',
+        metadata: {
+          sourceKey:   body.sourceKey,
+          title:       body.title ?? '',
+          date:        body.date ?? '',
+          startTime:   body.startTime ?? '',
+          endTime:     body.endTime ?? '',
+          port:        body.port ?? '',
+          sourceLabel: body.sourceLabel ?? '',
+          reportedBy:  user,
+        },
+      },
+    });
+
+    reply.status(201).send(incident);
+  });
+
   // POST /webhooks/ingest/callback — Called by worker when job completes
   app.post('/callback', {
     preHandler: requireWorkerSecret,

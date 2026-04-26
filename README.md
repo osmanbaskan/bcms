@@ -160,6 +160,7 @@ GET  /api/v1/schedules?usage=live-plan
 GET  /api/v1/schedules/ingest-candidates
 GET  /api/v1/schedules/reports/live-plan
 GET  /api/v1/schedules/reports/live-plan/export
+POST /api/v1/incidents/report                          ← Sorun Bildir (SystemEng, Tekyon, Transmisyon)
 POST /api/v1/ingest
 GET  /api/v1/ingest/plan/report?from=YYYY-MM-DD&to=YYYY-MM-DD
 GET  /api/v1/ingest/plan/report/export?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -211,6 +212,7 @@ Tarayıcıda "dev-admin" kullanıcısı görünüyorsa → web imajı `environme
 | Teknik Detay | SystemEng, Transmisyon, Booking |
 | Çoğaltma | SystemEng, Tekyon, Transmisyon, Booking |
 | Silme | SystemEng, Tekyon, Transmisyon, Booking, YayınPlanlama |
+| **Sorun Bildir** | **SystemEng, Tekyon, Transmisyon** |
 | Stüdyo Planı görüntüle | Tüm authenticated |
 | Stüdyo Planı düzenle | SystemEng, StudyoSefi |
 | Rezervasyonlar | SystemEng |

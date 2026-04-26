@@ -82,9 +82,10 @@ curl -fsS http://127.0.0.1:3000/health
 
 ## Grup Tabanlı Erişim Özeti
 
-| Sekme | Erişim |
+| Sekme / Özellik | Erişim |
 |---|---|
 | Yayın Planı (liste) | Tüm authenticated |
+| Sorun Bildir butonu | SystemEng, Tekyon, Transmisyon |
 | Raporlama | Tüm authenticated |
 | Stüdyo Planı (görüntüle) | Tüm authenticated |
 | Stüdyo Planı (düzenle) | SystemEng, StudyoSefi |

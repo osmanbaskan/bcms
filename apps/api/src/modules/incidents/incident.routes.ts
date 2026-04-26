@@ -51,6 +51,56 @@ export async function incidentRoutes(app: FastifyInstance) {
     reply.status(201).send(incident);
   });
 
+  // POST /api/v1/incidents/report — Tüm authenticated kullanıcılar yayın sorunu bildirebilir
+  app.post('/report', {
+    preHandler: app.requireGroup(...PERMISSIONS.incidents.reportIssue),
+    schema: {
+      tags: ['Incidents'],
+      summary: 'Yayın sorunu bildir (tüm kullanıcılar erişebilir)',
+      body: {
+        type: 'object',
+        required: ['description'],
+        properties: {
+          scheduleId:  { type: 'number' },
+          title:       { type: 'string' },
+          startTime:   { type: 'string' },
+          endTime:     { type: 'string' },
+          channel:     { type: 'string' },
+          description: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const body = z.object({
+      scheduleId:  z.number().int().positive().optional(),
+      title:       z.string().optional(),
+      startTime:   z.string().optional(),
+      endTime:     z.string().optional(),
+      channel:     z.string().optional(),
+      description: z.string().min(1).max(2000),
+    }).parse(request.body);
+
+    const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'unknown';
+
+    const incident = await app.prisma.incident.create({
+      data: {
+        scheduleId:  body.scheduleId,
+        eventType:   'SCHEDULE_ISSUE',
+        description: body.description,
+        severity:    'ERROR',
+        metadata: {
+          title:      body.title ?? '',
+          startTime:  body.startTime ?? '',
+          endTime:    body.endTime ?? '',
+          channel:    body.channel ?? '',
+          reportedBy: user,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    reply.status(201).send(incident);
+  });
+
   app.delete<{ Params: { id: string } }>('/:id', {
     preHandler: app.requireGroup(...PERMISSIONS.incidents.delete),
     schema: { tags: ['Incidents'], summary: 'Delete incident' },
