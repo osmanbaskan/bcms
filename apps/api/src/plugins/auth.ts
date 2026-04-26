@@ -101,6 +101,7 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
 
   app.decorate('requireGroup', (...groups: BcmsGroup[]) => async (request: FastifyRequest) => {
     await app.authenticate(request);
+    if (groups.length === 0) return; // no group restriction — any authenticated user
     const userGroups: string[] = (request.user as JwtPayload)?.groups ?? [];
     const hasGroup = groups.some((g) => userGroups.includes(g));
     if (!hasGroup) {

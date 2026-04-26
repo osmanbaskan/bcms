@@ -1,6 +1,7 @@
 import {
-  Component, OnDestroy, OnInit, signal, inject,
+  Component, OnDestroy, OnInit, signal, computed, inject,
 } from '@angular/core';
+import { KeycloakService } from 'keycloak-angular';
 import { environment } from '../../../../environments/environment';
 import { forkJoin } from 'rxjs';
 import { CommonModule } from '@angular/common';
@@ -26,6 +27,17 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { ScheduleService } from '../../../core/services/schedule.service';
 import { ApiService } from '../../../core/services/api.service';
 import type { Schedule } from '@bcms/shared';
+
+// Canlı Yayın Planlama buton izinleri — gruplara göre güncellenir
+const SCHEDULE_PERMS = {
+  edit:          ['SystemEng'] as string[],
+  technicalEdit: ['SystemEng'] as string[],
+  duplicate:     ['SystemEng'] as string[],
+  delete:        ['SystemEng'] as string[],
+};
+function hasGroup(userGroups: string[], required: string[]): boolean {
+  return required.length === 0 || required.some((g) => userGroups.includes(g));
+}
 
 interface Channel { id: number; name: string; type: string; }
 
@@ -1498,26 +1510,34 @@ export class ScheduleTechnicalDialogComponent {
                   </td>
                   <td class="td-notes">{{ s.metadata?.['description'] || '' }}</td>
                   <td class="td-actions">
-                    <button mat-icon-button
-                            matTooltip="Düzenle"
-                            (click)="openEditDialog(s)">
-                      <mat-icon>edit</mat-icon>
-                    </button>
-                    <button mat-icon-button
-                            matTooltip="Teknik Detayları Düzenle"
-                            (click)="openTechnicalDialog(s)">
-                      <mat-icon>settings_input_component</mat-icon>
-                    </button>
-                    <button mat-icon-button
-                            matTooltip="Materyali çoğalt"
-                            (click)="duplicateSchedule(s)">
-                      <mat-icon>add</mat-icon>
-                    </button>
-                    <button mat-icon-button color="warn"
-                            matTooltip="Sil"
-                            (click)="deleteSchedule(s)">
-                      <mat-icon>delete</mat-icon>
-                    </button>
+                    @if (canEdit()) {
+                      <button mat-icon-button
+                              matTooltip="Düzenle"
+                              (click)="openEditDialog(s)">
+                        <mat-icon>edit</mat-icon>
+                      </button>
+                    }
+                    @if (canTechnicalEdit()) {
+                      <button mat-icon-button
+                              matTooltip="Teknik Detayları Düzenle"
+                              (click)="openTechnicalDialog(s)">
+                        <mat-icon>settings_input_component</mat-icon>
+                      </button>
+                    }
+                    @if (canDuplicate()) {
+                      <button mat-icon-button
+                              matTooltip="Materyali çoğalt"
+                              (click)="duplicateSchedule(s)">
+                        <mat-icon>add</mat-icon>
+                      </button>
+                    }
+                    @if (canDelete()) {
+                      <button mat-icon-button color="warn"
+                              matTooltip="Sil"
+                              (click)="deleteSchedule(s)">
+                        <mat-icon>delete</mat-icon>
+                      </button>
+                    }
                   </td>
                 </tr>
               }
@@ -1623,13 +1643,20 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   private api         = inject(ApiService);
   private snack       = inject(MatSnackBar);
   private dialog      = inject(MatDialog);
+  private keycloak    = inject(KeycloakService);
 
   channels          = signal<Channel[]>([]);
   schedules         = signal<Schedule[]>([]);
   total             = signal(0);
   loading           = signal(false);
   currentTime       = signal(Date.now());
-  selectedDate = new Date().toISOString().slice(0, 10);
+  selectedDate      = new Date().toISOString().slice(0, 10);
+  private _userGroups = signal<string[]>([]);
+
+  canEdit          = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.edit));
+  canTechnicalEdit = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.technicalEdit));
+  canDuplicate     = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.duplicate));
+  canDelete        = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.delete));
 
   pageSize = 100;
   page     = 1;
@@ -1637,6 +1664,12 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.clockTimer = setInterval(() => this.currentTime.set(Date.now()), 60_000);
+    if (environment.skipAuth) {
+      this._userGroups.set(['SystemEng']);
+    } else {
+      const parsed = this.keycloak.getKeycloakInstance().tokenParsed as any;
+      this._userGroups.set(parsed?.groups ?? []);
+    }
     this.api.get<Channel[]>('/channels').subscribe({
       next: (res) => this.channels.set(Array.isArray(res) ? res : []),
     });

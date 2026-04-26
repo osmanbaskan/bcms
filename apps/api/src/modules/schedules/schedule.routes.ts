@@ -24,7 +24,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // GET /api/v1/schedules
   app.get('/', {
-    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(), // all authenticated
     schema: {
       tags: ['Schedules'],
       summary: 'List schedules with optional filters',
@@ -77,7 +77,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // GET /api/v1/schedules/export — Programları Türkçe Excel formatında indir
   app.get('/export', {
-    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(), // all authenticated
     schema: { tags: ['Schedules'], summary: 'Programları Excel olarak dışa aktar' },
   }, async (request, reply) => {
     const q = exportQuerySchema.parse(request.query);
@@ -239,7 +239,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   // GET /api/v1/schedules/:id
   app.get<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
+    preHandler: app.requireGroup(), // all authenticated
     schema: { tags: ['Schedules'], summary: 'Get schedule by ID' },
   }, async (request) => {
     return svc.findById(Number(request.params.id));
