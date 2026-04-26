@@ -1,0 +1,2 @@
+// Keycloak public URL — runtime injection by nginx entrypoint (envsubst)
+window.__BCMS_KEYCLOAK_URL__ = '${BCMS_KEYCLOAK_PUBLIC_URL}';

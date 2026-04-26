@@ -26,7 +26,11 @@ RUN npm run build
 
 # ── Production (nginx) ────────────────────────────────────────────────────────
 FROM nginx:alpine AS production
+RUN apk add --no-cache gettext
 COPY --from=builder /app/apps/web/dist/web/browser /usr/share/nginx/html
 COPY infra/docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY infra/docker/runtime-config.js.template /etc/nginx/runtime-config.js.template
+COPY infra/docker/docker-entrypoint-web.sh /docker-entrypoint-web.sh
+RUN chmod +x /docker-entrypoint-web.sh && mkdir -p /usr/share/nginx/html/assets
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/docker-entrypoint-web.sh"]
