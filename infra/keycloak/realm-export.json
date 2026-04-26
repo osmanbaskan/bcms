@@ -35,15 +35,11 @@
       "publicClient": true,
       "redirectUris": [
         "http://localhost:4200/*",
-        "http://localhost/*",
-        "http://172.28.204.133:4200/*",
-        "http://172.28.204.133/*"
+        "http://172.28.204.133:4200/*"
       ],
       "webOrigins": [
         "http://localhost:4200",
-        "http://localhost",
-        "http://172.28.204.133:4200",
-        "http://172.28.204.133"
+        "http://172.28.204.133:4200"
       ],
       "protocol": "openid-connect",
       "standardFlowEnabled": true,

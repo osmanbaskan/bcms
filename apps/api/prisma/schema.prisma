@@ -203,6 +203,7 @@ model IngestPlanItem {
 
   @@index([dayDate])
   @@index([status])
+  @@index([dayDate, plannedStartMinute, sourceKey], name: "ingest_plan_items_report_idx")
   @@map("ingest_plan_items")
 }
 
