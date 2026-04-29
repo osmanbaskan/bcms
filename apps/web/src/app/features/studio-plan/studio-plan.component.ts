@@ -5,6 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { KeycloakService } from 'keycloak-angular';
 import { finalize } from 'rxjs';
 import { StudioPlanService } from '../../core/services/studio-plan.service';
+import { GROUP } from '@bcms/shared';
 import type { StudioPlan, StudioPlanSlot } from '@bcms/shared';
 import { StudioPlanListComponent } from './components/studio-plan-list.component';
 import { StudioPlanTableComponent } from './components/studio-plan-table.component';
@@ -106,7 +107,7 @@ function toDateInputValue(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-const STUDIO_EDIT_GROUPS = ['SystemEng', 'StudyoSefi'];
+const STUDIO_EDIT_GROUPS = [GROUP.SystemEng, GROUP.StudyoSefi];
 
 @Component({
   selector: 'app-studio-plan',
@@ -129,7 +130,7 @@ export class StudioPlanComponent implements OnInit {
   readonly canEdit = computed(() => {
     const parsed = this.keycloak.getKeycloakInstance().tokenParsed as { groups?: string[] } | undefined;
     const userGroups: string[] = parsed?.groups ?? [];
-    if (userGroups.includes('Admin')) return true;
+    if (userGroups.includes(GROUP.Admin)) return true;
     return STUDIO_EDIT_GROUPS.some((g) => userGroups.includes(g));
   });
 
@@ -308,7 +309,28 @@ export class StudioPlanComponent implements OnInit {
   }
 
   exportPlan(): void {
-    window.print();
+    const exportNode = document.getElementById('studio-plan-export');
+    if (!exportNode) return;
+
+    const printWindow = window.open('', '_blank', 'width=1600,height=1000');
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+    printWindow.opener = null;
+
+    const printNode = exportNode.cloneNode(true) as HTMLElement;
+    printNode.querySelectorAll('.no-print').forEach((node) => node.remove());
+
+    printWindow.document.open();
+    printWindow.document.write(this.buildPrintDocument(printNode.outerHTML));
+    printWindow.document.close();
+    printWindow.focus();
+
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
   }
 
   @HostListener('document:fullscreenchange')
@@ -322,6 +344,119 @@ export class StudioPlanComponent implements OnInit {
       return;
     }
     await document.getElementById('studio-plan-export')?.requestFullscreen();
+  }
+
+  private buildPrintDocument(planHtml: string): string {
+    const styles = Array.from(document.head.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map((node) => node.outerHTML)
+      .join('\n');
+
+    return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Stüdyo Planı</title>
+  ${styles}
+  <style>
+    @page {
+      size: A3 landscape;
+      margin: 0;
+    }
+
+    html,
+    body {
+      width: 420mm;
+      height: 297mm;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    body {
+      display: block;
+    }
+
+    #studio-plan-export {
+      display: block !important;
+      width: 420mm !important;
+      height: 297mm !important;
+      min-height: 0 !important;
+      margin: 0 !important;
+      border: 0 !important;
+      overflow: hidden !important;
+      background: #fff !important;
+    }
+
+    #studio-plan-export .print-title {
+      height: 10mm !important;
+      min-width: 0 !important;
+      padding: 1mm 3mm !important;
+    }
+
+    #studio-plan-export app-studio-plan-table {
+      display: block !important;
+      width: 420mm !important;
+      height: 287mm !important;
+      overflow: hidden !important;
+    }
+
+    #studio-plan-export .plan-grid {
+      --cell-width: minmax(0, 1fr);
+      --time-width: 18mm;
+      display: grid !important;
+      grid-template-columns: var(--time-width) repeat(calc(var(--day-count) * 5), var(--cell-width)) !important;
+      grid-template-rows: 8mm 11mm repeat(var(--slot-count), minmax(0, 1fr)) !important;
+      width: 420mm !important;
+      height: 287mm !important;
+      min-width: 0 !important;
+      font-size: 6px !important;
+    }
+
+    #studio-plan-export .corner-cell,
+    #studio-plan-export .day-header,
+    #studio-plan-export .studio-header,
+    #studio-plan-export .time-cell,
+    #studio-plan-export .slot-cell {
+      min-height: 0 !important;
+      position: static !important;
+    }
+
+    #studio-plan-export .day-header {
+      padding: 1px !important;
+    }
+
+    #studio-plan-export .studio-header {
+      padding: 1px !important;
+      font-size: 5px !important;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+    }
+
+    #studio-plan-export .time-cell,
+    #studio-plan-export .slot-cell {
+      padding: 0 1px !important;
+    }
+
+    #studio-plan-export .slot-cell {
+      appearance: none;
+    }
+
+    #studio-plan-export .slot-cell span {
+      min-height: calc(var(--run-slots, 1) * (268mm / var(--slot-count)) - 2px) !important;
+      font-size: calc(var(--program-font-size, 11px) * 0.5) !important;
+      line-height: 1 !important;
+    }
+  </style>
+</head>
+<body>${planHtml}</body>
+</html>`;
   }
 
   private cellKey(day: string, studio: string, time: string): string {

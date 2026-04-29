@@ -24,6 +24,7 @@ docker compose up -d
 docker compose logs -f
 docker compose down
 docker compose up -d --build api worker  # kod değişikliğinden sonra
+docker compose up -d --build web         # frontend değişikliğinden sonra
 ```
 
 Adresler:
@@ -47,6 +48,8 @@ mailhog    → SMTP (dev)
 ```
 
 > **Not (2026-04-29)**: `bcms_worker` HTTP sunucusu çalıştırmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu loglar ve consumer başlangıç kayıtlarıyla izlenir.
+
+> **Not (2026-04-29, build/runtime)**: Local `npm run build -w apps/web` Docker'daki `bcms_web` container'ı güncellemez. Görsel/frontend değişikliklerinden sonra `docker compose up -d --build web` çalıştır ve tarayıcıda `Ctrl+Shift+R` hard refresh iste.
 
 ## Degraded Mod
 
@@ -92,6 +95,7 @@ weeklyShifts.admin:      ['Admin', 'SystemEng']
 
 ### Kullanıcı Yönetimi — KRİTİK
 Keycloak Admin API kullanır. `docker-compose.yml` api servisinde `KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}` ZORUNLU.
+Ortak helper: `apps/api/src/core/keycloak-admin.client.ts`. `getAdminToken()` token cache kullanır; `kcFetch<T>()` typed wrapper'dır. Production'da eksik `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_ADMIN` fallback'e düşmemeli, fail-fast olmalıdır.
 
 ## Sorun Bildir — Canlı Yayın Planı (2026-04-26)
 
@@ -134,6 +138,13 @@ Canlı Yayın Plan Listesi ekranında her satırda **Sorun Bildir** ikonu bulunu
 - `GET/PUT /api/v1/studio-plans/:weekStart`, `GET/PUT /api/v1/studio-plans/catalog`
 - `weekStart` Pazartesi tarihi olmak zorundadır
 - Liste görünümünde geçmiş günler gizlenir
+- `Export PDF` sadece `#studio-plan-export` DOM'unu ayrı print penceresine klonlar; A3 landscape, `margin: 0`. Ana app layout'unu doğrudan `window.print()` ile yazdırma, print preview 2 sayfa/boşluk üretebilir.
+
+## Canlı Yayın Planı UI
+
+- Dosya: `apps/web/src/app/features/schedules/schedule-list/schedule-list.component.ts`
+- Tablo gövdesinde başlıklar hariç veri hücreleri büyük ve kalın font kullanır. Aksiyon hücresi (`td-actions`) bu büyütmeden hariç tutulur.
+- Görsel değişiklik kullanıcıya yansımıyorsa önce `docker compose ps web` ile container yaşını kontrol et; eskiyse `docker compose up -d --build web`.
 
 ## Raporlama (`/schedules/reporting`)
 
@@ -150,6 +161,8 @@ Canlı Yayın Plan Listesi ekranında her satırda **Sorun Bildir** ikonu bulunu
 - Kayıt portları: `recording_ports` (varsayılan 1-44 + Metus1/Metus2 = 46 port)
 - Saat düzenleme: 5 dk adımlı
 - Burst polling: 6×10 sn
+- `plannedStartMinute < plannedEndMinute` validation'ı korunmalı.
+- Port overlap DB exclusion constraint ile de korunur; sadece frontend kontrolüne güvenme.
 
 ## Prisma
 
@@ -181,6 +194,14 @@ npm run db:generate -w apps/api
 - Docker bridge network (`bcms_net`), host network yok
 - `/api/v1/opta/sync` rate limit dışındadır ve timing-safe Bearer token kontrolü kullanır.
 - `MTIME_SETTLE_SEC=5`, `BATCH_SIZE=100`
+- XML parse `defusedxml.ElementTree` ile yapılır; `xml.etree.ElementTree` geri getirilmemeli.
+- Container `HOME=/data` kullanır; state dosyaları named volume üzerinde kalıcıdır.
+- API sync lig ve maç yazımlarını tek Prisma transaction içinde yapar.
+
+## Audit Log
+
+- `apps/api/src/plugins/audit.ts` HTTP bağlamında write audit kayıtlarını successful response için `onSend` içinde flush eder.
+- Audit flush hatası artık sessiz yutulmaz; API `500` döndürür. Worker/background bağlamındaki audit `createMany` hatası da propagate olmalıdır.
 
 ## Keycloak / Auth
 

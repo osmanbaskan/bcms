@@ -315,31 +315,45 @@ export class WeeklyShiftComponent implements OnInit {
 
   cell(user: ShiftUser, dayIndex: number): ShiftCell {
     const key = String(dayIndex);
-    user.assignments[key] ??= { startTime: null, endTime: null, type: '' };
-    return user.assignments[key];
+    return user.assignments[key] ?? { startTime: null, endTime: null, type: '' };
   }
 
   setCell(user: ShiftUser, dayIndex: number, field: keyof ShiftCell, value: string) {
-    const cell = this.cell(user, dayIndex);
-    (cell[field] as string | null) = value || null;
+    const key = String(dayIndex);
+    const existing = user.assignments[key] ?? { startTime: null, endTime: null, type: '' };
+    const updated: ShiftCell = { ...existing, [field]: value || null };
+
     if (field === 'type') {
-      cell.type = value || '';
-      if (cell.type) {
-        cell.startTime = null;
-        cell.endTime = null;
+      updated.type = value || '';
+      if (updated.type) {
+        updated.startTime = null;
+        updated.endTime = null;
       }
-      return;
     }
     if ((field === 'startTime' || field === 'endTime') && value) {
-      cell.type = '';
+      updated.type = '';
     }
+
+    this.updateUserAssignment(user, key, updated);
   }
 
   clearCell(user: ShiftUser, dayIndex: number) {
-    const cell = this.cell(user, dayIndex);
-    cell.startTime = null;
-    cell.endTime = null;
-    cell.type = '';
+    this.updateUserAssignment(user, String(dayIndex), { startTime: null, endTime: null, type: '' });
+  }
+
+  private updateUserAssignment(user: ShiftUser, key: string, cell: ShiftCell) {
+    this.plan.update((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        groups: current.groups.map((g) => ({
+          ...g,
+          users: g.users.map((u) =>
+            u.id === user.id ? { ...u, assignments: { ...u.assignments, [key]: cell } } : u
+          ),
+        })),
+      };
+    });
   }
 
   hasTime(cell: ShiftCell): boolean {
@@ -482,7 +496,7 @@ export class WeeklyShiftComponent implements OnInit {
 
     const styles = `
       <style>
-        @page { size: A4 landscape; margin: 8mm; }
+        @page { size: A4 landscape; margin: 0; }
         * { box-sizing: border-box; }
         body {
           font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;

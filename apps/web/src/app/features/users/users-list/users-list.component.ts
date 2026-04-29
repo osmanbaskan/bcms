@@ -15,6 +15,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../core/services/api.service';
+import { BCMS_GROUPS, GROUP } from '@bcms/shared';
 
 interface KcUser {
   id:        string;
@@ -27,24 +28,19 @@ interface KcUser {
   groups:    string[];
 }
 
-const ALL_GROUPS = [
-  'Admin', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama', 'SystemEng',
-  'Ingest', 'Kurgu', 'MCR', 'PCR', 'Ses', 'StudyoSefi',
-] as const;
-
 const GROUP_COLORS: Record<string, string> = {
-  Admin:         '#111827',
-  Tekyon:        '#1565c0',
-  Transmisyon:   '#6a1b9a',
-  Booking:       '#2e7d32',
-  'YayınPlanlama': '#e65100',
-  SystemEng:     '#b71c1c',
-  Ingest:        '#00695c',
-  Kurgu:         '#f57f17',
-  MCR:           '#4527a0',
-  PCR:           '#0277bd',
-  Ses:           '#558b2f',
-  StudyoSefi:    '#37474f',
+  [GROUP.Admin]:         '#111827',
+  [GROUP.Tekyon]:        '#1565c0',
+  [GROUP.Transmisyon]:   '#6a1b9a',
+  [GROUP.Booking]:       '#2e7d32',
+  [GROUP.YayınPlanlama]: '#e65100',
+  [GROUP.SystemEng]:     '#b71c1c',
+  [GROUP.Ingest]:        '#00695c',
+  [GROUP.Kurgu]:         '#f57f17',
+  [GROUP.MCR]:           '#4527a0',
+  [GROUP.PCR]:           '#0277bd',
+  [GROUP.Ses]:           '#558b2f',
+  [GROUP.StudyoSefi]:    '#37474f',
 };
 
 const USER_TYPE_LABELS: Record<KcUser['userType'], string> = {
@@ -128,7 +124,7 @@ export class UserEditDialogComponent {
   api       = inject(ApiService);
   saving    = signal(false);
   errorMsg  = signal('');
-  allGroups = ALL_GROUPS;
+  allGroups = BCMS_GROUPS;
   selected  = new Set(this.data.user.groups);
   password  = '';
   f = {
@@ -236,7 +232,7 @@ export class NewUserDialogComponent {
   snack          = inject(MatSnackBar);
   saving         = signal(false);
   errorMsg       = signal('');
-  allGroups      = ALL_GROUPS;
+  allGroups      = BCMS_GROUPS;
   selectedGroups = new Set<string>();
   f: {
     username: string;

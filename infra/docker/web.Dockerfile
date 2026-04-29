@@ -21,12 +21,13 @@ RUN npm ci --workspaces --if-present
 COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
 COPY tsconfig.base.json ./
+RUN npm run build -w packages/shared
 WORKDIR /app/apps/web
 RUN npm run build
 
 # ── Production (nginx) ────────────────────────────────────────────────────────
 FROM nginx:alpine AS production
-RUN apk add --no-cache gettext
+RUN apk add --no-cache gettext curl
 COPY --from=builder /app/apps/web/dist/web/browser /usr/share/nginx/html
 COPY infra/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY infra/docker/runtime-config.js.template /etc/nginx/runtime-config.js.template

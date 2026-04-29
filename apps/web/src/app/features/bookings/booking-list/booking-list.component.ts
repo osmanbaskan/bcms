@@ -17,6 +17,7 @@ import { KeycloakService } from 'keycloak-angular';
 import { environment } from '../../../../environments/environment';
 
 import { ApiService } from '../../../core/services/api.service';
+import { GROUP } from '@bcms/shared';
 import type { Booking, BookingStatus, PaginatedResponse } from '@bcms/shared';
 
 interface BookingListResponse extends PaginatedResponse<Booking> {
@@ -421,7 +422,7 @@ export class BookingListComponent implements OnInit {
     const groups: string[] = parsed?.groups ?? [];
     this.username.set(parsed?.preferred_username ?? '');
     this.userId.set(parsed?.sub ?? '');
-    this.isAdmin.set(groups.includes('Admin') || groups.includes('SystemEng'));
+    this.isAdmin.set(groups.includes(GROUP.Admin) || groups.includes(GROUP.SystemEng));
   }
 
   private showError(err: { status?: number; error?: { message?: string } }): void {

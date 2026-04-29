@@ -897,7 +897,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
             }
           }
         },
-        error: () => {},
+        error: () => this.portBoardLoadError.set('Ingest port görünümü güncellenemedi'),
       });
 
     this.loadPortBoardData(this.livePlanDate);
@@ -1063,9 +1063,9 @@ export class IngestListComponent implements OnInit, OnDestroy {
     <meta charset="utf-8">
     <title>Ingest Port Gorunumu</title>
     <style>
-      @page { size: A3 landscape; margin: 10mm; }
+      @page { size: A3 landscape; margin: 0; }
       * { box-sizing: border-box; }
-      body { font-family: Arial, sans-serif; margin: 0; color: #0f2740; }
+      body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #0f2740; }
       .sheet { width: 100%; }
       h1 { margin: 0 0 4px; font-size: 22px; }
       p { margin: 0 0 12px; color: #516579; font-size: 12px; }
@@ -1304,18 +1304,18 @@ export class IngestListComponent implements OnInit, OnDestroy {
     const value = (event.target as HTMLInputElement).value;
     if (!value) return;
     const [h, m] = value.split(':').map(Number);
-    row.sortMinute = Math.round((h * 60 + m) / 5) * 5;
-    row.startTime = this.minuteToTime(row.sortMinute);
-    this.savePlanRow(row);
+    const sortMinute = Math.round((h * 60 + m) / 5) * 5;
+    const startTime = this.minuteToTime(sortMinute);
+    this.savePlanRow({ ...row, sortMinute, startTime });
   }
 
   onEndTimeChange(row: IngestPlanRow, event: Event) {
     const value = (event.target as HTMLInputElement).value;
     if (!value) return;
     const [h, m] = value.split(':').map(Number);
-    row.endMinute = Math.round((h * 60 + m) / 5) * 5;
-    row.endTime = this.minuteToTime(row.endMinute);
-    this.savePlanRow(row);
+    const endMinute = Math.round((h * 60 + m) / 5) * 5;
+    const endTime = this.minuteToTime(endMinute);
+    this.savePlanRow({ ...row, endMinute, endTime });
   }
 
   deleteRow(row: IngestPlanRow) {

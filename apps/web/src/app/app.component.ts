@@ -9,6 +9,7 @@ import { CommonModule } from '@angular/common';
 import { KeycloakService } from 'keycloak-angular';
 import { environment } from '../environments/environment';
 import { getPublicAppOrigin } from './core/auth/public-origin';
+import { GROUP } from '@bcms/shared';
 
 interface NavItem {
   label:      string;
@@ -119,14 +120,14 @@ export class AppComponent implements OnInit {
     { label: 'Raporlama',             icon: 'summarize',      route: '/schedules/reporting',    groups: [] },
     { label: 'Stüdyo Planı',          icon: 'event_seat',     route: '/studio-plan',            groups: [] },
     { label: 'Haftalık Shift',        icon: 'groups',         route: '/weekly-shift',           groups: [] },
-    { label: 'Provys İçerik Kontrol', icon: 'fact_check',     route: '/provys-content-control', groups: ['SystemEng'] },
-    { label: 'Kanallar',              icon: 'live_tv',        route: '/channels',               groups: ['SystemEng'] },
-    { label: 'Ingest',                icon: 'cloud_upload',   route: '/ingest',                 groups: ['SystemEng', 'Ingest'] },
-    { label: 'Monitoring',            icon: 'monitor_heart',  route: '/monitoring',             groups: ['SystemEng'] },
-    { label: 'MCR',                   icon: 'videocam',       route: '/mcr',                    groups: ['SystemEng', 'MCR'] },
-    { label: 'Kullanıcılar',          icon: 'manage_accounts',route: '/users',                  groups: ['SystemEng'] },
-    { label: 'Ayarlar',               icon: 'settings',       route: '/settings',               groups: ['SystemEng'] },
-    { label: 'Audit Logları',         icon: 'manage_search',  route: '/audit-logs',             groups: ['SystemEng'] },
+    { label: 'Provys İçerik Kontrol', icon: 'fact_check',     route: '/provys-content-control', groups: [GROUP.SystemEng] },
+    { label: 'Kanallar',              icon: 'live_tv',        route: '/channels',               groups: [GROUP.SystemEng] },
+    { label: 'Ingest',                icon: 'cloud_upload',   route: '/ingest',                 groups: [GROUP.SystemEng, GROUP.Ingest] },
+    { label: 'Monitoring',            icon: 'monitor_heart',  route: '/monitoring',             groups: [GROUP.SystemEng] },
+    { label: 'MCR',                   icon: 'videocam',       route: '/mcr',                    groups: [GROUP.SystemEng, GROUP.MCR] },
+    { label: 'Kullanıcılar',          icon: 'manage_accounts',route: '/users',                  groups: [GROUP.SystemEng] },
+    { label: 'Ayarlar',               icon: 'settings',       route: '/settings',               groups: [GROUP.SystemEng] },
+    { label: 'Audit Logları',         icon: 'manage_search',  route: '/audit-logs',             groups: [GROUP.SystemEng] },
   ];
 
   visibleNavItems = computed(() => {
@@ -148,7 +149,7 @@ export class AppComponent implements OnInit {
   async ngOnInit() {
     if (environment.skipAuth) {
       this.username = 'dev-admin';
-      this.userGroups.set(['SystemEng']);
+      this.userGroups.set([GROUP.SystemEng]);
       return;
     }
     // tokenParsed'dan username ve grupları oku — network çağrısı gerektirmez
@@ -156,7 +157,7 @@ export class AppComponent implements OnInit {
     const parsed: any = kc?.tokenParsed ?? {};
     this.username = parsed['preferred_username'] ?? '';
     const groups: string[] = parsed?.groups ?? [];
-    this.userGroups.set(groups.includes('Admin') ? Array.from(new Set([...groups, 'SystemEng'])) : groups);
+    this.userGroups.set(groups.includes(GROUP.Admin) ? Array.from(new Set([...groups, GROUP.SystemEng])) : groups);
     this.cdr.detectChanges();
   }
 

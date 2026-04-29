@@ -1,7 +1,11 @@
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install --no-cache-dir psycopg2-binary smbprotocol \
-  && adduser --system --no-create-home opta
+RUN pip install --no-cache-dir defusedxml smbprotocol \
+  && adduser --system --no-create-home opta \
+  && mkdir -p /data && chown opta /data
 COPY scripts/opta_smb_watcher.py ./
-USER opta
+COPY infra/docker/opta-watcher-entrypoint.sh /usr/local/bin/opta-watcher-entrypoint.sh
+RUN chmod +x /usr/local/bin/opta-watcher-entrypoint.sh
+ENV HOME=/data
+ENTRYPOINT ["opta-watcher-entrypoint.sh"]
 CMD ["python3", "opta_smb_watcher.py"]

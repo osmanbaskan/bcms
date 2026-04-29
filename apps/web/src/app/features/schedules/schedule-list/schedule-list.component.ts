@@ -26,19 +26,13 @@ import { MatTabsModule } from '@angular/material/tabs';
 
 import { ScheduleService } from '../../../core/services/schedule.service';
 import { ApiService } from '../../../core/services/api.service';
+import { PERMISSIONS, GROUP } from '@bcms/shared';
 import type { Schedule } from '@bcms/shared';
 
 // Canlı Yayın Planlama buton izinleri
-const SCHEDULE_PERMS = {
-  add:           ['SystemEng', 'Booking', 'YayınPlanlama'],
-  edit:          ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'],
-  technicalEdit: ['SystemEng', 'Transmisyon', 'Booking'],
-  duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking'],
-  delete:        ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'],
-  reportIssue:   ['SystemEng', 'Tekyon', 'Transmisyon'],
-};
+
 function hasGroup(userGroups: string[], required: string[]): boolean {
-  if (userGroups.includes('Admin')) return true;
+  if (userGroups.includes(GROUP.Admin)) return true;
   return required.length === 0 || required.some((g) => userGroups.includes(g));
 }
 
@@ -1735,23 +1729,28 @@ export class ReportIssueDialogComponent {
     .row-even { background:#1e1e2e; }
     .row-odd  { background:#242436; }
 
-    .broadcast-table td {
-      padding:6px 10px; border:1px solid rgba(255,255,255,0.06);
-      vertical-align:middle; color:rgba(255,255,255,0.87);
-    }
-    .no-data { text-align:center; padding:32px; color:#666; }
+	    .broadcast-table td {
+	      padding:6px 10px; border:1px solid rgba(255,255,255,0.06);
+	      vertical-align:middle; color:rgba(255,255,255,0.87);
+	    }
+	    .broadcast-table tbody td:not(.td-actions) {
+	      font-size:1.64rem;
+	      font-weight:700;
+	      line-height:1.25;
+	    }
+	    .no-data { text-align:center; padding:32px; color:#666; }
 
     /* ── Özel hücreler ── */
     .td-time    { font-weight:700; color:#fff; white-space:nowrap; min-width:52px; }
     .td-title   { min-width:180px; max-width:240px; }
-    .content-main { font-weight:500; display:block; }
-    .td-trans   { white-space:nowrap; color:#aaa; min-width:48px; text-align:center; }
-    .td-mono    { font-family:monospace; font-size:0.78rem; color:#90a4ae; text-align:center; }
-    .td-lang    { text-align:center; color:#bdbdbd; white-space:nowrap; }
-    .td-channel { color:#ffd600; font-weight:600; white-space:nowrap; min-width:110px; }
-    .td-league  { color:#aaa; white-space:nowrap; }
-    .week-badge { display:inline-block; margin-left:4px; padding:0 5px; border-radius:3px; background:#1976d2; color:#fff; font-size:0.72rem; vertical-align:middle; }
-    .td-notes   { max-width:260px; color:#bdbdbd; font-size:0.78rem; }
+	    .content-main { font-weight:700; display:block; }
+	    .td-trans   { white-space:nowrap; color:#aaa; min-width:48px; text-align:center; }
+	    .td-mono    { font-family:monospace; color:#90a4ae; text-align:center; }
+	    .td-lang    { text-align:center; color:#bdbdbd; white-space:nowrap; }
+	    .td-channel { color:#ffd600; font-weight:600; white-space:nowrap; min-width:110px; }
+	    .td-league  { color:#aaa; white-space:nowrap; }
+	    .week-badge { display:inline-block; margin-left:4px; padding:0 5px; border-radius:3px; background:#1976d2; color:#fff; font-size:1.44rem; vertical-align:middle; }
+	    .td-notes   { max-width:260px; color:#bdbdbd; }
     .td-actions { width:160px; padding:2px 4px; text-align:center; white-space:nowrap; }
 
     /* ── Footer ── */
@@ -1780,12 +1779,12 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   fullscreenActive  = signal(false);
   private _userGroups = signal<string[]>([]);
 
-  canAdd           = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.add));
-  canEdit          = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.edit));
-  canTechnicalEdit = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.technicalEdit));
-  canDuplicate     = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.duplicate));
-  canDelete        = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.delete));
-  canReportIssue   = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.reportIssue));
+  canAdd           = computed(() => hasGroup(this._userGroups(), PERMISSIONS.schedules.add));
+  canEdit          = computed(() => hasGroup(this._userGroups(), PERMISSIONS.schedules.edit));
+  canTechnicalEdit = computed(() => hasGroup(this._userGroups(), PERMISSIONS.schedules.technicalEdit));
+  canDuplicate     = computed(() => hasGroup(this._userGroups(), PERMISSIONS.schedules.duplicate));
+  canDelete        = computed(() => hasGroup(this._userGroups(), PERMISSIONS.schedules.delete));
+  canReportIssue   = computed(() => hasGroup(this._userGroups(), PERMISSIONS.incidents.reportIssue));
 
   pageSize = 100;
   page     = 1;
@@ -1794,11 +1793,11 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   ngOnInit() {
     this.clockTimer = setInterval(() => this.currentTime.set(Date.now()), 60_000);
     if (environment.skipAuth) {
-      this._userGroups.set(['SystemEng']);
+      this._userGroups.set([GROUP.SystemEng]);
     } else {
       const parsed = this.keycloak.getKeycloakInstance().tokenParsed as any;
       const groups: string[] = parsed?.groups ?? [];
-      this._userGroups.set(groups.includes('Admin') ? Array.from(new Set([...groups, 'SystemEng'])) : groups);
+      this._userGroups.set(groups.includes(GROUP.Admin) ? Array.from(new Set([...groups, GROUP.SystemEng])) : groups);
     }
     this.api.get<Channel[]>('/channels').subscribe({
       next: (res) => this.channels.set(Array.isArray(res) ? res : []),

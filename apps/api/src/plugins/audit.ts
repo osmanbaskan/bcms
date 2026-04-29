@@ -46,7 +46,7 @@ const contextPlugin: FastifyPluginAsync = fp(async (fastify) => {
  * Prisma $extends ile yazma işlemlerini yakalayan audit intercept.
  *
  * HTTP request bağlamında: audit girişleri ALS kuyruğuna eklenir,
- * onResponse hook'unda (yalnızca 2xx/3xx) toplu yazılır.
+ * onSend hook'unda (yalnızca 2xx/3xx) toplu yazılır.
  * Bu sayede $transaction rollback → 5xx durumunda phantom write oluşmaz.
  *
  * Arka plan worker bağlamında (ALS store yok): anında yazılır.
@@ -107,15 +107,11 @@ function buildAuditExtension(base: PrismaClient) {
           };
 
           if (context) {
-            // HTTP bağlamı: kuyruğa ekle, onResponse'ta toplu yaz
+            // HTTP bağlamı: kuyruğa ekle, onSend'de toplu yaz
             context.pendingAuditLogs.push(...buildEntries());
           } else {
             // Worker/arka plan bağlamı: anında yaz
-            try {
-              await base.auditLog.createMany({ data: buildEntries().map(toDbRow) as any });
-            } catch (err) {
-              // Audit hatası ana işlemi durdurmaz
-            }
+            await base.auditLog.createMany({ data: buildEntries().map(toDbRow) as any });
           }
 
           return result;
@@ -155,16 +151,18 @@ export const auditPlugin: FastifyPluginAsync = fp(async (fastify: FastifyInstanc
    * Yalnızca başarılı yanıtlarda (< 400) audit logları DB'ye yazılır.
    * $transaction rollback → 5xx → audit loglar atılır → phantom write yok.
    */
-  fastify.addHook('onResponse', async (_request, reply) => {
-    if (reply.statusCode >= 400) return;
+  fastify.addHook('onSend', async (_request, reply, payload) => {
+    if (reply.statusCode >= 400) return payload;
     const store = als.getStore();
-    if (!store?.pendingAuditLogs?.length) return;
+    if (!store?.pendingAuditLogs?.length) return payload;
     const entries = store.pendingAuditLogs.splice(0);
     try {
       await base.auditLog.createMany({ data: entries.map(toDbRow) as any });
     } catch (err) {
       fastify.log.error({ err }, 'Audit log flush hatası');
+      throw Object.assign(new Error('Audit log flush failed'), { statusCode: 500 });
     }
+    return payload;
   });
 
   fastify.log.info('Prisma Audit extension ($extends) başarıyla yüklendi.');

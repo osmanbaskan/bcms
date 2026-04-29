@@ -2,7 +2,7 @@
 
 Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana geliştirici rehberidir. Günlük operasyonlar ve bağlantı bilgileri için masaüstündeki diğer belgelere başvurun.
 
-> **Son güncelleme**: 2026-04-29 — Integrity constraint'leri, worker healthcheck, Keycloak realm güvenliği ve OPTA/Keycloak performans notları güncellendi.
+> **Son güncelleme**: 2026-04-29 — Docker build hygiene, audit fail-fast, Keycloak Admin Client, OPTA watcher kalıcılığı, A3 stüdyo planı PDF export ve canlı yayın planı okunabilirlik notları güncellendi.
 
 ## Mimari Kurallar
 
@@ -12,6 +12,8 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 4. **usageScope kuralı**: `schedules.usage_scope` kolonu karar noktasıdır. `broadcast` = normal yayın, `live-plan` = canlı yayın planı. Metadata JSON filtresi kullanılmaz.
 5. **Prisma üzerinden erişim**: `usage_scope` dahil tüm DB erişimi Prisma Client ile yapılır. Ham SQL köprüsü eklenmez.
 6. **Audit log**: Tüm write işlemleri `apps/api/src/plugins/audit.ts` Prisma `$extends` ile `audit_logs` tablosuna yazılır.
+   - HTTP request bağlamında audit kayıtları başarılı yanıtlarda `onSend` içinde toplu yazılır.
+   - Audit flush hatası artık sessiz geçilmez; API `500` döndürür. Worker/background write path de audit hatasını yutmaz.
 7. **Statik servis**: Angular build dosyaları `infra/docker/nginx.conf` üzerinden nginx ile sunulur.
 8. **Excel**: Yalnızca `exceljs` kullanılır; `xlsx` paketi güvenlik açığı nedeniyle kaldırılmıştır.
 9. **Angular production ortamı**: `apps/web/angular.json`'da production konfigürasyonunda `fileReplacements` tanımlı olmalıdır.
@@ -34,7 +36,7 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 |---|---|---|---|
 | `api` | bcms_api | HTTP istekleri, Swagger, health | `healthy` |
 | `worker` | bcms_worker | RabbitMQ consumer, ingest, bxf, notifications | Healthcheck disabled — worker HTTP port açmaz |
-| `opta-watcher` | bcms_opta_watcher | SMB → API HTTP sync (Python) | — |
+| `opta-watcher` | bcms_opta_watcher | SMB → API HTTP sync (Python), state volume `/data` | `healthy` |
 | `web` | bcms_web | Angular statik dosyalar (nginx) | `healthy` |
 | `postgres` | bcms_postgres | PostgreSQL 16 | — |
 | `rabbitmq` | bcms_rabbitmq | Mesaj kuyruğu | — |
@@ -75,6 +77,7 @@ docker compose logs -f api worker
 
 # Kod değişikliğinden sonra build + restart
 docker compose up -d --build api worker
+docker compose up -d --build web
 
 # Durdur
 docker compose down
@@ -185,6 +188,13 @@ PUT  /api/v1/weekly-shifts/:weekStart
 Production'da `KEYCLOAK_ADMIN` env'i zorunludur.
 `docker-compose.yml` api servisinde `KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}` tanımlıdır.
 
+`.env.example` güncel runtime kapsamını yansıtır: `DATABASE_URL`, `RABBITMQ_URL`, Keycloak URL/realm/issuer/client env'leri, `OPTA_WATCHER_API_TOKEN`, watcher klasörleri, proxy çıktı dizini ve SMTP kullanıcı/parola alanları dahil edilmiştir.
+
+`apps/api/src/core/keycloak-admin.client.ts` Keycloak Admin API erişimini merkezi yönetir:
+- admin token cache kullanır,
+- `kcFetch<T>()` ile typed fetch sarmalayıcı sağlar,
+- production ortamda eksik Keycloak Admin env değerlerinde fallback yapmaz, fail-fast davranır.
+
 ## Web
 
 ```text
@@ -205,6 +215,14 @@ Web nginx üzerinden sunulur. Angular dev server (`ng serve`) sadece geliştirme
 ```bash
 docker compose up -d --build web
 ```
+
+> **Frontend cache notu:** Web image rebuild sonrası tarayıcıda eski bundle kalırsa `Ctrl+Shift+R` hard refresh yapılmalıdır. Docker'daki `bcms_web` container eskiyse local `npm run build -w apps/web` sonucu kullanıcıya görünmez; `docker compose up -d --build web` gerekir.
+
+### Görsel/Export Notları — 2026-04-29
+
+- Stüdyo Planı `Export PDF` ana uygulama DOM'unu yazdırmaz; yalnızca `#studio-plan-export` alanını ayrı print penceresine klonlar.
+- PDF print hedefi A3 landscape (`420mm x 297mm`) ve `margin: 0` olarak tanımlıdır.
+- Canlı Yayın Planı tablo gövdesinde başlıklar hariç içerik fontu büyütülmüş ve kalınlaştırılmıştır. Aksiyon ikonları bu büyütmeden hariç tutulur.
 
 ### Grup Tabanlı Yetkilendirme (RBAC)
 
@@ -301,7 +319,7 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 |---|---|---|---|
 | API | **127.0.0.1:3000** | Sadece localhost | bcms_api |
 | PostgreSQL | **127.0.0.1:5433** / 5432 (container) | Sadece localhost | bcms_postgres |
-| RabbitMQ AMQP | **5673** (host) / 5672 (container) | Tüm arayüzler | bcms_rabbitmq |
+| RabbitMQ AMQP | **127.0.0.1:5673** / 5672 (container) | Sadece localhost | bcms_rabbitmq |
 | RabbitMQ UI | **127.0.0.1:15673** | Sadece localhost | bcms_rabbitmq |
 | Keycloak | 8080 | Tüm arayüzler | bcms_keycloak |
 | Prometheus | **127.0.0.1:9090** | Sadece localhost | bcms_prometheus |

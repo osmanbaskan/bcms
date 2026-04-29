@@ -865,7 +865,8 @@ export class ScheduleReportingComponent implements OnInit {
 
     return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${this.escape(title)}</title>
       <style>
-        body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+        @page { margin: 0; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #111; }
         h1 { font-size: 18px; margin: 0 0 4px; }
         .meta { color: #555; margin-bottom: 16px; font-size: 12px; }
         table { width: 100%; border-collapse: collapse; font-size: 11px; }
@@ -907,7 +908,8 @@ export class ScheduleReportingComponent implements OnInit {
 
     return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${this.escape(title)}</title>
       <style>
-        body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+        @page { margin: 0; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #111; }
         h1 { font-size: 18px; margin: 0 0 4px; }
         .meta { color: #555; margin-bottom: 16px; font-size: 12px; }
         table { width: 100%; border-collapse: collapse; font-size: 11px; }
@@ -949,7 +951,8 @@ export class ScheduleReportingComponent implements OnInit {
           <meta charset="utf-8">
           <title>${this.escape(title)}</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+            @page { margin: 0; }
+            body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #111; }
             h1 { font-size: 22px; margin: 0 0 6px; }
             .meta { color: #555; margin-bottom: 18px; }
             table { width: 100%; border-collapse: collapse; font-size: 12px; }

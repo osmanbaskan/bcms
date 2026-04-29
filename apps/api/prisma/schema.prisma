@@ -34,9 +34,10 @@ model Team {
 
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  league   League    @relation(fields: [leagueId], references: [id])
+  league   League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   bookings Booking[]
 
+  @@index([leagueId])
   @@map("teams")
 }
 
@@ -55,7 +56,7 @@ model Match {
 
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  league    League    @relation(fields: [leagueId], references: [id])
+  league    League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   bookings  Booking[]
   schedules Schedule[]
 
@@ -88,6 +89,8 @@ model BroadcastType {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  schedules Schedule[]
+
   @@map("broadcast_types")
 }
 
@@ -113,16 +116,19 @@ model Schedule {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
-  channel   Channel?   @relation(fields: [channelId], references: [id])
-  match     Match?     @relation(fields: [matchId], references: [id])
-  bookings  Booking[]
-  incidents Incident[]
+  channel       Channel?      @relation(fields: [channelId], references: [id])
+  broadcastType BroadcastType? @relation(fields: [broadcastTypeId], references: [id])
+  match         Match?        @relation(fields: [matchId], references: [id])
+  bookings      Booking[]
+  incidents     Incident[]
   timelineEvents TimelineEvent[]
 
   @@index([channelId, startTime, endTime])
   @@index([status])
   @@index([usageScope])
   @@index([usageScope, reportLeague, reportSeason, reportWeekNumber])
+  @@index([broadcastTypeId])
+  @@index([matchId])
   @@map("schedules")
 }
 
@@ -132,6 +138,8 @@ enum ScheduleStatus {
   ON_AIR
   COMPLETED
   CANCELLED
+
+  @@map("schedule_status")
 }
 
 enum ChannelType {
@@ -170,6 +178,9 @@ model Booking {
   team     Team?    @relation(fields: [teamId], references: [id])
   match    Match?   @relation(fields: [matchId], references: [id])
 
+  @@index([scheduleId])
+  @@index([teamId])
+  @@index([matchId])
   @@index([userGroup])
   @@index([assigneeId])
   @@index([startDate, dueDate])
@@ -201,8 +212,10 @@ model IngestJob {
   updatedAt  DateTime     @updatedAt @map("updated_at")
 
   qcReport QcReport?
+  planItems IngestPlanItem[]
 
   @@index([status])
+  @@index([targetId])
   @@map("ingest_jobs")
 }
 
@@ -222,8 +235,11 @@ model IngestPlanItem {
   createdAt  DateTime         @default(now()) @map("created_at")
   updatedAt  DateTime         @updatedAt @map("updated_at")
 
+  job IngestJob? @relation(fields: [jobId], references: [id])
+
   @@index([dayDate])
   @@index([status])
+  @@index([jobId])
   @@index([dayDate, plannedStartMinute, sourceKey], name: "ingest_plan_items_report_idx")
   @@map("ingest_plan_items")
 }
@@ -276,7 +292,7 @@ model QcReport {
   passed     Boolean  @default(false)
   createdAt  DateTime @default(now()) @map("created_at")
 
-  job IngestJob @relation(fields: [jobId], references: [id])
+  job IngestJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@map("qc_reports")
 }
@@ -321,7 +337,7 @@ model TimelineEvent {
   createdBy  String   @map("created_by") @db.VarChar(100)
   createdAt  DateTime @default(now()) @map("created_at")
 
-  schedule Schedule @relation(fields: [scheduleId], references: [id])
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
 
   @@index([scheduleId])
   @@map("timeline_events")
@@ -397,7 +413,7 @@ model SignalTelemetry {
   source     String?  @db.VarChar(50)      // Kaynak: ASI, IP, DVB, vb.
   measuredAt DateTime @default(now()) @map("measured_at")
 
-  channel Channel @relation(fields: [channelId], references: [id])
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@index([channelId, measuredAt])
   @@map("signal_telemetry")

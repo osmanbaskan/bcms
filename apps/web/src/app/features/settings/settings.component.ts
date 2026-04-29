@@ -233,11 +233,11 @@ export class SettingsComponent implements OnInit {
   addPort() {
     const numericPorts = this.portNames.map((name) => Number(name)).filter((value) => Number.isInteger(value));
     const nextPort = numericPorts.length ? Math.max(...numericPorts) + 1 : this.portNames.length + 1;
-    this.portNames.push(String(nextPort));
+    this.portNames = [...this.portNames, String(nextPort)];
   }
 
   removePort(index: number) {
-    this.portNames.splice(index, 1);
+    this.portNames = [...this.portNames.slice(0, index), ...this.portNames.slice(index + 1)];
   }
 
   savePorts() {

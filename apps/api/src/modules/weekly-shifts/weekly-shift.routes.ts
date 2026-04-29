@@ -2,6 +2,7 @@ import { PassThrough } from 'node:stream';
 import ExcelJS from 'exceljs';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { BCMS_GROUPS, PERMISSIONS, type BcmsGroup, type JwtPayload } from '@bcms/shared';
+import { kcFetch } from '../../core/keycloak-admin.client.js';
 
 const SHIFT_TYPES = [
   { code: 'OFF_DAY', label: 'Haftalık İzin' },
@@ -31,18 +32,6 @@ interface ShiftInput {
   startTime?: string | null;
   endTime?: string | null;
   type: string;
-}
-
-let adminToken: string | null = null;
-let tokenExpiry = 0;
-
-function envOrDefault(name: string, fallback: string): string {
-  const value = process.env[name];
-  if (value) return value;
-  if (process.env.NODE_ENV === 'production') {
-    throw Object.assign(new Error(`${name} is required in production`), { statusCode: 500 });
-  }
-  return fallback;
 }
 
 function normalizeUserType(value: unknown): UserType {
@@ -83,51 +72,17 @@ function weekDays(weekStart: string) {
   });
 }
 
-async function getAdminToken(): Promise<string> {
-  if (adminToken && Date.now() < tokenExpiry - 10_000) return adminToken;
 
-  const url = envOrDefault('KEYCLOAK_URL', 'http://localhost:8080');
-  const username = envOrDefault('KEYCLOAK_ADMIN', 'admin');
-  const password = envOrDefault('KEYCLOAK_ADMIN_PASSWORD', 'changeme_kc');
-
-  const res = await fetch(`${url}/realms/master/protocol/openid-connect/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'password', client_id: 'admin-cli', username, password }),
-  });
-
-  if (!res.ok) throw Object.assign(new Error('Keycloak admin auth failed'), { statusCode: 502 });
-  const data = await res.json() as { access_token: string; expires_in: number };
-  adminToken = data.access_token;
-  tokenExpiry = Date.now() + data.expires_in * 1000;
-  return adminToken;
-}
-
-async function kcFetch(path: string, options: RequestInit = {}) {
-  const url = process.env.KEYCLOAK_URL ?? 'http://localhost:8080';
-  const realm = process.env.KEYCLOAK_REALM ?? 'bcms';
-  const token = await getAdminToken();
-  const res = await fetch(`${url}/admin/realms/${realm}${path}`, {
-    ...options,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers ?? {}) },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw Object.assign(new Error(`Keycloak error: ${res.status} ${text}`), { statusCode: res.status });
-  }
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
-}
 
 async function fetchBcmsGroupMemberships(): Promise<Map<string, string[]>> {
-  const groups: any[] = await kcFetch('/groups');
+  const groups = await kcFetch<any[]>('/groups');
   const groupIdByName = new Map(groups.map((group: any) => [group.name as string, group.id as string]));
   const memberships = new Map<string, string[]>();
 
   await Promise.all(BCMS_GROUPS.map(async (groupName) => {
     const groupId = groupIdByName.get(groupName);
     if (!groupId) return;
-    const members: any[] = await kcFetch(`/groups/${groupId}/members?max=500`);
+    const members = await kcFetch<any[]>(`/groups/${groupId}/members?max=500`);
     for (const member of members) {
       const memberGroups = memberships.get(member.id) ?? [];
       memberGroups.push(groupName);
@@ -139,7 +94,7 @@ async function fetchBcmsGroupMemberships(): Promise<Map<string, string[]>> {
 }
 
 async function fetchShiftUsers(): Promise<ShiftUser[]> {
-  const users: any[] = await kcFetch('/users?max=500');
+  const users = await kcFetch<any[]>('/users?max=500');
   const memberships = await fetchBcmsGroupMemberships();
   return users.map((user) => {
     const groups = memberships.get(user.id) ?? [];
@@ -157,7 +112,7 @@ async function fetchShiftUsers(): Promise<ShiftUser[]> {
 async function fetchCurrentUserType(request: FastifyRequest): Promise<UserType> {
   const username = (request.user as JwtPayload | undefined)?.preferred_username;
   if (!username) return 'staff';
-  const users: any[] = await kcFetch(`/users?username=${encodeURIComponent(username)}&exact=true&max=1`);
+  const users = await kcFetch<any[]>(`/users?username=${encodeURIComponent(username)}&exact=true&max=1`);
   return normalizeUserType(keycloakAttributeValue(users[0]?.attributes, 'bcmsUserType'));
 }
 

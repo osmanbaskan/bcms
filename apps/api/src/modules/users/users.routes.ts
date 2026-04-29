@@ -1,11 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { BCMS_GROUPS, PERMISSIONS, type BcmsGroup } from '@bcms/shared';
+import { getAdminToken, kcFetch } from '../../core/keycloak-admin.client.js';
 
 const USER_TYPES = ['staff', 'supervisor', 'admin'] as const;
 type UserType = typeof USER_TYPES[number];
-
-let adminToken: string | null = null;
-let tokenExpiry = 0;
 
 // User-group membership cache (60 s TTL)
 const groupMembershipCache = new Map<string, { groups: string[]; expiresAt: number }>();
@@ -27,55 +25,9 @@ let groupIdMapCache: Map<string, string> | null = null;
 let groupIdMapExpiry = 0;
 const GROUP_ID_MAP_TTL_MS = 5 * 60_000;
 
-function envOrDefault(name: string, fallback: string): string {
-  const value = process.env[name];
-  if (value) return value;
-  if (process.env.NODE_ENV === 'production') {
-    throw Object.assign(new Error(`${name} is required in production`), { statusCode: 500 });
-  }
-  return fallback;
-}
-
-async function getAdminToken(): Promise<string> {
-  if (adminToken && Date.now() < tokenExpiry - 10_000) return adminToken;
-
-  const url      = envOrDefault('KEYCLOAK_URL', 'http://localhost:8080');
-  const realm    = envOrDefault('KEYCLOAK_REALM', 'bcms');
-  const username = envOrDefault('KEYCLOAK_ADMIN', 'admin');
-  const password = envOrDefault('KEYCLOAK_ADMIN_PASSWORD', 'changeme_kc');
-
-  const res = await fetch(`${url}/realms/master/protocol/openid-connect/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'password', client_id: 'admin-cli', username, password }),
-  });
-
-  if (!res.ok) throw Object.assign(new Error('Keycloak admin auth failed'), { statusCode: 502 });
-  const data = await res.json() as { access_token: string; expires_in: number };
-  adminToken  = data.access_token;
-  tokenExpiry = Date.now() + data.expires_in * 1000;
-  return adminToken;
-}
-
-async function kcFetch(path: string, options: RequestInit = {}) {
-  const url   = process.env.KEYCLOAK_URL   ?? 'http://localhost:8080';
-  const realm = process.env.KEYCLOAK_REALM ?? 'bcms';
-  const token = await getAdminToken();
-  const res = await fetch(`${url}/admin/realms/${realm}${path}`, {
-    ...options,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers ?? {}) },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw Object.assign(new Error(`Keycloak error: ${res.status} ${text}`), { statusCode: res.status });
-  }
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
-}
-
 async function getGroupIdMap(): Promise<Map<string, string>> {
   if (groupIdMapCache && Date.now() < groupIdMapExpiry) return groupIdMapCache;
-  const groups: any[] = await kcFetch('/groups');
+  const groups = await kcFetch<any[]>('/groups');
   groupIdMapCache = new Map(groups.map((g: any) => [g.name as string, g.id as string]));
   groupIdMapExpiry = Date.now() + GROUP_ID_MAP_TTL_MS;
   return groupIdMapCache;
@@ -106,7 +58,7 @@ function isBcmsGroup(value: string): value is BcmsGroup {
 async function setUserGroups(id: string, newGroups: string[]): Promise<void> {
   const groupIdMap = await getGroupIdMap();
 
-  const currentKcGroups: any[] = await kcFetch(`/users/${id}/groups`);
+  const currentKcGroups = await kcFetch<any[]>(`/users/${id}/groups`);
   const currentSet = new Set(
     currentKcGroups.map((g: any) => g.name as string).filter(isBcmsGroup),
   );
@@ -137,7 +89,7 @@ async function fetchBcmsGroupMemberships(): Promise<Map<string, string[]>> {
     const groupId = groupIdMap.get(groupName);
     if (!groupId) return;
 
-    const members: any[] = await kcFetch(`/groups/${groupId}/members?max=500`);
+    const members = await kcFetch<any[]>(`/groups/${groupId}/members?max=500`);
     for (const member of members) {
       const groups = memberships.get(member.id) ?? [];
       groups.push(groupName);
@@ -155,7 +107,7 @@ export async function usersRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
     schema: { tags: ['Users'], summary: 'Keycloak kullanıcı listesi' },
   }, async () => {
-    const users: any[] = await kcFetch('/users?max=200');
+    const users = await kcFetch<any[]>('/users?max=200');
     const memberships = await fetchBcmsGroupMemberships();
 
     const withGroups = users.map((u) => {
@@ -245,7 +197,7 @@ export async function usersRoutes(app: FastifyInstance) {
     const { id } = request.params;
     const { username, email, firstName, lastName, enabled, userType, groups, password } = request.body;
 
-    const existing: any = await kcFetch(`/users/${id}`);
+    const existing = await kcFetch<any>(`/users/${id}`);
     const isAdmin = groups.includes('Admin');
     await kcFetch(`/users/${id}`, {
       method: 'PUT',

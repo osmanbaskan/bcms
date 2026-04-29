@@ -1,5 +1,7 @@
 # BCMS Operasyon — Docker Compose
 
+> Son güncelleme: 2026-04-29 — Docker build context, web rebuild/cache, audit/Keycloak/OPTA watcher ve frontend export notları eklendi.
+
 Proje tamamen **Docker Compose** ile yönetilmektedir. `systemd`, `ng serve`, `tsx watch` kullanılmaz.
 
 ## Günlük Komutlar
@@ -20,6 +22,9 @@ docker compose up -d
 # Kod değişikliğinden sonra API + worker yeniden build et
 docker compose up -d --build api worker
 
+# Frontend değişikliğinden sonra web image'ını yeniden build et
+docker compose up -d --build web
+
 # Servisi yeniden başlat (build'siz)
 docker compose restart api
 docker compose restart worker
@@ -37,7 +42,7 @@ npm run smoke:api
 |---|---|---|---|
 | `api` | bcms_api | HTTP, Swagger, health — worker yok | `healthy` |
 | `worker` | bcms_worker | ingest, bxf, notifications consumer | Healthcheck disabled — worker HTTP sunucusu çalıştırmaz |
-| `opta-watcher` | bcms_opta_watcher | SMB → /api/v1/opta/sync | — |
+| `opta-watcher` | bcms_opta_watcher | SMB → /api/v1/opta/sync, state `/data` volume | `healthy` |
 | `web` | bcms_web | Angular (nginx) | `healthy` |
 | `postgres` | bcms_postgres | PostgreSQL 16 | — |
 | `rabbitmq` | bcms_rabbitmq | RabbitMQ 3.12 | — |
@@ -121,6 +126,17 @@ curl -fsS http://127.0.0.1:3000/health
 - `Kullanıcılar` → `/users` — `SystemEng`, `Admin`
 - `Ayarlar` → `/settings` — `SystemEng`, `Admin`
 
+## Frontend Build / Görsel Notları
+
+- `bcms_web` nginx ile statik Angular bundle sunar. Local `npm run build -w apps/web` tek başına çalışan Docker web servisini güncellemez.
+- Frontend değişikliğinden sonra:
+  ```bash
+  docker compose up -d --build web
+  ```
+- Kullanıcı hâlâ eski görünümü görüyorsa tarayıcıda `Ctrl+Shift+R` hard refresh yapılmalıdır.
+- Stüdyo Planı `Export PDF`, ana uygulama layout'unu yazdırmaz; `#studio-plan-export` alanını ayrı print penceresine klonlar. Print ölçüsü A3 landscape, `margin: 0`.
+- Canlı Yayın Planı tablo gövdesinde başlıklar hariç veri hücreleri büyük ve kalın yazı kullanır; aksiyon ikonları büyütme dışında tutulur.
+
 ## Ekip İş Takip (Booking / Work Tracking) — 2026-04-29
 
 - Konum: `Ekip İş Takip` navigasyon öğesi
@@ -146,7 +162,8 @@ curl -fsS http://127.0.0.1:3000/health
 - `worker` konteyneri ingest-worker ve ingest-watcher'ı çalıştırır.
 - Kayıt port katalogu: `recording_ports` (varsayılan 1-44 + Metus1/Metus2 = 46 port).
 - Plan kalıcılığı: `ingest_plan_items`.
-- Port çakışması backend'de reddedilir.
+- Port çakışması backend'de reddedilir; DB tarafındaki exclusion constraint ek güvence sağlar.
+- Plan item saatlerinde başlangıç bitişten küçük olmak zorundadır.
 - Saat düzenleme: tüm kaynak tipler (live/studio/ingest-plan), 5 dk adımlı.
 - Burst polling: 6×10 sn.
 - Port Görünümü tam ekran modunda tüm viewport'a yerleşir; başlık sabit, pano alanı kalan yüksekliği kullanır.
@@ -159,6 +176,9 @@ curl -fsS http://127.0.0.1:3000/health
 - **Kimlik doğrulama**: timing-safe `Authorization: Bearer <OPTA_WATCHER_API_TOKEN>`
 - `/api/v1/opta/sync` rate limit dışındadır.
 - `MTIME_SETTLE_SEC=5`, `BATCH_SIZE=100`
+- XML parse için `defusedxml.ElementTree` kullanılır.
+- Watcher state kalıcı named volume ile `/data` altında tutulur; container restart sonrası state kaybı beklenmez.
+- API sync endpoint lig ve maç yazımlarını tek Prisma transaction içinde yapar.
 
 ```bash
 docker compose logs -f opta-watcher
@@ -218,7 +238,7 @@ docker inspect bcms_web --format='{{.State.Health.Status}}'
 |---|---|---|
 | API | **127.0.0.1**:3000 | Sadece localhost |
 | PostgreSQL | **127.0.0.1**:5433 | Sadece localhost |
-| RabbitMQ AMQP | 5673 | Tüm arayüzler |
+| RabbitMQ AMQP | **127.0.0.1**:5673 | Sadece localhost |
 | RabbitMQ UI | **127.0.0.1**:15673 | Sadece localhost |
 | Prometheus | **127.0.0.1**:9090 | Sadece localhost |
 | Grafana | **127.0.0.1**:3001 | Sadece localhost |

@@ -131,35 +131,47 @@
 }
 
 @media print {
+  :host {
+    min-width: 0;
+  }
+
   .plan-grid {
-    --cell-width: 40px;
-    --time-width: 36px;
-    font-size: 6.5px;
+    --cell-width: minmax(0, 1fr);
+    --time-width: 18mm;
+    grid-template-columns: var(--time-width) repeat(calc(var(--day-count) * 5), var(--cell-width));
+    grid-template-rows: 8mm 11mm repeat(var(--slot-count), minmax(0, 1fr));
+    width: 420mm;
+    height: 100%;
+    min-width: 0;
+    font-size: 6px;
   }
 
   .day-header {
-    min-height: 26px;
+    min-height: 0;
+    padding: 1px;
   }
 
   .studio-header {
-    min-height: 30px;
-    font-size: 5.5px;
+    min-height: 0;
+    font-size: 5px;
     writing-mode: vertical-rl;
     transform: rotate(180deg);
+    padding: 1px;
   }
 
   .time-cell,
   .slot-cell {
-    min-height: 20px;
+    min-height: 0;
+    padding: 0 1px;
   }
 
   .slot-cell {
     appearance: none;
-    padding: 1px 2px;
   }
 
   .slot-cell span {
-    min-height: calc(var(--run-slots, 1) * 20px - 4px);
-    font-size: calc(var(--program-font-size, 11px) * 0.6);
+    min-height: calc(var(--run-slots, 1) * ((297mm - 29mm) / var(--slot-count)) - 2px);
+    font-size: calc(var(--program-font-size, 11px) * 0.5);
+    line-height: 1;
   }
 }

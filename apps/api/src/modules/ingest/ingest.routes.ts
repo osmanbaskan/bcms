@@ -55,7 +55,14 @@ const savePlanItemSchema = z.object({
   plannedEndMinute: z.number().int().min(0).max(48 * 60).optional().nullable(),
   status: ingestPlanStatusSchema.optional(),
   note: z.string().trim().optional().nullable(),
-});
+}).refine(
+  (value) => (
+    value.plannedStartMinute == null
+    || value.plannedEndMinute == null
+    || value.plannedStartMinute < value.plannedEndMinute
+  ),
+  { message: 'Plan başlangıç dakikası bitişten küçük olmalıdır', path: ['plannedEndMinute'] },
+);
 
 const recordingPortSchema = z.object({
   name: z.string().trim().min(1).max(50),

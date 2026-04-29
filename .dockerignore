@@ -1,0 +1,53 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+apps/*/dist
+apps/*/build
+packages/*/dist
+packages/*/build
+*.tsbuildinfo
+
+# Docker
+docker-compose*.yml
+.dockerignore
+
+# Logs & temp
+logs
+*.log
+tmp
+temp
+*.pid
+*.seed
+*.pid.lock
+
+# IDE / OS
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage
+.nyc_output
+
+# Misc
+.agents
+ops/scripts/*.log
+scripts/*.log

@@ -13,7 +13,7 @@
     "db:migrate:prod": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "lint": "eslint src --ext .ts"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@angular-devkit/build-angular": "21.2.7",

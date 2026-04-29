@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { ActivatedRouteSnapshot, RouterStateSnapshot, Router, UrlTree } from '@angular/router';
 import { KeycloakAuthGuard, KeycloakService } from 'keycloak-angular';
 import { getPublicAppOrigin } from '../auth/public-origin';
+import { GROUP } from '@bcms/shared';
 
 @Injectable({ providedIn: 'root' })
 export class AuthGuard extends KeycloakAuthGuard {
@@ -30,7 +31,7 @@ export class AuthGuard extends KeycloakAuthGuard {
 
     const tokenParsed = this.keycloak.getKeycloakInstance().tokenParsed as any;
     const userGroups: string[] = tokenParsed?.groups ?? [];
-    if (userGroups.includes('Admin')) return true;
+    if (userGroups.includes(GROUP.Admin)) return true;
     const hasGroup = requiredGroups.some((g) => userGroups.includes(g));
     if (!hasGroup) return this.router.parseUrl('/schedules');
 

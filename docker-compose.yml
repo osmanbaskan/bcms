@@ -34,7 +34,7 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./infra/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
     ports:
-      - "5673:5672"
+      - "127.0.0.1:5673:5672"
       - "127.0.0.1:15673:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
@@ -150,7 +150,11 @@ services:
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_ALLOWED_ISSUERS: ${KEYCLOAK_ALLOWED_ISSUERS:-http://172.28.204.133:8080/realms/bcms,http://localhost:8080/realms/bcms}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://172.28.204.133:8080/realms/bcms}
+      KEYCLOAK_ALLOWED_CLIENTS: ${KEYCLOAK_ALLOWED_CLIENTS:-bcms-web,bcms-api}
       INGEST_CALLBACK_SECRET: ${INGEST_CALLBACK_SECRET}
       INGEST_ALLOWED_ROOTS: ${INGEST_ALLOWED_ROOTS:-/opta,/app/tmp/watch}
       OPTA_SYNC_SECRET: ${OPTA_WATCHER_API_TOKEN}
@@ -215,12 +219,20 @@ services:
       OPTA_SMB_PASSWORD: ${OPTA_SMB_PASSWORD}
       OPTA_SMB_DOMAIN: ${OPTA_SMB_DOMAIN}
       OPTA_POLL_INTERVAL: ${OPTA_POLL_INTERVAL:-3600}
+    volumes:
+      - opta_watcher_state:/data
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f opta_smb_watcher.py || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       - api
 
   # ── Mailhog (Dev SMTP) ────────────────────────────────────────────────────────
   mailhog:
-    image: mailhog/mailhog:latest
+    image: mailhog/mailhog:v1.0.1
     container_name: bcms_mailhog
     restart: unless-stopped
     ports:
@@ -231,7 +243,7 @@ services:
 
   # ── Prometheus ────────────────────────────────────────────────────────────────
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.1
     container_name: bcms_prometheus
     restart: unless-stopped
     volumes:
@@ -247,7 +259,7 @@ services:
 
   # ── Grafana ───────────────────────────────────────────────────────────────────
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.1.0
     container_name: bcms_grafana
     restart: unless-stopped
     environment:
@@ -271,6 +283,7 @@ volumes:
   opta_data:
   ingest_watch:
   bxf_watch:
+  opta_watcher_state:
 
 networks:
   bcms_net:

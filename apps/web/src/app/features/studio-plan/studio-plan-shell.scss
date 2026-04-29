@@ -86,23 +86,72 @@ app-studio-plan-toolbar {
 @media print {
   @page {
     size: A3 landscape;
-    margin: 5mm;
+    margin: 0;
   }
 
-  body * {
-    visibility: hidden;
+  html, body {
+    width: 420mm;
+    height: 297mm;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
   }
 
-  #studio-plan-export,
-  #studio-plan-export * {
-    visibility: visible;
+  body > * {
+    display: none !important;
+  }
+
+  body > app-root,
+  body > app-root * {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  app-root > *:not(app-studio-plan) {
+    display: none !important;
+  }
+
+  app-studio-plan > *:not(.studio-plan-page) {
+    display: none !important;
+  }
+
+  .studio-plan-page {
+    display: block !important;
+    gap: 0 !important;
+    width: 420mm;
+    height: 297mm;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .studio-plan-page > *:not(#studio-plan-export) {
+    display: none !important;
   }
 
   #studio-plan-export {
-    position: fixed;
-    inset: 0;
-    overflow: visible;
+    position: static;
+    width: 420mm;
+    height: 297mm;
+    min-height: 0;
+    overflow: hidden;
     border: 0;
+    box-sizing: border-box;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .print-title {
+    height: 10mm;
+    padding: 1mm 3mm;
+    box-sizing: border-box;
+  }
+
+  app-studio-plan-table {
+    display: block !important;
+    width: 420mm;
+    height: calc(297mm - 10mm);
+    overflow: hidden;
   }
 
   .page-header,

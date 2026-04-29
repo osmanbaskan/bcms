@@ -55,6 +55,7 @@
       [studios]="studios"
       [timeSlots]="timeSlots"
       [cells]="cells()"
+      [style.--slot-count]="timeSlots.length"
       (assignProgram)="onCellAssign($event)"
     ></app-studio-plan-table>
 

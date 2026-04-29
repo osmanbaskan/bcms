@@ -15,6 +15,22 @@ export const BCMS_GROUPS = [
 
 export type BcmsGroup = typeof BCMS_GROUPS[number];
 
+/** Canonical group constants — use instead of literal strings. */
+export const GROUP = {
+  Admin: 'Admin',
+  Tekyon: 'Tekyon',
+  Transmisyon: 'Transmisyon',
+  Booking: 'Booking',
+  YayınPlanlama: 'YayınPlanlama',
+  SystemEng: 'SystemEng',
+  Ingest: 'Ingest',
+  Kurgu: 'Kurgu',
+  MCR: 'MCR',
+  PCR: 'PCR',
+  Ses: 'Ses',
+  StudyoSefi: 'StudyoSefi',
+} as const satisfies Record<BcmsGroup, BcmsGroup>;
+
 export interface JwtPayload {
   sub: string;
   preferred_username: string;
