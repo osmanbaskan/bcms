@@ -2,7 +2,7 @@
   "realm": "bcms",
   "enabled": true,
   "displayName": "BCMS",
-  "sslRequired": "none",
+  "sslRequired": "external",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,

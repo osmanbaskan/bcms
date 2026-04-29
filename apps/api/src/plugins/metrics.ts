@@ -17,7 +17,7 @@ export const metricsPlugin = fp(async (app: FastifyInstance) => {
     done();
   });
 
-  app.get('/metrics', { schema: { hide: true } }, async (_req, reply) => {
+  app.get('/metrics', { schema: { hide: true }, config: { rateLimit: false } }, async (_req, reply) => {
     const lines = Object.entries(counters).map(
       ([key, val]) => `# TYPE ${key} counter\n${key} ${val}`,
     );

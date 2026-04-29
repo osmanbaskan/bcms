@@ -86,7 +86,7 @@ export async function playoutRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
     schema: { tags: ['Playout'], summary: 'Programı yayına al (ON_AIR)' },
   }, async (request, reply) => {
-    const id  = Number(request.params.id);
+    const id  = z.coerce.number().int().positive().parse(request.params.id);
     const dto = goLiveSchema.parse(request.body ?? {});
     const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'system';
 
@@ -142,7 +142,7 @@ export async function playoutRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
     schema: { tags: ['Playout'], summary: 'Programı bitir (COMPLETED)' },
   }, async (request, reply) => {
-    const id  = Number(request.params.id);
+    const id  = z.coerce.number().int().positive().parse(request.params.id);
     const dto = endSchema.parse(request.body ?? {});
     const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'system';
 
@@ -182,7 +182,7 @@ export async function playoutRoutes(app: FastifyInstance) {
     schema: { tags: ['Playout'], summary: 'Program zaman tüneli olayları' },
   }, async (request) => {
     return app.prisma.timelineEvent.findMany({
-      where:   { scheduleId: Number(request.params.id) },
+      where:   { scheduleId: z.coerce.number().int().positive().parse(request.params.id) },
       orderBy: { tc: 'asc' },
     });
   });
@@ -193,7 +193,7 @@ export async function playoutRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
     schema: { tags: ['Playout'], summary: 'Zaman tüneline not ekle' },
   }, async (request, reply) => {
-    const id = Number(request.params.id);
+    const id = z.coerce.number().int().positive().parse(request.params.id);
     const body = timelineSchema.parse(request.body ?? {});
     const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'system';
 

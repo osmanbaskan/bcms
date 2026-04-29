@@ -36,7 +36,7 @@ npm run smoke:api
 | Servis | Konteyner | Görev | Durum |
 |---|---|---|---|
 | `api` | bcms_api | HTTP, Swagger, health — worker yok | `healthy` |
-| `worker` | bcms_worker | ingest, bxf, notifications consumer | **⚠️ `unhealthy`** — HTTP health check çalışmıyor (worker HTTP sunucusu çalıştırmaz) |
+| `worker` | bcms_worker | ingest, bxf, notifications consumer | Healthcheck disabled — worker HTTP sunucusu çalıştırmaz |
 | `opta-watcher` | bcms_opta_watcher | SMB → /api/v1/opta/sync | — |
 | `web` | bcms_web | Angular (nginx) | `healthy` |
 | `postgres` | bcms_postgres | PostgreSQL 16 | — |
@@ -46,7 +46,7 @@ npm run smoke:api
 | `grafana` | bcms_grafana | Dashboard | — |
 | `mailhog` | bcms_mailhog | SMTP (dev) | — |
 
-> **Worker Health Check Sorunu (2026-04-29)**: `bcms_worker` container'ı `curl http://localhost:3000/health` ile health check yapıyor ama worker HTTP sunucusu çalıştırmaz. Docker Compose'ta worker health check kaldırılmalı veya worker'a RabbitMQ bağlantı kontrolü eklenmeli. Bu, fonksiyonel bir sorun değildir — worker normal çalışır.
+> **Worker Health (2026-04-29)**: Worker HTTP port açmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu `docker compose logs -f worker` ve consumer başlangıç logları ile kontrol edilir.
 
 ## Graceful Shutdown
 
@@ -154,9 +154,10 @@ curl -fsS http://127.0.0.1:3000/health
 ## OPTA SMB Watcher
 
 - Konteyner: `bcms_opta_watcher` (Python, `scripts/opta_smb_watcher.py`)
-- Ağ: `network_mode: host` → API'ye `http://localhost:3000/api/v1` üzerinden erişir
+- Ağ: Docker bridge (`bcms_net`) → API'ye `http://api:3000/api/v1` üzerinden erişir
 - SMB'de değişen her `srml-*-results.xml` dosyası taranır; `POST /api/v1/opta/sync` ile senkronize edilir
-- **Kimlik doğrulama**: `Authorization: Bearer <OPTA_WATCHER_API_TOKEN>`
+- **Kimlik doğrulama**: timing-safe `Authorization: Bearer <OPTA_WATCHER_API_TOKEN>`
+- `/api/v1/opta/sync` rate limit dışındadır.
 - `MTIME_SETTLE_SEC=5`, `BATCH_SIZE=100`
 
 ```bash
@@ -192,11 +193,18 @@ Keycloak oturumu Docker restart sonrası geçersiz kalır. Tarayıcıda hard ref
 ### 2. Token Issuer (Çoklu Issuer Desteği)
 `KEYCLOAK_ALLOWED_ISSUERS=http://172.28.204.133:8080/realms/bcms,http://localhost:8080/realms/bcms`
 
+### 3. Canlı realm güvenliği
+Startup import mevcut realm'i overwrite etmez. Çalışan realm'e `sslRequired=external` uygulamak için:
+
+```bash
+ops/scripts/bcms-keycloak-apply-security.sh
+```
+
 ## Güvenlik
 
 ### API Rate Limiting
 API global olarak dakikada **300 istek** sınırına tabidir.
-- Muaf endpoint'ler: `/health` ve `/api/v1/ingest/callback`
+- Muaf endpoint'ler: `/health`, `/metrics`, `/api/v1/ingest/callback`, `/api/v1/opta/sync`
 
 ### Docker HEALTHCHECK
 `api` ve `web` container'ları Docker health check kullanıyor:
@@ -209,10 +217,12 @@ docker inspect bcms_web --format='{{.State.Health.Status}}'
 | Servis | Port | Erişim |
 |---|---|---|
 | API | **127.0.0.1**:3000 | Sadece localhost |
+| PostgreSQL | **127.0.0.1**:5433 | Sadece localhost |
 | RabbitMQ AMQP | 5673 | Tüm arayüzler |
 | RabbitMQ UI | **127.0.0.1**:15673 | Sadece localhost |
 | Prometheus | **127.0.0.1**:9090 | Sadece localhost |
-| Grafana | 3001 | Tüm arayüzler |
+| Grafana | **127.0.0.1**:3001 | Sadece localhost |
+| MailHog | **127.0.0.1**:8025 | Sadece localhost |
 
 Uzaktan erişim için SSH tüneli:
 ```bash
@@ -231,6 +241,7 @@ ops/scripts/bcms-restart.sh         → build + servis restart
 ops/scripts/bcms-status.sh          → docker compose ps
 ops/scripts/bcms-logs.sh            → docker compose logs
 ops/scripts/bcms-opta-status.sh     → OPTA bağlantı durumu
+ops/scripts/bcms-keycloak-apply-security.sh → canlı Keycloak realm sslRequired=external uygular
 ops/scripts/bcms-smoke-api.mjs      → API smoke test
 ```
 
@@ -243,6 +254,10 @@ npm run db:migrate:prod -w apps/api
 # Prisma Studio
 npm run db:studio -w apps/api
 ```
+
+2026-04-29 integrity migration:
+- `schedules_no_channel_time_overlap`: aynı kanal için CANCELLED olmayan yayınların zaman aralığı çakışamaz.
+- `incidents_open_signal_loss_channel_uidx`: aynı kanal için tek açık `SIGNAL_LOSS` incident bulunabilir.
 
 Prisma Client generate sorunu:
 ```bash

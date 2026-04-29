@@ -37,12 +37,16 @@ html, body {
 }
 
 body {
-  zoom: 80%;
+  overflow: auto;
 }
 
 app-root {
   display: block;
-  height: 100%;
+  width: 125vw;
+  height: 125vh;
+  min-height: 125vh;
+  transform: scale(0.8);
+  transform-origin: top left;
 }
 
 .page-container {

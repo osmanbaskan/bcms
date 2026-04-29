@@ -105,7 +105,7 @@ export async function incidentRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.incidents.delete),
     schema: { tags: ['Incidents'], summary: 'Delete incident' },
   }, async (request, reply) => {
-    const id = Number(request.params.id);
+    const id = z.coerce.number().int().positive().parse(request.params.id);
     const existing = await app.prisma.incident.findUnique({ where: { id } });
     if (!existing) throw Object.assign(new Error('Incident bulunamadı'), { statusCode: 404 });
     await app.prisma.incident.delete({ where: { id } });
@@ -118,7 +118,7 @@ export async function incidentRoutes(app: FastifyInstance) {
   }, async (request) => {
     const user = (request.user as { preferred_username: string }).preferred_username;
     return app.prisma.incident.update({
-      where: { id: Number(request.params.id) },
+      where: { id: z.coerce.number().int().positive().parse(request.params.id) },
       data:  { resolved: true, resolvedBy: user, resolvedAt: new Date() },
     });
   });
@@ -129,7 +129,7 @@ export async function incidentRoutes(app: FastifyInstance) {
     schema: { tags: ['Timeline'] },
   }, async (request) => {
     return app.prisma.timelineEvent.findMany({
-      where: { scheduleId: Number(request.params.scheduleId) },
+      where: { scheduleId: z.coerce.number().int().positive().parse(request.params.scheduleId) },
       orderBy: { tc: 'asc' },
     });
   });
@@ -141,7 +141,7 @@ export async function incidentRoutes(app: FastifyInstance) {
     const dto = timelineEventSchema.parse(request.body);
     const user = (request.user as { preferred_username: string }).preferred_username;
     const event = await app.prisma.timelineEvent.create({
-      data: { ...dto, scheduleId: Number(request.params.scheduleId), createdBy: user },
+      data: { ...dto, scheduleId: z.coerce.number().int().positive().parse(request.params.scheduleId), createdBy: user },
     });
     reply.status(201).send(event);
   });

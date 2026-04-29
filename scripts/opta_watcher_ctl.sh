@@ -18,8 +18,6 @@ case "$cmd" in
       exit 0
     fi
     cd "$SCRIPT_DIR"
-    POSTGRES_HOST=localhost POSTGRES_PORT=5434 POSTGRES_DB=bcms \
-    POSTGRES_USER=bcms_user POSTGRES_PASSWORD=changeme \
     nohup python3 opta_smb_watcher.py --interval 300 >> "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     echo "Başlatıldı (PID: $!)"

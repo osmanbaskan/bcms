@@ -3,7 +3,6 @@ import type { Prisma } from '@prisma/client';
 import { BCMS_GROUPS, PERMISSIONS, type BcmsGroup, type JwtPayload } from '@bcms/shared';
 import type { CreateBookingDto, UpdateBookingDto } from './booking.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
-import { writeAuditLog } from '../../middleware/audit.js';
 import type { EmailPayload } from '../notifications/notification.consumer.js';
 import { readFirstWorksheetRows, rowsToObjects } from '../../lib/excel.js';
 
@@ -121,11 +120,30 @@ async function fetchUserType(username: string): Promise<UserType> {
   return normalizeUserType(keycloakAttributeValue(users[0]?.attributes, 'bcmsUserType'));
 }
 
+async function fetchBcmsGroupMemberships(): Promise<Map<string, string[]>> {
+  const groups: any[] = await kcFetch('/groups');
+  const groupIdByName = new Map(groups.map((group: any) => [group.name as string, group.id as string]));
+  const memberships = new Map<string, string[]>();
+
+  await Promise.all(BCMS_GROUPS.map(async (groupName) => {
+    const groupId = groupIdByName.get(groupName);
+    if (!groupId) return;
+    const members: any[] = await kcFetch(`/groups/${groupId}/members?max=500`);
+    for (const member of members) {
+      const memberGroups = memberships.get(member.id) ?? [];
+      memberGroups.push(groupName);
+      memberships.set(member.id, memberGroups);
+    }
+  }));
+
+  return memberships;
+}
+
 async function fetchGroupUsers(group: string): Promise<AssignableUser[]> {
   const users: any[] = await kcFetch('/users?max=500');
-  const mapped = await Promise.all(users.map(async (user) => {
-    const kcGroups: any[] = await kcFetch(`/users/${user.id}/groups`);
-    const groups = kcGroups.map((g) => g.name as string).filter(isBcmsGroup);
+  const memberships = await fetchBcmsGroupMemberships();
+  const mapped = users.map((user) => {
+    const groups = memberships.get(user.id) ?? [];
     return {
       id: user.id,
       username: user.username,
@@ -134,7 +152,7 @@ async function fetchGroupUsers(group: string): Promise<AssignableUser[]> {
       userType: normalizeUserType(keycloakAttributeValue(user.attributes, 'bcmsUserType')),
       groups,
     };
-  }));
+  });
   return mapped
     .filter((user) => user.groups.some((userGroup) => userGroup === group))
     .sort((a, b) => a.displayName.localeCompare(b.displayName, 'tr'));
@@ -243,7 +261,6 @@ export class BookingService {
       include: { team: true, schedule: { include: { channel: true } } },
     });
 
-    await writeAuditLog(this.app, { entityType: 'Booking', entityId: booking.id, action: 'CREATE', after: booking, request });
     await this.app.rabbitmq.publish(QUEUES.BOOKING_CREATED, { bookingId: booking.id, scheduleId: booking.scheduleId });
 
     return booking;
@@ -299,8 +316,6 @@ export class BookingService {
       });
     });
 
-    await writeAuditLog(this.app, { entityType: 'Booking', entityId: id, action: 'UPDATE', before: existing, after: updated, request });
-
     if (dto.status && STATUS_LABELS[dto.status]) {
       const label = STATUS_LABELS[dto.status];
       const emailPayload: EmailPayload = {
@@ -326,7 +341,6 @@ export class BookingService {
       throw Object.assign(new Error('Bu işi silme yetkiniz yok'), { statusCode: 403 });
     }
     await this.app.prisma.booking.delete({ where: { id } });
-    await writeAuditLog(this.app, { entityType: 'Booking', entityId: id, action: 'DELETE', before: booking, request });
   }
 
   async importFromBuffer(buffer: Buffer, request: FastifyRequest): Promise<ImportResult> {

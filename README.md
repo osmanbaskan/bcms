@@ -2,7 +2,7 @@
 
 Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana geliştirici rehberidir. Günlük operasyonlar ve bağlantı bilgileri için masaüstündeki diğer belgelere başvurun.
 
-> **Son güncelleme**: 2026-04-29 — Grup adları canlı Keycloak ile hizalandı, Admin grubu eklendi, tam ekran modları ve ekip bazlı iş/shift mimarisi güncellendi.
+> **Son güncelleme**: 2026-04-29 — Integrity constraint'leri, worker healthcheck, Keycloak realm güvenliği ve OPTA/Keycloak performans notları güncellendi.
 
 ## Mimari Kurallar
 
@@ -15,7 +15,7 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 7. **Statik servis**: Angular build dosyaları `infra/docker/nginx.conf` üzerinden nginx ile sunulur.
 8. **Excel**: Yalnızca `exceljs` kullanılır; `xlsx` paketi güvenlik açığı nedeniyle kaldırılmıştır.
 9. **Angular production ortamı**: `apps/web/angular.json`'da production konfigürasyonunda `fileReplacements` tanımlı olmalıdır.
-10. **Rate limiting**: API global olarak dakikada 300 istek sınırına tabidir. `/health` ve ingest `/callback` muaftır.
+10. **Rate limiting**: API global olarak dakikada 300 istek sınırına tabidir. `/health`, `/metrics`, ingest `/callback` ve `/opta/sync` muaftır.
 11. **Güvenlik header'ları**: nginx tüm yanıtlara 6 güvenlik header'ı ekler.
 12. **Input validation**: Tüm API route'ları Zod ile doğrulama yapar.
 
@@ -33,7 +33,7 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 | Servis | Konteyner | Görevi | Health |
 |---|---|---|---|
 | `api` | bcms_api | HTTP istekleri, Swagger, health | `healthy` |
-| `worker` | bcms_worker | RabbitMQ consumer, ingest, bxf, notifications | **⚠️ `unhealthy`** — HTTP probe çalışmıyor |
+| `worker` | bcms_worker | RabbitMQ consumer, ingest, bxf, notifications | Healthcheck disabled — worker HTTP port açmaz |
 | `opta-watcher` | bcms_opta_watcher | SMB → API HTTP sync (Python) | — |
 | `web` | bcms_web | Angular statik dosyalar (nginx) | `healthy` |
 | `postgres` | bcms_postgres | PostgreSQL 16 | — |
@@ -43,7 +43,7 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 | `grafana` | bcms_grafana | Dashboard | — |
 | `mailhog` | bcms_mailhog | SMTP (dev) | — |
 
-> **Worker Health (2026-04-29)**: `bcms_worker` health check `curl http://localhost:3000/health` kullanıyor ama worker HTTP sunucusu çalıştırmaz. Fonksiyonel sorun değildir — worker normal çalışır. Docker Compose'ta worker health check kaldırılmalı veya RabbitMQ bağlantı kontrolüne çevrilmeli.
+> **Worker Health (2026-04-29)**: `bcms_worker` HTTP sunucusu çalıştırmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu loglar, RabbitMQ consumer başlangıç mesajları ve API `/health` degraded kontrolleri ile izlenir.
 
 ## Dizinler
 
@@ -300,13 +300,13 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 | Servis | Port | Erişim | Konteyner |
 |---|---|---|---|
 | API | **127.0.0.1:3000** | Sadece localhost | bcms_api |
-| PostgreSQL | **5433** (host) / 5432 (container) | Tüm arayüzler | bcms_postgres |
+| PostgreSQL | **127.0.0.1:5433** / 5432 (container) | Sadece localhost | bcms_postgres |
 | RabbitMQ AMQP | **5673** (host) / 5672 (container) | Tüm arayüzler | bcms_rabbitmq |
 | RabbitMQ UI | **127.0.0.1:15673** | Sadece localhost | bcms_rabbitmq |
 | Keycloak | 8080 | Tüm arayüzler | bcms_keycloak |
 | Prometheus | **127.0.0.1:9090** | Sadece localhost | bcms_prometheus |
-| Grafana | 3001 | Tüm arayüzler | bcms_grafana |
-| Mailhog UI | 8025 | Tüm arayüzler | bcms_mailhog |
+| Grafana | **127.0.0.1:3001** | Sadece localhost | bcms_grafana |
+| Mailhog UI | **127.0.0.1:8025** | Sadece localhost | bcms_mailhog |
 
 ## Prisma
 
@@ -317,6 +317,7 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 - 2026-04-26: 10 adet tekrar eden index kaldırıldı
 - 2026-04-28: `weekly_shift_assignments` migration eklendi
 - 2026-04-29: `booking_work_tracking` migration eklendi
+- 2026-04-29: `integrity_constraints` migration eklendi: `schedules_no_channel_time_overlap` exclusion constraint ve `incidents_open_signal_loss_channel_uidx` partial unique index.
 
 ## Ortam Değişkenleri
 
@@ -344,11 +345,12 @@ Farklı bir bilgisayardan erişimde iki ayar zorunludur:
 
 1. **Keycloak redirect_uri**: `infra/keycloak/realm-export.json`'da `bcms-web` client'ına LAN IP eklenmeli.
 2. **Token issuer**: `KEYCLOAK_ALLOWED_ISSUERS` env değişkeni ile birden fazla issuer kabul eder.
+3. **Canlı realm güvenliği**: Mevcut realm startup import ile overwrite edilmez. `sslRequired=external` değerini çalışan realm'e uygulamak için `ops/scripts/bcms-keycloak-apply-security.sh` kullanılır.
 
 ## OPTA
 
 OPTA SMB watcher ayrı Python konteyneri (`opta-watcher`) olarak çalışır.
-`POST /api/v1/opta/sync` endpoint'i **Bearer token** kimlik doğrulaması gerektirir.
+`POST /api/v1/opta/sync` endpoint'i **timing-safe Bearer token** kimlik doğrulaması gerektirir ve rate limit dışındadır.
 
 ### Watcher davranışı (`scripts/opta_smb_watcher.py`)
 
@@ -361,6 +363,7 @@ OPTA SMB watcher ayrı Python konteyneri (`opta-watcher`) olarak çalışır.
 - Benzersiz ligler toplu upsert edilir.
 - Mevcut maçlar tek sorguda çekilir.
 - Tüm insertlar ve updatelar tek bir Prisma `$transaction` içinde yazılır.
+- Python watcher Docker bridge network üzerinden `http://api:3000/api/v1` adresine gider; host network kullanılmaz.
 
 ## Servis Kontrolü
 

@@ -33,7 +33,7 @@ export async function bookingRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>('/:id', {
     preHandler: app.requireGroup(...PERMISSIONS.bookings.read),
     schema: { tags: ['Bookings'] },
-  }, async (request) => svc.findByIdForRequest(Number(request.params.id), request.user as JwtPayload));
+  }, async (request) => svc.findByIdForRequest(z.coerce.number().int().positive().parse(request.params.id), request.user as JwtPayload));
 
   app.post('/', {
     preHandler: app.requireGroup(...PERMISSIONS.bookings.write),
@@ -49,14 +49,14 @@ export async function bookingRoutes(app: FastifyInstance) {
   }, async (request) => {
     const dto = updateBookingSchema.parse(request.body);
     const version = request.headers['if-match'] ? parseInt(request.headers['if-match'] as string, 10) : undefined;
-    return svc.update(Number(request.params.id), dto, version, request);
+    return svc.update(z.coerce.number().int().positive().parse(request.params.id), dto, version, request);
   });
 
   app.delete<{ Params: { id: string } }>('/:id', {
     preHandler: app.requireGroup(...PERMISSIONS.bookings.delete),
     schema: { tags: ['Bookings'], summary: 'Delete booking' },
   }, async (request, reply) => {
-    await svc.removeForRequest(Number(request.params.id), request);
+    await svc.removeForRequest(z.coerce.number().int().positive().parse(request.params.id), request);
     reply.status(204).send();
   });
 

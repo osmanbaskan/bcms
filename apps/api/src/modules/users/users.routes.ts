@@ -129,6 +129,25 @@ async function setUserGroups(id: string, newGroups: string[]): Promise<void> {
   groupMembershipCache.delete(id);
 }
 
+async function fetchBcmsGroupMemberships(): Promise<Map<string, string[]>> {
+  const groupIdMap = await getGroupIdMap();
+  const memberships = new Map<string, string[]>();
+
+  await Promise.all(BCMS_GROUPS.map(async (groupName) => {
+    const groupId = groupIdMap.get(groupName);
+    if (!groupId) return;
+
+    const members: any[] = await kcFetch(`/groups/${groupId}/members?max=500`);
+    for (const member of members) {
+      const groups = memberships.get(member.id) ?? [];
+      groups.push(groupName);
+      memberships.set(member.id, groups);
+    }
+  }));
+
+  return memberships;
+}
+
 export async function usersRoutes(app: FastifyInstance) {
 
   // GET /api/v1/users
@@ -137,14 +156,11 @@ export async function usersRoutes(app: FastifyInstance) {
     schema: { tags: ['Users'], summary: 'Keycloak kullanıcı listesi' },
   }, async () => {
     const users: any[] = await kcFetch('/users?max=200');
+    const memberships = await fetchBcmsGroupMemberships();
 
-    const withGroups = await Promise.all(users.map(async (u) => {
-      let groups = getCachedGroups(u.id);
-      if (groups === null) {
-        const kcGroups: any[] = await kcFetch(`/users/${u.id}/groups`);
-        groups = kcGroups.map((g: any) => g.name as string).filter(isBcmsGroup);
-        setCachedGroups(u.id, groups);
-      }
+    const withGroups = users.map((u) => {
+      const groups = memberships.get(u.id) ?? getCachedGroups(u.id) ?? [];
+      setCachedGroups(u.id, groups);
       return {
         id:        u.id,
         username:  u.username,
@@ -155,7 +171,7 @@ export async function usersRoutes(app: FastifyInstance) {
         userType:  userTypeFor(u, groups),
         groups,
       };
-    }));
+    });
 
     // Süresi dolan cache girdilerini temizle
     for (const [id, entry] of groupMembershipCache.entries()) {

@@ -2,9 +2,9 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { Prisma } from '@prisma/client';
 import type { CreateScheduleDto, UpdateScheduleDto, ScheduleQuery } from './schedule.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
-import { writeAuditLog } from '../../middleware/audit.js';
 
 export const LIVE_PLAN_SOURCE = 'live-plan';
+const SERIALIZABLE_RETRIES = 3;
 
 function stringDimension(metadata: unknown, key: string): string | null {
   if (!metadata || typeof metadata !== 'object') return null;
@@ -25,6 +25,21 @@ function reportDimensions(metadata: unknown) {
     reportSeason:     stringDimension(metadata, 'season'),
     reportWeekNumber: weekDimension(metadata),
   };
+}
+
+function isSerializationFailure(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+}
+
+async function withSerializableRetry<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; attempt <= SERIALIZABLE_RETRIES; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isSerializationFailure(error) || attempt === SERIALIZABLE_RETRIES) throw error;
+    }
+  }
+  throw new Error('Serializable transaction failed');
 }
 
 export class ScheduleService {
@@ -83,46 +98,45 @@ export class ScheduleService {
   async create(dto: CreateScheduleDto, request: FastifyRequest) {
     const user = (request.user as { preferred_username: string }).preferred_username;
 
-    // ── Conflict check (kanal seçilmemişse atla) ────────────────────────────────
-    if (dto.channelId != null) {
-      const conflicts = await this.checkConflicts(
-        dto.channelId,
-        new Date(dto.startTime),
-        new Date(dto.endTime),
-      );
-      if (conflicts.length > 0) {
-        const err = Object.assign(
-          new Error('Schedule conflict detected'),
-          { statusCode: 409, conflicts },
-        );
-        throw err;
+    const schedule = await withSerializableRetry(() => this.app.prisma.$transaction(async (tx) => {
+      // ── Conflict check (kanal seçilmemişse atla) ────────────────────────────────
+      if (dto.channelId != null) {
+        const conflicts = await tx.schedule.findMany({
+          where: {
+            channelId: dto.channelId,
+            status: { notIn: ['CANCELLED'] },
+            AND: [
+              { startTime: { lt: new Date(dto.endTime) } },
+              { endTime:   { gt: new Date(dto.startTime) } },
+            ],
+          },
+          select: { id: true, channelId: true, startTime: true, endTime: true, title: true, status: true },
+        });
+        if (conflicts.length > 0) {
+          const err = Object.assign(
+            new Error('Schedule conflict detected'),
+            { statusCode: 409, conflicts },
+          );
+          throw err;
+        }
       }
-    }
 
-    const schedule = await this.app.prisma.schedule.create({
-      data: {
-        channelId:       dto.channelId,
-        startTime:       new Date(dto.startTime),
-        endTime:         new Date(dto.endTime),
-        title:           dto.title,
-        contentId:       dto.contentId,
-        broadcastTypeId: dto.broadcastTypeId,
-        usageScope:      dto.usageScope,
-        ...reportDimensions(dto.metadata),
-        metadata:        dto.metadata as Prisma.InputJsonValue,
-        createdBy:       user,
-      },
-      include: { channel: true },
-    });
-
-    // ── Audit + Message ─────────────────────────────────────────────────────────
-    await writeAuditLog(this.app, {
-      entityType: 'Schedule',
-      entityId:   schedule.id,
-      action:     'CREATE',
-      after:      schedule,
-      request,
-    });
+      return tx.schedule.create({
+        data: {
+          channelId:       dto.channelId,
+          startTime:       new Date(dto.startTime),
+          endTime:         new Date(dto.endTime),
+          title:           dto.title,
+          contentId:       dto.contentId,
+          broadcastTypeId: dto.broadcastTypeId,
+          usageScope:      dto.usageScope,
+          ...reportDimensions(dto.metadata),
+          metadata:        dto.metadata as Prisma.InputJsonValue,
+          createdBy:       user,
+        },
+        include: { channel: true },
+      });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
 
     await this.app.rabbitmq.publish(QUEUES.SCHEDULE_CREATED, {
       scheduleId: schedule.id,
@@ -146,18 +160,6 @@ export class ScheduleService {
       throw err;
     }
 
-    // ── Conflict check on time/channel change (kanal yoksa atla) ───────────────
-    const targetChannelId = dto.channelId !== undefined ? dto.channelId : existing.channelId;
-    if ((dto.startTime || dto.endTime || dto.channelId !== undefined) && targetChannelId != null) {
-      const start = dto.startTime ? new Date(dto.startTime) : existing.startTime;
-      const end   = dto.endTime   ? new Date(dto.endTime)   : existing.endTime;
-      const conflicts = await this.checkConflicts(targetChannelId, start, end, id);
-      if (conflicts.length > 0) {
-        const err = Object.assign(new Error('Schedule conflict detected'), { statusCode: 409, conflicts });
-        throw err;
-      }
-    }
-
     const data: Prisma.ScheduleUpdateManyMutationInput = {
       ...(dto.channelId !== undefined && { channelId: dto.channelId }),
       ...(dto.startTime && { startTime: new Date(dto.startTime) }),
@@ -171,7 +173,30 @@ export class ScheduleService {
       version: { increment: 1 },
     };
 
-    const updated = await this.app.prisma.$transaction(async (tx) => {
+    const updated = await withSerializableRetry(() => this.app.prisma.$transaction(async (tx) => {
+      // ── Conflict check on time/channel change (kanal yoksa atla) ───────────────
+      const targetChannelId = dto.channelId !== undefined ? dto.channelId : existing.channelId;
+      if ((dto.startTime || dto.endTime || dto.channelId !== undefined) && targetChannelId != null) {
+        const start = dto.startTime ? new Date(dto.startTime) : existing.startTime;
+        const end   = dto.endTime   ? new Date(dto.endTime)   : existing.endTime;
+        const conflicts = await tx.schedule.findMany({
+          where: {
+            channelId: targetChannelId,
+            id: { not: id },
+            status: { notIn: ['CANCELLED'] },
+            AND: [
+              { startTime: { lt: end } },
+              { endTime:   { gt: start } },
+            ],
+          },
+          select: { id: true, channelId: true, startTime: true, endTime: true, title: true, status: true },
+        });
+        if (conflicts.length > 0) {
+          const err = Object.assign(new Error('Schedule conflict detected'), { statusCode: 409, conflicts });
+          throw err;
+        }
+      }
+
       const result = await tx.schedule.updateMany({
         where: {
           id,
@@ -188,16 +213,7 @@ export class ScheduleService {
         where: { id },
         include: { channel: true },
       });
-    });
-
-    await writeAuditLog(this.app, {
-      entityType: 'Schedule',
-      entityId:   id,
-      action:     'UPDATE',
-      before:     existing,
-      after:      updated,
-      request,
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
 
     await this.app.rabbitmq.publish(QUEUES.SCHEDULE_UPDATED, {
       scheduleId: updated.id,
@@ -207,39 +223,9 @@ export class ScheduleService {
     return updated;
   }
 
-  async remove(id: number, request: FastifyRequest) {
-    const existing = await this.findById(id);
-
+  async remove(id: number) {
+    await this.findById(id);
     await this.app.prisma.schedule.delete({ where: { id } });
-
-    await writeAuditLog(this.app, {
-      entityType: 'Schedule',
-      entityId:   id,
-      action:     'DELETE',
-      before:     existing,
-      request,
-    });
-  }
-
-  // ── Private helpers ──────────────────────────────────────────────────────────
-  private async checkConflicts(
-    channelId: number,
-    start: Date,
-    end: Date,
-    excludeId?: number,
-  ) {
-    return this.app.prisma.schedule.findMany({
-      where: {
-        channelId,
-        id: excludeId ? { not: excludeId } : undefined,
-        status: { notIn: ['CANCELLED'] },
-        AND: [
-          { startTime: { lt: end } },
-          { endTime:   { gt: start } },
-        ],
-      },
-      select: { id: true, channelId: true, startTime: true, endTime: true, title: true, status: true },
-    });
   }
 
 }

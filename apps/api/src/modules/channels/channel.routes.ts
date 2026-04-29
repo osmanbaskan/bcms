@@ -25,7 +25,7 @@ export async function channelRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.channels.read),
     schema: { tags: ['Channels'] },
   }, async (request) => {
-    const channel = await app.prisma.channel.findUnique({ where: { id: Number(request.params.id) } });
+    const channel = await app.prisma.channel.findUnique({ where: { id: z.coerce.number().int().positive().parse(request.params.id) } });
     if (!channel) throw Object.assign(new Error('Channel not found'), { statusCode: 404 });
     return channel;
   });
@@ -44,7 +44,7 @@ export async function channelRoutes(app: FastifyInstance) {
     schema: { tags: ['Channels'] },
   }, async (request) => {
     const dto = createChannelSchema.partial().parse(request.body);
-    return app.prisma.channel.update({ where: { id: Number(request.params.id) }, data: dto as Parameters<typeof app.prisma.channel.update>[0]['data'] });
+    return app.prisma.channel.update({ where: { id: z.coerce.number().int().positive().parse(request.params.id) }, data: dto as Parameters<typeof app.prisma.channel.update>[0]['data'] });
   });
 
   app.delete<{ Params: { id: string } }>('/:id', {
@@ -53,7 +53,7 @@ export async function channelRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     // Soft delete
     await app.prisma.channel.update({
-      where: { id: Number(request.params.id) },
+      where: { id: z.coerce.number().int().positive().parse(request.params.id) },
       data: { active: false },
     });
     reply.status(204).send();

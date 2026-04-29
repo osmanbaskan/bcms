@@ -66,8 +66,8 @@ Before writing any code, follow the 4-phase discipline. Surface-level solutions 
 
 ### Group-Based Auth (Not Role-Based)
 - Keycloak `groups` claim drives authorization.
-- 11 groups: `Yayın Muhendisligi`, `Transmisyon`, `Booking`, `Yayın Planlama Mudurlugu`, `Sistem Muhendisligi`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `Studyo Sefligi`.
-- `Sistem Muhendisligi` = universal access.
+- 12 groups: `Admin`, `Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`.
+- `Admin` and `SystemEng` = universal access.
 - Never hardcode group strings in routes. Import from `@bcms/shared` `PERMISSIONS` map.
 - `app.requireGroup()` with no args = any authenticated user.
 
@@ -80,15 +80,15 @@ Before writing any code, follow the 4-phase discipline. Surface-level solutions 
 |--------|------|-------|
 | Zod validation | 400 | Returns `issues` array |
 | Prisma P2025 | 404 | Record not found |
-| Prisma P2002/P2003 | 409 | Unique/Foreign key conflict |
+| Prisma P2002/P2003/P2004 | 409 | Unique/foreign key/exclusion constraint conflict |
 | Optimistic lock conflict | 412 | Version mismatch |
 | Auth failure | 401/403 | JWT or group check failed |
 
 ### Rate Limiting
 - Global: 300 req/min per IP.
 - Exempt endpoints must set `config: { rateLimit: false }` in route config.
-- Currently exempt: `/health`.
-- **Known gap:** `/opta/sync` is NOT exempt, causing OPTA watcher 429 errors.
+- Currently exempt: `/health`, `/metrics`, `/api/v1/ingest/callback`, `/api/v1/opta/sync`.
+- `/opta/sync` also uses timing-safe Bearer token comparison.
 
 ### Production Environment Guard
 - `SKIP_AUTH=true` is blocked in production by `validateRuntimeEnv()` in `app.ts` AND by `authPlugin`.

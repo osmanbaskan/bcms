@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { ScheduleService } from './schedule.service.js';
 import {
   createScheduleSchema,
@@ -242,7 +243,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(), // all authenticated
     schema: { tags: ['Schedules'], summary: 'Get schedule by ID' },
   }, async (request) => {
-    return svc.findById(Number(request.params.id));
+    return svc.findById(z.coerce.number().int().positive().parse(request.params.id));
   });
 
   // POST /api/v1/schedules
@@ -263,7 +264,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
     const dto = updateScheduleSchema.parse(request.body);
     const ifMatch = request.headers['if-match'];
     const version = ifMatch ? parseInt(ifMatch, 10) : undefined;
-    return svc.update(Number(request.params.id), dto, version, request);
+    return svc.update(z.coerce.number().int().positive().parse(request.params.id), dto, version, request);
   });
 
   // DELETE /api/v1/schedules/:id
@@ -271,7 +272,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.schedules.delete),
     schema: { tags: ['Schedules'], summary: 'Delete schedule' },
   }, async (request, reply) => {
-    await svc.remove(Number(request.params.id), request);
+    await svc.remove(z.coerce.number().int().positive().parse(request.params.id));
     reply.status(204).send();
   });
 }

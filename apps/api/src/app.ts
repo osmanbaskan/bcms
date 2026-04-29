@@ -131,7 +131,7 @@ function errorResponse(error: Error & { statusCode?: number; code?: string }) {
   }
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    const statusCode = error.code === 'P2025' ? 404 : ['P2002', 'P2003'].includes(error.code) ? 409 : 500;
+    const statusCode = error.code === 'P2025' ? 404 : ['P2002', 'P2003', 'P2004'].includes(error.code) ? 409 : 500;
     return {
       statusCode,
       body: {

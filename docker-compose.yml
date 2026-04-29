@@ -13,7 +13,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -58,7 +58,7 @@ services:
       KC_DB_USERNAME: ${POSTGRES_USER}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KC_HOSTNAME_STRICT: "false"
-      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HOSTNAME_STRICT_HTTPS: ${KC_HOSTNAME_STRICT_HTTPS:-false}
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME: ${KC_HOSTNAME:-172.28.204.133}
       KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:-8080}
@@ -140,11 +140,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 60s
     healthcheck:
-      test: ['CMD', 'exit', '0']
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      disable: true
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
@@ -208,9 +204,10 @@ services:
       dockerfile: infra/docker/opta-watcher.Dockerfile
     container_name: bcms_opta_watcher
     restart: unless-stopped
-    network_mode: host
+    networks:
+      - bcms_net
     environment:
-      BCMS_API_URL: http://localhost:3000/api/v1
+      BCMS_API_URL: http://api:3000/api/v1
       BCMS_API_TOKEN: ${OPTA_WATCHER_API_TOKEN}
       OPTA_SMB_SHARE: ${OPTA_SMB_SHARE}
       OPTA_SMB_SUBDIR: ${OPTA_SMB_SUBDIR}
@@ -227,8 +224,8 @@ services:
     container_name: bcms_mailhog
     restart: unless-stopped
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
     networks:
       - bcms_net
 
@@ -260,7 +257,7 @@ services:
       - grafana_data:/var/lib/grafana
       - ./infra/grafana/provisioning:/etc/grafana/provisioning
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     depends_on:
       - prometheus
     networks:

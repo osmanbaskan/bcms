@@ -119,11 +119,30 @@ async function kcFetch(path: string, options: RequestInit = {}) {
   return text ? JSON.parse(text) : null;
 }
 
+async function fetchBcmsGroupMemberships(): Promise<Map<string, string[]>> {
+  const groups: any[] = await kcFetch('/groups');
+  const groupIdByName = new Map(groups.map((group: any) => [group.name as string, group.id as string]));
+  const memberships = new Map<string, string[]>();
+
+  await Promise.all(BCMS_GROUPS.map(async (groupName) => {
+    const groupId = groupIdByName.get(groupName);
+    if (!groupId) return;
+    const members: any[] = await kcFetch(`/groups/${groupId}/members?max=500`);
+    for (const member of members) {
+      const memberGroups = memberships.get(member.id) ?? [];
+      memberGroups.push(groupName);
+      memberships.set(member.id, memberGroups);
+    }
+  }));
+
+  return memberships;
+}
+
 async function fetchShiftUsers(): Promise<ShiftUser[]> {
   const users: any[] = await kcFetch('/users?max=500');
-  return Promise.all(users.map(async (user) => {
-    const kcGroups: any[] = await kcFetch(`/users/${user.id}/groups`);
-    const groups = kcGroups.map((g) => g.name as string).filter((name) => (BCMS_GROUPS as readonly string[]).includes(name));
+  const memberships = await fetchBcmsGroupMemberships();
+  return users.map((user) => {
+    const groups = memberships.get(user.id) ?? [];
     return {
       id: user.id,
       username: user.username,
@@ -132,7 +151,7 @@ async function fetchShiftUsers(): Promise<ShiftUser[]> {
       userType: normalizeUserType(keycloakAttributeValue(user.attributes, 'bcmsUserType')),
       groups,
     };
-  }));
+  });
 }
 
 async function fetchCurrentUserType(request: FastifyRequest): Promise<UserType> {

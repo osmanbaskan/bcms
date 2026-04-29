@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import crypto from 'node:crypto';
 
 const matchItemSchema = z.object({
   matchUid:   z.string().min(1),
@@ -24,8 +25,13 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(500).send({ error: 'OPTA_SYNC_SECRET yapılandırılmamış.' });
     }
 
-    const auth = request.headers.authorization;
-    if (!auth || auth !== `Bearer ${secret}`) {
+    const auth = request.headers.authorization ?? '';
+    const expected = `Bearer ${secret}`;
+    if (
+      !auth ||
+      auth.length !== expected.length ||
+      !crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(expected))
+    ) {
       return reply.code(401).send({ error: 'Yetkisiz.' });
     }
 

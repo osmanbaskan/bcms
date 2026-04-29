@@ -46,7 +46,7 @@ grafana    → Dashboard
 mailhog    → SMTP (dev)
 ```
 
-> **Not (2026-04-29)**: `bcms_worker` container health check `localhost:3000`'e bağlanmaya çalışıyor ama worker HTTP sunucusu çalıştırmaz. Bu yüzden worker sürekli `unhealthy` gözüküyor. Docker Compose'ta worker health check kaldırılmalı veya worker'a ayrı bir health mekanizması (RabbitMQ bağlantı kontrolü) eklenmeli.
+> **Not (2026-04-29)**: `bcms_worker` HTTP sunucusu çalıştırmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu loglar ve consumer başlangıç kayıtlarıyla izlenir.
 
 ## Degraded Mod
 
@@ -168,6 +168,7 @@ npm run db:generate -w apps/api
 - `20260426000000_btree_gist_port_conflict`
 - `20260428010000_weekly_shift_assignments` — Haftalık Shift tabloları
 - `20260429010000_booking_work_tracking` — Ekip İş Takip tablosu
+- `20260429020000_integrity_constraints` — schedule zaman çakışması exclusion constraint + açık signal incident partial unique index
 
 **DB index temizliği (2026-04-26):** 10 duplicate index silindi.
 
@@ -175,9 +176,10 @@ npm run db:generate -w apps/api
 
 - Python konteyneri (`opta-watcher`), SMB'den dosya okur
 - API çağrısı: `POST /api/v1/opta/sync` (Bearer token)
-- Env: `BCMS_API_URL=http://localhost:3000/api/v1`, `BCMS_API_TOKEN`
+- Env: `BCMS_API_URL=http://api:3000/api/v1`, `BCMS_API_TOKEN`
 - Doğrudan PostgreSQL erişimi yok
-- `network_mode: host`
+- Docker bridge network (`bcms_net`), host network yok
+- `/api/v1/opta/sync` rate limit dışındadır ve timing-safe Bearer token kontrolü kullanır.
 - `MTIME_SETTLE_SEC=5`, `BATCH_SIZE=100`
 
 ## Keycloak / Auth
@@ -185,6 +187,8 @@ npm run db:generate -w apps/api
 - Keycloak oturumları **in-memory** tutulur. Docker restart sonrası tüm oturumlar geçersiz olur.
 - Tarayıcı eski token'ı kullanmaya devam ederse → Ctrl+Shift+R (hard refresh) + yeniden giriş.
 - Test kullanıcısı: `admin` / `admin123`
+- `infra/keycloak/realm-export.json` yeni importlar için `sslRequired=external` içerir.
+- Mevcut canlı realm import ile overwrite edilmez; `ops/scripts/bcms-keycloak-apply-security.sh` çalışan realm'e `sslRequired=external` uygular.
 
 ## LAN Erişimi ve Çoklu Issuer Desteği (2026-04-25)
 
@@ -197,9 +201,9 @@ API `KEYCLOAK_ALLOWED_ISSUERS` env değişkenini okur ve hepsini kabul eder.
 - `xlsx` paketi kaldırıldı → `exceljs`
 - Keycloak production modunda: `start --import-realm`
 - Input validation: Tüm API route'ları Zod ile doğrulama yapar
-- Rate limiting: 300 istek/dk global
+- Rate limiting: 300 istek/dk global; `/health`, `/metrics`, `/api/v1/ingest/callback`, `/api/v1/opta/sync` muaf
 - nginx Güvenlik Header'ları: 6 adet
-- Port Binding: API `127.0.0.1:3000`, RabbitMQ UI `127.0.0.1:15673`, Prometheus `127.0.0.1:9090`
+- Port Binding: API `127.0.0.1:3000`, PostgreSQL `127.0.0.1:5433`, RabbitMQ UI `127.0.0.1:15673`, Prometheus `127.0.0.1:9090`, Grafana `127.0.0.1:3001`, MailHog `127.0.0.1:8025`
 
 ## CI
 

@@ -3,7 +3,7 @@ import ExcelJS from 'exceljs';
 import type { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { PERMISSIONS, type SaveIngestPlanItemDto, type SaveRecordingPortsDto } from '@bcms/shared';
 import { validateIngestSourcePath } from './ingest.paths.js';
@@ -99,6 +99,10 @@ function describeSourceKey(sourceKey: string): string {
   }
   if (type === 'live') return `Canlı yayın #${day}`;
   return sourceKey;
+}
+
+function isPlanTimeConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2004'].includes(error.code);
 }
 
 function mapPlanItem(item: {
@@ -206,7 +210,7 @@ export async function ingestRoutes(app: FastifyInstance) {
     schema: { tags: ['Ingest'] },
   }, async (request) => {
     const job = await app.prisma.ingestJob.findUnique({
-      where: { id: Number(request.params.id) },
+      where: { id: z.coerce.number().int().positive().parse(request.params.id) },
       include: { qcReport: true },
     });
     if (!job) throw Object.assign(new Error('Ingest job not found'), { statusCode: 404 });
@@ -383,32 +387,38 @@ export async function ingestRoutes(app: FastifyInstance) {
       }
     }
 
-    const item = await app.prisma.ingestPlanItem.upsert({
-      where: { sourceKey },
-      update: {
-        sourceType: dto.sourceType,
-        dayDate: parseDate(dto.day),
-        sourcePath,
-        recordingPort,
-        plannedStartMinute,
-        plannedEndMinute,
-        status: dto.status ?? undefined,
-        note: dto.note?.trim() || null,
-        updatedBy: user,
-      },
-      create: {
-        sourceKey,
-        sourceType: dto.sourceType,
-        dayDate: parseDate(dto.day),
-        sourcePath,
-        recordingPort,
-        plannedStartMinute,
-        plannedEndMinute,
-        status: dto.status ?? 'WAITING',
-        note: dto.note?.trim() || null,
-        updatedBy: user,
-      },
-    });
+    let item;
+    try {
+      item = await app.prisma.ingestPlanItem.upsert({
+        where: { sourceKey },
+        update: {
+          sourceType: dto.sourceType,
+          dayDate: parseDate(dto.day),
+          sourcePath,
+          recordingPort,
+          plannedStartMinute,
+          plannedEndMinute,
+          status: dto.status ?? undefined,
+          note: dto.note?.trim() || null,
+          updatedBy: user,
+        },
+        create: {
+          sourceKey,
+          sourceType: dto.sourceType,
+          dayDate: parseDate(dto.day),
+          sourcePath,
+          recordingPort,
+          plannedStartMinute,
+          plannedEndMinute,
+          status: dto.status ?? 'WAITING',
+          note: dto.note?.trim() || null,
+          updatedBy: user,
+        },
+      });
+    } catch (error) {
+      if (!isPlanTimeConstraintError(error)) throw error;
+      throw Object.assign(new Error('Seçilen kayıt portunda bu saat aralığı başka bir iş ile çakışıyor'), { statusCode: 409 });
+    }
 
     return mapPlanItem(item);
   });
@@ -481,7 +491,7 @@ export async function ingestRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.ingest.delete),
     schema: { tags: ['Ingest'], summary: 'Delete ingest job' },
   }, async (request, reply) => {
-    const id = Number(request.params.id);
+    const id = z.coerce.number().int().positive().parse(request.params.id);
     const job = await app.prisma.ingestJob.findUnique({ where: { id } });
     if (!job) throw Object.assign(new Error('Ingest job not found'), { statusCode: 404 });
     if (job.status === 'PROCESSING' || job.status === 'PROXY_GEN' || job.status === 'QC') {

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { PERMISSIONS } from '@bcms/shared';
 
@@ -11,6 +12,10 @@ const submitSchema = z.object({
   status:    z.enum(['OK', 'DEGRADED', 'LOST']).default('OK'),
   source:    z.string().max(50).optional(),
 });
+
+function isDuplicateSignalIncident(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2004'].includes(error.code);
+}
 
 export async function signalRoutes(app: FastifyInstance) {
   // GET /api/v1/signals/latest — Her kanal için en son okunan telemetri
@@ -45,7 +50,7 @@ export async function signalRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.monitoring.read),
     schema: { tags: ['Signals'], summary: 'Kanal sinyal geçmişi (son 1 saat)' },
   }, async (request) => {
-    const channelId = Number(request.params.channelId);
+    const channelId = z.coerce.number().int().positive().parse(request.params.channelId);
     const since = new Date(Date.now() - 60 * 60 * 1000);
 
     return app.prisma.signalTelemetry.findMany({
@@ -71,16 +76,7 @@ export async function signalRoutes(app: FastifyInstance) {
         ? `Kanal sinyali kayboldu (${dto.source ?? 'bilinmiyor'})`
         : `Kanal sinyal kalitesi düştü — SNR: ${dto.snr ?? '?'} dB`;
 
-      // Zaten açık (çözülmemiş) bir incident varsa tekrar açma
-      const existing = await app.prisma.incident.findFirst({
-        where: {
-          resolved: false,
-          eventType: 'SIGNAL_LOSS',
-          metadata: { path: ['channelId'], equals: dto.channelId },
-        },
-      });
-
-      if (!existing) {
+      try {
         await app.prisma.incident.create({
           data: {
             eventType:   'SIGNAL_LOSS',
@@ -89,6 +85,8 @@ export async function signalRoutes(app: FastifyInstance) {
             metadata:    { channelId: dto.channelId, source: dto.source },
           },
         });
+      } catch (error) {
+        if (!isDuplicateSignalIncident(error)) throw error;
       }
     }
 
