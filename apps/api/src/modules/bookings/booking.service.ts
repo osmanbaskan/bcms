@@ -61,7 +61,7 @@ function tokenGroups(claims: JwtPayload): BcmsGroup[] {
   return (claims.groups ?? []).filter(isBcmsGroup);
 }
 
-function isSistem Muhendisligi(claims: JwtPayload): boolean {
+function isSistemMuhendisligi(claims: JwtPayload): boolean {
   return claims.groups?.some((group) => PERMISSIONS.weeklyShifts.admin.includes(group as BcmsGroup)) ?? false;
 }
 
@@ -151,15 +151,15 @@ export class BookingService {
   async findAll(request: FastifyRequest, scheduleId?: number, group?: string, page = 1, pageSize = 50) {
     const claims = request.user as JwtPayload;
     const visibleGroups = this.visibleGroups(claims);
-    const currentUserType = isSistem Muhendisligi(claims) ? 'supervisor' : await fetchUserType(claims.preferred_username);
-    const canAssignGroups = isSistem Muhendisligi(claims) || currentUserType === 'supervisor' ? visibleGroups : [];
+    const currentUserType = isSistemMuhendisligi(claims) ? 'supervisor' : await fetchUserType(claims.preferred_username);
+    const canAssignGroups = isSistemMuhendisligi(claims) || currentUserType === 'supervisor' ? visibleGroups : [];
     const selectedGroup = group && isBcmsGroup(group) && visibleGroups.includes(group) ? group : undefined;
     const skip = (page - 1) * pageSize;
     const where = {
       ...(scheduleId && { scheduleId }),
       ...(selectedGroup
         ? { userGroup: selectedGroup }
-        : isSistem Muhendisligi(claims)
+        : isSistemMuhendisligi(claims)
           ? { OR: [{ userGroup: { in: visibleGroups } }, { userGroup: null }] }
           : { userGroup: { in: visibleGroups } }),
     } as any;
@@ -374,12 +374,12 @@ export class BookingService {
   }
 
   private visibleGroups(claims: JwtPayload): BcmsGroup[] {
-    if (isSistem Muhendisligi(claims)) return [...BCMS_GROUPS];
+    if (isSistemMuhendisligi(claims)) return [...BCMS_GROUPS];
     return tokenGroups(claims);
   }
 
   private canSee(claims: JwtPayload, group: string | null): boolean {
-    if (isSistem Muhendisligi(claims)) return true;
+    if (isSistemMuhendisligi(claims)) return true;
     return Boolean(group && this.visibleGroups(claims).includes(group as BcmsGroup));
   }
 
@@ -394,13 +394,13 @@ export class BookingService {
 
   private async canAssign(request: FastifyRequest, group: string | null): Promise<boolean> {
     const claims = request.user as JwtPayload;
-    if (isSistem Muhendisligi(claims)) return true;
+    if (isSistemMuhendisligi(claims)) return true;
     if (!group || !claims.groups?.includes(group)) return false;
     return await fetchUserType(claims.preferred_username) === 'supervisor';
   }
 
   private canDelete(claims: JwtPayload, booking: Awaited<ReturnType<BookingService['findById']>>): boolean {
-    if (isSistem Muhendisligi(claims)) return true;
+    if (isSistemMuhendisligi(claims)) return true;
     const username = claims.preferred_username;
     const task = booking as any;
     return task.requestedBy === username
