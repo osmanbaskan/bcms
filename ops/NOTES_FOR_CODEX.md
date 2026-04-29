@@ -28,7 +28,7 @@ docker compose up -d --build api worker  # kod değişikliğinden sonra
 
 Adresler:
 - Web: `http://172.28.204.133:4200`
-- API: `http://172.28.204.133:3000`
+- API: `http://127.0.0.1:3000` (host-local)
 - Swagger: `http://172.28.204.133:4200/docs`
 
 ## Konteyner Yapısı
@@ -56,12 +56,14 @@ OPTA dizini veya RabbitMQ geçici koptuğunda API çökmez:
 - OPTA `getOptaWatcherStatus()` ile sorgulanabilir
 - DB koptuğunda operasyonel etki vardır
 
-## Grup Tabanlı Auth (2026-04-26 — TAM GEÇİŞ TAMAMLANDI)
+## Grup Tabanlı Auth (2026-04-29 — CANLI KEYCLOAK İLE HİZALI)
 
 Auth sistemi rol tabanlıdan **grup tabanlıya** geçirildi.
 
-### Gruplar (11 adet)
-`Yayın Muhendisligi`, `Transmisyon`, `Booking`, `Yayın Planlama Mudurlugu`, `Sistem Muhendisligi`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `Studyo Sefligi`
+### Gruplar (12 adet)
+`Admin`, `Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`
+
+`Admin` ve `SystemEng` sistem genelinde tam yetkili kabul edilir. Grup adları Keycloak `groups` claim'i ile birebir aynı yazılmalıdır. Route içinde grup stringlerini hardcode etme; `@bcms/shared` içindeki `PERMISSIONS` ve `BCMS_GROUPS` kullanılmalıdır.
 
 ### Mimari
 - Keycloak: `oidc-group-membership-mapper` → JWT `groups` claim
@@ -72,19 +74,20 @@ Auth sistemi rol tabanlıdan **grup tabanlıya** geçirildi.
 ### Yetki Matrisi
 ```
 schedules.read:          [] (tüm authenticated)
-schedules.add:           ['Sistem Muhendisligi', 'Booking', 'Yayın Planlama Mudurlugu']
-schedules.edit:          ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon', 'Booking', 'Yayın Planlama Mudurlugu']
-schedules.technicalEdit: ['Sistem Muhendisligi', 'Transmisyon', 'Booking']
-schedules.duplicate:     ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon', 'Booking']
-schedules.delete:        ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon', 'Booking', 'Yayın Planlama Mudurlugu']
-incidents.read/write/delete: ['Sistem Muhendisligi']
-incidents.reportIssue:   ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon']
-ingest.read/write/delete:['Sistem Muhendisligi', 'Ingest']
+schedules.add:           ['SystemEng', 'Booking', 'YayınPlanlama'] + Admin bypass
+schedules.edit:          ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] + Admin bypass
+schedules.technicalEdit: ['SystemEng', 'Transmisyon', 'Booking'] + Admin bypass
+schedules.duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking'] + Admin bypass
+schedules.delete:        ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] + Admin bypass
+incidents.read/write/delete: ['SystemEng'] + Admin bypass
+incidents.reportIssue:   ['SystemEng', 'Tekyon', 'Transmisyon'] + Admin bypass
+ingest.read/write/delete:['SystemEng', 'Ingest'] + Admin bypass
 ingest.reportIssue:      [] (tüm authenticated)
 studioPlans.read:        [] (tüm authenticated)
-studioPlans.write/delete:['Sistem Muhendisligi', 'Studyo Sefligi']
-bookings.read/write/delete: ['Sistem Muhendisligi']
-weeklyShifts.read/write/delete: ['Sistem Muhendisligi']
+studioPlans.write/delete:['SystemEng', 'StudyoSefi'] + Admin bypass
+bookings.read/write/delete: [] route seviyesinde tüm authenticated; servis içinde grup izolasyonu uygulanır
+weeklyShifts.read/write: [] route seviyesinde tüm authenticated; servis içinde grup izolasyonu uygulanır
+weeklyShifts.admin:      ['Admin', 'SystemEng']
 ```
 
 ### Kullanıcı Yönetimi — KRİTİK
@@ -93,7 +96,7 @@ Keycloak Admin API kullanır. `docker-compose.yml` api servisinde `KEYCLOAK_ADMI
 ## Sorun Bildir — Canlı Yayın Planı (2026-04-26)
 
 Canlı Yayın Plan Listesi ekranında her satırda **Sorun Bildir** ikonu bulunur.
-- Görünürlük: `['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon']`
+- Görünürlük: `['SystemEng', 'Tekyon', 'Transmisyon']` + `Admin` bypass
 - Kayıt: `POST /api/v1/incidents/report` → `incidents` tablosuna `eventType='SCHEDULE_ISSUE'`, `severity='ERROR'`
 
 ## Ekip İş Takip (Booking / Work Tracking) — 2026-04-29
@@ -106,19 +109,22 @@ Canlı Yayın Plan Listesi ekranında her satırda **Sorun Bildir** ikonu bulunu
 - Sütunlar: İş Başlığı, Grup, Oluşturan, Durum, Tarih, Sorumlu, Aksiyonlar
 - Dialog: `BookingTaskDialogComponent` — İş Başlığı, Grup, Başlama/Tamamlanma Tarihi, Sorumlu, Durum, Detaylar, Rapor
 - API endpoint: `GET/POST/PATCH/DELETE /api/v1/bookings`
-- Yetki: Sadece `Sistem Muhendisligi`
+- Yetki: kullanıcı kendi grubunun işlerini görür ve iş oluşturabilir. Grup `supervisor` kullanıcısı sorumlu atayabilir; işi oluşturan veya sorumlu kişi silebilir. `Admin`/`SystemEng` tüm gruplarda tam yetkilidir.
 
 ## Haftalık Shift (Weekly Shift) — 2026-04-29
 
 - Modül: `apps/web/src/app/features/weekly-shift/`
 - Backend: `apps/api/src/modules/weekly-shifts/`
 - Tablolar: `weekly_shifts`, `weekly_shift_assignments`
-- Frontend: Haftalık tablo (Pzt-Paz), her hücrede vardiya tipi ve saat
-- Vardiya tipleri: `OFF_DAY`, `HOME`, `OUTSIDE`, `NIGHT`, `SIC_CER`, `HOLIDAY`, `ANNUAL`
+- Frontend: Haftalık tablo (Pzt-Paz), her hücrede izin veya saat bilgisi
+- İzin tipleri: `OFF_DAY`, `HOME`, `OUTSIDE`, `NIGHT`, `SIC_CER`, `HOLIDAY`, `ANNUAL`
 - UI: Inline editing, Excel/PDF export
 - Excel export: Zebra striping, renkli hücreler, dondurulmuş başlıklar
 - PDF export: Dark theme, renkli badge'ler
-- Bitiş saatleri: `06:15, 13:15, 15:00, 16:45, 20:00, 22:00, 23:45, Y.SONU`
+- Giriş saatleri: `05:00`, `06:00`, `07:45`, `10:00`, `12:00`, `14:45`, `16:30`, `23:30`
+- Çıkış saatleri: `06:15`, `13:15`, `15:00`, `16:45`, `20:00`, `22:00`, `23:45`
+- Kural: izin ve saat bilgisi aynı hücrede birlikte seçilemez.
+- Yetki: kullanıcı kendi grubunu görür; grup `supervisor` kullanıcısı kendi grubunu düzenler; `Admin`/`SystemEng` tüm gruplarda tam yetkilidir.
 - Tarih formatı: `gg.aa.yyyy`
 
 ## Stüdyo Planı

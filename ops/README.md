@@ -77,7 +77,7 @@ curl -fsS http://127.0.0.1:3000/health
 ## Adresler
 
 - Web: `http://172.28.204.133:4200`
-- API: `http://172.28.204.133:3000`
+- API: `http://127.0.0.1:3000` (host-local; LAN istemcileri web nginx `/api` proxy kullanır)
 - Swagger: `http://172.28.204.133:4200/docs`
 - RabbitMQ UI: `http://localhost:15673`
 - Grafana: `http://localhost:3001`
@@ -89,17 +89,17 @@ curl -fsS http://127.0.0.1:3000/health
 | Sekme / Özellik | Erişim |
 |---|---|
 | Yayın Planı (liste) | Tüm authenticated |
-| Sorun Bildir butonu | Sistem Muhendisligi, Yayın Muhendisligi, Transmisyon |
-| Raporlama | Tüm authenticated |
+| Yayın Planı aksiyonları | Admin, SystemEng ve ilgili operasyon grupları (`Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`) |
+| Sorun Bildir butonu | Admin, SystemEng, Tekyon, Transmisyon |
+| Raporlama | SystemEng |
 | Stüdyo Planı (görüntüle) | Tüm authenticated |
-| Stüdyo Planı (düzenle) | Sistem Muhendisligi, Studyo Sefligi |
-| Ekip İş Takip | Sistem Muhendisligi |
-| Haftalık Shift | Sistem Muhendisligi |
-| Ingest | Sistem Muhendisligi, Ingest |
-| MCR | Sistem Muhendisligi, MCR |
-| Rezervasyonlar | Sistem Muhendisligi |
-| Provys, Kanallar, Monitoring | Sistem Muhendisligi |
-| Kullanıcılar, Ayarlar | Sistem Muhendisligi |
+| Stüdyo Planı (düzenle) | Admin, SystemEng, StudyoSefi |
+| Ekip İş Takip | Her grup kendi işleri; Admin/SystemEng tüm gruplar |
+| Haftalık Shift | Her grup kendi shifti; supervisor kendi grubunu düzenler; Admin/SystemEng tüm gruplar |
+| Ingest | Admin, SystemEng, Ingest |
+| MCR | Admin, SystemEng, MCR |
+| Provys, Kanallar, Monitoring | Admin, SystemEng |
+| Kullanıcılar, Ayarlar | Admin, SystemEng |
 
 **Not:** `Günlük Yayın Raporu` sekmesi kaldırılmıştır. Raporlama `/schedules/reporting` üzerinden erişilir.
 
@@ -110,35 +110,36 @@ curl -fsS http://127.0.0.1:3000/health
   - `Canlı Yayın Planı` — tarih aralığı veya lig/hafta filtresi, Excel + PDF export
   - `Stüdyo Kullanım Raporu` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
   - `Ingest` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
-- `Stüdyo Planı` → `/studio-plan` (Studyo Sefligi+Sistem Muhendisligi düzenler; diğerleri liste görür)
-- `Ekip İş Takip` → `/bookings` (Sistem Muhendisligi)
-- `Haftalık Shift` → `/weekly-shift` (Sistem Muhendisligi)
-- `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab) — Sistem Muhendisligi + Ingest
-- `MCR` → `/mcr` — Sistem Muhendisligi + MCR
-- `Provys İçerik Kontrol` → `/provys-content-control` — Sistem Muhendisligi
-- `Kanallar` → `/channels` — Sistem Muhendisligi
-- `Monitoring` → `/monitoring` — Sistem Muhendisligi
-- `Rezervasyonlar` → `/bookings` — Sistem Muhendisligi
-- `Kullanıcılar` → `/users` — Sistem Muhendisligi
-- `Ayarlar` → `/settings` — Sistem Muhendisligi
+- `Stüdyo Planı` → `/studio-plan` (`StudyoSefi`, `SystemEng`, `Admin` düzenler; diğerleri liste görür)
+- `Ekip İş Takip` → `/bookings` (kullanıcı kendi grubu, `Admin`/`SystemEng` tüm gruplar)
+- `Haftalık Shift` → `/weekly-shift` (kullanıcı kendi grubu, supervisor düzenler, `Admin`/`SystemEng` tüm gruplar)
+- `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab) — `SystemEng`, `Admin`, `Ingest`
+- `MCR` → `/mcr` — `SystemEng`, `Admin`, `MCR`
+- `Provys İçerik Kontrol` → `/provys-content-control` — `SystemEng`, `Admin`
+- `Kanallar` → `/channels` — `SystemEng`, `Admin`
+- `Monitoring` → `/monitoring` — `SystemEng`, `Admin`
+- `Kullanıcılar` → `/users` — `SystemEng`, `Admin`
+- `Ayarlar` → `/settings` — `SystemEng`, `Admin`
 
 ## Ekip İş Takip (Booking / Work Tracking) — 2026-04-29
 
-- Konum: `Canlı Yayın Plan Listesi → Ekip İş Takip` sekmesi
+- Konum: `Ekip İş Takip` navigasyon öğesi
 - Tablo görünümü (mat-table): İş Başlığı, Grup, Oluşturan, Durum, Tarih, Sorumlu, Aksiyonlar
 - Durumlar: `PENDING` (Açık), `APPROVED` (Tamamlandı), `REJECTED` (Reddedildi), `CANCELLED` (İptal)
 - Sıralama: Açık (PENDING) işler yukarıda, sonra tarihe göre
 - Dialog: `BookingTaskDialogComponent` — İş Başlığı, Grup, Başlama/Tamamlanma, Sorumlu, Durum, Detaylar, Rapor
-- Yetki: Sadece `Sistem Muhendisligi`
+- Yetki: Her kullanıcı kendi grubunun işlerini görür ve iş oluşturabilir. Grup `supervisor` kullanıcısı sorumlu atayabilir; işi oluşturan veya sorumlu kişi silebilir. `Admin`/`SystemEng` tüm gruplarda tam yetkilidir.
 
 ## Haftalık Shift (Weekly Shift) — 2026-04-29
 
 - Konum: `Haftalık Shift` navigasyon öğesi
-- Haftalık tablo (Pzt-Paz), her hücrede vardiya tipi ve saat
-- Vardiya tipleri: `OFF_DAY`, `HOME`, `OUTSIDE`, `NIGHT`, `SIC_CER`, `HOLIDAY`, `ANNUAL`
+- Haftalık tablo (Pzt-Paz), her hücrede izin veya saat bilgisi
+- İzin tipleri: `OFF_DAY`, `HOME`, `OUTSIDE`, `NIGHT`, `SIC_CER`, `HOLIDAY`, `ANNUAL`
+- Giriş saatleri: `05:00`, `06:00`, `07:45`, `10:00`, `12:00`, `14:45`, `16:30`, `23:30`
 - Excel/PDF export: Renkli hücreler, zebra striping
-- Bitiş saatleri: `06:15, 13:15, 15:00, 16:45, 20:00, 22:00, 23:45, Y.SONU`
-- Yetki: Sadece `Sistem Muhendisligi`
+- Çıkış saatleri: `06:15`, `13:15`, `15:00`, `16:45`, `20:00`, `22:00`, `23:45`
+- Kural: izin ve saat bilgisi aynı hücrede birlikte seçilemez.
+- Yetki: kullanıcı kendi grubunu görür; grup `supervisor` kullanıcısı kendi grubunu düzenler; `Admin`/`SystemEng` tüm gruplarda tam yetkilidir.
 
 ## Ingest Operasyon Mimarisi
 
@@ -148,6 +149,7 @@ curl -fsS http://127.0.0.1:3000/health
 - Port çakışması backend'de reddedilir.
 - Saat düzenleme: tüm kaynak tipler (live/studio/ingest-plan), 5 dk adımlı.
 - Burst polling: 6×10 sn.
+- Port Görünümü tam ekran modunda tüm viewport'a yerleşir; başlık sabit, pano alanı kalan yüksekliği kullanır.
 
 ## OPTA SMB Watcher
 

@@ -2,7 +2,7 @@
 
 Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana geliştirici rehberidir. Günlük operasyonlar ve bağlantı bilgileri için masaüstündeki diğer belgelere başvurun.
 
-> **Son güncelleme**: 2026-04-29 — Ekip İş Takip ve Haftalık Shift modülleri eklendi. Worker health check sorunu not edildi.
+> **Son güncelleme**: 2026-04-29 — Grup adları canlı Keycloak ile hizalandı, Admin grubu eklendi, tam ekran modları ve ekip bazlı iş/shift mimarisi güncellendi.
 
 ## Mimari Kurallar
 
@@ -82,8 +82,8 @@ docker compose down
 
 Adresler:
 - Web: `http://172.28.204.133:4200`
-- API: `http://172.28.204.133:3000`
-- Swagger: `http://172.28.204.133:4200/docs` veya `http://172.28.204.133:3000/docs`
+- API: `http://127.0.0.1:3000` (host-local; LAN erişimi nginx `/api` proxy üzerinden)
+- Swagger: `http://172.28.204.133:4200/docs`
 
 ## Geliştirme Akışı
 
@@ -208,29 +208,29 @@ docker compose up -d --build web
 
 ### Grup Tabanlı Yetkilendirme (RBAC)
 
-11 grup: `Yayın Muhendisligi`, `Transmisyon`, `Booking`, `Yayın Planlama Mudurlugu`, `Sistem Muhendisligi`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `Studyo Sefligi`
+12 grup: `Admin`, `Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`
 
-`Sistem Muhendisligi` her zaman tüm ekranlara tam erişimlidir.
+`Admin` ve `SystemEng` sistem genelinde tam yetkili kabul edilir. Grup adları Keycloak'taki `groups` claim değeriyle birebir aynı olmalıdır; route içinde eski veya farklı yazılmış grup string'i kullanılmamalıdır.
 
 | Sekme / Özellik | Erişim |
 |---|---|
 | Yayın Planı listesi | Tüm authenticated |
-| Yeni Ekle | Sistem Muhendisligi, Booking, Yayın Planlama Mudurlugu |
-| Düzenle | Sistem Muhendisligi, Yayın Muhendisligi, Transmisyon, Booking, Yayın Planlama Mudurlugu |
-| Teknik Detay | Sistem Muhendisligi, Transmisyon, Booking |
-| Çoğaltma | Sistem Muhendisligi, Yayın Muhendisligi, Transmisyon, Booking |
-| Silme | Sistem Muhendisligi, Yayın Muhendisligi, Transmisyon, Booking, Yayın Planlama Mudurlugu |
-| **Sorun Bildir** | **Sistem Muhendisligi, Yayın Muhendisligi, Transmisyon** |
+| Tam ekran | Tüm authenticated |
+| Yeni Ekle | Admin, SystemEng, Booking, YayınPlanlama |
+| Düzenle | Admin, SystemEng, Tekyon, Transmisyon, Booking, YayınPlanlama |
+| Teknik Detay | Admin, SystemEng, Transmisyon, Booking |
+| Çoğaltma | Admin, SystemEng, Tekyon, Transmisyon, Booking |
+| Silme | Admin, SystemEng, Tekyon, Transmisyon, Booking, YayınPlanlama |
+| **Sorun Bildir** | **Admin, SystemEng, Tekyon, Transmisyon** |
 | Stüdyo Planı görüntüle | Tüm authenticated |
-| Stüdyo Planı düzenle | Sistem Muhendisligi, Studyo Sefligi |
-| **Ekip İş Takip** | **Sistem Muhendisligi** |
-| **Haftalık Shift** | **Sistem Muhendisligi** |
-| Rezervasyonlar | Sistem Muhendisligi |
-| Ingest | Sistem Muhendisligi, Ingest |
-| MCR | Sistem Muhendisligi, MCR |
-| Kullanıcılar | Sistem Muhendisligi |
-| Ayarlar | Sistem Muhendisligi |
-| Provys, Kanallar, Monitoring | Sistem Muhendisligi |
+| Stüdyo Planı düzenle | Admin, SystemEng, StudyoSefi |
+| **Ekip İş Takip** | **Tüm gruplar kendi grubunun işlerini görür; Admin/SystemEng tüm grupları görür** |
+| **Haftalık Shift** | **Tüm gruplar kendi grubunun shiftini görür; supervisor kendi grubunu düzenler; Admin/SystemEng tümünü düzenler** |
+| Ingest | Admin, SystemEng, Ingest |
+| MCR | Admin, SystemEng, MCR |
+| Kullanıcılar | Admin, SystemEng |
+| Ayarlar | Admin, SystemEng |
+| Provys, Kanallar, Monitoring | Admin, SystemEng |
 
 Yetki matrisi: `packages/shared/src/types/rbac.ts` → `PERMISSIONS` sabiti.
 API: `app.requireGroup(...groups)`
@@ -238,7 +238,7 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 
 ### Ekip İş Takip (Booking / Work Tracking) — 2026-04-29
 
-- Konum: `Canlı Yayın Plan Listesi → Ekip İş Takip` sekmesi
+- Konum: `Ekip İş Takip` navigasyon öğesi
 - Modül: `apps/web/src/app/features/bookings/`
 - Backend: `apps/api/src/modules/bookings/`
 - Tablo: `bookings`
@@ -247,6 +247,10 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 - Sıralama: PENDING işler yukarıda, sonra `startDate`'e göre
 - Dialog: `BookingTaskDialogComponent` — İş Başlığı, Grup, Başlama/Tamamlanma Tarihi, Sorumlu, Durum, Detaylar, Rapor
 - API: `GET/POST/PATCH/DELETE /api/v1/bookings`
+- Görünürlük: kullanıcı sadece kendi grubunun işlerini görür. `Admin`/`SystemEng` tüm grupları görür.
+- İş oluşturma: tüm authenticated kullanıcılar kendi grubu için iş başlığı oluşturabilir.
+- Sorumlu seçme: grup `supervisor` kullanıcısı veya `Admin`/`SystemEng` yapabilir.
+- Silme: işi oluşturan, atanan sorumlu, grup supervisor'ı veya `Admin`/`SystemEng`.
 
 ### Haftalık Shift (Weekly Shift) — 2026-04-29
 
@@ -254,15 +258,19 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 - Modül: `apps/web/src/app/features/weekly-shift/`
 - Backend: `apps/api/src/modules/weekly-shifts/`
 - Tablolar: `weekly_shifts`, `weekly_shift_assignments`
-- Haftalık tablo (Pzt-Paz), her hücrede vardiya tipi ve saat
-- Vardiya tipleri: `OFF_DAY`, `HOME`, `OUTSIDE`, `NIGHT`, `SIC_CER`, `HOLIDAY`, `ANNUAL`
+- Haftalık tablo (Pzt-Paz), her hücrede izin veya giriş/çıkış saati
+- İzin tipleri: `OFF_DAY`, `HOME`, `OUTSIDE`, `NIGHT`, `SIC_CER`, `HOLIDAY`, `ANNUAL`
+- Giriş saatleri: `05:00`, `06:00`, `07:45`, `10:00`, `12:00`, `14:45`, `16:30`, `23:30`
 - Excel/PDF export: Renkli hücreler, zebra striping
-- Bitiş saatleri: `06:15, 13:15, 15:00, 16:45, 20:00, 22:00, 23:45, Y.SONU`
+- Çıkış saatleri: `06:15`, `13:15`, `15:00`, `16:45`, `20:00`, `22:00`, `23:45`
+- Kural: bir hücrede ya izin ya saat bilgisi olur; ikisi aynı anda seçilemez.
+- Görünürlük: kullanıcı sadece kendi grubunun shiftini görür. `Admin`/`SystemEng` tüm grupları görür.
+- Düzenleme: grup `supervisor` kullanıcısı kendi grubunu, `Admin`/`SystemEng` tüm grupları düzenler.
 - API: `GET /api/v1/weekly-shifts`, `PUT /api/v1/weekly-shifts/:weekStart`
 
 ### Stüdyo Planı
 
-- Studyo Sefligi ve Sistem Muhendisligi tam yetkili; diğerleri yalnızca liste görünümü.
+- `StudyoSefi`, `SystemEng` ve `Admin` tam yetkili; diğerleri yalnızca liste görünümü.
 - **Liste görünümünde geçmiş günler gizlenir**.
 - 5 stüdyo kolonu: Stüdyo 1-4 + beIN Gurme.
 - Program/renk backend katalogdan.
@@ -285,6 +293,7 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 - Port atama kalıcılığı: `ingest_plan_items.recording_port`.
 - Saat düzenleme: 5 dk adımlı.
 - Burst polling: 6×10 sn.
+- Port Görünümü tam ekran modunda `100vh` flex yerleşim kullanır; tablo alanı ekranın kalan yüksekliğini doldurur.
 
 ## Yerel Altyapı (Docker)
 

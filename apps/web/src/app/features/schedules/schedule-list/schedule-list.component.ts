@@ -1,5 +1,5 @@
 import {
-  Component, OnDestroy, OnInit, signal, computed, inject,
+  Component, HostListener, OnDestroy, OnInit, signal, computed, inject,
 } from '@angular/core';
 import { KeycloakService } from 'keycloak-angular';
 import { environment } from '../../../../environments/environment';
@@ -38,6 +38,7 @@ const SCHEDULE_PERMS = {
   reportIssue:   ['SystemEng', 'Tekyon', 'Transmisyon'],
 };
 function hasGroup(userGroups: string[], required: string[]): boolean {
+  if (userGroups.includes('Admin')) return true;
   return required.length === 0 || required.some((g) => userGroups.includes(g));
 }
 
@@ -1524,7 +1525,7 @@ export class ReportIssueDialogComponent {
     MatDividerModule,
   ],
   template: `
-    <div class="page-container">
+    <div id="live-plan-fullscreen" class="page-container">
 
       <!-- Üst Bar -->
       <div class="top-bar">
@@ -1540,6 +1541,10 @@ export class ReportIssueDialogComponent {
         </div>
 
         <div class="top-actions">
+          <button mat-stroked-button (click)="toggleFullscreen()" matTooltip="Tam ekran">
+            <mat-icon>{{ fullscreenActive() ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon>
+            {{ fullscreenActive() ? 'Tam Ekrandan Çık' : 'Tam Ekran' }}
+          </button>
           @if (canAdd()) {
             <button mat-raised-button color="primary" (click)="openAddDialog()">
               <mat-icon>add</mat-icon> Yeni Ekle
@@ -1658,6 +1663,30 @@ export class ReportIssueDialogComponent {
     :host { display:block; }
 
     .page-container { padding:0; }
+    #live-plan-fullscreen:fullscreen {
+      display:flex;
+      flex-direction:column;
+      height:100vh;
+      background:#121212;
+      overflow:hidden;
+      zoom:100%;
+    }
+    #live-plan-fullscreen:fullscreen .top-bar,
+    #live-plan-fullscreen:fullscreen .table-footer {
+      flex:0 0 auto;
+    }
+    #live-plan-fullscreen:fullscreen .table-wrapper {
+      flex:1 1 auto;
+      height:auto;
+      min-height:0;
+      overflow:auto;
+    }
+    #live-plan-fullscreen:fullscreen .broadcast-table thead th {
+      position:sticky;
+      top:0;
+      z-index:5;
+      background:#8b0000;
+    }
 
     /* ── Üst bar ── */
     .top-bar {
@@ -1677,7 +1706,7 @@ export class ReportIssueDialogComponent {
     }
     .date-input::-webkit-calendar-picker-indicator { filter:invert(1); cursor:pointer; }
     .today-btn { margin-left:4px; font-size:0.8rem; min-width:60px; }
-    .top-actions { margin-left:auto; }
+    .top-actions { margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
     /* ── Tablo ── */
     .table-wrapper {
@@ -1748,6 +1777,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   loading           = signal(false);
   currentTime       = signal(Date.now());
   selectedDate      = new Date().toISOString().slice(0, 10);
+  fullscreenActive  = signal(false);
   private _userGroups = signal<string[]>([]);
 
   canAdd           = computed(() => hasGroup(this._userGroups(), SCHEDULE_PERMS.add));
@@ -1767,7 +1797,8 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
       this._userGroups.set(['SystemEng']);
     } else {
       const parsed = this.keycloak.getKeycloakInstance().tokenParsed as any;
-      this._userGroups.set(parsed?.groups ?? []);
+      const groups: string[] = parsed?.groups ?? [];
+      this._userGroups.set(groups.includes('Admin') ? Array.from(new Set([...groups, 'SystemEng'])) : groups);
     }
     this.api.get<Channel[]>('/channels').subscribe({
       next: (res) => this.channels.set(Array.isArray(res) ? res : []),
@@ -1777,6 +1808,19 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     if (this.clockTimer) clearInterval(this.clockTimer);
+  }
+
+  @HostListener('document:fullscreenchange')
+  onFullscreenChange() {
+    this.fullscreenActive.set(document.fullscreenElement?.id === 'live-plan-fullscreen');
+  }
+
+  async toggleFullscreen() {
+    if (document.fullscreenElement?.id === 'live-plan-fullscreen') {
+      await document.exitFullscreen();
+      return;
+    }
+    await document.getElementById('live-plan-fullscreen')?.requestFullscreen();
   }
 
   scheduleLeagueName(s: Schedule) {
