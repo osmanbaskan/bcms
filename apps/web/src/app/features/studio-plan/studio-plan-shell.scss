@@ -13,6 +13,13 @@
   flex-wrap: wrap;
 }
 
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 h1 {
   margin: 0;
   font-size: 28px;
@@ -29,15 +36,25 @@ app-studio-plan-toolbar {
 }
 
 .plan-shell {
-  max-height: calc(100vh - 260px);
+  height: calc(125vh - 260px);
+  min-height: 520px;
   overflow: auto;
   border: 1px solid #111827;
   background: #fff;
   position: relative;
 }
 
+.plan-shell:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  min-height: 0;
+  border: 0;
+  zoom: 100%;
+}
+
 .print-title {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   min-width: max-content;
@@ -47,7 +64,31 @@ app-studio-plan-toolbar {
   letter-spacing: 0.02em;
 }
 
+.fullscreen-inline-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 4px;
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+  cursor: pointer;
+}
+
+.fullscreen-inline-button mat-icon {
+  font-size: 19px;
+  width: 19px;
+  height: 19px;
+}
+
 @media print {
+  @page {
+    size: A3 landscape;
+    margin: 5mm;
+  }
+
   body * {
     visibility: hidden;
   }
@@ -65,7 +106,8 @@ app-studio-plan-toolbar {
   }
 
   .page-header,
-  app-studio-plan-toolbar {
+  app-studio-plan-toolbar,
+  .no-print {
     display: none !important;
   }
 }

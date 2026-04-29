@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, OnInit, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { KeycloakService } from 'keycloak-angular';
@@ -129,6 +129,7 @@ export class StudioPlanComponent implements OnInit {
   readonly canEdit = computed(() => {
     const parsed = this.keycloak.getKeycloakInstance().tokenParsed as { groups?: string[] } | undefined;
     const userGroups: string[] = parsed?.groups ?? [];
+    if (userGroups.includes('Admin')) return true;
     return STUDIO_EDIT_GROUPS.some((g) => userGroups.includes(g));
   });
 
@@ -146,6 +147,7 @@ export class StudioPlanComponent implements OnInit {
   readonly saving = signal(false);
   readonly saveError = signal('');
   readonly lastSavedAt = signal('');
+  readonly fullscreenActive = signal(false);
 
   weekStart = DEFAULT_START_DATE;
   selectedDay = DEFAULT_START_DATE;
@@ -307,6 +309,19 @@ export class StudioPlanComponent implements OnInit {
 
   exportPlan(): void {
     window.print();
+  }
+
+  @HostListener('document:fullscreenchange')
+  onFullscreenChange(): void {
+    this.fullscreenActive.set(document.fullscreenElement?.id === 'studio-plan-export');
+  }
+
+  async toggleFullscreen(): Promise<void> {
+    if (document.fullscreenElement?.id === 'studio-plan-export') {
+      await document.exitFullscreen();
+      return;
+    }
+    await document.getElementById('studio-plan-export')?.requestFullscreen();
   }
 
   private cellKey(day: string, studio: string, time: string): string {

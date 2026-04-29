@@ -1,0 +1,57 @@
+# Codex / GitHub Copilot Instructions for BCMS
+
+## Project
+BCMS = Broadcast Content Management System. TypeScript monorepo: Fastify 5.8.5 backend + Angular 21.2.8 frontend. 10 Docker services.
+
+## CRITICAL RULES
+
+### 1. Prisma Audit Extension (NEVER bypass)
+All writes MUST go through `apps/api/src/plugins/audit.ts` Prisma `$extends`. Never use raw SQL for INSERT/UPDATE/DELETE.
+
+### 2. Group-Based Auth (NEVER role-based)
+Keycloak `groups` claim. 11 groups: Tekyon, Transmisyon, Booking, YayınPlanlama, SystemEng, Ingest, Kurgu, MCR, PCR, Ses, StudyoSefi. SystemEng = universal access. Always use `PERMISSIONS` map from `@bcms/shared`. Never hardcode group strings.
+
+### 3. Optimistic Locking (Schedule & Booking ONLY)
+`version` field + `If-Match` header. Use `$transaction` + `updateMany` with version in WHERE clause. Increment version. If count !== 1 → 412. See `schedule.service.ts`.
+
+### 4. Zod Validation (ALL routes)
+Validate every input with Zod before Prisma. Global handler: `ZodError` → 400.
+
+### 5. API/Worker Split (HARD)
+api container = HTTP only (`BCMS_BACKGROUND_SERVICES=none`). worker container = background services. Never merge.
+
+## ERROR HANDLING
+- Zod → 400
+- Prisma P2025 → 404
+- Prisma P2002/P2003 → 409
+- Version conflict → 412
+- Auth → 401/403
+- Prod unknown → 500 (hide stack)
+
+## FRONTEND
+- Angular 21 standalone + Signals-first
+- `signal()` over `BehaviorSubject`
+- Components < 300 lines
+- `ngModel` with `[ngModelOptions]="{standalone:true}"`
+- ApiService.patch(body, version) adds `If-Match` header
+
+## SECURITY
+- `SKIP_AUTH=true` blocked in prod (double guard)
+- JWT RS256 + JWKS cache, validate iss + aud/azp
+- Rate limit 300/min. Exempt via `config: { rateLimit: false }`
+- Never log passwords/tokens
+
+## STYLE
+- Composition > inheritance
+- SRP
+- Functions < 30 lines
+- Early returns
+- Comments explain WHY
+- No TODO/FIXME without docs
+- No magic numbers without constants
+
+## REFERENCES
+- Backend: `.agents/skills/deep-code-engineer/references/bcms-patterns.md`
+- Frontend: `.agents/skills/deep-code-engineer/references/bcms-frontend.md`
+- Security: `.agents/skills/deep-code-engineer/references/bcms-security.md`
+- Architecture: `.agents/skills/deep-code-engineer/references/bcms-architecture.md`

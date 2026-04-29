@@ -132,33 +132,34 @@
 
 @media print {
   .plan-grid {
-    --cell-width: 32px;
-    --time-width: 30px;
-    font-size: 5px;
+    --cell-width: 40px;
+    --time-width: 36px;
+    font-size: 6.5px;
   }
 
   .day-header {
-    min-height: 22px;
+    min-height: 26px;
   }
 
   .studio-header {
-    min-height: 26px;
-    font-size: 4.5px;
+    min-height: 30px;
+    font-size: 5.5px;
     writing-mode: vertical-rl;
     transform: rotate(180deg);
   }
 
   .time-cell,
   .slot-cell {
-    min-height: 16px;
+    min-height: 20px;
   }
 
   .slot-cell {
     appearance: none;
+    padding: 1px 2px;
   }
 
   .slot-cell span {
-    min-height: calc(var(--run-slots, 1) * 16px - 4px);
-    font-size: calc(var(--program-font-size, 11px) * 0.55);
+    min-height: calc(var(--run-slots, 1) * 20px - 4px);
+    font-size: calc(var(--program-font-size, 11px) * 0.6);
   }
 }

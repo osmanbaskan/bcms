@@ -29,6 +29,7 @@ import { optaSyncRoutes } from './modules/opta/opta.sync.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
 import { broadcastTypeRoutes } from './modules/broadcast-types/broadcast-type.routes.js';
 import { studioPlanRoutes } from './modules/studio-plans/studio-plan.routes.js';
+import { weeklyShiftRoutes } from './modules/weekly-shifts/weekly-shift.routes.js';
 import { startNotificationConsumer } from './modules/notifications/notification.consumer.js';
 import { startIngestWorker } from './modules/ingest/ingest.worker.js';
 import { startIngestWatcher } from './modules/ingest/ingest.watcher.js';
@@ -280,6 +281,7 @@ export async function buildApp() {
   await app.register(usersRoutes,          { prefix: '/api/v1/users' });
   await app.register(broadcastTypeRoutes,  { prefix: '/api/v1/broadcast-types' });
   await app.register(studioPlanRoutes,     { prefix: '/api/v1/studio-plans' });
+  await app.register(weeklyShiftRoutes,    { prefix: '/api/v1/weekly-shifts' });
 
   return app;
 }

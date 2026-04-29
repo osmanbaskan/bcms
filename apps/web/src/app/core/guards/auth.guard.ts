@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { ActivatedRouteSnapshot, RouterStateSnapshot, Router, UrlTree } from '@angular/router';
 import { KeycloakAuthGuard, KeycloakService } from 'keycloak-angular';
+import { getPublicAppOrigin } from '../auth/public-origin';
 
 @Injectable({ providedIn: 'root' })
 export class AuthGuard extends KeycloakAuthGuard {
@@ -20,7 +21,7 @@ export class AuthGuard extends KeycloakAuthGuard {
 
   async isAccessAllowed(route: ActivatedRouteSnapshot): Promise<boolean | UrlTree> {
     if (!this.authenticated) {
-      await this.keycloak.login({ redirectUri: window.location.href });
+      await this.keycloak.login({ redirectUri: new URL(window.location.pathname + window.location.search + window.location.hash, getPublicAppOrigin()).href });
       return false;
     }
 
@@ -29,6 +30,7 @@ export class AuthGuard extends KeycloakAuthGuard {
 
     const tokenParsed = this.keycloak.getKeycloakInstance().tokenParsed as any;
     const userGroups: string[] = tokenParsed?.groups ?? [];
+    if (userGroups.includes('Admin')) return true;
     const hasGroup = requiredGroups.some((g) => userGroups.includes(g));
     if (!hasGroup) return this.router.parseUrl('/schedules');
 

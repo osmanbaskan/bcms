@@ -32,6 +32,10 @@ type TokenClaims = JwtPayload & {
   azp?: string;
 };
 
+function isAdminPrincipal(claims: Pick<JwtPayload, 'groups'>): boolean {
+  return claims.groups?.includes('Admin') ?? false;
+}
+
 function hasAudience(claims: TokenClaims, clientIds: string[]): boolean {
   const aud = claims.aud;
   return clientIds.some((clientId) => (
@@ -94,6 +98,9 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
       if (!allowedIssuers.includes(claims.iss ?? '') || !hasAudience(claims, clientIds)) {
         throw new Error('Invalid token issuer or client');
       }
+      if (isAdminPrincipal(claims)) {
+        claims.groups = Array.from(new Set([...(claims.groups ?? []), 'SystemEng']));
+      }
     } catch {
       throw Object.assign(new Error('Invalid or expired token'), { statusCode: 401 });
     }
@@ -102,6 +109,7 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
   app.decorate('requireGroup', (...groups: BcmsGroup[]) => async (request: FastifyRequest) => {
     await app.authenticate(request);
     if (groups.length === 0) return; // no group restriction — any authenticated user
+    if (isAdminPrincipal(request.user as JwtPayload)) return;
     const userGroups: string[] = (request.user as JwtPayload)?.groups ?? [];
     const hasGroup = groups.some((g) => userGroups.includes(g));
     if (!hasGroup) {

@@ -48,7 +48,7 @@ import type { Schedule, Incident } from '@bcms/shared';
         </mat-card>
 
         <mat-tab-group>
-          <mat-tab label="Rezervasyonlar ({{ schedule()!.bookings?.length ?? 0 }})">
+          <mat-tab label="Ekip iş takip ({{ schedule()!.bookings?.length ?? 0 }})">
             <div class="tab-content">
               @if (schedule()!.bookings?.length) {
                 <mat-table [dataSource]="schedule()!.bookings!">

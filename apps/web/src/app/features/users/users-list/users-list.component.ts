@@ -23,15 +23,17 @@ interface KcUser {
   firstName: string;
   lastName:  string;
   enabled:   boolean;
+  userType:  'staff' | 'supervisor' | 'admin';
   groups:    string[];
 }
 
 const ALL_GROUPS = [
-  'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama', 'SystemEng',
+  'Admin', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama', 'SystemEng',
   'Ingest', 'Kurgu', 'MCR', 'PCR', 'Ses', 'StudyoSefi',
 ] as const;
 
 const GROUP_COLORS: Record<string, string> = {
+  Admin:         '#111827',
   Tekyon:        '#1565c0',
   Transmisyon:   '#6a1b9a',
   Booking:       '#2e7d32',
@@ -45,19 +47,58 @@ const GROUP_COLORS: Record<string, string> = {
   StudyoSefi:    '#37474f',
 };
 
-// ── Grup Düzenleme Dialog ─────────────────────────────────────────────────────
+const USER_TYPE_LABELS: Record<KcUser['userType'], string> = {
+  admin:      'Admin',
+  staff:      'Personel',
+  supervisor: 'Sorumlu',
+};
+
+// ── Kullanıcı Düzenleme Dialog ────────────────────────────────────────────────
 @Component({
-  selector: 'app-user-group-dialog',
+  selector: 'app-user-edit-dialog',
   standalone: true,
   imports: [CommonModule, FormsModule, MatDialogModule, MatButtonModule,
-            MatCheckboxModule, MatProgressSpinnerModule],
+            MatCheckboxModule, MatProgressSpinnerModule, MatFormFieldModule,
+            MatInputModule, MatSelectModule, MatSlideToggleModule],
   template: `
-    <h2 mat-dialog-title>Grupları Düzenle — {{ data.user.username }}</h2>
-    <mat-dialog-content style="min-width:320px">
-      <p style="color:#aaa;font-size:12px;margin:0 0 12px">
-        {{ data.user.email }}
-      </p>
-      <div style="display:flex;flex-direction:column;gap:8px">
+    <h2 mat-dialog-title>Düzenle — {{ data.user.username }}</h2>
+    <mat-dialog-content style="min-width:420px">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;gap:12px">
+          <mat-form-field style="flex:1">
+            <mat-label>Ad</mat-label>
+            <input matInput [(ngModel)]="f.firstName" name="firstName">
+          </mat-form-field>
+          <mat-form-field style="flex:1">
+            <mat-label>Soyad</mat-label>
+            <input matInput [(ngModel)]="f.lastName" name="lastName">
+          </mat-form-field>
+        </div>
+        <mat-form-field>
+          <mat-label>Kullanıcı Adı *</mat-label>
+          <input matInput [(ngModel)]="f.username" name="username">
+        </mat-form-field>
+        <mat-form-field>
+          <mat-label>E-posta *</mat-label>
+          <input matInput type="email" [(ngModel)]="f.email" name="email">
+        </mat-form-field>
+        <mat-form-field>
+          <mat-label>Personel Tipi</mat-label>
+          <mat-select [(ngModel)]="f.userType" name="userType">
+            <mat-option value="staff">Personel</mat-option>
+            <mat-option value="supervisor">Sorumlu</mat-option>
+            <mat-option value="admin">Admin</mat-option>
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field>
+          <mat-label>Yeni Geçici Şifre</mat-label>
+          <input matInput type="password" [(ngModel)]="password" name="password">
+        </mat-form-field>
+        <mat-slide-toggle [(ngModel)]="f.enabled" name="enabled">
+          {{ f.enabled ? 'Aktif' : 'Pasif' }}
+        </mat-slide-toggle>
+        <p style="font-size:12px;color:#aaa;margin:12px 0 4px">Gruplar</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
         @for (group of allGroups; track group) {
           <mat-checkbox
             [checked]="selected.has(group)"
@@ -65,35 +106,61 @@ const GROUP_COLORS: Record<string, string> = {
             {{ group }}
           </mat-checkbox>
         }
+        </div>
       </div>
+      @if (errorMsg()) {
+        <p style="color:#f44336;font-size:12px;margin:8px 0 0">{{ errorMsg() }}</p>
+      }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>İptal</button>
       <button mat-raised-button color="primary"
-              [disabled]="saving()"
+              [disabled]="saving() || !canSave()"
               (click)="save()">
         {{ saving() ? 'Kaydediliyor…' : 'Kaydet' }}
       </button>
     </mat-dialog-actions>
   `,
 })
-export class UserGroupDialogComponent {
+export class UserEditDialogComponent {
   data      = inject<{ user: KcUser }>(MAT_DIALOG_DATA);
-  dialogRef = inject(MatDialogRef<UserGroupDialogComponent>);
+  dialogRef = inject(MatDialogRef<UserEditDialogComponent>);
   api       = inject(ApiService);
   saving    = signal(false);
+  errorMsg  = signal('');
   allGroups = ALL_GROUPS;
   selected  = new Set(this.data.user.groups);
+  password  = '';
+  f = {
+    username:  this.data.user.username,
+    email:     this.data.user.email,
+    firstName: this.data.user.firstName,
+    lastName:  this.data.user.lastName,
+    enabled:   this.data.user.enabled,
+    userType:  this.data.user.userType ?? 'staff',
+  };
+
+  canSave = () => !!(this.f.username && this.f.email);
 
   toggle(group: string, checked: boolean) {
     checked ? this.selected.add(group) : this.selected.delete(group);
   }
 
   save() {
+    if (!this.canSave()) return;
     this.saving.set(true);
-    this.api.put(`/users/${this.data.user.id}/groups`, { groups: [...this.selected] }).subscribe({
+    this.errorMsg.set('');
+    const payload = {
+      ...this.f,
+      groups: [...this.selected],
+      ...(this.password.trim() ? { password: this.password.trim() } : {}),
+    };
+    this.api.put(`/users/${this.data.user.id}`, payload).subscribe({
       next:  () => { this.saving.set(false); this.dialogRef.close(true); },
-      error: () => { this.saving.set(false); },
+      error: (err) => {
+        this.saving.set(false);
+        this.errorMsg.set(err?.error?.message ?? err?.message ?? 'Kullanıcı güncellenemedi');
+      },
     });
   }
 }
@@ -103,7 +170,7 @@ export class UserGroupDialogComponent {
   selector: 'app-new-user-dialog',
   standalone: true,
   imports: [CommonModule, FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
-            MatInputModule, MatCheckboxModule, MatProgressSpinnerModule],
+            MatInputModule, MatSelectModule, MatCheckboxModule, MatProgressSpinnerModule],
   template: `
     <h2 mat-dialog-title>Yeni Kullanıcı</h2>
     <mat-dialog-content style="min-width:360px">
@@ -129,6 +196,14 @@ export class UserGroupDialogComponent {
         <mat-form-field>
           <mat-label>Geçici Şifre *</mat-label>
           <input matInput type="password" [(ngModel)]="f.password" name="pw">
+        </mat-form-field>
+        <mat-form-field>
+          <mat-label>Personel Tipi</mat-label>
+          <mat-select [(ngModel)]="f.userType" name="ut">
+            <mat-option value="staff">Personel</mat-option>
+            <mat-option value="supervisor">Sorumlu</mat-option>
+            <mat-option value="admin">Admin</mat-option>
+          </mat-select>
         </mat-form-field>
         <p style="font-size:12px;color:#aaa;margin:4px 0">Gruplar</p>
         <div style="display:flex;flex-wrap:wrap;gap:8px">
@@ -163,7 +238,14 @@ export class NewUserDialogComponent {
   errorMsg       = signal('');
   allGroups      = ALL_GROUPS;
   selectedGroups = new Set<string>();
-  f = { username: '', email: '', firstName: '', lastName: '', password: '' };
+  f: {
+    username: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    password: string;
+    userType: KcUser['userType'];
+  } = { username: '', email: '', firstName: '', lastName: '', password: '', userType: 'staff' };
 
   canSave = () => !!(this.f.username && this.f.email && this.f.password);
 
@@ -225,10 +307,14 @@ export class NewUserDialogComponent {
           </td>
         </ng-container>
 
-        <!-- E-posta -->
-        <ng-container matColumnDef="email">
-          <th mat-header-cell *matHeaderCellDef>E-posta</th>
-          <td mat-cell *matCellDef="let u">{{ u.email }}</td>
+        <!-- Personel Tipi -->
+        <ng-container matColumnDef="userType">
+          <th mat-header-cell *matHeaderCellDef>Personel Tipi</th>
+          <td mat-cell *matCellDef="let u">
+            <span class="type-chip" [class.supervisor]="u.userType === 'supervisor'" [class.admin]="u.userType === 'admin'">
+              {{ userTypeLabel(u.userType) }}
+            </span>
+          </td>
         </ng-container>
 
         <!-- Gruplar -->
@@ -264,7 +350,7 @@ export class NewUserDialogComponent {
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
           <td mat-cell *matCellDef="let u">
-            <button mat-icon-button matTooltip="Grupları düzenle" (click)="openGroupEdit(u)">
+            <button mat-icon-button matTooltip="Düzenle" (click)="openEdit(u)">
               <mat-icon>manage_accounts</mat-icon>
             </button>
           </td>
@@ -288,6 +374,13 @@ export class NewUserDialogComponent {
       font-size:10px; padding:2px 8px; border-radius:10px;
       color:#fff; font-weight:600; white-space:nowrap;
     }
+    .type-chip {
+      display:inline-flex; align-items:center; min-width:72px; justify-content:center;
+      font-size:11px; padding:3px 10px; border-radius:10px;
+      background:#263238; color:#e0f2f1; font-weight:600;
+    }
+    .type-chip.supervisor { background:#4a148c; color:#f3e5f5; }
+    .type-chip.admin { background:#111827; color:#fff; }
     .no-group { color:#555; font-size:12px; }
     .disabled-row { opacity:.45; }
   `],
@@ -299,9 +392,10 @@ export class UsersListComponent implements OnInit {
 
   users   = signal<KcUser[]>([]);
   loading = signal(true);
-  cols    = ['username', 'email', 'groups', 'enabled', 'actions'];
+  cols    = ['username', 'userType', 'groups', 'enabled', 'actions'];
 
   groupColor = (g: string) => GROUP_COLORS[g] ?? '#555';
+  userTypeLabel = (type: KcUser['userType']) => USER_TYPE_LABELS[type] ?? 'Personel';
 
   ngOnInit() { this.load(); }
 
@@ -313,10 +407,10 @@ export class UsersListComponent implements OnInit {
     });
   }
 
-  openGroupEdit(user: KcUser) {
-    this.dialog.open(UserGroupDialogComponent, { data: { user }, width: '360px' })
+  openEdit(user: KcUser) {
+    this.dialog.open(UserEditDialogComponent, { data: { user }, width: '480px' })
       .afterClosed().subscribe((ok) => {
-        if (ok) { this.snack.open('Gruplar güncellendi', 'Kapat', { duration: 3000 }); this.load(); }
+        if (ok) { this.snack.open('Kullanıcı güncellendi', 'Kapat', { duration: 3000 }); this.load(); }
       });
   }
 

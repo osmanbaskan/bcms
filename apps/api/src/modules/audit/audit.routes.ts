@@ -5,7 +5,7 @@ import { PERMISSIONS } from '@bcms/shared';
 const auditQuerySchema = z.object({
   entityType: z.string().trim().max(100).optional(),
   entityId:   z.coerce.number().int().positive().optional(),
-  action:     z.string().trim().max(50).optional(),
+  action:     z.enum(['CREATE', 'UPDATE', 'DELETE', 'UPSERT', 'CREATEMANY']).optional(),
   user:       z.string().trim().max(100).optional(),
   from:       z.string().datetime({ offset: true }).optional(),
   to:         z.string().datetime({ offset: true }).optional(),
@@ -38,8 +38,8 @@ export async function auditRoutes(app: FastifyInstance) {
     };
 
     const [data, total] = await Promise.all([
-      app.prisma.auditLog.findMany({ where, skip, take: q.pageSize, orderBy: { timestamp: 'desc' } }),
-      app.prisma.auditLog.count({ where }),
+      app.prisma.auditLog.findMany({ where: where as any, skip, take: q.pageSize, orderBy: { timestamp: 'desc' } }),
+      app.prisma.auditLog.count({ where: where as any }),
     ]);
 
     return { data, total, page: q.page, pageSize: q.pageSize, totalPages: Math.ceil(total / q.pageSize) };

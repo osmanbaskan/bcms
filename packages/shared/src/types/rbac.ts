@@ -1,15 +1,19 @@
-export type BcmsGroup =
-  | 'Tekyon'
-  | 'Transmisyon'
-  | 'Booking'
-  | 'YayınPlanlama'
-  | 'SystemEng'
-  | 'Ingest'
-  | 'Kurgu'
-  | 'MCR'
-  | 'PCR'
-  | 'Ses'
-  | 'StudyoSefi';
+export const BCMS_GROUPS = [
+  'Admin',
+  'Tekyon',
+  'Transmisyon',
+  'Booking',
+  'YayınPlanlama',
+  'SystemEng',
+  'Ingest',
+  'Kurgu',
+  'MCR',
+  'PCR',
+  'Ses',
+  'StudyoSefi',
+] as const;
+
+export type BcmsGroup = typeof BCMS_GROUPS[number];
 
 export interface JwtPayload {
   sub: string;
@@ -33,9 +37,9 @@ export const PERMISSIONS = {
     write:         ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],     // API PATCH/POST
   },
   bookings: {
-    read:   ['SystemEng'] as BcmsGroup[],
-    write:  ['SystemEng'] as BcmsGroup[],
-    delete: ['SystemEng'] as BcmsGroup[],
+    read:   [] as BcmsGroup[],
+    write:  [] as BcmsGroup[],
+    delete: [] as BcmsGroup[],
   },
   ingest: {
     read:         ['SystemEng', 'Ingest'] as BcmsGroup[],
@@ -69,5 +73,10 @@ export const PERMISSIONS = {
     read:   [] as BcmsGroup[],
     write:  ['SystemEng', 'StudyoSefi'] as BcmsGroup[],
     delete: ['SystemEng', 'StudyoSefi'] as BcmsGroup[],
+  },
+  weeklyShifts: {
+    read:  [] as BcmsGroup[],
+    write: [] as BcmsGroup[],
+    admin: ['Admin', 'SystemEng'] as BcmsGroup[],
   },
 } as const;

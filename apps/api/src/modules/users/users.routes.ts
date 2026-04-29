@@ -1,10 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { PERMISSIONS } from '@bcms/shared';
+import { BCMS_GROUPS, PERMISSIONS, type BcmsGroup } from '@bcms/shared';
 
-const BCMS_GROUPS = [
-  'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama', 'SystemEng',
-  'Ingest', 'Kurgu', 'MCR', 'PCR', 'Ses', 'StudyoSefi',
-];
+const USER_TYPES = ['staff', 'supervisor', 'admin'] as const;
+type UserType = typeof USER_TYPES[number];
 
 let adminToken: string | null = null;
 let tokenExpiry = 0;
@@ -83,6 +81,54 @@ async function getGroupIdMap(): Promise<Map<string, string>> {
   return groupIdMapCache;
 }
 
+function keycloakAttributeValue(attributes: any, key: string): string | undefined {
+  const value = attributes?.[key];
+  if (Array.isArray(value)) return value[0];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function normalizeUserType(value: unknown): UserType {
+  return USER_TYPES.includes(value as UserType) ? value as UserType : 'staff';
+}
+
+function hasAdminGroup(groups: string[]): boolean {
+  return groups.includes('Admin');
+}
+
+function userTypeFor(user: any, groups: string[]): UserType {
+  return hasAdminGroup(groups) ? 'admin' : normalizeUserType(keycloakAttributeValue(user.attributes, 'bcmsUserType'));
+}
+
+function isBcmsGroup(value: string): value is BcmsGroup {
+  return (BCMS_GROUPS as readonly string[]).includes(value);
+}
+
+async function setUserGroups(id: string, newGroups: string[]): Promise<void> {
+  const groupIdMap = await getGroupIdMap();
+
+  const currentKcGroups: any[] = await kcFetch(`/users/${id}/groups`);
+  const currentSet = new Set(
+    currentKcGroups.map((g: any) => g.name as string).filter(isBcmsGroup),
+  );
+  const newSet = new Set(newGroups.filter(isBcmsGroup));
+
+  for (const name of currentSet) {
+    if (!newSet.has(name)) {
+      const gid = groupIdMap.get(name);
+      if (gid) await kcFetch(`/users/${id}/groups/${gid}`, { method: 'DELETE' });
+    }
+  }
+
+  for (const name of newSet) {
+    if (!currentSet.has(name)) {
+      const gid = groupIdMap.get(name);
+      if (gid) await kcFetch(`/users/${id}/groups/${gid}`, { method: 'PUT' });
+    }
+  }
+
+  groupMembershipCache.delete(id);
+}
+
 export async function usersRoutes(app: FastifyInstance) {
 
   // GET /api/v1/users
@@ -96,7 +142,7 @@ export async function usersRoutes(app: FastifyInstance) {
       let groups = getCachedGroups(u.id);
       if (groups === null) {
         const kcGroups: any[] = await kcFetch(`/users/${u.id}/groups`);
-        groups = kcGroups.map((g: any) => g.name as string).filter((n) => BCMS_GROUPS.includes(n));
+        groups = kcGroups.map((g: any) => g.name as string).filter(isBcmsGroup);
         setCachedGroups(u.id, groups);
       }
       return {
@@ -106,6 +152,7 @@ export async function usersRoutes(app: FastifyInstance) {
         firstName: u.firstName ?? '',
         lastName:  u.lastName ?? '',
         enabled:   u.enabled ?? true,
+        userType:  userTypeFor(u, groups),
         groups,
       };
     }));
@@ -115,7 +162,11 @@ export async function usersRoutes(app: FastifyInstance) {
       if (Date.now() >= entry.expiresAt) groupMembershipCache.delete(id);
     }
 
-    return withGroups;
+    return withGroups.sort((a, b) => {
+      if (hasAdminGroup(a.groups) && !hasAdminGroup(b.groups)) return -1;
+      if (!hasAdminGroup(a.groups) && hasAdminGroup(b.groups)) return 1;
+      return a.username.localeCompare(b.username, 'tr');
+    });
   });
 
   // GET /api/v1/users/groups  — atanabilir grup listesi
@@ -136,32 +187,74 @@ export async function usersRoutes(app: FastifyInstance) {
   }, async (request) => {
     const { id } = request.params;
     const { groups: newGroups } = request.body;
+    await setUserGroups(id, newGroups);
+    return { ok: true };
+  });
 
-    const groupIdMap = await getGroupIdMap();
+  // PUT /api/v1/users/:id — kullanıcı bilgilerini ve grupları güncelle
+  app.put<{
+    Params: { id: string };
+    Body: {
+      username: string;
+      email: string;
+      firstName?: string;
+      lastName?: string;
+      enabled: boolean;
+      userType: UserType;
+      groups: string[];
+      password?: string;
+    };
+  }>('/:id', {
+    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
+    schema: {
+      tags: ['Users'],
+      summary: 'Kullanıcı bilgilerini güncelle',
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      body: {
+        type: 'object',
+        required: ['username', 'email', 'enabled', 'userType', 'groups'],
+        properties: {
+          username:  { type: 'string' },
+          email:     { type: 'string' },
+          firstName: { type: 'string' },
+          lastName:  { type: 'string' },
+          enabled:   { type: 'boolean' },
+          userType:  { type: 'string', enum: [...USER_TYPES] },
+          groups:    { type: 'array', items: { type: 'string' } },
+          password:  { type: 'string' },
+        },
+      },
+    },
+  }, async (request) => {
+    const { id } = request.params;
+    const { username, email, firstName, lastName, enabled, userType, groups, password } = request.body;
 
-    const currentKcGroups: any[] = await kcFetch(`/users/${id}/groups`);
-    const currentSet = new Set(
-      currentKcGroups.map((g: any) => g.name as string).filter((n) => BCMS_GROUPS.includes(n)),
-    );
-    const newSet = new Set(newGroups.filter((n) => BCMS_GROUPS.includes(n)));
+    const existing: any = await kcFetch(`/users/${id}`);
+    const isAdmin = groups.includes('Admin');
+    await kcFetch(`/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        ...existing,
+        username,
+        email,
+        firstName: firstName ?? '',
+        lastName: lastName ?? '',
+        enabled,
+        attributes: {
+          ...(existing.attributes ?? {}),
+          bcmsUserType: [isAdmin ? 'admin' : normalizeUserType(userType)],
+        },
+      }),
+    });
 
-    // Kaldırılacaklar
-    for (const name of currentSet) {
-      if (!newSet.has(name)) {
-        const gid = groupIdMap.get(name);
-        if (gid) await kcFetch(`/users/${id}/groups/${gid}`, { method: 'DELETE' });
-      }
+    if (password?.trim()) {
+      await kcFetch(`/users/${id}/reset-password`, {
+        method: 'PUT',
+        body: JSON.stringify({ type: 'password', value: password, temporary: true }),
+      });
     }
 
-    // Eklenecekler
-    for (const name of newSet) {
-      if (!currentSet.has(name)) {
-        const gid = groupIdMap.get(name);
-        if (gid) await kcFetch(`/users/${id}/groups/${gid}`, { method: 'PUT' });
-      }
-    }
-
-    groupMembershipCache.delete(id);
+    await setUserGroups(id, groups);
     return { ok: true };
   });
 
@@ -181,7 +274,7 @@ export async function usersRoutes(app: FastifyInstance) {
 
   // POST /api/v1/users  — yeni kullanıcı
   app.post<{
-    Body: { username: string; email: string; firstName?: string; lastName?: string; password: string; groups: string[] };
+    Body: { username: string; email: string; firstName?: string; lastName?: string; password: string; userType?: UserType; groups: string[] };
   }>('/', {
     preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
     schema: {
@@ -196,12 +289,14 @@ export async function usersRoutes(app: FastifyInstance) {
           firstName: { type: 'string' },
           lastName:  { type: 'string' },
           password:  { type: 'string' },
+          userType:  { type: 'string', enum: [...USER_TYPES] },
           groups:    { type: 'array', items: { type: 'string' } },
         },
       },
     },
   }, async (request) => {
     const { username, email, firstName, lastName, password, groups } = request.body;
+    const userType = normalizeUserType(request.body.userType);
 
     const url   = process.env.KEYCLOAK_URL   ?? 'http://localhost:8080';
     const realm = process.env.KEYCLOAK_REALM ?? 'bcms';
@@ -213,6 +308,7 @@ export async function usersRoutes(app: FastifyInstance) {
       body: JSON.stringify({
         username, email, firstName, lastName,
         enabled: true,
+        attributes: { bcmsUserType: [userType] },
         credentials: [{ type: 'password', value: password, temporary: true }],
       }),
     });
@@ -228,7 +324,7 @@ export async function usersRoutes(app: FastifyInstance) {
     // Gruplara ekle
     if (groups.length > 0) {
       const groupIdMap = await getGroupIdMap();
-      for (const name of groups.filter((n) => BCMS_GROUPS.includes(n))) {
+      for (const name of groups.filter(isBcmsGroup)) {
         const gid = groupIdMap.get(name);
         if (gid) await kcFetch(`/users/${newId}/groups/${gid}`, { method: 'PUT' });
       }

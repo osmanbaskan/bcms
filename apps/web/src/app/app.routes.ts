@@ -19,7 +19,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/bookings/bookings.routes').then((m) => m.bookingsRoutes),
     canActivate: [AuthGuard],
-    data: { groups: ['SystemEng'] },
+    data: { groups: [] },
   },
   {
     path: 'studio-plan',

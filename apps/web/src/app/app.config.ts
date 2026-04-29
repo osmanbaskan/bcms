@@ -8,6 +8,7 @@ import { importProvidersFrom } from '@angular/core';
 import { routes } from './app.routes';
 import { environment } from '../environments/environment';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
+import { getPublicAppOrigin } from './core/auth/public-origin';
 
 function initKeycloak(keycloak: KeycloakService) {
   return async () => {
@@ -20,8 +21,8 @@ function initKeycloak(keycloak: KeycloakService) {
       initOptions: {
         onLoad: 'login-required',
         checkLoginIframe: false,
+        redirectUri: `${getPublicAppOrigin()}/`,
         scope: 'openid profile email',
-        silentCheckSsoRedirectUri: window.location.origin + '/assets/silent-check-sso.html',
       },
       loadUserProfileAtStartUp: false,
     });

@@ -2,10 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { BookingService } from './booking.service.js';
 import { createBookingSchema, updateBookingSchema } from './booking.schema.js';
-import { PERMISSIONS } from '@bcms/shared';
+import { PERMISSIONS, type BcmsGroup, type JwtPayload } from '@bcms/shared';
 
 const listBookingsQuerySchema = z.object({
   scheduleId: z.coerce.number().int().positive().optional(),
+  group:      z.string().optional(),
   page:       z.coerce.number().int().positive().default(1),
   pageSize:   z.coerce.number().int().positive().max(200).default(50),
 });
@@ -18,13 +19,21 @@ export async function bookingRoutes(app: FastifyInstance) {
     schema: { tags: ['Bookings'] },
   }, async (request) => {
     const q = listBookingsQuerySchema.parse(request.query);
-    return svc.findAll(q.scheduleId, q.page, q.pageSize);
+    return svc.findAll(request, q.scheduleId, q.group, q.page, q.pageSize);
+  });
+
+  app.get('/assignees', {
+    preHandler: app.requireGroup(...PERMISSIONS.bookings.read),
+    schema: { tags: ['Bookings'], summary: 'Grup üyeleri' },
+  }, async (request) => {
+    const q = z.object({ group: z.string().min(1).max(50) }).parse(request.query);
+    return svc.findAssignableUsers(request, q.group as BcmsGroup);
   });
 
   app.get<{ Params: { id: string } }>('/:id', {
     preHandler: app.requireGroup(...PERMISSIONS.bookings.read),
     schema: { tags: ['Bookings'] },
-  }, async (request) => svc.findById(Number(request.params.id)));
+  }, async (request) => svc.findByIdForRequest(Number(request.params.id), request.user as JwtPayload));
 
   app.post('/', {
     preHandler: app.requireGroup(...PERMISSIONS.bookings.write),
@@ -47,7 +56,7 @@ export async function bookingRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.bookings.delete),
     schema: { tags: ['Bookings'], summary: 'Delete booking' },
   }, async (request, reply) => {
-    await svc.remove(Number(request.params.id));
+    await svc.removeForRequest(Number(request.params.id), request);
     reply.status(204).send();
   });
 

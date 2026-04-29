@@ -114,8 +114,9 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-zoom button.active{background:rgba(155,211,255,.16);color:#fff}
     .port-board-scroll{overflow-x:auto}
     .port-board-section.full-page .port-board-scroll{height:calc(100vh - 250px);overflow:auto}
-    .port-board-section.is-fullscreen{margin:0;border:0;border-radius:0}
-    .port-board-section.is-fullscreen .port-board-scroll{height:calc(100vh - 72px)}
+    .port-board-section.is-fullscreen{display:flex;flex-direction:column;height:100vh;margin:0;border:0;border-radius:0;background:rgba(7,17,31,.96);zoom:100%}
+    .port-board-section.is-fullscreen .port-board-header{flex:0 0 auto}
+    .port-board-section.is-fullscreen .port-board-scroll{flex:1 1 auto;height:auto;min-height:0;overflow:auto}
     .port-board-stack{display:flex;flex-direction:column;gap:10px;padding-bottom:10px}
     .port-board-frame{display:block;min-width:max-content}
     .port-board-grid{display:grid;min-width:max-content}

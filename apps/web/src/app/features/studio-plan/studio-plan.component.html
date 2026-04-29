@@ -5,10 +5,16 @@
       <p>{{ dateRangeLabel() }} · 06:00 - 02:00 · 30 dakikalık slotlar</p>
     </div>
 
-    <button mat-flat-button color="primary" type="button" (click)="exportPlan()">
-      <mat-icon>download</mat-icon>
-      Export PDF
-    </button>
+    <div class="page-actions">
+      <button mat-stroked-button type="button" (click)="toggleFullscreen()">
+        <mat-icon>{{ fullscreenActive() ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon>
+        {{ fullscreenActive() ? 'Tam Ekrandan Çık' : 'Tam Ekran' }}
+      </button>
+      <button mat-flat-button color="primary" type="button" (click)="exportPlan()">
+        <mat-icon>download</mat-icon>
+        Export PDF
+      </button>
+    </div>
   </header>
 
   <app-studio-plan-toolbar
@@ -38,6 +44,9 @@
     <div class="print-title">
       <strong>STÜDYO PLANI</strong>
       <span>{{ dateRangeLabel() }}</span>
+      <button class="fullscreen-inline-button no-print" type="button" (click)="toggleFullscreen()">
+        <mat-icon>{{ fullscreenActive() ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon>
+      </button>
     </div>
 
     <app-studio-plan-table

@@ -8,6 +8,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { CommonModule } from '@angular/common';
 import { KeycloakService } from 'keycloak-angular';
 import { environment } from '../environments/environment';
+import { getPublicAppOrigin } from './core/auth/public-origin';
 
 interface NavItem {
   label:      string;
@@ -48,13 +49,14 @@ interface NavItem {
               </div>
               @for (child of item.children; track child.route) {
                 <a mat-list-item [routerLink]="child.route" routerLinkActive="active-link"
+                   (click)="sidenav.close()"
                    [routerLinkActiveOptions]="{ exact: !!child.exactMatch }">
                   <mat-icon matListItemIcon class="child-icon">{{ child.icon }}</mat-icon>
                   <span matListItemTitle>{{ child.label }}</span>
                 </a>
               }
             } @else {
-              <a mat-list-item [routerLink]="item.route" routerLinkActive="active-link">
+              <a mat-list-item [routerLink]="item.route" routerLinkActive="active-link" (click)="sidenav.close()">
                 <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
                 <span matListItemTitle>{{ item.label }}</span>
               </a>
@@ -113,7 +115,7 @@ export class AppComponent implements OnInit {
 
   readonly navItems: NavItem[] = [
     { label: 'Canlı Yayın Plan Listesi', icon: 'list', route: '/schedules', groups: [], exactMatch: true },
-    { label: 'Rezervasyonlar',        icon: 'book_online',    route: '/bookings',               groups: ['SystemEng'] },
+    { label: 'Ekip iş takip',        icon: 'book_online',    route: '/bookings',               groups: [] },
     { label: 'Raporlama',             icon: 'summarize',      route: '/schedules/reporting',    groups: [] },
     { label: 'Stüdyo Planı',          icon: 'event_seat',     route: '/studio-plan',            groups: [] },
     { label: 'Haftalık Shift',        icon: 'groups',         route: '/weekly-shift',           groups: [] },
@@ -153,12 +155,13 @@ export class AppComponent implements OnInit {
     const kc = this.keycloak.getKeycloakInstance();
     const parsed: any = kc?.tokenParsed ?? {};
     this.username = parsed['preferred_username'] ?? '';
-    this.userGroups.set(parsed?.groups ?? []);
+    const groups: string[] = parsed?.groups ?? [];
+    this.userGroups.set(groups.includes('Admin') ? Array.from(new Set([...groups, 'SystemEng'])) : groups);
     this.cdr.detectChanges();
   }
 
   logout() {
     if (environment.skipAuth) return;
-    this.keycloak.logout(window.location.origin);
+    this.keycloak.logout(getPublicAppOrigin());
   }
 }

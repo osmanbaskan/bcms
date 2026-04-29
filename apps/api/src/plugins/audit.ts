@@ -81,13 +81,14 @@ function buildAuditExtension(base: PrismaClient) {
 
           const result = await query(args);
           const after = ['create', 'update', 'upsert'].includes(operation) ? result : null;
+          const action = toAuditAction(operation);
 
           const buildEntries = (): AuditEntry[] => {
             if (affectedIds) {
               return affectedIds.map((id: number, index: number) => ({
                 entityType: model,
                 entityId: id,
-                action: operation.toUpperCase(),
+                action,
                 beforePayload: beforeSnapshots[index],
                 user,
                 ipAddress,
@@ -97,7 +98,7 @@ function buildAuditExtension(base: PrismaClient) {
             return [{
               entityType: model,
               entityId: Number(targetId ?? 0),
-              action: operation.toUpperCase(),
+              action,
               beforePayload: before ?? undefined,
               afterPayload: after ?? undefined,
               user,
@@ -111,7 +112,7 @@ function buildAuditExtension(base: PrismaClient) {
           } else {
             // Worker/arka plan bağlamı: anında yaz
             try {
-              await base.auditLog.createMany({ data: buildEntries().map(toDbRow) });
+              await base.auditLog.createMany({ data: buildEntries().map(toDbRow) as any });
             } catch (err) {
               // Audit hatası ana işlemi durdurmaz
             }
@@ -122,6 +123,13 @@ function buildAuditExtension(base: PrismaClient) {
       },
     },
   });
+}
+
+function toAuditAction(operation: string): string {
+  if (operation === 'createMany') return 'CREATEMANY';
+  if (operation === 'updateMany') return 'UPDATE';
+  if (operation === 'deleteMany') return 'DELETE';
+  return operation.toUpperCase();
 }
 
 function toDbRow(e: AuditEntry) {
@@ -153,7 +161,7 @@ export const auditPlugin: FastifyPluginAsync = fp(async (fastify: FastifyInstanc
     if (!store?.pendingAuditLogs?.length) return;
     const entries = store.pendingAuditLogs.splice(0);
     try {
-      await base.auditLog.createMany({ data: entries.map(toDbRow) });
+      await base.auditLog.createMany({ data: entries.map(toDbRow) as any });
     } catch (err) {
       fastify.log.error({ err }, 'Audit log flush hatası');
     }

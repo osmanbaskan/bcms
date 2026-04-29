@@ -67,7 +67,7 @@ model Match {
 model Channel {
   id        Int      @id @default(autoincrement())
   name      String   @unique @db.VarChar(100)
-  type      String   @db.VarChar(20) // HD, SD, OTT, RADIO
+  type      ChannelType
   frequency String?  @db.VarChar(50)
   muxInfo   Json?    @map("mux_info")
   active    Boolean  @default(true)
@@ -134,13 +134,31 @@ enum ScheduleStatus {
   CANCELLED
 }
 
+enum ChannelType {
+  HD
+  SD
+  OTT
+  RADIO
+
+  @@map("channel_type")
+}
+
 // ── Bookings ──────────────────────────────────────────────────────────────────
 model Booking {
   id          Int           @id @default(autoincrement())
-  scheduleId  Int           @map("schedule_id")
+  scheduleId  Int?          @map("schedule_id")
   requestedBy String        @map("requested_by") @db.VarChar(100)
   teamId      Int?          @map("team_id")
   matchId     Int?          @map("match_id")
+  taskTitle   String?       @map("task_title") @db.VarChar(300)
+  taskDetails String?       @map("task_details")
+  taskReport  String?       @map("task_report")
+  userGroup   String?       @map("user_group") @db.VarChar(50)
+  assigneeId  String?       @map("assignee_id") @db.VarChar(100)
+  assigneeName String?      @map("assignee_name") @db.VarChar(200)
+  startDate   DateTime?     @map("start_date") @db.Date
+  dueDate     DateTime?     @map("due_date") @db.Date
+  completedAt DateTime?     @map("completed_at") @db.Timestamptz
   metadata    Json?
   status      BookingStatus @default(PENDING)
   version     Int           @default(1)
@@ -148,10 +166,13 @@ model Booking {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  schedule Schedule @relation(fields: [scheduleId], references: [id])
+  schedule Schedule? @relation(fields: [scheduleId], references: [id])
   team     Team?    @relation(fields: [teamId], references: [id])
   match    Match?   @relation(fields: [matchId], references: [id])
 
+  @@index([userGroup])
+  @@index([assigneeId])
+  @@index([startDate, dueDate])
   @@map("bookings")
 }
 
@@ -387,7 +408,7 @@ model AuditLog {
   id            Int      @id @default(autoincrement())
   entityType    String   @map("entity_type") @db.VarChar(50)
   entityId      Int      @map("entity_id")
-  action        String   @db.VarChar(20) // CREATE, UPDATE, DELETE
+  action        AuditLogAction
   beforePayload Json?    @map("before_payload")
   afterPayload  Json?    @map("after_payload")
   user          String   @db.VarChar(100)
@@ -398,4 +419,35 @@ model AuditLog {
   @@index([user])
   @@index([timestamp])
   @@map("audit_logs")
+}
+
+enum AuditLogAction {
+  CREATE
+  UPDATE
+  DELETE
+  UPSERT
+  CREATEMANY
+
+  @@map("audit_log_action")
+}
+
+// ── Weekly Shift Assignments ─────────────────────────────────────────────────
+model ShiftAssignment {
+  id        Int       @id @default(autoincrement())
+  userId    String    @map("user_id") @db.VarChar(100)
+  userName  String    @map("user_name") @db.VarChar(100)
+  userGroup String    @map("user_group") @db.VarChar(50)
+  weekStart String    @map("week_start") @db.VarChar(10)
+  dayIndex  Int       @map("day_index")
+  startTime String?   @map("start_time") @db.VarChar(5)
+  endTime   String?   @map("end_time") @db.VarChar(5)
+  type      String    @db.VarChar(20)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@unique([userId, weekStart, dayIndex])
+  @@index([weekStart, userGroup])
+  @@index([userId, weekStart])
+  @@map("shift_assignments")
 }
