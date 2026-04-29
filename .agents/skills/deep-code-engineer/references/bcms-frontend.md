@@ -101,5 +101,5 @@ this.api.patch<Schedule>(`/schedules/${id}`, body, version).subscribe(...)
 
 ## Dev Bypass (Deprecated but Present)
 
-`environment.skipAuth` = true → `username='dev-admin'`, `userGroups=['SystemEng']`.
+`environment.skipAuth` = true → `username='dev-admin'`, `userGroups=['Sistem Muhendisligi']`.
 Do not rely on this for new features. Production blocks `SKIP_AUTH=true`.

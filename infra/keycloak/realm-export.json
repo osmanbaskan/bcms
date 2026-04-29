@@ -10,17 +10,17 @@
   "bruteForceProtected": true,
   "accessTokenLifespan": 1800,
   "groups": [
-    { "name": "Tekyon" },
+    { "name": "Yayın Muhendisligi" },
     { "name": "Transmisyon" },
     { "name": "Booking" },
-    { "name": "YayınPlanlama" },
-    { "name": "SystemEng" },
+    { "name": "Yayın Planlama Mudurlugu" },
+    { "name": "Sistem Muhendisligi" },
     { "name": "Ingest" },
     { "name": "Kurgu" },
     { "name": "MCR" },
     { "name": "PCR" },
     { "name": "Ses" },
-    { "name": "StudyoSefi" }
+    { "name": "Studyo Sefligi" }
   ],
   "clients": [
     {
@@ -73,7 +73,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [{ "type": "password", "value": "admin123", "temporary": true }],
-      "groups": ["SystemEng"]
+      "groups": ["Sistem Muhendisligi"]
     },
     {
       "username": "planner1",
@@ -81,7 +81,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [{ "type": "password", "value": "planner123", "temporary": true }],
-      "groups": ["YayınPlanlama"]
+      "groups": ["Yayın Planlama Mudurlugu"]
     },
     {
       "username": "viewer1",

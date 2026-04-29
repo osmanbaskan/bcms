@@ -9,7 +9,7 @@ BCMS = Broadcast Content Management System. Monorepo with Fastify 5.8.5 backend 
 All database writes MUST go through the Prisma `$extends` audit plugin in `apps/api/src/plugins/audit.ts`. Never disable it. Never use raw SQL (`$queryRaw`) for INSERT, UPDATE, or DELETE operations. Raw SQL SELECT is permitted only for read-only reports and aggregations.
 
 ### 2. Group-Based Authorization (Not Role-Based)
-Authorization uses Keycloak `groups` claim. There are 11 valid groups: Tekyon, Transmisyon, Booking, YayınPlanlama, SystemEng, Ingest, Kurgu, MCR, PCR, Ses, StudyoSefi. The `SystemEng` group has universal access to all endpoints and navigation items.
+Authorization uses Keycloak `groups` claim. There are 11 valid groups: Yayın Muhendisligi, Transmisyon, Booking, Yayın Planlama Mudurlugu, Sistem Muhendisligi, Ingest, Kurgu, MCR, PCR, Ses, Studyo Sefligi. The `Sistem Muhendisligi` group has universal access to all endpoints and navigation items.
 
 Always import group permissions from `@bcms/shared` using the `PERMISSIONS` map. Never hardcode group name strings in route handlers.
 

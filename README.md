@@ -208,29 +208,29 @@ docker compose up -d --build web
 
 ### Grup Tabanlı Yetkilendirme (RBAC)
 
-11 grup: `Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`
+11 grup: `Yayın Muhendisligi`, `Transmisyon`, `Booking`, `Yayın Planlama Mudurlugu`, `Sistem Muhendisligi`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `Studyo Sefligi`
 
-`SystemEng` her zaman tüm ekranlara tam erişimlidir.
+`Sistem Muhendisligi` her zaman tüm ekranlara tam erişimlidir.
 
 | Sekme / Özellik | Erişim |
 |---|---|
 | Yayın Planı listesi | Tüm authenticated |
-| Yeni Ekle | SystemEng, Booking, YayınPlanlama |
-| Düzenle | SystemEng, Tekyon, Transmisyon, Booking, YayınPlanlama |
-| Teknik Detay | SystemEng, Transmisyon, Booking |
-| Çoğaltma | SystemEng, Tekyon, Transmisyon, Booking |
-| Silme | SystemEng, Tekyon, Transmisyon, Booking, YayınPlanlama |
-| **Sorun Bildir** | **SystemEng, Tekyon, Transmisyon** |
+| Yeni Ekle | Sistem Muhendisligi, Booking, Yayın Planlama Mudurlugu |
+| Düzenle | Sistem Muhendisligi, Yayın Muhendisligi, Transmisyon, Booking, Yayın Planlama Mudurlugu |
+| Teknik Detay | Sistem Muhendisligi, Transmisyon, Booking |
+| Çoğaltma | Sistem Muhendisligi, Yayın Muhendisligi, Transmisyon, Booking |
+| Silme | Sistem Muhendisligi, Yayın Muhendisligi, Transmisyon, Booking, Yayın Planlama Mudurlugu |
+| **Sorun Bildir** | **Sistem Muhendisligi, Yayın Muhendisligi, Transmisyon** |
 | Stüdyo Planı görüntüle | Tüm authenticated |
-| Stüdyo Planı düzenle | SystemEng, StudyoSefi |
-| **Ekip İş Takip** | **SystemEng** |
-| **Haftalık Shift** | **SystemEng** |
-| Rezervasyonlar | SystemEng |
-| Ingest | SystemEng, Ingest |
-| MCR | SystemEng, MCR |
-| Kullanıcılar | SystemEng |
-| Ayarlar | SystemEng |
-| Provys, Kanallar, Monitoring | SystemEng |
+| Stüdyo Planı düzenle | Sistem Muhendisligi, Studyo Sefligi |
+| **Ekip İş Takip** | **Sistem Muhendisligi** |
+| **Haftalık Shift** | **Sistem Muhendisligi** |
+| Rezervasyonlar | Sistem Muhendisligi |
+| Ingest | Sistem Muhendisligi, Ingest |
+| MCR | Sistem Muhendisligi, MCR |
+| Kullanıcılar | Sistem Muhendisligi |
+| Ayarlar | Sistem Muhendisligi |
+| Provys, Kanallar, Monitoring | Sistem Muhendisligi |
 
 Yetki matrisi: `packages/shared/src/types/rbac.ts` → `PERMISSIONS` sabiti.
 API: `app.requireGroup(...groups)`
@@ -262,7 +262,7 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 
 ### Stüdyo Planı
 
-- StudyoSefi ve SystemEng tam yetkili; diğerleri yalnızca liste görünümü.
+- Studyo Sefligi ve Sistem Muhendisligi tam yetkili; diğerleri yalnızca liste görünümü.
 - **Liste görünümünde geçmiş günler gizlenir**.
 - 5 stüdyo kolonu: Stüdyo 1-4 + beIN Gurme.
 - Program/renk backend katalogdan.

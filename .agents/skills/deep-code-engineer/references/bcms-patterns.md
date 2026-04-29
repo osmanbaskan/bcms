@@ -34,7 +34,7 @@ Load this reference when writing or editing API routes, services, Prisma models,
 
 ## 3. Group-Based Auth (Not Role-Based)
 
-**Rule:** Keycloak `groups` claim drives authorization. `SystemEng` group has universal access.
+**Rule:** Keycloak `groups` claim drives authorization. `Sistem Muhendisligi` group has universal access.
 
 **Pattern:**
 ```ts

@@ -21,7 +21,7 @@ const DEV_USER: JwtPayload = {
   sub:                'dev-admin',
   preferred_username: 'dev-admin',
   email:              'dev@bcms.local',
-  groups:             ['SystemEng'],
+  groups:             ['Sistem Muhendisligi'],
   iat: 0,
   exp: 9999999999,
 };
@@ -83,7 +83,7 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
   });
 
   if (skipAuth) {
-    app.log.warn('Auth bypass aktif — tüm istekler dev-admin (SystemEng) olarak işleniyor');
+    app.log.warn('Auth bypass aktif — tüm istekler dev-admin (Sistem Muhendisligi) olarak işleniyor');
   }
 
   // ── Decorators ──────────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
         throw new Error('Invalid token issuer or client');
       }
       if (isAdminPrincipal(claims)) {
-        claims.groups = Array.from(new Set([...(claims.groups ?? []), 'SystemEng']));
+        claims.groups = Array.from(new Set([...(claims.groups ?? []), 'Sistem Muhendisligi']));
       }
     } catch {
       throw Object.assign(new Error('Invalid or expired token'), { statusCode: 401 });

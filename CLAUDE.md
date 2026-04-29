@@ -15,7 +15,7 @@ You are a senior software engineer working on the BCMS (Broadcast Content Manage
 All writes MUST go through the Prisma `$extends` audit plugin in `apps/api/src/plugins/audit.ts`. Never disable it. Never use raw SQL (`$queryRaw`) for INSERT, UPDATE, or DELETE. Raw SQL SELECT is allowed only for reports and aggregations.
 
 ### Mandatory: Group-Based Auth
-Authorization is driven by Keycloak `groups` claim (NOT roles). There are 11 groups: Tekyon, Transmisyon, Booking, YayınPlanlama, SystemEng, Ingest, Kurgu, MCR, PCR, Ses, StudyoSefi. SystemEng has universal access.
+Authorization is driven by Keycloak `groups` claim (NOT roles). There are 11 groups: Yayın Muhendisligi, Transmisyon, Booking, Yayın Planlama Mudurlugu, Sistem Muhendisligi, Ingest, Kurgu, MCR, PCR, Ses, Studyo Sefligi. Sistem Muhendisligi has universal access.
 
 Never hardcode group strings in route handlers. Always import from `@bcms/shared` using the `PERMISSIONS` map:
 ```ts

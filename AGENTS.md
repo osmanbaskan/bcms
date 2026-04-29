@@ -66,8 +66,8 @@ Before writing any code, follow the 4-phase discipline. Surface-level solutions 
 
 ### Group-Based Auth (Not Role-Based)
 - Keycloak `groups` claim drives authorization.
-- 11 groups: `Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`.
-- `SystemEng` = universal access.
+- 11 groups: `Yayın Muhendisligi`, `Transmisyon`, `Booking`, `Yayın Planlama Mudurlugu`, `Sistem Muhendisligi`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `Studyo Sefligi`.
+- `Sistem Muhendisligi` = universal access.
 - Never hardcode group strings in routes. Import from `@bcms/shared` `PERMISSIONS` map.
 - `app.requireGroup()` with no args = any authenticated user.
 

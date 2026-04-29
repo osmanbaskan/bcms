@@ -28,23 +28,23 @@ interface KcUser {
 }
 
 const ALL_GROUPS = [
-  'Admin', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama', 'SystemEng',
-  'Ingest', 'Kurgu', 'MCR', 'PCR', 'Ses', 'StudyoSefi',
+  'Admin', 'Yayın Muhendisligi', 'Transmisyon', 'Booking', 'Yayın Planlama Mudurlugu', 'Sistem Muhendisligi',
+  'Ingest', 'Kurgu', 'MCR', 'PCR', 'Ses', 'Studyo Sefligi',
 ] as const;
 
 const GROUP_COLORS: Record<string, string> = {
   Admin:         '#111827',
-  Tekyon:        '#1565c0',
+  Yayın Muhendisligi:        '#1565c0',
   Transmisyon:   '#6a1b9a',
   Booking:       '#2e7d32',
-  YayınPlanlama: '#e65100',
-  SystemEng:     '#b71c1c',
+  Yayın Planlama Mudurlugu: '#e65100',
+  Sistem Muhendisligi:     '#b71c1c',
   Ingest:        '#00695c',
   Kurgu:         '#f57f17',
   MCR:           '#4527a0',
   PCR:           '#0277bd',
   Ses:           '#558b2f',
-  StudyoSefi:    '#37474f',
+  Studyo Sefligi:    '#37474f',
 };
 
 const USER_TYPE_LABELS: Record<KcUser['userType'], string> = {

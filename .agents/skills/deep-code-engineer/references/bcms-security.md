@@ -5,8 +5,8 @@ Load this reference when implementing authentication, authorization, audit, or a
 ## Identity Model
 
 - **Group-based** (not role-based). Keycloak `groups` claim via `oidc-group-membership-mapper`.
-- 11 valid groups: `Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`.
-- `SystemEng` = universal access to all routes and nav items.
+- 11 valid groups: `Yayın Muhendisligi`, `Transmisyon`, `Booking`, `Yayın Planlama Mudurlugu`, `Sistem Muhendisligi`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `Studyo Sefligi`.
+- `Sistem Muhendisligi` = universal access to all routes and nav items.
 
 ## JWT Verification
 
@@ -22,7 +22,7 @@ Load this reference when implementing authentication, authorization, audit, or a
 1. `validateRuntimeEnv()` in `app.ts`: throws if `NODE_ENV=production` and `SKIP_AUTH=true`.
 2. `authPlugin`: throws if `NODE_ENV=production` and `SKIP_AUTH=true`.
 
-**Dev behavior:** `SKIP_AUTH=true` → all requests treated as `dev-admin` with `groups: ['SystemEng']`.
+**Dev behavior:** `SKIP_AUTH=true` → all requests treated as `dev-admin` with `groups: ['Sistem Muhendisligi']`.
 
 ## Rate Limiting
 
@@ -71,8 +71,8 @@ Defined in `packages/shared/src/`. Each module exports read/write/delete arrays 
 Example:
 ```ts
 export const PERMISSIONS = {
-  schedules: { read: ['SystemEng', 'Tekyon', ...], write: ['SystemEng', 'Booking', ...] },
-  bookings:  { read: ['SystemEng'], write: ['SystemEng'] },
+  schedules: { read: ['Sistem Muhendisligi', 'Yayın Muhendisligi', ...], write: ['Sistem Muhendisligi', 'Booking', ...] },
+  bookings:  { read: ['Sistem Muhendisligi'], write: ['Sistem Muhendisligi'] },
   ...
 };
 ```

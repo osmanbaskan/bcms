@@ -61,7 +61,7 @@ OPTA dizini veya RabbitMQ geçici koptuğunda API çökmez:
 Auth sistemi rol tabanlıdan **grup tabanlıya** geçirildi.
 
 ### Gruplar (11 adet)
-`Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`
+`Yayın Muhendisligi`, `Transmisyon`, `Booking`, `Yayın Planlama Mudurlugu`, `Sistem Muhendisligi`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `Studyo Sefligi`
 
 ### Mimari
 - Keycloak: `oidc-group-membership-mapper` → JWT `groups` claim
@@ -72,19 +72,19 @@ Auth sistemi rol tabanlıdan **grup tabanlıya** geçirildi.
 ### Yetki Matrisi
 ```
 schedules.read:          [] (tüm authenticated)
-schedules.add:           ['SystemEng', 'Booking', 'YayınPlanlama']
-schedules.edit:          ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama']
-schedules.technicalEdit: ['SystemEng', 'Transmisyon', 'Booking']
-schedules.duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking']
-schedules.delete:        ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama']
-incidents.read/write/delete: ['SystemEng']
-incidents.reportIssue:   ['SystemEng', 'Tekyon', 'Transmisyon']
-ingest.read/write/delete:['SystemEng', 'Ingest']
+schedules.add:           ['Sistem Muhendisligi', 'Booking', 'Yayın Planlama Mudurlugu']
+schedules.edit:          ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon', 'Booking', 'Yayın Planlama Mudurlugu']
+schedules.technicalEdit: ['Sistem Muhendisligi', 'Transmisyon', 'Booking']
+schedules.duplicate:     ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon', 'Booking']
+schedules.delete:        ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon', 'Booking', 'Yayın Planlama Mudurlugu']
+incidents.read/write/delete: ['Sistem Muhendisligi']
+incidents.reportIssue:   ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon']
+ingest.read/write/delete:['Sistem Muhendisligi', 'Ingest']
 ingest.reportIssue:      [] (tüm authenticated)
 studioPlans.read:        [] (tüm authenticated)
-studioPlans.write/delete:['SystemEng', 'StudyoSefi']
-bookings.read/write/delete: ['SystemEng']
-weeklyShifts.read/write/delete: ['SystemEng']
+studioPlans.write/delete:['Sistem Muhendisligi', 'Studyo Sefligi']
+bookings.read/write/delete: ['Sistem Muhendisligi']
+weeklyShifts.read/write/delete: ['Sistem Muhendisligi']
 ```
 
 ### Kullanıcı Yönetimi — KRİTİK
@@ -93,7 +93,7 @@ Keycloak Admin API kullanır. `docker-compose.yml` api servisinde `KEYCLOAK_ADMI
 ## Sorun Bildir — Canlı Yayın Planı (2026-04-26)
 
 Canlı Yayın Plan Listesi ekranında her satırda **Sorun Bildir** ikonu bulunur.
-- Görünürlük: `['SystemEng', 'Tekyon', 'Transmisyon']`
+- Görünürlük: `['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon']`
 - Kayıt: `POST /api/v1/incidents/report` → `incidents` tablosuna `eventType='SCHEDULE_ISSUE'`, `severity='ERROR'`
 
 ## Ekip İş Takip (Booking / Work Tracking) — 2026-04-29
@@ -106,7 +106,7 @@ Canlı Yayın Plan Listesi ekranında her satırda **Sorun Bildir** ikonu bulunu
 - Sütunlar: İş Başlığı, Grup, Oluşturan, Durum, Tarih, Sorumlu, Aksiyonlar
 - Dialog: `BookingTaskDialogComponent` — İş Başlığı, Grup, Başlama/Tamamlanma Tarihi, Sorumlu, Durum, Detaylar, Rapor
 - API endpoint: `GET/POST/PATCH/DELETE /api/v1/bookings`
-- Yetki: Sadece `SystemEng`
+- Yetki: Sadece `Sistem Muhendisligi`
 
 ## Haftalık Shift (Weekly Shift) — 2026-04-29
 

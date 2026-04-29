@@ -89,17 +89,17 @@ curl -fsS http://127.0.0.1:3000/health
 | Sekme / Özellik | Erişim |
 |---|---|
 | Yayın Planı (liste) | Tüm authenticated |
-| Sorun Bildir butonu | SystemEng, Tekyon, Transmisyon |
+| Sorun Bildir butonu | Sistem Muhendisligi, Yayın Muhendisligi, Transmisyon |
 | Raporlama | Tüm authenticated |
 | Stüdyo Planı (görüntüle) | Tüm authenticated |
-| Stüdyo Planı (düzenle) | SystemEng, StudyoSefi |
-| Ekip İş Takip | SystemEng |
-| Haftalık Shift | SystemEng |
-| Ingest | SystemEng, Ingest |
-| MCR | SystemEng, MCR |
-| Rezervasyonlar | SystemEng |
-| Provys, Kanallar, Monitoring | SystemEng |
-| Kullanıcılar, Ayarlar | SystemEng |
+| Stüdyo Planı (düzenle) | Sistem Muhendisligi, Studyo Sefligi |
+| Ekip İş Takip | Sistem Muhendisligi |
+| Haftalık Shift | Sistem Muhendisligi |
+| Ingest | Sistem Muhendisligi, Ingest |
+| MCR | Sistem Muhendisligi, MCR |
+| Rezervasyonlar | Sistem Muhendisligi |
+| Provys, Kanallar, Monitoring | Sistem Muhendisligi |
+| Kullanıcılar, Ayarlar | Sistem Muhendisligi |
 
 **Not:** `Günlük Yayın Raporu` sekmesi kaldırılmıştır. Raporlama `/schedules/reporting` üzerinden erişilir.
 
@@ -110,17 +110,17 @@ curl -fsS http://127.0.0.1:3000/health
   - `Canlı Yayın Planı` — tarih aralığı veya lig/hafta filtresi, Excel + PDF export
   - `Stüdyo Kullanım Raporu` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
   - `Ingest` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
-- `Stüdyo Planı` → `/studio-plan` (StudyoSefi+SystemEng düzenler; diğerleri liste görür)
-- `Ekip İş Takip` → `/bookings` (SystemEng)
-- `Haftalık Shift` → `/weekly-shift` (SystemEng)
-- `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab) — SystemEng + Ingest
-- `MCR` → `/mcr` — SystemEng + MCR
-- `Provys İçerik Kontrol` → `/provys-content-control` — SystemEng
-- `Kanallar` → `/channels` — SystemEng
-- `Monitoring` → `/monitoring` — SystemEng
-- `Rezervasyonlar` → `/bookings` — SystemEng
-- `Kullanıcılar` → `/users` — SystemEng
-- `Ayarlar` → `/settings` — SystemEng
+- `Stüdyo Planı` → `/studio-plan` (Studyo Sefligi+Sistem Muhendisligi düzenler; diğerleri liste görür)
+- `Ekip İş Takip` → `/bookings` (Sistem Muhendisligi)
+- `Haftalık Shift` → `/weekly-shift` (Sistem Muhendisligi)
+- `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab) — Sistem Muhendisligi + Ingest
+- `MCR` → `/mcr` — Sistem Muhendisligi + MCR
+- `Provys İçerik Kontrol` → `/provys-content-control` — Sistem Muhendisligi
+- `Kanallar` → `/channels` — Sistem Muhendisligi
+- `Monitoring` → `/monitoring` — Sistem Muhendisligi
+- `Rezervasyonlar` → `/bookings` — Sistem Muhendisligi
+- `Kullanıcılar` → `/users` — Sistem Muhendisligi
+- `Ayarlar` → `/settings` — Sistem Muhendisligi
 
 ## Ekip İş Takip (Booking / Work Tracking) — 2026-04-29
 
@@ -129,7 +129,7 @@ curl -fsS http://127.0.0.1:3000/health
 - Durumlar: `PENDING` (Açık), `APPROVED` (Tamamlandı), `REJECTED` (Reddedildi), `CANCELLED` (İptal)
 - Sıralama: Açık (PENDING) işler yukarıda, sonra tarihe göre
 - Dialog: `BookingTaskDialogComponent` — İş Başlığı, Grup, Başlama/Tamamlanma, Sorumlu, Durum, Detaylar, Rapor
-- Yetki: Sadece `SystemEng`
+- Yetki: Sadece `Sistem Muhendisligi`
 
 ## Haftalık Shift (Weekly Shift) — 2026-04-29
 
@@ -138,7 +138,7 @@ curl -fsS http://127.0.0.1:3000/health
 - Vardiya tipleri: `OFF_DAY`, `HOME`, `OUTSIDE`, `NIGHT`, `SIC_CER`, `HOLIDAY`, `ANNUAL`
 - Excel/PDF export: Renkli hücreler, zebra striping
 - Bitiş saatleri: `06:15, 13:15, 15:00, 16:45, 20:00, 22:00, 23:45, Y.SONU`
-- Yetki: Sadece `SystemEng`
+- Yetki: Sadece `Sistem Muhendisligi`
 
 ## Ingest Operasyon Mimarisi
 

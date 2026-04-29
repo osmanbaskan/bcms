@@ -40,56 +40,56 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/provys-content-control/provys-content-control.component').then((m) => m.ProvysContentControlComponent),
     canActivate: [AuthGuard],
-    data: { groups: ['SystemEng'] },
+    data: { groups: ['Sistem Muhendisligi'] },
   },
   {
     path: 'channels',
     loadChildren: () =>
       import('./features/channels/channels.routes').then((m) => m.channelsRoutes),
     canActivate: [AuthGuard],
-    data: { groups: ['SystemEng'] },
+    data: { groups: ['Sistem Muhendisligi'] },
   },
   {
     path: 'ingest',
     loadChildren: () =>
       import('./features/ingest/ingest.routes').then((m) => m.ingestRoutes),
     canActivate: [AuthGuard],
-    data: { groups: ['SystemEng', 'Ingest'] },
+    data: { groups: ['Sistem Muhendisligi', 'Ingest'] },
   },
   {
     path: 'monitoring',
     loadChildren: () =>
       import('./features/monitoring/monitoring.routes').then((m) => m.monitoringRoutes),
     canActivate: [AuthGuard],
-    data: { groups: ['SystemEng'] },
+    data: { groups: ['Sistem Muhendisligi'] },
   },
   {
     path: 'mcr',
     loadChildren: () =>
       import('./features/mcr/mcr.routes').then((m) => m.mcrRoutes),
     canActivate: [AuthGuard],
-    data: { groups: ['SystemEng', 'MCR'] },
+    data: { groups: ['Sistem Muhendisligi', 'MCR'] },
   },
   {
     path: 'users',
     loadChildren: () =>
       import('./features/users/users.routes').then((m) => m.usersRoutes),
     canActivate: [AuthGuard],
-    data: { groups: ['SystemEng'] },
+    data: { groups: ['Sistem Muhendisligi'] },
   },
   {
     path: 'settings',
     loadComponent: () =>
       import('./features/settings/settings.component').then((m) => m.SettingsComponent),
     canActivate: [AuthGuard],
-    data: { groups: ['SystemEng'] },
+    data: { groups: ['Sistem Muhendisligi'] },
   },
   {
     path: 'audit-logs',
     loadComponent: () =>
       import('./features/audit/audit-log.component').then((m) => m.AuditLogComponent),
     canActivate: [AuthGuard],
-    data: { groups: ['SystemEng'] },
+    data: { groups: ['Sistem Muhendisligi'] },
   },
   { path: '**', redirectTo: '/schedules' },
 ];
