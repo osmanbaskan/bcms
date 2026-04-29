@@ -421,7 +421,7 @@ export class BookingListComponent implements OnInit {
     const groups: string[] = parsed?.groups ?? [];
     this.username.set(parsed?.preferred_username ?? '');
     this.userId.set(parsed?.sub ?? '');
-    this.isAdmin.set(groups.includes('Admin') || groups.includes('Sistem Muhendisligi'));
+    this.isAdmin.set(groups.includes('Admin') || groups.includes('SystemEng'));
   }
 
   private showError(err: { status?: number; error?: { message?: string } }): void {

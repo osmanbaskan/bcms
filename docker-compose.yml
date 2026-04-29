@@ -139,6 +139,12 @@ services:
     container_name: bcms_worker
     restart: unless-stopped
     stop_grace_period: 60s
+    healthcheck:
+      test: ['CMD', 'exit', '0']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672

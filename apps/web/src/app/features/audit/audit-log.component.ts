@@ -60,7 +60,7 @@ const ACTION_CLASS: Record<string, string> = {
       <div class="page-header">
         <div>
           <h1>Audit Logları</h1>
-          <p class="subtitle">Tüm yazma işlemlerinin kayıtları — yalnızca Sistem Muhendisligi</p>
+          <p class="subtitle">Tüm yazma işlemlerinin kayıtları — yalnızca SystemEng</p>
         </div>
         <button mat-stroked-button (click)="load()">
           <mat-icon>refresh</mat-icon> Yenile

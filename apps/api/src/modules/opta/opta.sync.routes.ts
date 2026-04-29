@@ -18,7 +18,7 @@ const syncBodySchema = z.object({
 });
 
 export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.post('/sync', async (request, reply) => {
+  fastify.post('/sync', { config: { rateLimit: false } }, async (request, reply) => {
     const secret = process.env.OPTA_SYNC_SECRET;
     if (!secret) {
       return reply.code(500).send({ error: 'OPTA_SYNC_SECRET yapılandırılmamış.' });

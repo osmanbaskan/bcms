@@ -119,14 +119,14 @@ export class AppComponent implements OnInit {
     { label: 'Raporlama',             icon: 'summarize',      route: '/schedules/reporting',    groups: [] },
     { label: 'Stüdyo Planı',          icon: 'event_seat',     route: '/studio-plan',            groups: [] },
     { label: 'Haftalık Shift',        icon: 'groups',         route: '/weekly-shift',           groups: [] },
-    { label: 'Provys İçerik Kontrol', icon: 'fact_check',     route: '/provys-content-control', groups: ['Sistem Muhendisligi'] },
-    { label: 'Kanallar',              icon: 'live_tv',        route: '/channels',               groups: ['Sistem Muhendisligi'] },
-    { label: 'Ingest',                icon: 'cloud_upload',   route: '/ingest',                 groups: ['Sistem Muhendisligi', 'Ingest'] },
-    { label: 'Monitoring',            icon: 'monitor_heart',  route: '/monitoring',             groups: ['Sistem Muhendisligi'] },
-    { label: 'MCR',                   icon: 'videocam',       route: '/mcr',                    groups: ['Sistem Muhendisligi', 'MCR'] },
-    { label: 'Kullanıcılar',          icon: 'manage_accounts',route: '/users',                  groups: ['Sistem Muhendisligi'] },
-    { label: 'Ayarlar',               icon: 'settings',       route: '/settings',               groups: ['Sistem Muhendisligi'] },
-    { label: 'Audit Logları',         icon: 'manage_search',  route: '/audit-logs',             groups: ['Sistem Muhendisligi'] },
+    { label: 'Provys İçerik Kontrol', icon: 'fact_check',     route: '/provys-content-control', groups: ['SystemEng'] },
+    { label: 'Kanallar',              icon: 'live_tv',        route: '/channels',               groups: ['SystemEng'] },
+    { label: 'Ingest',                icon: 'cloud_upload',   route: '/ingest',                 groups: ['SystemEng', 'Ingest'] },
+    { label: 'Monitoring',            icon: 'monitor_heart',  route: '/monitoring',             groups: ['SystemEng'] },
+    { label: 'MCR',                   icon: 'videocam',       route: '/mcr',                    groups: ['SystemEng', 'MCR'] },
+    { label: 'Kullanıcılar',          icon: 'manage_accounts',route: '/users',                  groups: ['SystemEng'] },
+    { label: 'Ayarlar',               icon: 'settings',       route: '/settings',               groups: ['SystemEng'] },
+    { label: 'Audit Logları',         icon: 'manage_search',  route: '/audit-logs',             groups: ['SystemEng'] },
   ];
 
   visibleNavItems = computed(() => {
@@ -148,7 +148,7 @@ export class AppComponent implements OnInit {
   async ngOnInit() {
     if (environment.skipAuth) {
       this.username = 'dev-admin';
-      this.userGroups.set(['Sistem Muhendisligi']);
+      this.userGroups.set(['SystemEng']);
       return;
     }
     // tokenParsed'dan username ve grupları oku — network çağrısı gerektirmez
@@ -156,7 +156,7 @@ export class AppComponent implements OnInit {
     const parsed: any = kc?.tokenParsed ?? {};
     this.username = parsed['preferred_username'] ?? '';
     const groups: string[] = parsed?.groups ?? [];
-    this.userGroups.set(groups.includes('Admin') ? Array.from(new Set([...groups, 'Sistem Muhendisligi'])) : groups);
+    this.userGroups.set(groups.includes('Admin') ? Array.from(new Set([...groups, 'SystemEng'])) : groups);
     this.cdr.detectChanges();
   }
 

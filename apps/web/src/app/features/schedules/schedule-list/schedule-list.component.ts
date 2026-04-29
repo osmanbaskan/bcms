@@ -30,12 +30,12 @@ import type { Schedule } from '@bcms/shared';
 
 // Canlı Yayın Planlama buton izinleri
 const SCHEDULE_PERMS = {
-  add:           ['Sistem Muhendisligi', 'Booking', 'Yayın Planlama Mudurlugu'],
-  edit:          ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon', 'Booking', 'Yayın Planlama Mudurlugu'],
-  technicalEdit: ['Sistem Muhendisligi', 'Transmisyon', 'Booking'],
-  duplicate:     ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon', 'Booking'],
-  delete:        ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon', 'Booking', 'Yayın Planlama Mudurlugu'],
-  reportIssue:   ['Sistem Muhendisligi', 'Yayın Muhendisligi', 'Transmisyon'],
+  add:           ['SystemEng', 'Booking', 'YayınPlanlama'],
+  edit:          ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'],
+  technicalEdit: ['SystemEng', 'Transmisyon', 'Booking'],
+  duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking'],
+  delete:        ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'],
+  reportIssue:   ['SystemEng', 'Tekyon', 'Transmisyon'],
 };
 function hasGroup(userGroups: string[], required: string[]): boolean {
   return required.length === 0 || required.some((g) => userGroups.includes(g));
@@ -1684,7 +1684,7 @@ export class ReportIssueDialogComponent {
       overflow-x:auto;
     }
     .broadcast-table {
-      width:100%; border-collapse:collapse;
+      width:max-content; min-width:100%; border-collapse:collapse;
       font-size:0.82rem;
     }
     .broadcast-table thead tr {
@@ -1764,7 +1764,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   ngOnInit() {
     this.clockTimer = setInterval(() => this.currentTime.set(Date.now()), 60_000);
     if (environment.skipAuth) {
-      this._userGroups.set(['Sistem Muhendisligi']);
+      this._userGroups.set(['SystemEng']);
     } else {
       const parsed = this.keycloak.getKeycloakInstance().tokenParsed as any;
       this._userGroups.set(parsed?.groups ?? []);
