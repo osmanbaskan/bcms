@@ -108,7 +108,10 @@ function toDateInputValue(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-const STUDIO_EDIT_GROUPS = [GROUP.SystemEng, GROUP.StudyoSefi];
+/** Stüdyo planını düzenleyebilen gruplar.
+ *  2026-05-01: SystemEng kaldırıldı — sadece Admin + StudyoSefi.
+ *  PERMISSIONS.studioPlans.write/delete ile hizalı. */
+const STUDIO_EDIT_GROUPS = [GROUP.Admin, GROUP.StudyoSefi];
 
 @Component({
   selector: 'app-studio-plan',

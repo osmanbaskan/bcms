@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { GROUP } from '@bcms/shared';
 import { AuthGuard } from '../../core/guards/auth.guard';
 
 export const schedulesRoutes: Routes = [
@@ -12,7 +13,8 @@ export const schedulesRoutes: Routes = [
   {
     path: 'reporting',
     canActivate: [AuthGuard],
-    data: { groups: [] },
+    // 2026-05-01: Raporlama Admin-only. Backend de PERMISSIONS.reports.read=['Admin'].
+    data: { groups: [GROUP.Admin] },
     loadComponent: () =>
       import('./reporting/schedule-reporting.component').then((m) => m.ScheduleReportingComponent),
   },

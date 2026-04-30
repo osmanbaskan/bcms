@@ -423,7 +423,9 @@ export class BookingListComponent implements OnInit {
     const groups: string[] = parsed?.groups ?? [];
     this.username.set(parsed?.preferred_username ?? '');
     this.userId.set(parsed?.sub ?? '');
-    this.isAdmin.set(groups.includes(GROUP.Admin) || groups.includes(GROUP.SystemEng));
+    // 2026-05-01: SystemEng kaldırıldı — sadece Admin "tüm grupları gör + her atamayı yap"
+    // yetkisinde. Backend isAdminUser() ve PERMISSIONS.weeklyShifts.admin=['Admin'] ile hizalı.
+    this.isAdmin.set(groups.includes(GROUP.Admin));
   }
 
   private showError(err: { status?: number; error?: { message?: string } }): void {
