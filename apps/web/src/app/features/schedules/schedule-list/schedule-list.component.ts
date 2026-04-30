@@ -1985,7 +1985,9 @@ export class ReportIssueDialogComponent {
     .broadcast-table thead th {
       padding:8px 10px; text-align:left;
       border:1px solid rgba(255,255,255,0.15);
-      white-space:nowrap; font-weight:600;
+      white-space:nowrap; font-weight:700;
+      font-size:1.15rem;
+      letter-spacing:0.02em;
     }
     .broadcast-table tbody tr {
       border-bottom:1px solid rgba(255,255,255,0.06);
@@ -2021,9 +2023,15 @@ export class ReportIssueDialogComponent {
 	    .td-stack > div + div { margin-top:1px; color:#78909c; }
 	    .td-lang    { text-align:center; color:#bdbdbd; white-space:nowrap; }
 	    .td-channel { color:#ffd600; font-weight:600; white-space:nowrap; min-width:110px; }
-	    .td-league  { color:#aaa; white-space:nowrap; }
-	    .week-badge { display:inline-block; margin-left:4px; padding:0 5px; border-radius:3px; background:#1976d2; color:#fff; font-size:1.44rem; vertical-align:middle; }
-	    .td-notes   { max-width:260px; color:#bdbdbd; }
+	    .td-league  {
+	      color:#aaa; white-space:normal;
+	      font-size:0.82rem !important;
+	      font-weight:500 !important;
+	      line-height:1.15;
+	      max-width:110px; min-width:80px;
+	    }
+	    .week-badge { display:inline-block; margin-left:4px; padding:0 4px; border-radius:3px; background:#1976d2; color:#fff; font-size:0.72rem; vertical-align:middle; }
+	    .td-notes   { min-width:320px; max-width:480px; color:#bdbdbd; white-space:normal; }
     .td-actions { width:160px; padding:2px 4px; text-align:center; white-space:nowrap; }
 
     /* ── Footer ── */
