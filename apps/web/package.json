@@ -20,6 +20,7 @@
     "@angular/platform-browser-dynamic": "^21.2.8",
     "@angular/router": "^21.2.8",
     "@fastify/jwt": "10.0.0",
+    "exceljs": "^4.4.0",
     "fastify": "5.8.5",
     "keycloak-angular": "^21.0.0",
     "keycloak-js": "^23.0.7",

@@ -4,6 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { KeycloakService } from 'keycloak-angular';
 import { Subject, Subscription, debounceTime, switchMap, finalize, tap } from 'rxjs';
+import ExcelJS from 'exceljs';
 import { StudioPlanService } from '../../core/services/studio-plan.service';
 import { GROUP } from '@bcms/shared';
 import type { StudioPlan, StudioPlanSlot } from '@bcms/shared';
@@ -364,6 +365,186 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     }, 250);
   }
 
+  async exportToExcel(): Promise<void> {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Stüdyo Planı');
+
+    if (this.viewMode() === 'list') {
+      worksheet.columns = [
+        { header: 'Gün', key: 'dayLabel', width: 12 },
+        { header: 'Tarih', key: 'dayDate', width: 14 },
+        { header: 'Stüdyo', key: 'studio', width: 14 },
+        { header: 'Başlangıç', key: 'startTime', width: 12 },
+        { header: 'Bitiş', key: 'endTime', width: 12 },
+        { header: 'Program', key: 'program', width: 35 },
+        { header: 'Renk', key: 'colorLabel', width: 14 },
+        { header: 'Slot Sayısı', key: 'slotCount', width: 12 },
+      ];
+
+      for (const entry of this.listEntries()) {
+        const row = worksheet.addRow({ ...entry });
+        const argb = this.hexToArgb(entry.color);
+        if (argb !== 'FFFFFFFF') {
+          row.getCell('program').fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb },
+          };
+        }
+      }
+    } else {
+      const days = this.visibleDays();
+      const studios = this.studios;
+      const timeSlots = this.timeSlots;
+      const totalCols = 1 + days.length * studios.length;
+
+      const HEADER_BG = 'FF43206D';
+      const HEADER_FONT = { color: { argb: 'FFFFFFFF' }, bold: true };
+      const BORDER = {
+        top: { style: 'thin' as const, color: { argb: 'FF111827' } },
+        left: { style: 'thin' as const, color: { argb: 'FF111827' } },
+        bottom: { style: 'thin' as const, color: { argb: 'FF111827' } },
+        right: { style: 'thin' as const, color: { argb: 'FF111827' } },
+      };
+
+      // Row 1: corner + day headers (merged)
+      const headerRow1 = worksheet.addRow(new Array(totalCols).fill(''));
+      headerRow1.getCell(1).value = 'Saat';
+      let col = 2;
+      for (const day of days) {
+        const startCol = col;
+        const endCol = col + studios.length - 1;
+        headerRow1.getCell(startCol).value = `${day.label} · ${day.date}`;
+        worksheet.mergeCells(1, startCol, 1, endCol);
+        col = endCol + 1;
+      }
+      for (let i = 1; i <= totalCols; i++) {
+        const cell = headerRow1.getCell(i);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+        cell.font = HEADER_FONT;
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = BORDER;
+      }
+
+      // Row 2: empty + studio headers
+      const headerRow2 = worksheet.addRow(new Array(totalCols).fill(''));
+      headerRow2.getCell(1).value = '';
+      let sCol = 2;
+      for (const _day of days) {
+        for (const studio of studios) {
+          headerRow2.getCell(sCol).value = studio;
+          sCol++;
+        }
+      }
+      for (let i = 1; i <= totalCols; i++) {
+        const cell = headerRow2.getCell(i);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+        cell.font = HEADER_FONT;
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = BORDER;
+      }
+
+      // Data rows
+      for (let i = 0; i < timeSlots.length; i++) {
+        const time = timeSlots[i];
+        const row = worksheet.addRow([time]);
+        const timeCell = row.getCell(1);
+        timeCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+        timeCell.font = HEADER_FONT;
+        timeCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        timeCell.border = BORDER;
+
+        let c = 2;
+        for (const day of days) {
+          for (const studio of studios) {
+            const key = this.cellKey(day.id, studio, time);
+            const assignment = this.cells()[key];
+            const cell = row.getCell(c);
+            cell.border = BORDER;
+            if (assignment) {
+              cell.value = assignment.program;
+              const argb = this.hexToArgb(assignment.color);
+              if (argb !== 'FFFFFFFF') {
+                cell.fill = {
+                  type: 'pattern',
+                  pattern: 'solid',
+                  fgColor: { argb },
+                };
+              }
+            }
+            c++;
+          }
+        }
+      }
+
+      // Slot merge: merge consecutive same-program slots per day+studio column
+      let mergeCol = 2;
+      for (const day of days) {
+        for (const studio of studios) {
+          let mergeStart = -1;
+          let mergeProgram = '';
+          let mergeColor = '';
+
+          for (let i = 0; i < timeSlots.length; i++) {
+            const time = timeSlots[i];
+            const key = this.cellKey(day.id, studio, time);
+            const assignment = this.cells()[key];
+
+            if (assignment && assignment.program === mergeProgram && assignment.color === mergeColor) {
+              continue;
+            } else {
+              if (mergeStart !== -1 && i - mergeStart > 1) {
+                worksheet.mergeCells(3 + mergeStart, mergeCol, 3 + i - 1, mergeCol);
+                const mergedCell = worksheet.getRow(3 + mergeStart).getCell(mergeCol);
+                mergedCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+              }
+              mergeStart = assignment ? i : -1;
+              mergeProgram = assignment?.program ?? '';
+              mergeColor = assignment?.color ?? '';
+            }
+          }
+          if (mergeStart !== -1 && timeSlots.length - mergeStart > 1) {
+            worksheet.mergeCells(3 + mergeStart, mergeCol, 3 + timeSlots.length - 1, mergeCol);
+            const mergedCell = worksheet.getRow(3 + mergeStart).getCell(mergeCol);
+            mergedCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+          }
+          mergeCol++;
+        }
+      }
+
+      // Auto-width heuristic
+      worksheet.columns.forEach((colDef, idx) => {
+        if (idx === 0) {
+          colDef.width = 10;
+        } else {
+          colDef.width = 16;
+        }
+      });
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Stüdyo-Planı-${this.weekStart}.xlsx`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  }
+
+  private hexToArgb(hex: string | undefined | null): string {
+    if (!hex || typeof hex !== 'string') return 'FFFFFFFF';
+    const clean = hex.replace('#', '').trim();
+    if (!clean) return 'FFFFFFFF';
+    if (clean.length === 8) return clean.toUpperCase();
+    if (clean.length === 6) return `FF${clean.toUpperCase()}`;
+    if (clean.length === 3) {
+      const expanded = clean.split('').map((c) => c + c).join('');
+      return `FF${expanded.toUpperCase()}`;
+    }
+    return 'FFFFFFFF';
+  }
+
   @HostListener('document:fullscreenchange')
   onFullscreenChange(): void {
     this.fullscreenActive.set(document.fullscreenElement?.id === 'studio-plan-export');
@@ -426,7 +607,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     }
 
     #studio-plan-export .print-title {
-      height: 10mm !important;
+      height: 8mm !important;
       min-width: 0 !important;
       padding: 1mm 3mm !important;
     }
@@ -434,7 +615,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     #studio-plan-export app-studio-plan-table {
       display: block !important;
       width: 420mm !important;
-      height: 287mm !important;
+      height: calc(297mm - 10mm) !important;
       overflow: hidden !important;
     }
 
@@ -445,7 +626,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
       grid-template-columns: var(--time-width) repeat(calc(var(--day-count) * 5), var(--cell-width)) !important;
       grid-template-rows: 8mm 11mm repeat(var(--slot-count), minmax(0, 1fr)) !important;
       width: 420mm !important;
-      height: 287mm !important;
+      height: calc(297mm - 10mm) !important;
       min-width: 0 !important;
       font-size: 6px !important;
     }
@@ -480,7 +661,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     }
 
     #studio-plan-export .slot-cell span {
-      min-height: calc(var(--run-slots, 1) * (268mm / var(--slot-count)) - 2px) !important;
+      min-height: calc(var(--run-slots, 1) * ((100% - 19mm) / var(--slot-count)) - 2px) !important;
       font-size: calc(var(--program-font-size, 11px) * 0.5) !important;
       line-height: 1 !important;
     }

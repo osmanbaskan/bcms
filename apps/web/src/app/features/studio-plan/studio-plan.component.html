@@ -10,9 +10,13 @@
         <mat-icon>{{ fullscreenActive() ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon>
         {{ fullscreenActive() ? 'Tam Ekrandan Çık' : 'Tam Ekran' }}
       </button>
-      <button mat-flat-button color="primary" type="button" (click)="exportPlan()">
-        <mat-icon>download</mat-icon>
+      <button mat-stroked-button type="button" (click)="exportPlan()">
+        <mat-icon>picture_as_pdf</mat-icon>
         Export PDF
+      </button>
+      <button mat-flat-button color="primary" type="button" (click)="exportToExcel()">
+        <mat-icon>table</mat-icon>
+        Export Excel
       </button>
     </div>
   </header>
