@@ -42,7 +42,8 @@
               },
               "allowedCommonJsDependencies": [
                 "base64-js",
-                "js-sha256"
+                "js-sha256",
+                "exceljs"
               ],
               "budgets": [
                 { "type": "initial", "maximumWarning": "800kb", "maximumError": "1.2mb" },
