@@ -98,9 +98,10 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
       if (!allowedIssuers.includes(claims.iss ?? '') || !hasAudience(claims, clientIds)) {
         throw new Error('Invalid token issuer or client');
       }
-      if (isAdminPrincipal(claims)) {
-        claims.groups = Array.from(new Set([...(claims.groups ?? []), 'SystemEng']));
-      }
+      // 2026-05-01: Admin → SystemEng auto-augment kaldırıldı.
+      // Admin tam yetkisi requireGroup içindeki isAdminPrincipal early return
+      // ile sağlanıyor (line ~112). Augment "Admin = ops super-grup" eski
+      // modelin kalıntısıydı; yeni RBAC ile çakışıyordu.
     } catch {
       throw Object.assign(new Error('Invalid or expired token'), { statusCode: 401 });
     }

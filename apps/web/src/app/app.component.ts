@@ -133,15 +133,19 @@ export class AppComponent implements OnInit {
 
   visibleNavItems = computed(() => {
     const groups = this.userGroups();
+    // Admin tam yetki: nav filter'ında centralized bypass.
+    // AuthGuard (auth.guard.ts:44) ve hasGroup() helper (schedule-list:36-39)
+    // ile uyumlu — 3 yerde de Admin için early return.
+    const isAdmin = groups.includes(GROUP.Admin);
     return this.navItems
       .map((item) => {
         const children = item.children?.filter(
-          (child) => child.groups.length === 0 || child.groups.some((g) => groups.includes(g)),
+          (child) => isAdmin || child.groups.length === 0 || child.groups.some((g) => groups.includes(g)),
         );
         return { ...item, children };
       })
       .filter((item) =>
-        item.groups.length === 0 || item.groups.some((g) => groups.includes(g)) || item.children?.length,
+        isAdmin || item.groups.length === 0 || item.groups.some((g) => groups.includes(g)) || item.children?.length,
       );
   });
 
@@ -158,7 +162,10 @@ export class AppComponent implements OnInit {
     const parsed: any = kc?.tokenParsed ?? {};
     this.username = parsed['preferred_username'] ?? '';
     const groups: string[] = parsed?.groups ?? [];
-    this.userGroups.set(groups.includes(GROUP.Admin) ? Array.from(new Set([...groups, GROUP.SystemEng])) : groups);
+    // 2026-05-01: Admin → SystemEng auto-augment kaldırıldı. visibleNavItems
+    // computed'unda centralized Admin bypass var (auth.guard.ts:44 +
+    // hasGroup() helper pattern'iyle uyumlu).
+    this.userGroups.set(groups);
     this.cdr.detectChanges();
   }
 

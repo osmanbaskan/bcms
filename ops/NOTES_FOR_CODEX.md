@@ -373,10 +373,15 @@ OPTA sync schedule cascade'i version conflict yaşadığında **kalıcı drift o
 - Admin auto-bypass tüm `requireGroup` çağrılarında çalışır → array'e Admin yazmana gerek yok.
 - Frontend nav item `groups: [GROUP.Admin]` koyduğunda hem Admin görür (auto-augment SystemEng grup'una rağmen `groups.includes('Admin')` zaten true).
 
-**SystemEng → Admin auto-augment hâlâ var (auth.ts:101-102):**
-- Bu satır Admin token'ının `groups`'una `SystemEng` ekliyor — defense-in-depth.
-- Yani bir endpoint `requireGroup('SystemEng')` ise Admin yine geçer (hem early return hem augment).
-- Bu mekanizmaya dokunma — kaldırılırsa Admin SystemEng-listed legacy endpoint'lere erişimi kaybeder.
+**Admin auto-augment 2026-05-01 (geç saat) KALDIRILDI:**
+- Önceki sürümde `auth.ts:101-103` Admin token'ına SystemEng ekliyordu — eski "Admin = ops super-grup" modelin kalıntısıydı.
+- Şimdi Admin tam yetkisi **3 katmanda centralized bypass** ile sağlanıyor:
+  1. Backend `requireGroup` (auth.ts:~109) `isAdminPrincipal` early return
+  2. Frontend AuthGuard (auth.guard.ts:44) `userGroups.includes(GROUP.Admin)` early return
+  3. Frontend nav filter (app.component.ts visibleNavItems) `isAdmin = groups.includes(GROUP.Admin)` early return
+  4. Frontend `hasGroup()` helper (schedule-list:36-39) Admin early return
+- 4 nokta da aynı pattern → tutarlı, anlaşılır, audit edilebilir.
+- Yeni endpoint eklerken Admin'i array'e yazmana gerek yok (zaten 4 yerden bypass yapılır).
 
 ## Auth Interceptor — 403 Reload Loop (2026-05-01)
 
