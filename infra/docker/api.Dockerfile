@@ -34,6 +34,10 @@ COPY tsconfig.base.json ./
 RUN npm run build -w packages/shared
 WORKDIR /app/apps/api
 RUN npx prisma generate && npm run build
+# devDependencies temizle (typescript, tsx, pino-pretty, @types/*) — build sonrası gereksiz.
+# prisma cli ve @prisma/client production deps'tedir; bu prune onları kaldırmaz.
+WORKDIR /app
+RUN npm prune --omit=dev --workspaces --if-present
 
 # ── Production ────────────────────────────────────────────────────────────────
 FROM base AS production
