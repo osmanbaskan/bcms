@@ -51,6 +51,7 @@ interface IngestPlanRow {
   note: string;      // kaynak bilgisi (lig/stüdyo) — salt okunur
   planNote: string;  // operatör notu — düzenlenebilir, ingest_plan_items.note
   recordingPort: string;
+  backupRecordingPort: string;
   status: IngestPlanStatus;
   jobId?: number | null;
   scheduleId?: number;
@@ -237,6 +238,7 @@ class TrDateAdapter extends NativeDateAdapter {
                 <span>Saat</span>
                 <span>İçerik</span>
                 <span>Kayıt Portu</span>
+                <span>Yedek Kayıt Portu</span>
                 <span>Açıklama</span>
               </div>
 
@@ -259,7 +261,18 @@ class TrDateAdapter extends NativeDateAdapter {
                       <mat-select [(ngModel)]="row.recordingPort" (selectionChange)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)">
                         <mat-option value="">Port seçilmedi</mat-option>
                         @for (port of activeRecordingPorts(); track port.id) {
-                          <mat-option [value]="port.name">{{ port.name }}</mat-option>
+                          <mat-option [value]="port.name" [disabled]="port.name === row.backupRecordingPort">{{ port.name }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
+                  <div class="port-cell" [class.assigned]="row.backupRecordingPort">
+                    <span class="port-dot"></span>
+                    <mat-form-field class="inline-field" appearance="outline">
+                      <mat-select [(ngModel)]="row.backupRecordingPort" (selectionChange)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey) || !row.recordingPort">
+                        <mat-option value="">Port seçilmedi</mat-option>
+                        @for (port of activeRecordingPorts(); track port.id) {
+                          <mat-option [value]="port.name" [disabled]="port.name === row.recordingPort">{{ port.name }}</mat-option>
                         }
                       </mat-select>
                     </mat-form-field>
@@ -544,7 +557,7 @@ class TrDateAdapter extends NativeDateAdapter {
     .content-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
     .content-meta { font-size: 0.72rem; color: #7a8fa8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .planning-head,
-    .planning-row { display: grid; grid-template-columns: 116px 86px minmax(200px,1fr) 190px minmax(170px,0.6fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .planning-row { display: grid; grid-template-columns: 116px 86px minmax(200px,1fr) 170px 170px minmax(170px,0.6fr); align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
     .note-cell { display: flex; align-items: center; gap: 2px; }
     .note-cell .inline-field { flex: 1; }
     .duplicate-btn { flex-shrink: 0; width: 32px; height: 32px; line-height: 32px; color: #9bd3ff; }
@@ -660,6 +673,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
         .filter(Boolean)
         .join(' · ') || '-',
       recordingPort: planItem?.recordingPort ?? '',
+      backupRecordingPort: planItem?.backupRecordingPort ?? '',
       status: planItem?.status ?? 'WAITING' as IngestPlanStatus,
       planNote: planItem?.note ?? '',
       jobId: planItem?.jobId,
@@ -688,6 +702,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
           note: '',
           planNote: item.note ?? '',
           recordingPort: item.recordingPort ?? '',
+          backupRecordingPort: item.backupRecordingPort ?? '',
           status: item.status,
           jobId: item.jobId,
         };
@@ -745,6 +760,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
         note: [schedule.reportLeague, schedule.reportSeason, schedule.reportWeekNumber ? `${schedule.reportWeekNumber}. Hafta` : '']
           .filter(Boolean).join(' · ') || '-',
         recordingPort: planItem?.recordingPort ?? '',
+      backupRecordingPort: planItem?.backupRecordingPort ?? '',
         status: planItem?.status ?? 'WAITING' as IngestPlanStatus,
         planNote: planItem?.note ?? '',
         jobId: planItem?.jobId,
@@ -779,6 +795,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
         startTime: this.minuteToTime(pbStartMin), endTime: this.minuteToTime(pbEndMin),
         title: first.program, location: first.studio, note: 'Stüdyo programı',
         planNote: planItem?.note ?? '', recordingPort: planItem?.recordingPort ?? '',
+        backupRecordingPort: planItem?.backupRecordingPort ?? '',
         status: planItem?.status ?? 'WAITING', jobId: planItem?.jobId,
       });
     }
@@ -795,6 +812,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
           startTime: this.minuteToTime(item.plannedStartMinute ?? 0), endTime: this.minuteToTime(item.plannedEndMinute ?? 0),
           title: parts.slice(1).join('\t') || 'Kopya', location: '', note: '',
           planNote: item.note ?? '', recordingPort: item.recordingPort ?? '',
+          backupRecordingPort: item.backupRecordingPort ?? '',
           status: item.status, jobId: item.jobId,
         };
       });
@@ -1245,6 +1263,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
         note: 'Stüdyo programı',
         planNote: planItem?.note ?? '',
         recordingPort: planItem?.recordingPort ?? '',
+      backupRecordingPort: planItem?.backupRecordingPort ?? '',
         status: planItem?.status ?? 'WAITING',
         jobId: planItem?.jobId,
       });
@@ -1360,10 +1379,17 @@ export class IngestListComponent implements OnInit, OnDestroy {
   savePlanRow(row: IngestPlanRow) {
     const existing = this.ingestPlanItems().find((item) => item.sourceKey === row.sourceKey);
     const portUnchanged = (existing?.recordingPort ?? '') === (row.recordingPort ?? '');
+    const backupPortUnchanged = (existing?.backupRecordingPort ?? '') === (row.backupRecordingPort ?? '');
     const noteUnchanged = (existing?.note ?? '') === (row.planNote ?? '');
     const startUnchanged = existing?.plannedStartMinute != null ? existing.plannedStartMinute === row.sortMinute : false;
     const endUnchanged = existing?.plannedEndMinute != null ? existing.plannedEndMinute === row.endMinute : false;
-    if (existing && portUnchanged && noteUnchanged && startUnchanged && endUnchanged) return;
+    if (existing && portUnchanged && backupPortUnchanged && noteUnchanged && startUnchanged && endUnchanged) return;
+
+    // Yedek port var ama ana port boş → backup'ı sıfırla (server'da da reddedilir
+    // ama UI tutarlılığı için erken)
+    if (!row.recordingPort && row.backupRecordingPort) {
+      row.backupRecordingPort = '';
+    }
 
     const nextSaving = new Set(this.savingPlanKeys());
     nextSaving.add(row.sourceKey);
@@ -1374,6 +1400,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
       day: row.day,
       ...(row.source === 'ingest-plan' ? { sourcePath: `${row.sourceLabel}\t${row.title}` } : {}),
       recordingPort: row.recordingPort || null,
+      backupRecordingPort: row.backupRecordingPort || null,
       plannedStartMinute: row.sortMinute,
       plannedEndMinute: row.endMinute,
       status: row.status,

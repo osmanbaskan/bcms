@@ -1257,10 +1257,6 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
 
         <div class="eform-row">
           <mat-form-field>
-            <mat-label>Kayıt Yeri</mat-label>
-            <input matInput [(ngModel)]="f.recordLocation" [ngModelOptions]="{standalone:true}">
-          </mat-form-field>
-          <mat-form-field>
             <mat-label>TIE</mat-label>
             <mat-select [(ngModel)]="f.tie" [ngModelOptions]="{standalone:true}">
               <mat-option value="">—</mat-option>
@@ -1355,7 +1351,7 @@ export class ScheduleEditDialogComponent {
     transStart: string; transEnd: string; houseNumber: string;
     intField: string; intField2: string; offTube: string; language: string; notes: string;
     modulationType: string; videoCoding: string; demod: string;
-    recordLocation: string; tie: string; virtualResource: string;
+    tie: string; virtualResource: string;
     // IRD slotları (slot 1 = ird, slot 2 = ird2, slot 3 = ird3)
     // Slot 1 ve slot 3 Teknik Detay ile paylaşılır; slot 2 yeni anahtar.
     ird1: string; ird2: string; ird3: string;
@@ -1390,7 +1386,6 @@ export class ScheduleEditDialogComponent {
       modulationType:  String(ld['modulationType']  || ''),
       videoCoding:     String(ld['videoCoding']     || ''),
       demod:           String(ld['demod']           || ''),
-      recordLocation:  String(ld['recordLocation']  || ''),
       tie:             String(ld['tie']             || ''),
       virtualResource: String(ld['virtualResource'] || ''),
       ird1:            String(ld['ird']             || ''),
@@ -1437,7 +1432,6 @@ export class ScheduleEditDialogComponent {
       modulationType:  f.modulationType.trim(),
       videoCoding:     f.videoCoding.trim(),
       demod:           f.demod.trim(),
-      recordLocation:  f.recordLocation.trim(),
       tie:             f.tie.trim(),
       virtualResource: f.virtualResource.trim(),
       ird:             f.ird1.trim(),
@@ -1800,7 +1794,7 @@ export class ReportIssueDialogComponent {
                     }
                   </td>
                   <td class="td-mono">{{ liveDetailValue(s, 'demod') }}</td>
-                  <td class="td-mono">{{ liveDetailValue(s, 'recordLocation') }}</td>
+                  <td class="td-mono td-record-location">{{ formatRecordingPorts(s) }}</td>
                   <td class="td-mono">{{ liveDetailValue(s, 'tie') }}</td>
                   <td class="td-mono">{{ liveDetailValue(s, 'virtualResource') }}</td>
                   <td class="td-mono">{{ s.metadata?.['houseNumber'] ?? '' }}</td>
@@ -2087,6 +2081,16 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
     const ld = (s.metadata?.['liveDetails'] ?? {}) as Record<string, unknown>;
     const value = ld[key];
     return value !== null && value !== undefined ? String(value) : '';
+  }
+
+  /** Kayıt Yeri kolonu: ingest_plan_items'tan gelen ana + yedek port (read-only).
+   *  Tek edit noktası Ingest sekmesi. "Port 5 / Port 12 (yedek)" formatı. */
+  formatRecordingPorts(s: Schedule): string {
+    const primary = (s as Schedule & { recordingPort?: string | null }).recordingPort?.trim();
+    const backup  = (s as Schedule & { backupRecordingPort?: string | null }).backupRecordingPort?.trim();
+    if (primary && backup) return `${primary} / ${backup} (yedek)`;
+    if (primary) return primary;
+    return '';
   }
 
   /** IRD slotları: ird (slot 1) + ird2 (slot 2) + ird3 (slot 3). Boş slotlar
