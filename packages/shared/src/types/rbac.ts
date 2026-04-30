@@ -67,13 +67,13 @@ export const PERMISSIONS = {
     delete: [] as BcmsGroup[],
   },
   ingest: {
-    read:         ['SystemEng', 'Ingest'] as BcmsGroup[],
-    write:        ['SystemEng', 'Ingest'] as BcmsGroup[],
-    delete:       ['SystemEng', 'Ingest'] as BcmsGroup[],
+    read:         ['Ingest'] as BcmsGroup[],               // SystemEng OUT, Admin auto-bypass
+    write:        ['Ingest'] as BcmsGroup[],
+    delete:       ['Ingest'] as BcmsGroup[],
     reportIssue:  [] as BcmsGroup[],                       // tüm authenticated — her rol yayın sorunu bildirebilir
   },
   channels: {
-    read:   ['SystemEng'] as BcmsGroup[],
+    read:   ['SystemEng'] as BcmsGroup[],                  // ops gereği SystemEng korunur (kullanıcı Channels'i listelemedi)
     write:  ['SystemEng'] as BcmsGroup[],
     delete: ['SystemEng'] as BcmsGroup[],
   },
@@ -84,8 +84,8 @@ export const PERMISSIONS = {
     reportIssue: ['SystemEng', 'Tekyon', 'Transmisyon'] as BcmsGroup[],
   },
   monitoring: {
-    read:   ['SystemEng'] as BcmsGroup[],
-    write:  ['SystemEng'] as BcmsGroup[],
+    read:   ['Admin'] as BcmsGroup[],                      // SystemEng OUT — sadece Admin
+    write:  ['Admin'] as BcmsGroup[],
   },
   auditLogs: {
     read:   ['SystemEng'] as BcmsGroup[],

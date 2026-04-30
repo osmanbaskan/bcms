@@ -41,7 +41,7 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/provys-content-control/provys-content-control.component').then((m) => m.ProvysContentControlComponent),
     canActivate: [AuthGuard],
-    data: { groups: [GROUP.SystemEng] },
+    data: { groups: [GROUP.Admin] },
   },
   {
     path: 'channels',
@@ -55,21 +55,21 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/ingest/ingest.routes').then((m) => m.ingestRoutes),
     canActivate: [AuthGuard],
-    data: { groups: [GROUP.SystemEng, GROUP.Ingest] },
+    data: { groups: [GROUP.Admin, GROUP.Ingest] },
   },
   {
     path: 'monitoring',
     loadChildren: () =>
       import('./features/monitoring/monitoring.routes').then((m) => m.monitoringRoutes),
     canActivate: [AuthGuard],
-    data: { groups: [GROUP.SystemEng] },
+    data: { groups: [GROUP.Admin] },
   },
   {
     path: 'mcr',
     loadChildren: () =>
       import('./features/mcr/mcr.routes').then((m) => m.mcrRoutes),
     canActivate: [AuthGuard],
-    data: { groups: [GROUP.SystemEng, GROUP.MCR] },
+    data: { groups: [GROUP.Admin, GROUP.MCR] },
   },
   {
     path: 'users',
