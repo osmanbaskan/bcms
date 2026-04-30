@@ -318,3 +318,19 @@ Yanlış sınıflandırılan diğer CRITICAL'lar (rapor 13'ten gerçek 3-4'e dü
 - **CRIT-010/012**: Real ama HIGH ya da MEDIUM, CRITICAL değil.
 
 Pattern: Audit raporları rakam başlığı (138 bulgu) ile sahte titizlik veriyor; **triage etmeden aksiyon planına çevirme**. RxJS gibi temel kavram hatası 4 CRITICAL üretebilir → yeniden kalibrasyon gerekir.
+
+## API Test Coverage — 2026-05-01 Durumu
+
+`apps/api` için **çalışır Jest altyapısı yok**. Eski `opta.sync.routes.spec.ts` Babel/TS-Jest config eksiği nedeniyle compile bile etmiyordu (`Tests: 0 total`) ve mock yapısı route'un mevcut `$transaction` + `findMany` yapısını temsil etmiyordu — fake coverage idi, silindi (commit ile birlikte).
+
+Frontend'de `apps/web` için 25/25 Karma test çalışıyor; API tarafı sadece tsc + canlı smoke test ile doğrulanıyor.
+
+**Follow-up**: API için ya proper Jest config (ts-jest preset + Prisma mock) ya da Vitest kurulması, OPTA sync gibi cascade'li flow'ların unit kapsamına alınması. Drift scan PR'ı ile birlikte düşünülecek (cascade davranışı genişlerken hep birlikte test'lenebilir).
+
+## OPTA Cascade — Drift Scan Follow-up (2026-05-01)
+
+OPTA sync schedule cascade'i version conflict yaşadığında **kalıcı drift olur** — sonraki sync match.matchDate'i tekrar değiştirmedikçe cascade tetiklenmez. Şu an:
+- `manualReconcileRequired: true` response sinyali
+- Log'da scheduleId / matchUid / delta / reason açık
+
+**TODO (ayrı PR)**: Drift scan job — `metadata.optaAppliedMatchDate` field'ı + her sync'te bound schedule'ları tarayıp drift düzelten worker. **Bu PR'da `optaAppliedMatchDate` yazma — kasıtlı**: consumer olmadan field "phantom state" olur, drift scan tasarımını kısıtlar. Atomik introduction (backfill migration + new-create semantics + drift scan) ile birlikte gelecek.

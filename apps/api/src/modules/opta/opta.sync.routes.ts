@@ -25,8 +25,9 @@ const syncBodySchema = z.object({
  *  (MCR ekibi için sürpriz). COMPLETED + CANCELLED da frozen — geçmiş yayın. */
 const FROZEN_STATUSES = ['COMPLETED', 'CANCELLED', 'ON_AIR'] as const;
 
-/** "HH:MM" string'ini deltaMs kadar kaydır. Format eşleşmiyorsa null döner
- *  (caller dokunmaz). Gün sınırı wraps (24h+ → modulo 24h). */
+/** "HH:MM" string'ini deltaMs kadar kaydır. Format eşleşmiyorsa veya
+ *  range geçersizse (hours>=24 || mins>=60) null döner — caller dokunmaz,
+ *  silent corruption riskini önler. Geçerli aralık için 24h modulo wrap. */
 function shiftTimeOfDay(value: unknown, deltaMs: number): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
   const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
@@ -34,6 +35,7 @@ function shiftTimeOfDay(value: unknown, deltaMs: number): string | null {
   const hours = Number(match[1]);
   const mins  = Number(match[2]);
   if (!Number.isFinite(hours) || !Number.isFinite(mins)) return null;
+  if (hours >= 24 || mins >= 60) return null;
   const totalMins = hours * 60 + mins;
   const deltaMins = Math.round(deltaMs / 60000);
   let nextMins = (totalMins + deltaMins) % 1440;
@@ -49,11 +51,19 @@ interface SyncResponse {
   unchanged: number;
   cascadedSchedules: number;
   cascadeConflicts: number;
+  /** Cascade conflict (version mismatch / channel-overlap) yaşandı mı?
+   *  true ise log'lardaki scheduleId/matchUid bilgisi ile manuel reconcile
+   *  gerekir — drift correction otomatik DEĞİL. */
+  manualReconcileRequired: boolean;
+  /** Outer catch fire ettiyse hata mesajı; cascade sayımı tam değildir. */
+  cascadeError?: string | null;
 }
 
 const EMPTY_RESPONSE: SyncResponse = {
   inserted: 0, updated: 0, unchanged: 0,
   cascadedSchedules: 0, cascadeConflicts: 0,
+  manualReconcileRequired: false,
+  cascadeError: null,
 };
 
 export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
@@ -173,6 +183,7 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
       // 500 dönmez.
       let cascadedSchedules = 0;
       let cascadeConflicts = 0;
+      let cascadeError: string | null = null;
       try {
         for (const u of result.toUpdate) {
           const deltaMs = u.newMatchDate.getTime() - u.oldMatchDate.getTime();
@@ -207,8 +218,15 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
             try {
               // Real optimistic lock: version match + count check.
               // Kullanıcı eş zamanlı edit ediyorsa (version moved) cascade
-              // skip eder, user write korunur. Retry yok — sonraki OPTA
-              // sync (1 saat) tekrar dener.
+              // skip eder, user write korunur.
+              //
+              // ⚠ KALICI DRIFT RİSKİ: skip edilen schedule kalıcı olarak
+              // OPTA'dan geri kalır. Sonraki OPTA sync match.matchDate'i
+              // tekrar değiştirmedikçe cascade tetiklenmez. Çözüm: manuel
+              // reconcile (response.manualReconcileRequired=true sinyali +
+              // log'da scheduleId/matchUid/delta). Otomatik drift scan
+              // ayrı bir PR'da; o zaman applied-date metadata + her sync'te
+              // tarama tek atomik introduction olarak gelir.
               const updated = await fastify.prisma.schedule.updateMany({
                 where: { id: dep.id, version: dep.version },
                 data: {
@@ -260,18 +278,24 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
           }
         }
       } catch (err) {
-        // Beklenmeyen hata (DB connection drop vs.) — kalan cascade atlanır,
-        // response yine başarılı bitirilir. Sonraki OPTA sync (1 saat) retry yapar.
+        // Beklenmeyen hata (DB connection drop, findMany failure vs.) —
+        // kalan cascade atlanır, response yine başarılı bitirilir. Sayım
+        // eksik kalabilir → cascadeError ile caller'a sinyal verilir.
+        cascadeError = (err as Error).message;
         fastify.log.error(
-          { err: (err as Error).message },
+          { err: cascadeError },
           'OPTA cascade — beklenmeyen hata, kalan cascade atlandı',
         );
       }
 
+      // Conflict veya outer-catch fire ettiyse manuel reconcile gerekir
+      // (otomatik drift correction yok — drift scan PR'ı follow-up olacak).
+      const manualReconcileRequired = cascadeConflicts > 0 || cascadeError != null;
+
       fastify.log.info(
         `OPTA sync — yeni:${result.inserted}, güncellenen:${result.updated}, ` +
         `değişmeyen:${result.unchanged}, schedule kaydırılan:${cascadedSchedules}, ` +
-        `çakışma:${cascadeConflicts}`,
+        `çakışma:${cascadeConflicts}, manuelReconcile:${manualReconcileRequired}`,
       );
 
       return {
@@ -280,6 +304,8 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
         unchanged:         result.unchanged,
         cascadedSchedules,
         cascadeConflicts,
+        manualReconcileRequired,
+        cascadeError,
       };
     },
   );
