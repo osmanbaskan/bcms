@@ -3,6 +3,7 @@ import amqplib, { type Channel, type ChannelModel, type ConsumeMessage } from 'a
 import type { FastifyInstance } from 'fastify';
 
 // ── Queue / Exchange definitions ──────────────────────────────────────────────
+// Reserved event docs: infra/architecture/event-bus.md
 export const QUEUES = {
   SCHEDULE_CREATED:   'queue.schedule.created',
   SCHEDULE_UPDATED:   'queue.schedule.updated',
@@ -10,7 +11,6 @@ export const QUEUES = {
   INGEST_NEW:         'queue.ingest.new',
   INGEST_COMPLETED:   'queue.ingest.completed',
   NOTIFICATIONS_EMAIL:'queue.notifications.email',
-  NOTIFICATIONS_SLACK:'queue.notifications.slack',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
