@@ -1,8 +1,9 @@
 import { HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { KeycloakService } from 'keycloak-angular';
-import { catchError, from, of, switchMap } from 'rxjs';
+import { catchError, from, switchMap, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { getPublicAppOrigin } from '../auth/public-origin';
 import { LoggerService } from '../services/logger.service';
 
 const TOKEN_MIN_VALIDITY_SECONDS = 60;
@@ -14,30 +15,34 @@ function isApiRequest(url: string): boolean {
 }
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
-  const keycloak = inject(KeycloakService);
-  const logger = inject(LoggerService);
-
-  if (!isApiRequest(req.url)) {
+  if (!isApiRequest(req.url) || environment.skipAuth) {
     return next(req);
   }
 
+  const keycloak = inject(KeycloakService);
+  const logger = inject(LoggerService);
+
   return from(keycloak.updateToken(TOKEN_MIN_VALIDITY_SECONDS)).pipe(
-    catchError((err) => {
-      logger.warn('Token refresh before API request failed', err);
-      return of(false);
-    }),
     switchMap(() => from(keycloak.getToken())),
     switchMap((token: string) => {
-      if (token) {
-        req = req.clone({
-          setHeaders: { Authorization: `Bearer ${token}` },
-        });
+      if (!token) {
+        return throwError(() => new Error('No auth token available'));
       }
-      return next(req);
+      const authReq = req.clone({
+        setHeaders: { Authorization: `Bearer ${token}` },
+      });
+      return next(authReq);
     }),
     catchError((err) => {
-      logger.error('Token retrieval failed', err);
-      return next(req);
+      // Token refresh veya retrieval başarısızsa request'i auth header'sız
+      // göndermek 401 üretir ve session kurtarma akışı asla tetiklenmez.
+      // Bunun yerine kullanıcıyı login akışına yönlendir ve hatayı propaate et.
+      logger.error('Auth interceptor failure — redirecting to login', err);
+      keycloak.login({ redirectUri: getPublicAppOrigin() }).catch(() => {
+        // login() rejection durumunda fallback: hard reload
+        window.location.assign(getPublicAppOrigin());
+      });
+      return throwError(() => err);
     }),
   );
 };
