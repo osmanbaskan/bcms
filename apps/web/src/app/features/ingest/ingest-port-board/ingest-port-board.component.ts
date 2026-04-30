@@ -129,26 +129,29 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-column:last-child{border-right:0}
     .port-board-section.is-fullscreen .port-board-column{min-height:0;overflow:hidden}
     .port-board-column-tag{position:absolute;top:2px;left:2px;z-index:3;gap:1px;padding:0 4px;background:transparent;color:#f5d24b;font-size:3.48rem;cursor:move}
-    /* Fullscreen: küçük tag — column tag bar'ı az yer kaplasın */
-    .port-board-section.is-fullscreen .port-board-column-tag{font-size:1.1rem}
+    /* Fullscreen: column tag bar'ı kompakt ama okunabilir port adı */
+    .port-board-section.is-fullscreen .port-board-column-tag{font-size:1.55rem;line-height:1}
     .port-drag-handle{justify-content:center;width:18px;height:18px;padding:0;border:0;background:transparent;color:#d9e6f2;cursor:move}
     .port-drag-handle mat-icon{font-size:16px;width:16px;height:16px}
     .port-board-column-body{position:relative;display:grid;padding:0;min-height:240px;background:rgba(189,210,232,.08)}
     .port-board-section.is-fullscreen .port-board-column-body{min-height:0;height:100%}
     .port-board-item{z-index:1;margin:1px 0 0;padding:1px 1px 2px;border:1px solid rgba(255,255,255,.08);background:#c7d8ec;color:#17304d;display:flex;flex-direction:column;gap:1px;overflow:hidden}
     .port-board-item:first-of-type{margin-top:4rem}
-    .port-board-section.is-fullscreen .port-board-item:first-of-type{margin-top:1.4rem}
+    .port-board-section.is-fullscreen .port-board-item:first-of-type{margin-top:1.9rem}
     .port-board-item.overlap{background:#ffd9d9;border-color:#ef5350}
     .port-board-item strong{display:flex;flex-direction:column;font-size:2.16rem;line-height:.92;overflow:hidden}
     .title-line{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .port-board-time{font-weight:bold;font-size:2.16rem;line-height:.92;color:#e65100}
     .port-board-warning{font-weight:bold;font-size:2.16rem;line-height:.92;color:#b71c1c}
     .port-board-note{font-size:2.16rem;font-weight:bold;line-height:.92;color:#4a148c;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    /* Fullscreen: item içerik fontları ölçeklenir (10 kolon × 5 satır = 46 port'a yer açar) */
-    .port-board-section.is-fullscreen .port-board-item strong{font-size:.78rem}
-    .port-board-section.is-fullscreen .port-board-time{font-size:.72rem}
-    .port-board-section.is-fullscreen .port-board-warning{font-size:.72rem}
-    .port-board-section.is-fullscreen .port-board-note{font-size:.7rem}
+    /* Fullscreen: item içerik fontları — okunaklı + sığabilir denge.
+       Title öncelik 1, time öncelik 2, note öncelik 3. line-height:1 ile
+       satır başına yer korunur (3-4 satır item'lar 200px column-body'ye sığar). */
+    .port-board-section.is-fullscreen .port-board-item{padding:2px 3px 3px;gap:2px}
+    .port-board-section.is-fullscreen .port-board-item strong{font-size:1.05rem;line-height:1.05;font-weight:700}
+    .port-board-section.is-fullscreen .port-board-time{font-size:.95rem;line-height:1.05}
+    .port-board-section.is-fullscreen .port-board-warning{font-size:.9rem;line-height:1.05}
+    .port-board-section.is-fullscreen .port-board-note{font-size:.85rem;line-height:1.05;margin-top:1px}
   `],
 })
 export class IngestPortBoardComponent {
