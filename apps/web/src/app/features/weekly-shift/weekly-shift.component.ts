@@ -222,59 +222,47 @@ const END_TIMES = ['06:15', '13:15', '15:00', '16:45', '20:00', '22:00', '23:45'
     .mode { font-size:24px; color:#fca5a5; }
     .mode.editable { color:#86efac; }
     .empty { padding:18px; color:#8a94a6; border:1px dashed #334155; }
-    /* Yatay scroll yok — table viewport'a sığar (fixed layout + min-width:0
-       chain ile). Fontlar ve padding'ler kompakt; ekstra dropdown daralmaları
-       için ::ng-deep ile material'ın min-width zorlamaları sıfırlanır. */
-    .table-wrap { overflow:hidden; border:1px solid #263241; }
+    .table-wrap { overflow:auto; border:1px solid #263241; }
     .shift-table { width:100%; border-collapse:collapse; table-layout:fixed; min-width:0; }
     th, td { border-bottom:1px solid #263241; border-right:1px solid #263241; }
-    th { background:#111827; color:#dbeafe; padding:4px; text-align:left; vertical-align:top; }
-    td { padding:3px; text-align:center; vertical-align:middle; }
-    .person-col { position:sticky; left:0; z-index:1; width:110px; min-width:110px; max-width:110px; background:#0f172a; }
+    th { background:#111827; color:#dbeafe; padding:6px; text-align:left; vertical-align:top; }
+    td { padding:5px; text-align:center; vertical-align:middle; }
+    .person-col { position:sticky; left:0; z-index:1; width:150px; min-width:150px; background:#0f172a; }
     th.person-col { z-index:2; }
-    .person-name { font-weight:600; font-size:14px; line-height:1.2; text-align:center; }
-    .person-meta { display:flex; align-items:center; gap:4px; margin-top:2px; color:#9ca3af; font-size:11px; flex-wrap:wrap; justify-content:center; }
-    .supervisor { color:#f3e8ff; background:#581c87; border-radius:8px; padding:1px 5px; font-size:10px; }
-    .day-name { font-weight:600; font-size:14px; }
-    .day-date { color:#94a3b8; font-size:11px; margin-top:1px; }
-    .cell-editor { position:relative; display:flex; flex-direction:column; gap:2px; min-width:0; }
-    .cell-editor mat-form-field { width:100%; min-width:0; }
-    .time-row { display:grid; grid-template-columns:1fr 1fr; gap:2px; min-width:0; }
+    .person-name { font-weight:600; font-size:24px; line-height:1.25; text-align:center; }
+    .person-meta { display:flex; align-items:center; gap:6px; margin-top:3px; color:#9ca3af; font-size:20px; flex-wrap:wrap; }
+    .supervisor { color:#f3e8ff; background:#581c87; border-radius:10px; padding:2px 7px; }
+    .day-name { font-weight:600; font-size:24px; }
+    .day-date { color:#94a3b8; font-size:20px; margin-top:2px; }
+    .cell-editor { position:relative; display:flex; flex-direction:column; gap:3px; min-width:0; }
+    .cell-editor mat-form-field { width:100%; }
+    .time-row { display:grid; grid-template-columns:1fr 1fr; gap:3px; }
     .shift-type-field { margin-top:1px; }
     .cell-editor.leave-mode .shift-type-field,
-    .cell-editor.time-mode .time-row { min-height:42px; display:flex; align-items:stretch; }
-    .cell-editor.leave-mode .shift-type-field { display:block; }
+    .cell-editor.time-mode .time-row { min-height:72px; display:flex; align-items:stretch; }
     .cell-editor.leave-mode .shift-type-field ::ng-deep .mat-mdc-text-field-wrapper,
-    .cell-editor.time-mode .time-row mat-form-field ::ng-deep .mat-mdc-text-field-wrapper { min-height:38px; align-items:center; }
+    .cell-editor.time-mode .time-row mat-form-field ::ng-deep .mat-mdc-text-field-wrapper { min-height:64px; align-items:center; }
     .clear-cell {
-      position:absolute; top:1px; right:1px; z-index:3;
-      width:16px; height:16px; padding:0; color:#cbd5e1; background:rgba(15,23,42,.84);
+      position:absolute; top:2px; right:2px; z-index:3;
+      width:20px; height:20px; padding:0; color:#cbd5e1; background:rgba(15,23,42,.84);
     }
-    .clear-cell mat-icon { font-size:12px; width:12px; height:12px; line-height:12px; }
+    .clear-cell mat-icon { font-size:15px; width:15px; height:15px; line-height:15px; }
     .cell-editor ::ng-deep .mat-mdc-form-field-infix {
-      min-height:38px;
-      padding-top:6px;
-      padding-bottom:6px;
+      min-height:68px;
+      padding-top:12px;
+      padding-bottom:12px;
       display:flex;
       align-items:center;
-      width:auto;
     }
     .cell-editor ::ng-deep .mat-mdc-text-field-wrapper {
-      padding-left:4px;
-      padding-right:4px;
-    }
-    /* Material'ın varsayılan min-width:180px form field zorlaması iptal */
-    .cell-editor ::ng-deep .mat-mdc-form-field {
-      width:100%; min-width:0;
-    }
-    .cell-editor ::ng-deep .mat-mdc-select-arrow-wrapper {
-      padding-left:0; transform:scale(0.85);
+      padding-left:6px;
+      padding-right:6px;
     }
     .cell-editor ::ng-deep .mat-mdc-select-value,
     .cell-editor ::ng-deep .mat-mdc-floating-label {
-      font-size:13px;
+      font-size:22px;
       text-align:center;
-      font-weight:600;
+      font-weight:700;
     }
     .cell-editor ::ng-deep .mat-mdc-select-value-text {
       display:flex;
