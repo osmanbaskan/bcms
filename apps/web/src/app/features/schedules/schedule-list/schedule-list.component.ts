@@ -320,6 +320,21 @@ function transmissionEndDate(schedule: Schedule): Date {
 
         <div class="step-header">
           <span class="step-num">1</span>
+          <span>İçerik Türü</span>
+        </div>
+
+        <div class="form-row">
+          <mat-form-field>
+            <mat-label>İçerik Türü</mat-label>
+            <mat-select [value]="icerikTuru()" (selectionChange)="onIcerikTuruChange($event.value)">
+              <mat-option value="">— Seçin —</mat-option>
+              <mat-option value="musabaka">Müsabaka</mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        <div class="step-header">
+          <span class="step-num">2</span>
           <span>İçerik Seçimi</span>
         </div>
 
@@ -328,7 +343,7 @@ function transmissionEndDate(schedule: Schedule): Date {
             <mat-label>Lig / Turnuva</mat-label>
             <mat-select [value]="selectedComp()"
                         (selectionChange)="onCompChange($event.value)"
-                        [disabled]="compsLoading()"
+                        [disabled]="compsLoading() || icerikTuru() !== 'musabaka'"
                         [compareWith]="compById">
               <mat-option [value]="null">— Seçin —</mat-option>
               @for (c of competitions(); track c.id + c.season) {
@@ -339,6 +354,7 @@ function transmissionEndDate(schedule: Schedule): Date {
               }
             </mat-select>
             @if (compsLoading()) { <mat-hint>Yükleniyor…</mat-hint> }
+            @else if (icerikTuru() !== 'musabaka') { <mat-hint>Önce içerik türü seçin</mat-hint> }
           </mat-form-field>
 
           @if (weeks().length > 0) {
@@ -368,7 +384,7 @@ function transmissionEndDate(schedule: Schedule): Date {
           } @else if (leagueTeams().length > 0) {
             <div class="team-picker">
               <div class="step-header">
-                <span class="step-num">2</span>
+                <span class="step-num">3</span>
                 <span>Maç Seç</span>
               </div>
               <div class="form-row tp-row">
@@ -448,7 +464,7 @@ function transmissionEndDate(schedule: Schedule): Date {
           <mat-divider style="margin:12px 0"></mat-divider>
 
           <div class="step-header">
-            <span class="step-num">2</span>
+            <span class="step-num">3</span>
             <span>Maç Bilgileri</span>
           </div>
 
@@ -816,6 +832,9 @@ export class ScheduleAddDialogComponent {
   canSaveManual = () => !!(this.mf.contentName && this.mf.channelId && this.mf.date && this.mf.startTime && this.mf.endTime);
 
   // Fikstür sinyalleri
+  // İçerik Türü: kayıt türü discriminator. Şu an sadece 'musabaka' değeri var
+  // (OPTA fikstürlerinden lig/turnuva seçimi). Gelecekte ek tipler eklenebilir.
+  icerikTuru        = signal<'' | 'musabaka'>('');
   competitions      = signal<FixtureCompetition[]>([]);
   compsLoading      = signal(false);
   selectedComp      = signal<FixtureCompetition | null>(null);
@@ -892,6 +911,15 @@ export class ScheduleAddDialogComponent {
       next:  (c) => { this.competitions.set(c); this.compsLoading.set(false); },
       error: ()  => { this.compsLoading.set(false); },
     });
+  }
+
+  /** İçerik Türü seçimi değiştiğinde alt seçimleri (lig, hafta, maçlar) sıfırla.
+   *  Türü boşa alındığında lig dropdown'ı disable olur ve mevcut seçim temizlenir. */
+  onIcerikTuruChange(value: '' | 'musabaka') {
+    this.icerikTuru.set(value);
+    if (value !== 'musabaka') {
+      this.onCompChange(null);
+    }
   }
 
   onCompChange(comp: FixtureCompetition | null) {
