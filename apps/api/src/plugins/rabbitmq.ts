@@ -1,5 +1,5 @@
 import fp from 'fastify-plugin';
-import amqplib, { type Channel, type ChannelModel, type ConsumeMessage } from 'amqplib';
+import amqplib, { type ConfirmChannel, type ChannelModel, type ConsumeMessage } from 'amqplib';
 import type { FastifyInstance } from 'fastify';
 
 // ── Queue / Exchange definitions ──────────────────────────────────────────────
@@ -35,13 +35,15 @@ interface ConsumerRecord<T = unknown> {
 
 async function createRabbitMQClient(url: string, logger: FastifyInstance['log']): Promise<RabbitMQClient> {
   let connection: ChannelModel;
-  let channel: Channel;
+  let channel: ConfirmChannel;
   let connected = false;
   let closing = false;
   const consumers = new Map<QueueName, ConsumerRecord>();
 
   const setupChannel = async () => {
-    channel = await connection.createChannel();
+    // ConfirmChannel: sendToQueue callback'i broker ack'inden sonra çağırır.
+    // Plain channel'da mesaj sessizce düşebilir (channel buffer dolu / kapalı).
+    channel = await connection.createConfirmChannel();
     for (const queue of Object.values(QUEUES)) {
       await channel.assertQueue(queue, { durable: true });
     }
@@ -112,8 +114,18 @@ async function createRabbitMQClient(url: string, logger: FastifyInstance['log'])
   return {
     isConnected: () => connected,
     async publish<T>(queue: QueueName, payload: T): Promise<void> {
+      if (!connected || !channel) {
+        throw new Error(`RabbitMQ not connected — publish to ${queue} rejected`);
+      }
       const content = Buffer.from(JSON.stringify(payload));
-      channel.sendToQueue(queue, content, { persistent: true });
+      // Confirm channel callback: broker ack'i (veya nack) geldiğinde tetiklenir.
+      // Bu sayede çağıran kod mesajın gerçekten enqueue edildiğini bilir.
+      await new Promise<void>((resolve, reject) => {
+        channel.sendToQueue(queue, content, { persistent: true }, (err) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve();
+        });
+      });
     },
     async consume<T>(queue: QueueName, handler: (payload: T) => Promise<void>): Promise<void> {
       consumers.set(queue, { queue, handler: handler as (payload: unknown) => Promise<void> });
