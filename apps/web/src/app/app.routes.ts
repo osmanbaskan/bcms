@@ -92,5 +92,12 @@ export const routes: Routes = [
     canActivate: [AuthGuard],
     data: { groups: [GROUP.SystemEng] },
   },
+  {
+    path: 'documents',
+    loadComponent: () =>
+      import('./features/documents/documents.component').then((m) => m.DocumentsComponent),
+    canActivate: [AuthGuard],
+    data: { groups: [GROUP.SystemEng] },
+  },
   { path: '**', redirectTo: '/schedules' },
 ];

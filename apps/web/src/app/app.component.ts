@@ -128,6 +128,7 @@ export class AppComponent implements OnInit {
     { label: 'Kullanıcılar',          icon: 'manage_accounts',route: '/users',                  groups: [GROUP.SystemEng] },
     { label: 'Ayarlar',               icon: 'settings',       route: '/settings',               groups: [GROUP.SystemEng] },
     { label: 'Audit Logları',         icon: 'manage_search',  route: '/audit-logs',             groups: [GROUP.SystemEng] },
+    { label: 'Dökümanlar',            icon: 'description',    route: '/documents',              groups: [GROUP.SystemEng] },
   ];
 
   visibleNavItems = computed(() => {
