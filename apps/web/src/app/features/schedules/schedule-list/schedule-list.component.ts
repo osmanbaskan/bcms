@@ -647,40 +647,6 @@ function transmissionEndDate(schedule: Schedule): Date {
         </div><!-- /tab-body -->
         </mat-tab>
 
-        <!-- ══ Sekme 3: Teknik Detaylar ════════════════════════════════ -->
-        <mat-tab label="Teknik Detaylar">
-        <div class="tab-body technical-tab">
-          @for (group of liveDetailGroups; track group.title) {
-            <section class="technical-section">
-              <h3>{{ group.title }}</h3>
-              <div class="technical-grid">
-                @for (field of group.fields; track field.key) {
-                  <mat-form-field [class.tech-wide]="field.wide">
-                    <mat-label>{{ field.label }}</mat-label>
-                    @if (field.type === 'textarea') {
-                      <textarea matInput rows="2"
-                                [(ngModel)]="liveDetails[field.key]"
-                                [ngModelOptions]="{standalone:true}"></textarea>
-                    } @else if (field.options) {
-                      <mat-select [(ngModel)]="liveDetails[field.key]" [ngModelOptions]="{standalone:true}">
-                        <mat-option value="">—</mat-option>
-                        @for (option of field.options; track option) {
-                          <mat-option [value]="option">{{ option }}</mat-option>
-                        }
-                      </mat-select>
-                    } @else {
-                      <input matInput
-                             [(ngModel)]="liveDetails[field.key]"
-                             [ngModelOptions]="{standalone:true}">
-                    }
-                  </mat-form-field>
-                }
-              </div>
-            </section>
-          }
-        </div>
-        </mat-tab>
-
       </mat-tab-group>
 
       </div>
@@ -835,8 +801,6 @@ export class ScheduleAddDialogComponent {
   logger    = inject(LoggerService);
   saving    = signal(false);
   activeTab = 0;
-  readonly liveDetailGroups = LIVE_DETAIL_GROUPS;
-  liveDetails: LiveDetails = createLiveDetails();
 
   // Manuel form verisi
   mf = {
@@ -884,23 +848,16 @@ export class ScheduleAddDialogComponent {
 
   canSaveActive = () => {
     if (this.activeTab === 0) return this.canSave();
-    if (this.activeTab === 1) return this.canSaveManual();
-    return this.canSave() || this.canSaveManual();
+    return this.canSaveManual();
   };
 
   saveButtonLabel() {
     if (this.activeTab === 0) return `Kaydet (${this.checkedIds().size})`;
-    if (this.activeTab === 1) return 'Kaydet';
-    if (this.canSave()) return `Fikstürü Kaydet (${this.checkedIds().size})`;
-    return 'Manuel Kaydı Kaydet';
+    return 'Kaydet';
   }
 
   saveActive() {
     if (this.activeTab === 0) {
-      this.save();
-    } else if (this.activeTab === 1) {
-      this.saveManual();
-    } else if (this.canSave()) {
       this.save();
     } else {
       this.saveManual();
@@ -1035,8 +992,8 @@ export class ScheduleAddDialogComponent {
 
   save() {
     if (!this.canSave()) return;
-    const liveDetails = cleanLiveDetails(this.liveDetails);
-
+    // Teknik detay (liveDetails) burada yazılmaz — içeriğe özgü olduğu için
+    // kayıt sonrası Düzenle / Teknik Detay dialog'larından doldurulur.
     const requests = this.selectedMatches().map((m) => {
       const f  = this.getForm(m.matchId);
       const dt = new Date(m.matchDate);
@@ -1062,7 +1019,6 @@ export class ScheduleAddDialogComponent {
           offTube:      f.offTube     || undefined,
           description:  f.notes      || undefined,
           optaMatchId:  m.matchId,
-          liveDetails,
         },
       });
     });
@@ -1078,7 +1034,8 @@ export class ScheduleAddDialogComponent {
     if (!this.canSaveManual()) return;
     const f = this.mf;
     const toISO = (t: string) => new Date(`${f.date}T${t}${environment.utcOffset}`).toISOString();
-    const liveDetails = cleanLiveDetails(this.liveDetails);
+    // Teknik detay burada yazılmaz — içeriğe özgü olduğu için sonradan
+    // Düzenle / Teknik Detay dialog'larından doldurulur.
     this.saving.set(true);
     this.api.post<Schedule>('/schedules', {
       channelId: f.channelId!,
@@ -1098,7 +1055,6 @@ export class ScheduleAddDialogComponent {
         intField2:    f.intField2 || undefined,
         offTube:      f.offTube     || undefined,
         description:  f.notes      || undefined,
-        liveDetails,
       },
     }).subscribe({
       next:  (s) => { this.saving.set(false); this.dialogRef.close(s); },
