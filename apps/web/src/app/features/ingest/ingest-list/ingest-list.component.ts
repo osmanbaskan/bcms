@@ -261,7 +261,12 @@ class TrDateAdapter extends NativeDateAdapter {
                       <mat-select [(ngModel)]="row.recordingPort" (selectionChange)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey)">
                         <mat-option value="">Port seçilmedi</mat-option>
                         @for (port of activeRecordingPorts(); track port.id) {
-                          <mat-option [value]="port.name" [disabled]="port.name === row.backupRecordingPort">{{ port.name }}</mat-option>
+                          <mat-option [value]="port.name"
+                                      [disabled]="port.name === row.backupRecordingPort
+                                               || isPortBusyForRow(row.sourceKey, port.name)"
+                                      [class.port-busy]="isPortBusyForRow(row.sourceKey, port.name)">
+                            {{ port.name }}@if (isPortBusyForRow(row.sourceKey, port.name)) { <span class="busy-tag"> · meşgul</span> }
+                          </mat-option>
                         }
                       </mat-select>
                     </mat-form-field>
@@ -272,7 +277,12 @@ class TrDateAdapter extends NativeDateAdapter {
                       <mat-select [(ngModel)]="row.backupRecordingPort" (selectionChange)="savePlanRow(row)" [disabled]="isSavingPlanRow(row.sourceKey) || !row.recordingPort">
                         <mat-option value="">Port seçilmedi</mat-option>
                         @for (port of activeRecordingPorts(); track port.id) {
-                          <mat-option [value]="port.name" [disabled]="port.name === row.recordingPort">{{ port.name }}</mat-option>
+                          <mat-option [value]="port.name"
+                                      [disabled]="port.name === row.recordingPort
+                                               || isPortBusyForRow(row.sourceKey, port.name)"
+                                      [class.port-busy]="isPortBusyForRow(row.sourceKey, port.name)">
+                            {{ port.name }}@if (isPortBusyForRow(row.sourceKey, port.name)) { <span class="busy-tag"> · meşgul</span> }
+                          </mat-option>
                         }
                       </mat-select>
                     </mat-form-field>
@@ -575,6 +585,18 @@ class TrDateAdapter extends NativeDateAdapter {
     .port-cell { display: grid; grid-template-columns: 10px 1fr; align-items: center; gap: 8px; }
     .port-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.26); }
     .port-cell.assigned .port-dot { background: #66bb6a; box-shadow: 0 0 0 3px rgba(102,187,106,0.14); }
+    /* Aynı saat aralığında başka item'da kullanılan port — kullanıcıyı 409
+       hatasından önce görsel olarak uyar (Material disabled grey üzerine
+       turuncu vurgu). */
+    ::ng-deep .mat-mdc-option.port-busy {
+      color: #ff9800 !important;
+      opacity: 0.7;
+    }
+    ::ng-deep .mat-mdc-option.port-busy .busy-tag {
+      font-size: 0.72rem;
+      color: #ff9800;
+      margin-left: 4px;
+    }
     .inline-field { width: 100%; }
     .inline-field ::ng-deep .mat-mdc-form-field-subscript-wrapper { display: none; }
     .inline-field ::ng-deep .mat-mdc-text-field-wrapper { height: 40px; }
@@ -648,6 +670,41 @@ export class IngestListComponent implements OnInit, OnDestroy {
   });
 
   activeRecordingPorts = computed(() => this.recordingPorts().filter((port) => port.active));
+
+  /** Her sourceKey için, "bu item dışındaki başka item'larda kullanılan ve
+   *  saat aralığı çakışan" port adlarının seti. UI dropdown'larında o portları
+   *  disable etmek için kullanılır — server 409'a düşmeden önce uyarı.
+   *
+   *  Not: ingestPlanItems() saved state. Mid-edit time değişikliğinde set
+   *  güncel olmaz; ama time change'de savePlanRow tetiklendiği için bir sonraki
+   *  CD cycle'da güncellenir. Live mid-edit feedback istenirse row.sortMinute/
+   *  endMinute reactive yapılması gerekir (büyük refactor). */
+  busyPortsMapByRow = computed<Map<string, Set<string>>>(() => {
+    const items = this.ingestPlanItems();
+    const map = new Map<string, Set<string>>();
+    for (const target of items) {
+      if (target.plannedStartMinute == null || target.plannedEndMinute == null) continue;
+      const busy = new Set<string>();
+      for (const other of items) {
+        if (other.sourceKey === target.sourceKey) continue;
+        if (other.dayDate !== target.dayDate) continue;
+        if (other.plannedStartMinute == null || other.plannedEndMinute == null) continue;
+        const overlap = other.plannedStartMinute < target.plannedEndMinute
+                     && other.plannedEndMinute   > target.plannedStartMinute;
+        if (!overlap) continue;
+        if (other.recordingPort)        busy.add(other.recordingPort);
+        if (other.backupRecordingPort)  busy.add(other.backupRecordingPort);
+      }
+      map.set(target.sourceKey, busy);
+    }
+    return map;
+  });
+
+  /** Bir row için belirli port'un başka item'da çakışıp çakışmadığı.
+   *  Template'te [disabled] predicate'i içinde kullanılır. */
+  isPortBusyForRow(sourceKey: string, portName: string): boolean {
+    return this.busyPortsMapByRow().get(sourceKey)?.has(portName) ?? false;
+  }
 
   planningRows = computed<IngestPlanRow[]>(() => {
     const planItemMap = new Map(this.ingestPlanItems().map((item) => [item.sourceKey, item]));
