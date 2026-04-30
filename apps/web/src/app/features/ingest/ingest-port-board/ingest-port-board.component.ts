@@ -116,24 +116,39 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-section.full-page .port-board-scroll{height:calc(100vh - 250px);overflow:auto}
     .port-board-section.is-fullscreen{display:flex;flex-direction:column;height:100vh;margin:0;border:0;border-radius:0;background:rgba(7,17,31,.96);zoom:100%}
     .port-board-section.is-fullscreen .port-board-header{flex:0 0 auto}
-    .port-board-section.is-fullscreen .port-board-scroll{flex:1 1 auto;height:auto;min-height:0;overflow:auto}
+    /* Fullscreen: scroll kapatılır; içerik viewport'a sığar */
+    .port-board-section.is-fullscreen .port-board-scroll{flex:1 1 auto;height:auto;min-height:0;overflow:hidden}
     .port-board-stack{display:flex;flex-direction:column;gap:10px;padding-bottom:10px}
+    /* Fullscreen: satırlar eşit yükseklikte grid'e dönüşür, taşmaz */
+    .port-board-section.is-fullscreen .port-board-stack{display:grid;grid-auto-rows:1fr;gap:4px;padding-bottom:0;height:100%;overflow:hidden}
     .port-board-frame{display:block;min-width:max-content}
+    .port-board-section.is-fullscreen .port-board-frame{min-width:0;height:100%;overflow:hidden}
     .port-board-grid{display:grid;min-width:max-content}
+    .port-board-section.is-fullscreen .port-board-grid{min-width:0;height:100%;overflow:hidden}
     .port-board-column{min-height:100%;border-right:1px solid rgba(255,255,255,.08);background:rgba(19,38,64,.72)}
     .port-board-column:last-child{border-right:0}
+    .port-board-section.is-fullscreen .port-board-column{min-height:0;overflow:hidden}
     .port-board-column-tag{position:absolute;top:2px;left:2px;z-index:3;gap:1px;padding:0 4px;background:transparent;color:#f5d24b;font-size:3.48rem;cursor:move}
+    /* Fullscreen: küçük tag — column tag bar'ı az yer kaplasın */
+    .port-board-section.is-fullscreen .port-board-column-tag{font-size:1.1rem}
     .port-drag-handle{justify-content:center;width:18px;height:18px;padding:0;border:0;background:transparent;color:#d9e6f2;cursor:move}
     .port-drag-handle mat-icon{font-size:16px;width:16px;height:16px}
     .port-board-column-body{position:relative;display:grid;padding:0;min-height:240px;background:rgba(189,210,232,.08)}
+    .port-board-section.is-fullscreen .port-board-column-body{min-height:0;height:100%}
     .port-board-item{z-index:1;margin:1px 0 0;padding:1px 1px 2px;border:1px solid rgba(255,255,255,.08);background:#c7d8ec;color:#17304d;display:flex;flex-direction:column;gap:1px;overflow:hidden}
     .port-board-item:first-of-type{margin-top:4rem}
+    .port-board-section.is-fullscreen .port-board-item:first-of-type{margin-top:1.4rem}
     .port-board-item.overlap{background:#ffd9d9;border-color:#ef5350}
     .port-board-item strong{display:flex;flex-direction:column;font-size:2.16rem;line-height:.92;overflow:hidden}
     .title-line{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .port-board-time{font-weight:bold;font-size:2.16rem;line-height:.92;color:#e65100}
     .port-board-warning{font-weight:bold;font-size:2.16rem;line-height:.92;color:#b71c1c}
     .port-board-note{font-size:2.16rem;font-weight:bold;line-height:.92;color:#4a148c;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    /* Fullscreen: item içerik fontları ölçeklenir (10 kolon × 5 satır = 46 port'a yer açar) */
+    .port-board-section.is-fullscreen .port-board-item strong{font-size:.78rem}
+    .port-board-section.is-fullscreen .port-board-time{font-size:.72rem}
+    .port-board-section.is-fullscreen .port-board-warning{font-size:.72rem}
+    .port-board-section.is-fullscreen .port-board-note{font-size:.7rem}
   `],
 })
 export class IngestPortBoardComponent {
@@ -169,6 +184,10 @@ export class IngestPortBoardComponent {
   }
 
   gridTemplateColumns(columns: IngestPortBoardColumnView[]): string {
+    // Fullscreen: minmax kaldır, 1fr ile viewport'a sığdır (yatay scroll yok).
+    if (this.isFullscreen) {
+      return `repeat(${columns.length}, minmax(0, 1fr))`;
+    }
     return `repeat(${columns.length}, minmax(${this.currentColumnWidth()}px, 1fr))`;
   }
 
