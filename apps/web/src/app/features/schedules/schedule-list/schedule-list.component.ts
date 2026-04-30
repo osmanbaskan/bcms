@@ -74,6 +74,9 @@ interface LiveDetailField {
   type?: 'text' | 'textarea';
   options?: readonly string[];
   wide?: boolean;
+  /** Edit dialog'da düzenlenen alanlar Teknik Detay'da gizlenir
+   *  (duplicate UX'i önlemek için). Tek kayıt yeri = Düzenle. */
+  editOnly?: boolean;
 }
 
 type LiveDetails = Record<string, string>;
@@ -163,9 +166,9 @@ const LIVE_DETAIL_GROUPS: { title: string; fields: LiveDetailField[] }[] = [
       { key: 'uplinkPolarization', label: 'Up. Polarizasyon', options: ['H', 'V', 'R', 'L'] },
       { key: 'downlinkFrequency', label: 'Downlink Frekansı' },
       { key: 'downlinkPolarization', label: 'Dwn. Polarizasyon', options: ['H', 'V', 'R', 'L'] },
-      { key: 'modulationType', label: 'Mod Tipi', options: ['4,5G', 'DVB S', 'DVB S2', 'DVB S2 - 8PSK', 'DVB S2 QPSK', 'DVBS2 + NS3', 'DVBS-2 + NS4', 'DVB-S2X', 'FTP', 'IP Stream', 'NS3', 'NS3 + NS4', 'NS4', 'NS4 + NS4', 'Quicklink', 'Skype', 'Youtube', 'Zoom'] },
+      { key: 'modulationType', label: 'Mod Tipi', editOnly: true, options: ['4,5G', 'DVB S', 'DVB S2', 'DVB S2 - 8PSK', 'DVB S2 QPSK', 'DVBS2 + NS3', 'DVBS-2 + NS4', 'DVB-S2X', 'FTP', 'IP Stream', 'NS3', 'NS3 + NS4', 'NS4', 'NS4 + NS4', 'Quicklink', 'Skype', 'Youtube', 'Zoom'] },
       { key: 'rollOff', label: 'Roll Off', options: ['% 20', '% 25', '% 35'] },
-      { key: 'videoCoding', label: 'Video Coding', options: ['H265 4:2:2', 'Mpeg 4:2:0', 'Mpeg 4:2:2', 'Mpeg 4:2:2-10 bit', 'Mpeg 4:2:2-8'] },
+      { key: 'videoCoding', label: 'Video Coding', editOnly: true, options: ['H265 4:2:2', 'Mpeg 4:2:0', 'Mpeg 4:2:2', 'Mpeg 4:2:2-10 bit', 'Mpeg 4:2:2-8'] },
       { key: 'audioConfig', label: 'Audio Config' },
       { key: 'preMatchKey', label: 'Maç Önü Key' },
       { key: 'matchKey', label: 'Maç Key' },
@@ -216,18 +219,19 @@ const LIVE_DETAIL_GROUPS: { title: string; fields: LiveDetailField[] }[] = [
     fields: [
       { key: 'upConverter', label: 'Up Conv.' },
       { key: 'offTubeResource', label: 'Off Tube' },
-      { key: 'recordLocation', label: 'Kayıt Yeri' },
+      { key: 'recordLocation', label: 'Kayıt Yeri', editOnly: true },
       { key: 'recordLocation3', label: 'Kayıt Yeri 3' },
-      // Tablo IRD/Fiber sütunlarında paylaşılan slot 1 ve slot 3 alanları —
-      // aynı 90-öğeli RESOURCE_OPTIONS havuzunu kullanır (Edit dialog ile senkron).
-      { key: 'ird', label: 'Ird (Slot 1)', options: RESOURCE_OPTIONS },
-      { key: 'ird3', label: 'Ird (Slot 3)', options: RESOURCE_OPTIONS },
-      { key: 'fiberResource', label: 'Fiber (Slot 1)', options: RESOURCE_OPTIONS },
-      { key: 'virtualResource', label: 'Sanal' },
+      // editOnly: Düzenle dialog'unun IRD 1/3 ve Fiber 1 alanları aynı keyleri yazar;
+      // duplicate UX'i önlemek için Teknik Detay'da gizlendi. Options burada
+      // tutulur — Edit dialog `fieldOptions()` ile bu listeyi okur (single source of truth).
+      { key: 'ird', label: 'Ird (Slot 1)', editOnly: true, options: RESOURCE_OPTIONS },
+      { key: 'ird3', label: 'Ird (Slot 3)', editOnly: true, options: RESOURCE_OPTIONS },
+      { key: 'fiberResource', label: 'Fiber (Slot 1)', editOnly: true, options: RESOURCE_OPTIONS },
+      { key: 'virtualResource', label: 'Sanal', editOnly: true },
       { key: 'hdvgResource', label: 'Hdvg' },
       { key: 'intercom', label: 'Intercom' },
-      { key: 'tie', label: 'TIE', options: ['1', '2', '3', '4', '5', '6', 'IRD 48', 'IRD49 RBT1', 'IRD50 RBT2', 'PLT SPR5', 'PLT SPR6', 'PLT SPR7', 'PLT SPR8', 'STREAM1 PC', 'STREAM2 PC', 'TRX SPR14', 'TRX SPR15', 'TRX SPR16', 'TRX SPR17', 'TRX SPR18'] },
-      { key: 'demod', label: 'Demod', options: ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'] },
+      { key: 'tie', label: 'TIE', editOnly: true, options: ['1', '2', '3', '4', '5', '6', 'IRD 48', 'IRD49 RBT1', 'IRD50 RBT2', 'PLT SPR5', 'PLT SPR6', 'PLT SPR7', 'PLT SPR8', 'STREAM1 PC', 'STREAM2 PC', 'TRX SPR14', 'TRX SPR15', 'TRX SPR16', 'TRX SPR17', 'TRX SPR18'] },
+      { key: 'demod', label: 'Demod', editOnly: true, options: ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'] },
       { key: 'dailyReportShortNotes', label: 'Günlük Yayın Raporu Kısa Notlar', wide: true },
     ],
   },
@@ -1580,25 +1584,27 @@ export class ScheduleEditDialogComponent {
           <h3>{{ group.title }}</h3>
           <div class="technical-grid">
             @for (field of group.fields; track field.key) {
-              <mat-form-field [class.tech-wide]="field.wide">
-                <mat-label>{{ field.label }}</mat-label>
-                @if (field.type === 'textarea') {
-                  <textarea matInput rows="2"
-                            [(ngModel)]="liveDetails[field.key]"
-                            [ngModelOptions]="{standalone:true}"></textarea>
-                } @else if (field.options) {
-                  <mat-select [(ngModel)]="liveDetails[field.key]" [ngModelOptions]="{standalone:true}">
-                    <mat-option value="">—</mat-option>
-                    @for (option of fieldDropdownOptions(field); track option) {
-                      <mat-option [value]="option">{{ option }}</mat-option>
-                    }
-                  </mat-select>
-                } @else {
-                  <input matInput
-                         [(ngModel)]="liveDetails[field.key]"
-                         [ngModelOptions]="{standalone:true}">
-                }
-              </mat-form-field>
+              @if (!field.editOnly) {
+                <mat-form-field [class.tech-wide]="field.wide">
+                  <mat-label>{{ field.label }}</mat-label>
+                  @if (field.type === 'textarea') {
+                    <textarea matInput rows="2"
+                              [(ngModel)]="liveDetails[field.key]"
+                              [ngModelOptions]="{standalone:true}"></textarea>
+                  } @else if (field.options) {
+                    <mat-select [(ngModel)]="liveDetails[field.key]" [ngModelOptions]="{standalone:true}">
+                      <mat-option value="">—</mat-option>
+                      @for (option of fieldDropdownOptions(field); track option) {
+                        <mat-option [value]="option">{{ option }}</mat-option>
+                      }
+                    </mat-select>
+                  } @else {
+                    <input matInput
+                           [(ngModel)]="liveDetails[field.key]"
+                           [ngModelOptions]="{standalone:true}">
+                  }
+                </mat-form-field>
+              }
             }
           </div>
         </section>
