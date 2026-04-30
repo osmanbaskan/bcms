@@ -50,7 +50,8 @@ Before writing any code, follow the 4-phase discipline. Surface-level solutions 
 
 ### API / Worker Split (Hard Rule)
 - `api` container: `BCMS_BACKGROUND_SERVICES=none` — HTTP only.
-- `worker` container: runs `notifications`, `ingest-worker`, `ingest-watcher`, `bxf-watcher`, `opta-watcher`.
+- `worker` container: runs `notifications`, `ingest-worker`, `ingest-watcher`, `bxf-watcher`, `audit-retention`.
+- The OPTA watcher is a **separate Python container** (`bcms_opta_watcher`), not a Node background service.
 - **Never merge these roles.**
 
 ### Prisma Audit Extension (Mandatory for All Writes)

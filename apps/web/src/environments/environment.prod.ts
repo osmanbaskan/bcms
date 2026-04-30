@@ -1,4 +1,6 @@
-const runtimeKcUrl: string = (window as any).__BCMS_KEYCLOAK_URL__ || '';
+/// <reference path="../app/core/types/window.d.ts" />
+
+const runtimeKcUrl: string = window.__BCMS_KEYCLOAK_URL__ ?? '';
 
 export const environment = {
   production: true,

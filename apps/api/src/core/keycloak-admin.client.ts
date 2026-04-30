@@ -3,6 +3,17 @@
  * Replaces duplicated getAdminToken / kcFetch patterns across route modules.
  */
 
+export interface KeycloakUserRepresentation {
+  id?: string;
+  username?: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  enabled?: boolean;
+  attributes?: Record<string, string[] | string | undefined>;
+  [extraField: string]: unknown;
+}
+
 let adminToken: string | null = null;
 let tokenExpiry = 0;
 

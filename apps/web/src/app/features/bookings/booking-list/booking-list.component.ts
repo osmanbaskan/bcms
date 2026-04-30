@@ -19,6 +19,7 @@ import { environment } from '../../../../environments/environment';
 import { ApiService } from '../../../core/services/api.service';
 import { GROUP } from '@bcms/shared';
 import type { Booking, BookingStatus, PaginatedResponse } from '@bcms/shared';
+import type { BcmsTokenParsed } from '../../../core/types/auth';
 
 interface BookingListResponse extends PaginatedResponse<Booking> {
   groups: string[];
@@ -418,7 +419,7 @@ export class BookingListComponent implements OnInit {
       this.isAdmin.set(true);
       return;
     }
-    const parsed = this.keycloak.getKeycloakInstance().tokenParsed as any;
+    const parsed = this.keycloak.getKeycloakInstance().tokenParsed as BcmsTokenParsed | undefined;
     const groups: string[] = parsed?.groups ?? [];
     this.username.set(parsed?.preferred_username ?? '');
     this.userId.set(parsed?.sub ?? '');

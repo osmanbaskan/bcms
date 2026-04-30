@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { BCMS_GROUPS, PERMISSIONS, type BcmsGroup } from '@bcms/shared';
-import { getAdminToken, kcFetch } from '../../core/keycloak-admin.client.js';
+import { getAdminToken, kcFetch, type KeycloakUserRepresentation } from '../../core/keycloak-admin.client.js';
 
 const USER_TYPES = ['staff', 'supervisor', 'admin'] as const;
 type UserType = typeof USER_TYPES[number];
@@ -197,7 +197,7 @@ export async function usersRoutes(app: FastifyInstance) {
     const { id } = request.params;
     const { username, email, firstName, lastName, enabled, userType, groups, password } = request.body;
 
-    const existing = await kcFetch<any>(`/users/${id}`);
+    const existing = await kcFetch<KeycloakUserRepresentation>(`/users/${id}`);
     const isAdmin = groups.includes('Admin');
     await kcFetch(`/users/${id}`, {
       method: 'PUT',

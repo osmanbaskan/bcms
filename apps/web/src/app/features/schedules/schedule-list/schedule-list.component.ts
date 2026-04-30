@@ -24,10 +24,11 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatTabsModule } from '@angular/material/tabs';
 
-import { ScheduleService } from '../../../core/services/schedule.service';
+import { ScheduleService, ScheduleFilter } from '../../../core/services/schedule.service';
 import { ApiService } from '../../../core/services/api.service';
 import { PERMISSIONS, GROUP } from '@bcms/shared';
 import type { Schedule } from '@bcms/shared';
+import type { BcmsTokenParsed } from '../../../core/types/auth';
 
 // Canlı Yayın Planlama buton izinleri
 
@@ -1795,7 +1796,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
     if (environment.skipAuth) {
       this._userGroups.set([GROUP.SystemEng]);
     } else {
-      const parsed = this.keycloak.getKeycloakInstance().tokenParsed as any;
+      const parsed = this.keycloak.getKeycloakInstance().tokenParsed as BcmsTokenParsed | undefined;
       const groups: string[] = parsed?.groups ?? [];
       this._userGroups.set(groups.includes(GROUP.Admin) ? Array.from(new Set([...groups, GROUP.SystemEng])) : groups);
     }
@@ -1853,9 +1854,9 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
     const from = new Date(`${this.selectedDate}T00:00:00+03:00`).toISOString();
     const to   = new Date(`${this.selectedDate}T23:59:59+03:00`).toISOString();
 
-    const params: Record<string, string | number> = { from, to, page: this.page, pageSize: this.pageSize, usage: 'live-plan' };
+    const params: ScheduleFilter = { from, to, page: this.page, pageSize: this.pageSize, usage: 'live-plan' };
 
-    this.scheduleSvc.getSchedules(params as any).subscribe({
+    this.scheduleSvc.getSchedules(params).subscribe({
       next: (res) => {
         const localMins = (iso: string) => { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes(); };
         const sorted = [...res.data].sort((a, b) => localMins(a.startTime) - localMins(b.startTime));
@@ -1974,7 +1975,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
 
   deleteSchedule(s: Schedule) {
     const snackRef = this.snack.open(
-      `"${(s.metadata as any)?.['contentName'] || s.title}" silinecek`,
+      `"${(s.metadata?.['contentName'] as string | undefined) || s.title}" silinecek`,
       'Sil',
       { duration: 5000 },
     );
