@@ -333,6 +333,8 @@ function transmissionEndDate(schedule: Schedule): Date {
           </mat-form-field>
         </div>
 
+        @if (icerikTuru() === 'musabaka') {
+
         <div class="step-header">
           <span class="step-num">2</span>
           <span>İçerik Seçimi</span>
@@ -343,7 +345,7 @@ function transmissionEndDate(schedule: Schedule): Date {
             <mat-label>Lig / Turnuva</mat-label>
             <mat-select [value]="selectedComp()"
                         (selectionChange)="onCompChange($event.value)"
-                        [disabled]="compsLoading() || icerikTuru() !== 'musabaka'"
+                        [disabled]="compsLoading()"
                         [compareWith]="compById">
               <mat-option [value]="null">— Seçin —</mat-option>
               @for (c of competitions(); track c.id + c.season) {
@@ -354,7 +356,6 @@ function transmissionEndDate(schedule: Schedule): Date {
               }
             </mat-select>
             @if (compsLoading()) { <mat-hint>Yükleniyor…</mat-hint> }
-            @else if (icerikTuru() !== 'musabaka') { <mat-hint>Önce içerik türü seçin</mat-hint> }
           </mat-form-field>
 
           @if (weeks().length > 0) {
@@ -560,6 +561,8 @@ function transmissionEndDate(schedule: Schedule): Date {
             </table>
           </div>
         }
+
+        }<!-- /icerikTuru === 'musabaka' gate -->
 
         </div><!-- /tab-body -->
         </mat-tab>
