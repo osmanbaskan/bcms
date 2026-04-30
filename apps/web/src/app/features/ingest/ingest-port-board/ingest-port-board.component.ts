@@ -135,9 +135,24 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-drag-handle mat-icon{font-size:16px;width:16px;height:16px}
     .port-board-column-body{position:relative;display:grid;padding:0;min-height:240px;background:rgba(189,210,232,.08)}
     .port-board-section.is-fullscreen .port-board-column-body{min-height:0;height:100%}
+    /* Fullscreen'de time-grid kaldırılır — 200px column'a 12+ saat sığdırmak
+       item'ları okunmaz hale getiriyordu. Bunun yerine flex-column ile
+       item'lar natural height'la üst üste dizilir. Time bilgisi item içinde
+       (port-board-time div'inde) saklı. Saat görsel-precision kaybedilir;
+       ama "hangi port'ta hangi içerik var?" sorusu net cevaplanır. */
+    .port-board-section.is-fullscreen .port-board-column-body{
+      display:flex;flex-direction:column;gap:3px;
+      padding:1.85rem 3px 4px;  /* üst padding column-tag'e yer verir */
+      overflow:hidden;
+    }
     .port-board-item{z-index:1;margin:1px 0 0;padding:1px 1px 2px;border:1px solid rgba(255,255,255,.08);background:#c7d8ec;color:#17304d;display:flex;flex-direction:column;gap:1px;overflow:hidden}
     .port-board-item:first-of-type{margin-top:4rem}
-    .port-board-section.is-fullscreen .port-board-item:first-of-type{margin-top:1.9rem}
+    .port-board-section.is-fullscreen .port-board-item{
+      margin:0 !important;
+      grid-row:auto !important;  /* parent grid-template-rows etkisiz olsun */
+      flex:0 0 auto;
+      min-height:0;
+    }
     .port-board-item.overlap{background:#ffd9d9;border-color:#ef5350}
     .port-board-item strong{display:flex;flex-direction:column;font-size:2.16rem;line-height:.92;overflow:hidden}
     .title-line{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
