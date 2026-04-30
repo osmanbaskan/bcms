@@ -2,7 +2,7 @@
 
 Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana geliştirici rehberidir. Günlük operasyonlar ve bağlantı bilgileri için masaüstündeki diğer belgelere başvurun.
 
-> **Son güncelleme**: 2026-05-01 — Recording port normalize (ana + yedek port, normalized table, GiST exclusion DB-level) + OPTA cascade (match shift'i bağlı schedule'lara delta-based yansır, version optimistic lock, FROZEN_STATUSES) + Auth interceptor 403 loop fix (HTTP error vs token error ayrımı, throttle) + Yeni Ekle dialog'da İçerik Türü gate (Müsabaka). Önceki tur (2026-04-30): audit triage 4-madde + Teknik Detay dedup + postgres_backup sidecar.
+> **Son güncelleme**: 2026-05-01 (geç saat) — **RBAC yeniden yapılandırma**: SystemEng "ops super-grubu" davranışından çıkarıldı, **Admin tek full-yetki grubu**. SystemEng artık 11 ana sekmeden 5'inde (Provys, Kanallar, Ingest, Monitoring, MCR, Raporlama) görünmez; Canlı Yayın Plan / Stüdyo Planı / Ekip İş Takip / Haftalık Shift'te kısıtlanmış (sadece izleme veya kendi grubu); Audit/Ayarlar/Kullanıcılar/Dökümanlar tam yetki. Admin auto-bypass mekanizmaları audit edildi — gap yok. Önceki tur: recording port normalize, OPTA cascade, auth interceptor 403 fix, postgres_backup sidecar.
 
 ## Mimari Kurallar
 
@@ -261,29 +261,40 @@ docker compose up -d --build web
 - Kullanıcı explicit `Çıkış yap` butonuna basmadığı sürece frontend logout tetiklemez.
 - Tarayıcı/app tamamen kapalı kalır ve Keycloak realm max session süresi aşılırsa yeniden login gerekebilir; bu süre Keycloak realm policy ile yönetilir.
 
+### Yetki Matrisi (2026-05-01 itibariyle)
+
+**Tek "full yetki" grubu**: Admin (auto-bypass `auth.ts:101-102` + `:112`). SystemEng artık ayrıcalıklı değil — sadece audit/ops/kullanıcılar/ayarlar gibi belirli sekmelerde explicit listelendiği yerlerde geçerli.
+
 | Sekme / Özellik | Erişim |
 |---|---|
-| Yayın Planı listesi | Tüm authenticated |
+| Yayın Planı listesi (izleme) | Tüm authenticated (SystemEng dahil) |
 | Tam ekran | Tüm authenticated |
-| Yeni Ekle | Admin, SystemEng, Booking, YayınPlanlama |
-| Düzenle | Admin, SystemEng, Tekyon, Transmisyon, Booking, YayınPlanlama |
-| Teknik Detay | Admin, SystemEng, Transmisyon, Booking |
-| Çoğaltma | Admin, SystemEng, Tekyon, Transmisyon, Booking |
-| Silme | Admin, SystemEng, Tekyon, Transmisyon, Booking, YayınPlanlama |
-| **Sorun Bildir** | **Admin, SystemEng, Tekyon, Transmisyon** |
-| Stüdyo Planı görüntüle | Tüm authenticated |
-| Stüdyo Planı düzenle | Admin, SystemEng, StudyoSefi |
-| **Ekip İş Takip** | **Tüm gruplar kendi grubunun işlerini görür; Admin/SystemEng tüm grupları görür** |
-| **Haftalık Shift** | **Tüm gruplar kendi grubunun shiftini görür; supervisor kendi grubunu düzenler; Admin/SystemEng tümünü düzenler** |
-| Ingest | Admin, SystemEng, Ingest |
-| MCR | Admin, SystemEng, MCR |
+| Yeni Ekle | Admin, Booking, YayınPlanlama |
+| Düzenle | Admin, Tekyon, Transmisyon, Booking, YayınPlanlama |
+| Teknik Detay | Admin, Transmisyon, Booking |
+| Çoğaltma | Admin, Tekyon, Transmisyon, Booking |
+| Silme | Admin, Tekyon, Transmisyon, Booking, YayınPlanlama |
+| **Sorun Bildir** | Admin, SystemEng, Tekyon, Transmisyon |
+| Stüdyo Planı görüntüle | Tüm authenticated (sadece liste) |
+| Stüdyo Planı düzenle | Admin, StudyoSefi |
+| **Ekip İş Takip** | Tüm gruplar kendi grubunun işlerini; **Admin tüm gruplar** (SystemEng artık kısıtlı) |
+| **Haftalık Shift** | Tüm gruplar kendi grubu; supervisor kendi grubunu düzenler; **Admin tümünü** (SystemEng artık kısıtlı) |
+| Raporlama | **Admin only** |
+| Provys İçerik Kontrol | **Admin only** |
+| Kanallar | **Admin only** |
+| Ingest | Admin, Ingest |
+| Monitoring | **Admin only** |
+| MCR | Admin, MCR |
 | Kullanıcılar | Admin, SystemEng |
 | Ayarlar | Admin, SystemEng |
-| Provys, Kanallar, Monitoring | Admin, SystemEng |
+| Audit Logları | Admin, SystemEng |
+| Dökümanlar | Admin, SystemEng |
 
 Yetki matrisi: `packages/shared/src/types/rbac.ts` → `PERMISSIONS` sabiti.
-API: `app.requireGroup(...groups)`
-Frontend: `tokenParsed.groups` + `computed()` sinyaller.
+API: `app.requireGroup(...groups)` — `auth.ts` plugin Admin token'ında SystemEng auto-augment yapıyor + `isAdminPrincipal` early return ile tüm `requireGroup` kontrollerini bypass ediyor.
+Frontend: `tokenParsed.groups` + `computed()` sinyaller, `hasGroup()` helper Admin için early return true. AuthGuard route guard'ı Admin için bypass.
+
+**SystemEng yetki düşürme rasyonalitesi**: tek "full yetki" sahibi grup olması için. Önceden SystemEng pek çok yerde Admin gibi davranıyordu — operasyonel rolün (network/sistem mühendisi) iş akış yetkilerini de kapsamasına sebep oluyordu. Şimdi SystemEng = audit/ayarlar/kullanıcılar/dökümanlar + incident yönetimi olarak daraltıldı. Admin tek tam yetki sahibi.
 
 ### Ekip İş Takip (Booking / Work Tracking) — 2026-04-29
 

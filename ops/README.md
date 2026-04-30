@@ -1,6 +1,6 @@
 # BCMS Operasyon — Docker Compose
 
-> Son güncelleme: 2026-05-01 — Recording port normalize (ana + yedek port, normalized table + GiST exclusion), OPTA cascade (match shift → bağlı schedule'lar delta-based shift, version optimistic lock, FROZEN_STATUSES, best-effort + manualReconcileRequired sinyali), auth interceptor 403 reload loop fix (HTTP error vs token error ayrımı + throttle), Yeni Ekle dialog'da İçerik Türü gate. Önceki tur (2026-04-30): audit triage 4-madde + Teknik Detay dedup + postgres_backup sidecar.
+> Son güncelleme: 2026-05-01 (geç saat) — RBAC yeniden yapılandırma: SystemEng "ops super-grubu" davranışı kaldırıldı, **Admin tek full-yetki**. SystemEng artık Provys/Kanallar/Ingest/Monitoring/MCR/Raporlama'da gizli; Canlı Yayın Plan/Stüdyo/Bookings/Weekly-Shift kısıtlı; Audit/Ayarlar/Kullanıcılar/Dökümanlar/Incidents tam yetki. Önceki turlar: recording port normalize, OPTA cascade, auth 403 fix, postgres_backup sidecar.
 
 Proje tamamen **Docker Compose** ile yönetilmektedir. `systemd`, `ng serve`, `tsx watch` kullanılmaz.
 
@@ -397,6 +397,49 @@ curl -X POST http://127.0.0.1:3000/api/v1/opta/sync \
   -H "Authorization: Bearer $OPTA_SYNC_SECRET" -H "Content-Type: application/json" \
   -d '{"matches":[{"matchUid":"...","compId":"...","matchDate":"2026-05-01T18:00:00.000Z","season":"2026"}]}'
 ```
+
+## RBAC Yeniden Yapılandırma — SystemEng Demotion (2026-05-01 geç saat)
+
+**Karar**: Tek "full yetki" grubu Admin. SystemEng "ops super-grubu" davranışından çıkarıldı.
+
+**Backend bypass mekanizmaları (Admin için)**:
+- `auth.ts:101-102` — Admin token'ı SystemEng auto-augment (defense-in-depth)
+- `auth.ts:112` — `isAdminPrincipal` early return → `requireGroup` bypass
+- `auth.guard.ts:44` (frontend) — `userGroups.includes(GROUP.Admin)` early return
+
+**SystemEng PERMISSIONS değişiklikleri**:
+- schedules.{add,edit,technicalEdit,duplicate,delete,write}: SystemEng OUT
+- studioPlans.{write,delete}: SystemEng OUT (sadece StudyoSefi)
+- reports.{read,export}: ['Admin'] (gizli)
+- weeklyShifts.admin: ['Admin'] (kendi grubu görür)
+- ingest.{read,write,delete}: SystemEng OUT (sadece Ingest grup)
+- monitoring.{read,write}: ['Admin']
+- channels.{read,write,delete}: ['Admin']
+
+**Korunan SystemEng yetkileri**:
+- auditLogs.read, incidents.{read,write,delete}, incidents.reportIssue
+- /users, /settings, /audit-logs, /documents route data + nav
+
+**Frontend kalıntı temizliği**:
+- `STUDIO_EDIT_GROUPS` (studio-plan.component.ts:111): SystemEng → Admin only kalır
+- `/schedules/reporting` route guard (schedules.routes.ts:13-18): `[GROUP.Admin]`
+- `booking-list.component.ts isAdmin` (line 426): Admin only
+- `booking.service.ts isSistemMuhendisligi` → `isAdminUser` (rename + claims.groups.includes('Admin'))
+
+**Doğrulama** (canlı, node REPL):
+```js
+PERMISSIONS.schedules.add.includes('SystemEng')      // false
+PERMISSIONS.studioPlans.write.includes('SystemEng')  // false
+PERMISSIONS.reports.read.includes('SystemEng')       // false
+PERMISSIONS.channels.read.includes('SystemEng')      // false
+PERMISSIONS.ingest.read.includes('SystemEng')        // false
+PERMISSIONS.monitoring.read.includes('SystemEng')    // false
+PERMISSIONS.auditLogs.read.includes('SystemEng')     // true (korunan)
+PERMISSIONS.incidents.read.includes('SystemEng')     // true (korunan)
+```
+
+**Admin gap audit**:
+8 farklı yetki yolu (backend `requireGroup`, Admin → SystemEng auto-augment, frontend AuthGuard, nav visibility, hasGroup helper, users.routes.ts:47, booking.service isAdminUser, weekly-shifts hasAnyGroup) tek tek kontrol edildi — Admin user her endpoint, route, UI button'a erişiyor, gap yok.
 
 ## Auth Interceptor — 403 Reload Loop Fix (2026-05-01)
 

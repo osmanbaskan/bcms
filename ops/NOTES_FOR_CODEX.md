@@ -348,6 +348,36 @@ OPTA sync schedule cascade'i version conflict yaşadığında **kalıcı drift o
 - Aynı item'da primary == backup imkansız (UNIQUE(plan_item_id, port_name)) + Zod refine.
 - Ingest UI'da cross-item busy-port warning: `busyPortsMapByRow` computed signal → dropdown option'ları turuncu "· meşgul" + disabled.
 
+## RBAC: SystemEng Demotion (2026-05-01 geç saat)
+
+**Yeni yetki modeli:**
+- Admin = tek "full yetki" grubu (auth.ts:101-102 + :112 + auth.guard.ts:44 bypass mekanizmaları)
+- SystemEng = sadece audit/ayarlar/kullanıcılar/dökümanlar + incident yönetimi
+
+**SystemEng için kalan yetkiler:**
+- `auditLogs.read` (Audit Logları sekmesi)
+- `incidents.{read,write,delete,reportIssue}` (Sorun Bildir + incident yönetimi API)
+- `/users`, `/settings`, `/audit-logs`, `/documents` route + nav (legacy SystemEng-listed routes)
+
+**SystemEng için kaldırılan yetkiler:**
+- schedules.{add,edit,technicalEdit,duplicate,delete,write}
+- studioPlans.{write,delete}
+- reports.{read,export} → Admin only
+- weeklyShifts.admin → Admin only ("tüm grupları gör")
+- ingest.{read,write,delete} → Ingest grup explicit, Admin auto-bypass
+- monitoring.{read,write} → Admin only
+- channels.{read,write,delete} → Admin only
+
+**Yeni feature/endpoint eklerken hatırla:**
+- Yeni endpoint için PERMISSIONS array kurarken: SystemEng dahil etme (sadece Admin gerekli ise array boş bırak — `isAdminPrincipal` bypass eder).
+- Admin auto-bypass tüm `requireGroup` çağrılarında çalışır → array'e Admin yazmana gerek yok.
+- Frontend nav item `groups: [GROUP.Admin]` koyduğunda hem Admin görür (auto-augment SystemEng grup'una rağmen `groups.includes('Admin')` zaten true).
+
+**SystemEng → Admin auto-augment hâlâ var (auth.ts:101-102):**
+- Bu satır Admin token'ının `groups`'una `SystemEng` ekliyor — defense-in-depth.
+- Yani bir endpoint `requireGroup('SystemEng')` ise Admin yine geçer (hem early return hem augment).
+- Bu mekanizmaya dokunma — kaldırılırsa Admin SystemEng-listed legacy endpoint'lere erişimi kaybeder.
+
 ## Auth Interceptor — 403 Reload Loop (2026-05-01)
 
 **Pattern teşhisi**: API loglarında 1 saniyede 2× ardışık request (`/channels` + `/schedules` çiftleri) sayfa reload loop signature'ı.
