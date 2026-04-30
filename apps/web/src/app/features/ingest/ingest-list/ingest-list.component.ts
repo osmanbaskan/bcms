@@ -18,6 +18,7 @@ import { interval, Subscription, timer } from 'rxjs';
 import { switchMap, take } from 'rxjs/operators';
 
 import { ApiService } from '../../../core/services/api.service';
+import { LoggerService } from '../../../core/services/logger.service';
 import {
   IngestPortBoardColumnView,
   IngestPortBoardComponent,
@@ -869,7 +870,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
   private planPollSub?: Subscription;
   private portBoardPollSub?: Subscription;
 
-  constructor(private api: ApiService, private snack: MatSnackBar) {}
+  constructor(private api: ApiService, private snack: MatSnackBar, private logger: LoggerService) {}
 
   ngOnInit() {
     this.loadLivePlanCandidates();
@@ -967,7 +968,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
           this.portBoardIngestItems.set(next);
         },
         error: (err: unknown) => {
-          console.error('Burst poll error', err);
+          this.logger.error('Burst poll error', err);
         },
       });
   }

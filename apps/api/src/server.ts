@@ -1,6 +1,10 @@
 import { buildApp } from './app.js';
 
-const SHUTDOWN_TIMEOUT_MS = 30_000;
+// Worker bağlamında devam eden ingest/bxf işlemleri 30 sn'den uzun sürebileceği
+// için worker daha geniş bir kapanma penceresi kullanır. Docker-compose'daki
+// stop_grace_period değerleriyle hizalı: api=30s, worker=60s.
+const isWorker = (process.env.BCMS_BACKGROUND_SERVICES ?? 'none') !== 'none';
+const SHUTDOWN_TIMEOUT_MS = isWorker ? 60_000 : 30_000;
 
 const start = async () => {
   const app = await buildApp();

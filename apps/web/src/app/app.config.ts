@@ -9,11 +9,12 @@ import { routes } from './app.routes';
 import { environment } from '../environments/environment';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { getPublicAppOrigin } from './core/auth/public-origin';
+import { LoggerService } from './core/services/logger.service';
 
 const TOKEN_REFRESH_MIN_VALIDITY_SECONDS = 120;
 const TOKEN_REFRESH_INTERVAL_MS = 60_000;
 
-function initKeycloak(keycloak: KeycloakService) {
+function initKeycloak(keycloak: KeycloakService, logger: LoggerService) {
   return async () => {
     await keycloak.init({
       config: {
@@ -33,14 +34,14 @@ function initKeycloak(keycloak: KeycloakService) {
     const kc = keycloak.getKeycloakInstance();
     kc.onTokenExpired = () => {
       void keycloak.updateToken(TOKEN_REFRESH_MIN_VALIDITY_SECONDS).catch((err) => {
-        console.warn('Keycloak token refresh failed after expiry', err);
+        logger.warn('Keycloak token refresh failed after expiry', err);
       });
     };
 
     window.setInterval(() => {
       if (!kc.authenticated) return;
       void keycloak.updateToken(TOKEN_REFRESH_MIN_VALIDITY_SECONDS).catch((err) => {
-        console.warn('Keycloak token refresh failed', err);
+        logger.warn('Keycloak token refresh failed', err);
       });
     }, TOKEN_REFRESH_INTERVAL_MS);
   };
@@ -56,7 +57,7 @@ export const appConfig: ApplicationConfig = {
     {
       provide: APP_INITIALIZER,
       useFactory: initKeycloak,
-      deps: [KeycloakService],
+      deps: [KeycloakService, LoggerService],
       multi: true,
     },
   ],

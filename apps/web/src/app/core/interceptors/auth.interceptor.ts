@@ -3,6 +3,7 @@ import { inject } from '@angular/core';
 import { KeycloakService } from 'keycloak-angular';
 import { catchError, from, of, switchMap } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { LoggerService } from '../services/logger.service';
 
 const TOKEN_MIN_VALIDITY_SECONDS = 60;
 
@@ -14,6 +15,7 @@ function isApiRequest(url: string): boolean {
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const keycloak = inject(KeycloakService);
+  const logger = inject(LoggerService);
 
   if (!isApiRequest(req.url)) {
     return next(req);
@@ -21,7 +23,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return from(keycloak.updateToken(TOKEN_MIN_VALIDITY_SECONDS)).pipe(
     catchError((err) => {
-      console.warn('Token refresh before API request failed', err);
+      logger.warn('Token refresh before API request failed', err);
       return of(false);
     }),
     switchMap(() => from(keycloak.getToken())),
@@ -34,7 +36,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       return next(req);
     }),
     catchError((err) => {
-      console.error('Token retrieval failed', err);
+      logger.error('Token retrieval failed', err);
       return next(req);
     }),
   );

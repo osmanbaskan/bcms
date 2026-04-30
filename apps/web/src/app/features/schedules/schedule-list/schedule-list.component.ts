@@ -26,6 +26,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 
 import { ScheduleService, ScheduleFilter } from '../../../core/services/schedule.service';
 import { ApiService } from '../../../core/services/api.service';
+import { LoggerService } from '../../../core/services/logger.service';
 import { PERMISSIONS, GROUP } from '@bcms/shared';
 import type { Schedule } from '@bcms/shared';
 import type { BcmsTokenParsed } from '../../../core/types/auth';
@@ -826,6 +827,7 @@ export class ScheduleAddDialogComponent {
   data      = inject<{ channels: Channel[] }>(MAT_DIALOG_DATA);
   dialogRef = inject(MatDialogRef<ScheduleAddDialogComponent>);
   api       = inject(ApiService);
+  logger    = inject(LoggerService);
   saving    = signal(false);
   activeTab = 0;
   readonly liveDetailGroups = LIVE_DETAIL_GROUPS;
@@ -1063,7 +1065,7 @@ export class ScheduleAddDialogComponent {
     this.saving.set(true);
     forkJoin(requests).subscribe({
       next:  (saved) => { this.saving.set(false); this.dialogRef.close(saved); },
-      error: (e)     => { this.saving.set(false); console.error(e); },
+      error: (e)     => { this.saving.set(false); this.logger.error("Schedule save failed", e); },
     });
   }
 
@@ -1095,7 +1097,7 @@ export class ScheduleAddDialogComponent {
       },
     }).subscribe({
       next:  (s) => { this.saving.set(false); this.dialogRef.close(s); },
-      error: (e) => { this.saving.set(false); console.error(e); },
+      error: (e) => { this.saving.set(false); this.logger.error("Schedule save failed", e); },
     });
   }
 }
@@ -1232,6 +1234,7 @@ export class ScheduleEditDialogComponent {
   data      = inject<{ schedule: Schedule & { channel?: { id: number; name: string } }; channels: Channel[] }>(MAT_DIALOG_DATA);
   dialogRef = inject(MatDialogRef<ScheduleEditDialogComponent>);
   api       = inject(ApiService);
+  logger    = inject(LoggerService);
   saving    = signal(false);
 
   readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => String(i + 1));
@@ -1300,7 +1303,7 @@ export class ScheduleEditDialogComponent {
       },
     }, s.version).subscribe({
       next:  (updated) => { this.saving.set(false); this.dialogRef.close(updated); },
-      error: (e)       => { this.saving.set(false); console.error(e); },
+      error: (e)       => { this.saving.set(false); this.logger.error("Schedule save failed", e); },
     });
   }
 }
@@ -1396,6 +1399,7 @@ export class ScheduleTechnicalDialogComponent {
   dialogRef = inject(MatDialogRef<ScheduleTechnicalDialogComponent>);
   api       = inject(ApiService);
   snack     = inject(MatSnackBar);
+  logger    = inject(LoggerService);
   saving    = signal(false);
 
   readonly liveDetailGroups = LIVE_DETAIL_GROUPS;
