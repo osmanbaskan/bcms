@@ -423,6 +423,10 @@ export class UsersListComponent implements OnInit {
         this.users.update((list) => list.map((u) => u.id === user.id ? { ...u, enabled } : u));
         this.snack.open(`Kullanıcı ${enabled ? 'aktifleştirildi' : 'devre dışı bırakıldı'}`, 'Kapat', { duration: 3000 });
       },
+      error: () => {
+        this.snack.open('İşlem başarısız', 'Kapat', { duration: 4000 });
+        this.users.update((list) => list.map((u) => u.id === user.id ? { ...u, enabled: !enabled } : u));
+      },
     });
   }
 }

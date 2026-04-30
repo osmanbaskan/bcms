@@ -195,7 +195,11 @@ export class SettingsComponent implements OnInit {
 
   save() {
     this.saving.set(true);
-    this.api.post('/opta/smb-config', this.cfg).subscribe({
+    const payload = { ...this.cfg };
+    if (payload.password === '********') {
+      delete (payload as Partial<typeof payload>).password;
+    }
+    this.api.post('/opta/smb-config', payload).subscribe({
       next: () => {
         this.saving.set(false);
         this.snack.open('Ayarlar kaydedildi', 'Tamam', { duration: 3000 });

@@ -34,9 +34,9 @@ const contextPlugin: FastifyPluginAsync = fp(async (fastify) => {
   fastify.addHook('preHandler', (request, _reply, done) => {
     const store = als.getStore();
     if (store) {
-      const user = (request.user as any) ?? {};
+      const user = (request.user as { sub?: string; groups?: string[] }) ?? {};
       store.userId = user.sub;
-      store.userRoles = user.roles;
+      store.userRoles = user.groups ?? [];
     }
     done();
   });

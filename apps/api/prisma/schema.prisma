@@ -7,121 +7,115 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ── Leagues ───────────────────────────────────────────────────────────────────
 model League {
-  id        Int      @id @default(autoincrement())
-  code      String   @unique @db.VarChar(20)
-  name      String   @db.VarChar(200)
-  country   String   @db.VarChar(100)
-  metadata  Json?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         Int       @id @default(autoincrement())
+  code       String    @unique @db.VarChar(20)
+  name       String    @db.VarChar(200)
+  country    String    @db.VarChar(100)
+  metadata   Json?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deleted_at DateTime?
+  matches    Match[]
+  teams      Team[]
 
-  teams   Team[]
-  matches Match[]
-
+  @@index([metadata], type: Gin)
   @@map("leagues")
 }
 
-// ── Teams ─────────────────────────────────────────────────────────────────────
 model Team {
-  id        Int      @id @default(autoincrement())
-  leagueId  Int      @map("league_id")
-  name      String   @db.VarChar(200)
-  shortName String   @map("short_name") @db.VarChar(20)
-  metadata  Json?
-  createdAt DateTime @default(now()) @map("created_at")
-
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  league   League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  bookings Booking[]
+  id         Int       @id @default(autoincrement())
+  leagueId   Int       @map("league_id")
+  name       String    @db.VarChar(200)
+  shortName  String    @map("short_name") @db.VarChar(20)
+  metadata   Json?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deleted_at DateTime?
+  bookings   Booking[]
+  league     League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
 
   @@index([leagueId])
+  @@index([metadata], type: Gin)
   @@map("teams")
 }
 
-// ── Matches (Fixture) ─────────────────────────────────────────────────────────
 model Match {
-  id           Int      @id @default(autoincrement())
-  leagueId     Int      @map("league_id")
-  optaUid      String?  @unique @map("opta_uid") @db.VarChar(50)
-  homeTeamName String   @map("home_team_name") @db.VarChar(100)
-  awayTeamName String   @map("away_team_name") @db.VarChar(100)
-  matchDate    DateTime @map("match_date") @db.Timestamptz
-  weekNumber   Int?     @map("week_number")
-  season       String   @db.VarChar(20)
-  venue        String?  @db.VarChar(200)
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  league    League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  bookings  Booking[]
-  schedules Schedule[]
+  id           Int        @id @default(autoincrement())
+  leagueId     Int        @map("league_id")
+  optaUid      String?    @unique @map("opta_uid") @db.VarChar(50)
+  homeTeamName String     @map("home_team_name") @db.VarChar(100)
+  awayTeamName String     @map("away_team_name") @db.VarChar(100)
+  matchDate    DateTime   @map("match_date") @db.Timestamptz(6)
+  weekNumber   Int?       @map("week_number")
+  season       String     @db.VarChar(20)
+  venue        String?    @db.VarChar(200)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  deleted_at   DateTime?
+  bookings     Booking[]
+  league       League     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  schedules    Schedule[]
 
   @@index([leagueId, matchDate])
   @@map("matches")
 }
 
-// ── Channels ──────────────────────────────────────────────────────────────────
 model Channel {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique @db.VarChar(100)
-  type      ChannelType
-  frequency String?  @db.VarChar(50)
-  muxInfo   Json?    @map("mux_info")
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
+  id         Int               @id @default(autoincrement())
+  name       String            @unique @db.VarChar(100)
+  type       ChannelType
+  frequency  String?           @db.VarChar(50)
+  muxInfo    Json?             @map("mux_info")
+  active     Boolean           @default(true)
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+  deleted_at DateTime?
   schedules  Schedule[]
   telemetry  SignalTelemetry[]
 
   @@map("channels")
 }
 
-// ── Broadcast Types ───────────────────────────────────────────────────────────
 model BroadcastType {
-  id          Int      @id @default(autoincrement())
-  code        String   @unique @db.VarChar(30)
-  description String   @db.VarChar(200)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  schedules Schedule[]
+  id          Int        @id @default(autoincrement())
+  code        String     @unique @db.VarChar(30)
+  description String     @db.VarChar(200)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  deleted_at  DateTime?
+  schedules   Schedule[]
 
   @@map("broadcast_types")
 }
 
-// ── Schedules ─────────────────────────────────────────────────────────────────
 model Schedule {
-  id              Int            @id @default(autoincrement())
-  channelId       Int?           @map("channel_id")
-  startTime       DateTime       @map("start_time") @db.Timestamptz
-  endTime         DateTime       @map("end_time") @db.Timestamptz
-  title           String         @db.VarChar(500)
-  contentId       Int?           @map("content_id")
-  broadcastTypeId Int?           @map("broadcast_type_id")
-  matchId         Int?           @map("match_id")
-  status          ScheduleStatus @default(DRAFT)
-  usageScope      String         @default("broadcast") @map("usage_scope") @db.VarChar(30)
-  reportLeague    String?        @map("report_league") @db.VarChar(200)
-  reportSeason    String?        @map("report_season") @db.VarChar(30)
-  reportWeekNumber Int?          @map("report_week_number")
-  finishedAt      DateTime?      @map("finished_at") @db.Timestamptz
-  createdBy       String         @map("created_by") @db.VarChar(100)
-  version         Int            @default(1)
-  metadata        Json?
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-
-  channel       Channel?      @relation(fields: [channelId], references: [id])
-  broadcastType BroadcastType? @relation(fields: [broadcastTypeId], references: [id])
-  match         Match?        @relation(fields: [matchId], references: [id])
-  bookings      Booking[]
-  incidents     Incident[]
-  timelineEvents TimelineEvent[]
+  id               Int             @id @default(autoincrement())
+  channelId        Int?            @map("channel_id")
+  startTime        DateTime        @map("start_time") @db.Timestamptz(6)
+  endTime          DateTime        @map("end_time") @db.Timestamptz(6)
+  title            String          @db.VarChar(500)
+  contentId        Int?            @map("content_id")
+  broadcastTypeId  Int?            @map("broadcast_type_id")
+  matchId          Int?            @map("match_id")
+  status           ScheduleStatus  @default(DRAFT)
+  usageScope       String          @default("broadcast") @map("usage_scope") @db.VarChar(30)
+  reportLeague     String?         @map("report_league") @db.VarChar(200)
+  reportSeason     String?         @map("report_season") @db.VarChar(30)
+  reportWeekNumber Int?            @map("report_week_number")
+  finishedAt       DateTime?       @map("finished_at") @db.Timestamptz(6)
+  createdBy        String          @map("created_by") @db.VarChar(100)
+  version          Int             @default(1)
+  metadata         Json?
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  deleted_at       DateTime?
+  bookings         Booking[]
+  incidents        Incident[]
+  broadcastType    BroadcastType?  @relation(fields: [broadcastTypeId], references: [id])
+  channel          Channel?        @relation(fields: [channelId], references: [id])
+  match            Match?          @relation(fields: [matchId], references: [id])
+  timelineEvents   TimelineEvent[]
 
   @@index([channelId, startTime, endTime])
   @@index([status])
@@ -132,14 +126,293 @@ model Schedule {
   @@map("schedules")
 }
 
-enum ScheduleStatus {
-  DRAFT
-  CONFIRMED
-  ON_AIR
-  COMPLETED
-  CANCELLED
+model Booking {
+  id           Int           @id @default(autoincrement())
+  scheduleId   Int?          @map("schedule_id")
+  requestedBy  String        @map("requested_by") @db.VarChar(100)
+  teamId       Int?          @map("team_id")
+  matchId      Int?          @map("match_id")
+  metadata     Json?
+  status       BookingStatus @default(PENDING)
+  version      Int           @default(1)
+  notes        String?
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  deleted_at   DateTime?
+  taskTitle    String?       @map("task_title") @db.VarChar(300)
+  taskDetails  String?       @map("task_details")
+  taskReport   String?       @map("task_report")
+  userGroup    String?       @map("user_group") @db.VarChar(50)
+  assigneeId   String?       @map("assignee_id") @db.VarChar(100)
+  assigneeName String?       @map("assignee_name") @db.VarChar(200)
+  startDate    DateTime?     @map("start_date") @db.Date
+  dueDate      DateTime?     @map("due_date") @db.Date
+  completedAt  DateTime?     @map("completed_at") @db.Timestamptz(6)
+  match        Match?        @relation(fields: [matchId], references: [id])
+  schedule     Schedule?     @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  team         Team?         @relation(fields: [teamId], references: [id])
 
-  @@map("schedule_status")
+  @@index([scheduleId])
+  @@index([teamId])
+  @@index([matchId])
+  @@index([userGroup])
+  @@index([assigneeId])
+  @@index([startDate, dueDate])
+  @@map("bookings")
+}
+
+model IngestJob {
+  id         Int              @id @default(autoincrement())
+  sourcePath String           @map("source_path")
+  targetId   Int?             @map("target_id")
+  status     IngestStatus     @default(PENDING)
+  checksum   String?          @db.VarChar(64)
+  proxyPath  String?          @map("proxy_path")
+  metadata   Json?
+  errorMsg   String?          @map("error_msg")
+  startedAt  DateTime?        @map("started_at")
+  finishedAt DateTime?        @map("finished_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @default(now()) @updatedAt @map("updated_at")
+  deleted_at DateTime?
+  planItems  IngestPlanItem[]
+  qcReport   QcReport?
+
+  @@index([status])
+  @@index([targetId])
+  @@map("ingest_jobs")
+}
+
+model IngestPlanItem {
+  id                 Int              @id @default(autoincrement())
+  sourceType         String           @map("source_type") @db.VarChar(30)
+  sourceKey          String           @unique @map("source_key") @db.VarChar(500)
+  dayDate            DateTime         @map("day_date") @db.Date
+  sourcePath         String?          @map("source_path")
+  recordingPort      String?          @map("recording_port") @db.VarChar(50)
+  plannedStartMinute Int?             @map("planned_start_minute")
+  plannedEndMinute   Int?             @map("planned_end_minute")
+  status             IngestPlanStatus @default(WAITING)
+  jobId              Int?             @map("job_id")
+  note               String?
+  updatedBy          String?          @map("updated_by") @db.VarChar(100)
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  deleted_at         DateTime?
+  job                IngestJob?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([dayDate])
+  @@index([status])
+  @@index([jobId])
+  @@index([dayDate, plannedStartMinute, sourceKey], map: "ingest_plan_items_report_idx")
+  @@map("ingest_plan_items")
+}
+
+model RecordingPort {
+  id         Int       @id @default(autoincrement())
+  name       String    @unique @db.VarChar(50)
+  sortOrder  Int       @default(0) @map("sort_order")
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deleted_at DateTime?
+
+  @@index([active, sortOrder])
+  @@map("recording_ports")
+}
+
+model QcReport {
+  id         Int       @id @default(autoincrement())
+  jobId      Int       @unique @map("job_id")
+  codec      String?   @db.VarChar(50)
+  resolution String?   @db.VarChar(20)
+  duration   Float?
+  frameRate  Float?    @map("frame_rate")
+  bitrate    Int?
+  loudness   Float?
+  errors     Json?
+  warnings   Json?
+  passed     Boolean   @default(false)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  deleted_at DateTime?
+  job        IngestJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("qc_reports")
+}
+
+model Incident {
+  id          Int              @id @default(autoincrement())
+  scheduleId  Int?             @map("schedule_id")
+  eventType   String           @map("event_type") @db.VarChar(50)
+  description String?
+  tcIn        String?          @map("tc_in") @db.VarChar(12)
+  severity    IncidentSeverity @default(INFO)
+  resolved    Boolean          @default(false)
+  resolvedBy  String?          @map("resolved_by") @db.VarChar(100)
+  resolvedAt  DateTime?        @map("resolved_at")
+  metadata    Json?
+  createdAt   DateTime         @default(now()) @map("created_at")
+  deleted_at  DateTime?
+  schedule    Schedule?        @relation(fields: [scheduleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([scheduleId, severity])
+  @@index([resolved, severity])
+  @@map("incidents")
+}
+
+model TimelineEvent {
+  id         Int       @id @default(autoincrement())
+  scheduleId Int       @map("schedule_id")
+  tc         String    @db.VarChar(12)
+  type       String    @db.VarChar(50)
+  note       String?
+  createdBy  String    @map("created_by") @db.VarChar(100)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  deleted_at DateTime?
+  schedule   Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+  @@map("timeline_events")
+}
+
+model StudioPlan {
+  id         Int              @id @default(autoincrement())
+  weekStart  DateTime         @unique @map("week_start") @db.Date
+  version    Int              @default(1)
+  createdBy  String           @map("created_by") @db.VarChar(100)
+  updatedBy  String?          @map("updated_by") @db.VarChar(100)
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+  deleted_at DateTime?
+  slots      StudioPlanSlot[]
+
+  @@map("studio_plans")
+}
+
+model StudioPlanSlot {
+  id          Int        @id @default(autoincrement())
+  planId      Int        @map("plan_id")
+  dayDate     DateTime   @map("day_date") @db.Date
+  studio      String     @db.VarChar(100)
+  startMinute Int        @map("start_minute")
+  program     String     @db.VarChar(300)
+  color       String     @db.VarChar(20)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  deleted_at  DateTime?
+  plan        StudioPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, dayDate, studio, startMinute])
+  @@index([dayDate, studio])
+  @@map("studio_plan_slots")
+}
+
+model StudioPlanProgram {
+  id         Int       @id @default(autoincrement())
+  name       String    @unique @db.VarChar(300)
+  sortOrder  Int       @default(0) @map("sort_order")
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deleted_at DateTime?
+
+  @@index([active, sortOrder])
+  @@map("studio_plan_programs")
+}
+
+model StudioPlanColor {
+  id         Int       @id @default(autoincrement())
+  label      String    @unique @db.VarChar(100)
+  value      String    @unique @db.VarChar(20)
+  sortOrder  Int       @default(0) @map("sort_order")
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deleted_at DateTime?
+
+  @@index([active, sortOrder])
+  @@map("studio_plan_colors")
+}
+
+model SignalTelemetry {
+  id         Int                     @id @default(autoincrement())
+  channelId  Int                     @map("channel_id")
+  signalDb   Float?                  @map("signal_db")
+  snr        Float?
+  ber        Float?
+  audioLufs  Float?                  @map("audio_lufs")
+  status     signal_telemetry_status @default(OK)
+  source     String?                 @db.VarChar(50)
+  measuredAt DateTime                @default(now()) @map("measured_at")
+  deleted_at DateTime?
+  channel    Channel                 @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, measuredAt])
+  @@map("signal_telemetry")
+}
+
+model AuditLog {
+  id            Int            @id @default(autoincrement())
+  entityType    String         @map("entity_type") @db.VarChar(50)
+  entityId      Int            @map("entity_id")
+  action        AuditLogAction
+  beforePayload Json?          @map("before_payload")
+  afterPayload  Json?          @map("after_payload")
+  user          String         @db.VarChar(100)
+  ipAddress     String?        @map("ip_address") @db.VarChar(45)
+  timestamp     DateTime       @default(now()) @db.Timestamptz(6)
+  deleted_at    DateTime?
+
+  @@index([entityType, entityId])
+  @@index([user])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+model ShiftAssignment {
+  id        Int       @id @default(autoincrement())
+  userId    String    @map("user_id") @db.VarChar(100)
+  userName  String    @map("user_name") @db.VarChar(100)
+  userGroup String    @map("user_group") @db.VarChar(50)
+  weekStart String    @map("week_start") @db.VarChar(10)
+  dayIndex  Int       @map("day_index")
+  startTime String?   @map("start_time") @db.VarChar(5)
+  endTime   String?   @map("end_time") @db.VarChar(5)
+  type      String    @db.VarChar(20)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  deletedAt DateTime? @map("deleted_at")
+
+  @@unique([userId, weekStart, dayIndex])
+  @@index([userId, weekStart], map: "idx_shift_user_week")
+  @@index([weekStart, userGroup], map: "idx_shift_week_group")
+  @@map("shift_assignments")
+}
+
+model content_entry_categories {
+  entry_id    String @db.Uuid
+  category_id String @db.Uuid
+
+  @@id([entry_id, category_id])
+}
+
+model content_entry_tags {
+  entry_id String @db.Uuid
+  tag_id   String @db.Uuid
+
+  @@id([entry_id, tag_id])
+}
+
+model workspaces {
+  id          String    @id @db.Uuid
+  name        String    @db.VarChar(255)
+  slug        String    @unique @db.VarChar(255)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @default(now()) @db.Timestamptz(6)
+  deleted_at  DateTime? @db.Timestamptz(6)
+  description String?   @db.VarChar(1000)
+
+  @@index([slug], map: "ix_workspaces_slug")
 }
 
 enum ChannelType {
@@ -151,42 +424,6 @@ enum ChannelType {
   @@map("channel_type")
 }
 
-// ── Bookings ──────────────────────────────────────────────────────────────────
-model Booking {
-  id          Int           @id @default(autoincrement())
-  scheduleId  Int?          @map("schedule_id")
-  requestedBy String        @map("requested_by") @db.VarChar(100)
-  teamId      Int?          @map("team_id")
-  matchId     Int?          @map("match_id")
-  taskTitle   String?       @map("task_title") @db.VarChar(300)
-  taskDetails String?       @map("task_details")
-  taskReport  String?       @map("task_report")
-  userGroup   String?       @map("user_group") @db.VarChar(50)
-  assigneeId  String?       @map("assignee_id") @db.VarChar(100)
-  assigneeName String?      @map("assignee_name") @db.VarChar(200)
-  startDate   DateTime?     @map("start_date") @db.Date
-  dueDate     DateTime?     @map("due_date") @db.Date
-  completedAt DateTime?     @map("completed_at") @db.Timestamptz
-  metadata    Json?
-  status      BookingStatus @default(PENDING)
-  version     Int           @default(1)
-  notes       String?
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
-
-  schedule Schedule? @relation(fields: [scheduleId], references: [id])
-  team     Team?    @relation(fields: [teamId], references: [id])
-  match    Match?   @relation(fields: [matchId], references: [id])
-
-  @@index([scheduleId])
-  @@index([teamId])
-  @@index([matchId])
-  @@index([userGroup])
-  @@index([assigneeId])
-  @@index([startDate, dueDate])
-  @@map("bookings")
-}
-
 enum BookingStatus {
   PENDING
   APPROVED
@@ -194,66 +431,6 @@ enum BookingStatus {
   CANCELLED
 
   @@map("booking_status")
-}
-
-// ── Ingest Jobs ───────────────────────────────────────────────────────────────
-model IngestJob {
-  id         Int          @id @default(autoincrement())
-  sourcePath String       @map("source_path")
-  targetId   Int?         @map("target_id")
-  status     IngestStatus @default(PENDING)
-  checksum   String?      @db.VarChar(64)
-  proxyPath  String?      @map("proxy_path")
-  metadata   Json?
-  errorMsg   String?      @map("error_msg")
-  startedAt  DateTime?    @map("started_at")
-  finishedAt DateTime?    @map("finished_at")
-  createdAt  DateTime     @default(now()) @map("created_at")
-  updatedAt  DateTime     @updatedAt @map("updated_at")
-
-  qcReport QcReport?
-  planItems IngestPlanItem[]
-
-  @@index([status])
-  @@index([targetId])
-  @@map("ingest_jobs")
-}
-
-model IngestPlanItem {
-  id         Int              @id @default(autoincrement())
-  sourceType String           @map("source_type") @db.VarChar(30)
-  sourceKey  String           @unique @map("source_key") @db.VarChar(500)
-  dayDate    DateTime         @map("day_date") @db.Date
-  sourcePath String?          @map("source_path")
-  recordingPort String?       @map("recording_port") @db.VarChar(50)
-  plannedStartMinute Int?     @map("planned_start_minute")
-  plannedEndMinute   Int?     @map("planned_end_minute")
-  status     IngestPlanStatus @default(WAITING)
-  jobId      Int?             @map("job_id")
-  note       String?
-  updatedBy  String?          @map("updated_by") @db.VarChar(100)
-  createdAt  DateTime         @default(now()) @map("created_at")
-  updatedAt  DateTime         @updatedAt @map("updated_at")
-
-  job IngestJob? @relation(fields: [jobId], references: [id])
-
-  @@index([dayDate])
-  @@index([status])
-  @@index([jobId])
-  @@index([dayDate, plannedStartMinute, sourceKey], name: "ingest_plan_items_report_idx")
-  @@map("ingest_plan_items")
-}
-
-model RecordingPort {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique @db.VarChar(50)
-  sortOrder Int      @default(0) @map("sort_order")
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@index([active, sortOrder])
-  @@map("recording_ports")
 }
 
 enum IngestStatus {
@@ -277,47 +454,6 @@ enum IngestPlanStatus {
   @@map("ingest_plan_status")
 }
 
-// ── QC Reports ────────────────────────────────────────────────────────────────
-model QcReport {
-  id         Int      @id @default(autoincrement())
-  jobId      Int      @unique @map("job_id")
-  codec      String?  @db.VarChar(50)
-  resolution String?  @db.VarChar(20)
-  duration   Float?
-  frameRate  Float?   @map("frame_rate")
-  bitrate    Int?
-  loudness   Float?   // LUFS
-  errors     Json?
-  warnings   Json?
-  passed     Boolean  @default(false)
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  job IngestJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  @@map("qc_reports")
-}
-
-// ── Incidents ─────────────────────────────────────────────────────────────────
-model Incident {
-  id          Int              @id @default(autoincrement())
-  scheduleId  Int?             @map("schedule_id")
-  eventType   String           @map("event_type") @db.VarChar(50)
-  description String?
-  tcIn        String?          @map("tc_in") @db.VarChar(12) // HH:MM:SS:FF
-  severity    IncidentSeverity @default(INFO)
-  resolved    Boolean          @default(false)
-  resolvedBy  String?          @map("resolved_by") @db.VarChar(100)
-  resolvedAt  DateTime?        @map("resolved_at")
-  metadata    Json?
-  createdAt   DateTime         @default(now()) @map("created_at")
-
-  schedule Schedule? @relation(fields: [scheduleId], references: [id])
-
-  @@index([scheduleId, severity])
-  @@index([resolved, severity])
-  @@map("incidents")
-}
-
 enum IncidentSeverity {
   INFO
   WARNING
@@ -325,116 +461,6 @@ enum IncidentSeverity {
   CRITICAL
 
   @@map("incident_severity")
-}
-
-// ── Timeline Events (Technical Director Panel) ────────────────────────────────
-model TimelineEvent {
-  id         Int      @id @default(autoincrement())
-  scheduleId Int      @map("schedule_id")
-  tc         String   @db.VarChar(12) // HH:MM:SS:FF
-  type       String   @db.VarChar(50)
-  note       String?
-  createdBy  String   @map("created_by") @db.VarChar(100)
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-
-  @@index([scheduleId])
-  @@map("timeline_events")
-}
-
-// ── Studio Plans ──────────────────────────────────────────────────────────────
-model StudioPlan {
-  id        Int      @id @default(autoincrement())
-  weekStart DateTime @unique @map("week_start") @db.Date
-  version   Int      @default(1)
-  createdBy String   @map("created_by") @db.VarChar(100)
-  updatedBy String?  @map("updated_by") @db.VarChar(100)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  slots StudioPlanSlot[]
-
-  @@map("studio_plans")
-}
-
-model StudioPlanSlot {
-  id          Int      @id @default(autoincrement())
-  planId      Int      @map("plan_id")
-  dayDate     DateTime @map("day_date") @db.Date
-  studio      String   @db.VarChar(100)
-  startMinute Int      @map("start_minute")
-  program     String   @db.VarChar(300)
-  color       String   @db.VarChar(20)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  plan StudioPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
-
-  @@unique([planId, dayDate, studio, startMinute])
-  @@index([dayDate, studio])
-  @@map("studio_plan_slots")
-}
-
-model StudioPlanProgram {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique @db.VarChar(300)
-  sortOrder Int      @default(0) @map("sort_order")
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@index([active, sortOrder])
-  @@map("studio_plan_programs")
-}
-
-model StudioPlanColor {
-  id        Int      @id @default(autoincrement())
-  label     String   @unique @db.VarChar(100)
-  value     String   @unique @db.VarChar(20)
-  sortOrder Int      @default(0) @map("sort_order")
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@index([active, sortOrder])
-  @@map("studio_plan_colors")
-}
-
-// ── Signal Telemetry ──────────────────────────────────────────────────────────
-model SignalTelemetry {
-  id         Int      @id @default(autoincrement())
-  channelId  Int      @map("channel_id")
-  signalDb   Float?   @map("signal_db")   // dB sinyal seviyesi
-  snr        Float?                        // Sinyal/Gürültü oranı
-  ber        Float?                        // Bit Error Rate (10^-x)
-  audioLufs  Float?   @map("audio_lufs")  // Anlık ses seviyesi (LUFS)
-  status     String   @default("OK") @db.VarChar(20)  // OK | DEGRADED | LOST
-  source     String?  @db.VarChar(50)      // Kaynak: ASI, IP, DVB, vb.
-  measuredAt DateTime @default(now()) @map("measured_at")
-
-  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-
-  @@index([channelId, measuredAt])
-  @@map("signal_telemetry")
-}
-
-// ── Audit Logs ────────────────────────────────────────────────────────────────
-model AuditLog {
-  id            Int      @id @default(autoincrement())
-  entityType    String   @map("entity_type") @db.VarChar(50)
-  entityId      Int      @map("entity_id")
-  action        AuditLogAction
-  beforePayload Json?    @map("before_payload")
-  afterPayload  Json?    @map("after_payload")
-  user          String   @db.VarChar(100)
-  ipAddress     String?  @map("ip_address") @db.VarChar(45)
-  timestamp     DateTime @default(now())
-
-  @@index([entityType, entityId])
-  @@index([user])
-  @@index([timestamp])
-  @@map("audit_logs")
 }
 
 enum AuditLogAction {
@@ -447,23 +473,41 @@ enum AuditLogAction {
   @@map("audit_log_action")
 }
 
-// ── Weekly Shift Assignments ─────────────────────────────────────────────────
-model ShiftAssignment {
-  id        Int       @id @default(autoincrement())
-  userId    String    @map("user_id") @db.VarChar(100)
-  userName  String    @map("user_name") @db.VarChar(100)
-  userGroup String    @map("user_group") @db.VarChar(50)
-  weekStart String    @map("week_start") @db.VarChar(10)
-  dayIndex  Int       @map("day_index")
-  startTime String?   @map("start_time") @db.VarChar(5)
-  endTime   String?   @map("end_time") @db.VarChar(5)
-  type      String    @db.VarChar(20)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+enum ScheduleStatus {
+  DRAFT
+  CONFIRMED
+  ON_AIR
+  COMPLETED
+  CANCELLED
 
-  @@unique([userId, weekStart, dayIndex])
-  @@index([weekStart, userGroup])
-  @@index([userId, weekStart])
-  @@map("shift_assignments")
+  @@map("schedule_status")
+}
+
+enum entry_status {
+  draft
+  published
+  archived
+}
+
+enum field_type {
+  text
+  rich_text
+  number
+  boolean
+  date
+  json
+  asset
+  relation
+}
+
+enum signal_telemetry_status {
+  OK
+  DEGRADED
+  LOST
+}
+
+enum workspace_role {
+  viewer
+  editor
+  admin
 }

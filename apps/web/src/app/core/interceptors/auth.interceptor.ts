@@ -1,7 +1,7 @@
 import { HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { KeycloakService } from 'keycloak-angular';
-import { from, switchMap } from 'rxjs';
+import { catchError, from, switchMap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 function isApiRequest(url: string): boolean {
@@ -24,6 +24,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
           setHeaders: { Authorization: `Bearer ${token}` },
         });
       }
+      return next(req);
+    }),
+    catchError((err) => {
+      console.error('Token retrieval failed', err);
       return next(req);
     }),
   );

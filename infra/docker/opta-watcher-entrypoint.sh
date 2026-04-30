@@ -2,4 +2,5 @@
 set -e
 
 chown -R opta:nogroup /data
-exec runuser -u opta -m -- "$@"
+export HOME=/data
+exec runuser -u opta -- env HOME=/data "$@"

@@ -62,7 +62,7 @@ interface IngestReportRow {
 
 type FilterMode = 'date-range' | 'league-week';
 
-function displayDateFromIso(isoDate: string): string {
+export function displayDateFromIso(isoDate: string): string {
   const [year, month, day] = isoDate.split('-');
   return `${day}.${month}.${year}`;
 }

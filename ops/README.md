@@ -1,6 +1,6 @@
 # BCMS Operasyon — Docker Compose
 
-> Son güncelleme: 2026-04-29 — Docker build context, web rebuild/cache, audit/Keycloak/OPTA watcher ve frontend export notları eklendi.
+> Son güncelleme: 2026-04-30 — Runtime audit v2, web/keycloak dış erişim portları, OPTA watcher health/state, audit retention ve kalan operasyon riskleri güncellendi.
 
 Proje tamamen **Docker Compose** ile yönetilmektedir. `systemd`, `ng serve`, `tsx watch` kullanılmaz.
 
@@ -41,7 +41,7 @@ npm run smoke:api
 | Servis | Konteyner | Görev | Durum |
 |---|---|---|---|
 | `api` | bcms_api | HTTP, Swagger, health — worker yok | `healthy` |
-| `worker` | bcms_worker | ingest, bxf, notifications consumer | Healthcheck disabled — worker HTTP sunucusu çalıştırmaz |
+| `worker` | bcms_worker | ingest, bxf, notifications consumer, audit retention | Healthcheck disabled — worker HTTP sunucusu çalıştırmaz |
 | `opta-watcher` | bcms_opta_watcher | SMB → /api/v1/opta/sync, state `/data` volume | `healthy` |
 | `web` | bcms_web | Angular (nginx) | `healthy` |
 | `postgres` | bcms_postgres | PostgreSQL 16 | — |
@@ -51,7 +51,9 @@ npm run smoke:api
 | `grafana` | bcms_grafana | Dashboard | — |
 | `mailhog` | bcms_mailhog | SMTP (dev) | — |
 
-> **Worker Health (2026-04-29)**: Worker HTTP port açmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu `docker compose logs -f worker` ve consumer başlangıç logları ile kontrol edilir.
+> **Worker Health (2026-04-30)**: Worker HTTP port açmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu `docker compose logs -f worker`, consumer başlangıç logları ve audit retention job logları ile kontrol edilir.
+
+> **Runtime Audit v2 (2026-04-30)**: `bcms_web`, `bcms_keycloak`, `bcms_api` ve `bcms_opta_watcher` healthy doğrulandı. Web ve Keycloak dış erişim için yeniden `0.0.0.0` port binding kullanır; API ve veri servisleri localhost'a kapalı kalır.
 
 ## Graceful Shutdown
 
@@ -84,6 +86,7 @@ curl -fsS http://127.0.0.1:3000/health
 - Web: `http://172.28.204.133:4200`
 - API: `http://127.0.0.1:3000` (host-local; LAN istemcileri web nginx `/api` proxy kullanır)
 - Swagger: `http://172.28.204.133:4200/docs`
+- Keycloak: `http://172.28.204.133:8080`
 - RabbitMQ UI: `http://localhost:15673`
 - Grafana: `http://localhost:3001`
 - Prometheus: `http://localhost:9090`
@@ -136,6 +139,7 @@ curl -fsS http://127.0.0.1:3000/health
 - Kullanıcı hâlâ eski görünümü görüyorsa tarayıcıda `Ctrl+Shift+R` hard refresh yapılmalıdır.
 - Stüdyo Planı `Export PDF`, ana uygulama layout'unu yazdırmaz; `#studio-plan-export` alanını ayrı print penceresine klonlar. Print ölçüsü A3 landscape, `margin: 0`.
 - Canlı Yayın Planı tablo gövdesinde başlıklar hariç veri hücreleri büyük ve kalın yazı kullanır; aksiyon ikonları büyütme dışında tutulur.
+- Siteye LAN'dan ulaşılamıyorsa önce `docker compose ps web keycloak` çıktısında `0.0.0.0:4200->80` ve `0.0.0.0:8080->8080` port binding'lerini doğrula.
 
 ## Ekip İş Takip (Booking / Work Tracking) — 2026-04-29
 
@@ -178,6 +182,8 @@ curl -fsS http://127.0.0.1:3000/health
 - `MTIME_SETTLE_SEC=5`, `BATCH_SIZE=100`
 - XML parse için `defusedxml.ElementTree` kullanılır.
 - Watcher state kalıcı named volume ile `/data` altında tutulur; container restart sonrası state kaybı beklenmez.
+- Container env içinde `HOME=/data` olmalıdır; state dosyası `/data/.bcms-opta-watcher-state.json` altında kalır.
+- Healthcheck `procps/pgrep` bağımlılığıyla çalışır; image değişirse `bcms_opta_watcher` health durumunu ayrıca kontrol et.
 - API sync endpoint lig ve maç yazımlarını tek Prisma transaction içinde yapar.
 
 ```bash
@@ -237,12 +243,21 @@ docker inspect bcms_web --format='{{.State.Health.Status}}'
 | Servis | Port | Erişim |
 |---|---|---|
 | API | **127.0.0.1**:3000 | Sadece localhost |
+| Web | **0.0.0.0**:4200 | LAN erişimi açık |
+| Keycloak | **0.0.0.0**:8080 | LAN erişimi açık |
 | PostgreSQL | **127.0.0.1**:5433 | Sadece localhost |
 | RabbitMQ AMQP | **127.0.0.1**:5673 | Sadece localhost |
 | RabbitMQ UI | **127.0.0.1**:15673 | Sadece localhost |
 | Prometheus | **127.0.0.1**:9090 | Sadece localhost |
 | Grafana | **127.0.0.1**:3001 | Sadece localhost |
 | MailHog | **127.0.0.1**:8025 | Sadece localhost |
+
+## Kalan Operasyon Riskleri — 2026-04-30
+
+- Stüdyo Planı hızlı hücre değişimlerinde save race condition riski sürüyor; `debounceTime` + `switchMap` ile tek son-state save akışı eklenmeli.
+- `audit_logs` tablosu büyür; audit retention job açık kalmalı ve `AUDIT_RETENTION_DAYS` izlenmeli.
+- Büyük frontend component'lerde test kapsamı sınırlı; özellikle `studio-plan`, `ingest-list` ve `schedule-list` için davranış testleri eklenmeli.
+- `npm audit` high/critical göstermiyor, ancak 7 moderate vulnerability ayrı branch'te dry-run ve build/test ile ele alınmalı.
 
 Uzaktan erişim için SSH tüneli:
 ```bash

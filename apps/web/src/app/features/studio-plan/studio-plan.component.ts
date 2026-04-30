@@ -1,9 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, OnInit, OnDestroy, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { KeycloakService } from 'keycloak-angular';
-import { finalize } from 'rxjs';
+import { Subject, Subscription, debounceTime, switchMap, finalize, tap } from 'rxjs';
 import { StudioPlanService } from '../../core/services/studio-plan.service';
 import { GROUP } from '@bcms/shared';
 import type { StudioPlan, StudioPlanSlot } from '@bcms/shared';
@@ -123,7 +123,9 @@ const STUDIO_EDIT_GROUPS = [GROUP.SystemEng, GROUP.StudyoSefi];
   templateUrl: './studio-plan.component.html',
   styleUrl: './studio-plan-shell.scss',
 })
-export class StudioPlanComponent implements OnInit {
+export class StudioPlanComponent implements OnInit, OnDestroy {
+  private readonly saveTrigger$ = new Subject<void>();
+  private saveSub?: Subscription;
   private readonly studioPlanService = inject(StudioPlanService);
   private readonly keycloak = inject(KeycloakService);
 
@@ -216,6 +218,35 @@ export class StudioPlanComponent implements OnInit {
     }
     this.loadCatalog();
     this.onWeekStartChange();
+
+    this.saveSub = this.saveTrigger$
+      .pipe(
+        debounceTime(400),
+        tap(() => {
+          this.saving.set(true);
+          this.saveError.set('');
+        }),
+        switchMap(() => {
+          const weekStart = this.weekStart;
+          const slots = this.slotsForWeek(weekStart);
+          return this.studioPlanService.savePlan(weekStart, { slots }).pipe(
+            finalize(() => this.saving.set(false)),
+          );
+        }),
+      )
+      .subscribe({
+        next: (plan) => {
+          if (plan.weekStart === this.weekStart) {
+            this.lastSavedAt.set(this.formatSaveTime(plan.updatedAt));
+          }
+        },
+        error: () => this.saveError.set('Plan kaydedilemedi'),
+      });
+  }
+
+  ngOnDestroy(): void {
+    this.saveSub?.unsubscribe();
+    this.saveTrigger$.complete();
   }
 
   onWeekStartChange(weekStart = this.weekStart): void {
@@ -509,20 +540,7 @@ export class StudioPlanComponent implements OnInit {
   }
 
   private saveCurrentWeek(): void {
-    this.saveWeek(this.weekStart, this.slotsForWeek(this.weekStart));
-  }
-
-  private saveWeek(weekStart: string, slots: StudioPlanSlot[]): void {
-    this.saving.set(true);
-    this.saveError.set('');
-    this.studioPlanService.savePlan(weekStart, { slots })
-      .pipe(finalize(() => this.saving.set(false)))
-      .subscribe({
-        next: (plan) => {
-          if (plan.weekStart === this.weekStart) this.lastSavedAt.set(this.formatSaveTime(plan.updatedAt));
-        },
-        error: () => this.saveError.set('Plan kaydedilemedi'),
-      });
+    this.saveTrigger$.next();
   }
 
   private slotsForWeek(weekStart: string): StudioPlanSlot[] {

@@ -10,7 +10,7 @@ This applies to all destructive operations (`git checkout`, `git reset`, `rm`, `
 
 ## Mimari Kurallar (Değiştirilmez)
 
-1. **API/Worker ayrıştırması**: `api` servisi `BCMS_BACKGROUND_SERVICES=none` ile çalışır. Worker servisi `notifications,ingest-worker,ingest-watcher,bxf-watcher` çalıştırır. OPTA Python watcher ayrı konteyner. Bu ayrım bozulmamalı.
+1. **API/Worker ayrıştırması**: `api` servisi `BCMS_BACKGROUND_SERVICES=none` ile çalışır. Worker servisi `notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention` çalıştırır. OPTA Python watcher ayrı konteyner. Bu ayrım bozulmamalı.
 2. **Graceful shutdown**: `server.ts`'de SIGTERM/SIGINT → `app.close()` → 30 sn timeout. Worker için 60 sn. `--force` veya anında kill önerilmez.
 3. **usageScope kanonik**: `schedules.usage_scope` DB kolonudur. Metadata JSON filtresi yoktur. Ham SQL köprüsü eklenmez.
 4. **Nginx static serve**: Angular dosyaları `infra/docker/web.Dockerfile` → nginx:alpine ile sunulur.
@@ -36,7 +36,7 @@ Adresler:
 
 ```
 api        → BCMS_BACKGROUND_SERVICES=none (HTTP only)
-worker     → BCMS_BACKGROUND_SERVICES=notifications,ingest-worker,ingest-watcher,bxf-watcher
+worker     → BCMS_BACKGROUND_SERVICES=notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention
 opta-watcher → Python, SMB → POST /api/v1/opta/sync
 web        → nginx, Angular statik
 postgres   → PostgreSQL 16
@@ -47,9 +47,13 @@ grafana    → Dashboard
 mailhog    → SMTP (dev)
 ```
 
-> **Not (2026-04-29)**: `bcms_worker` HTTP sunucusu çalıştırmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu loglar ve consumer başlangıç kayıtlarıyla izlenir.
+> **Not (2026-04-30)**: `bcms_worker` HTTP sunucusu çalıştırmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu loglar, consumer başlangıç kayıtları ve audit retention job loglarıyla izlenir.
 
 > **Not (2026-04-29, build/runtime)**: Local `npm run build -w apps/web` Docker'daki `bcms_web` container'ı güncellemez. Görsel/frontend değişikliklerinden sonra `docker compose up -d --build web` çalıştır ve tarayıcıda `Ctrl+Shift+R` hard refresh iste.
+
+> **Not (2026-04-30, LAN erişimi)**: Web ve Keycloak dış istemcilerden kullanılmalıdır. `docker-compose.yml` portları `4200:80` ve `8080:8080` olmalı. Bunları `127.0.0.1:` prefix'iyle kapatırsan kullanıcı `http://172.28.204.133:4200` sitesine ulaşamaz ve Keycloak login çalışmaz.
+
+> **Runtime Audit v2 (2026-04-30)**: `bcms_web`, `bcms_keycloak`, `bcms_api`, `bcms_opta_watcher` healthy doğrulandı. `prisma migrate diff` boş, `/api/v1/opta/sync` bombardımanı durmuş, high/critical npm vulnerability yok. Kalan ana risk: Stüdyo Planı save race condition.
 
 ## Degraded Mod
 
@@ -139,6 +143,7 @@ Canlı Yayın Plan Listesi ekranında her satırda **Sorun Bildir** ikonu bulunu
 - `weekStart` Pazartesi tarihi olmak zorundadır
 - Liste görünümünde geçmiş günler gizlenir
 - `Export PDF` sadece `#studio-plan-export` DOM'unu ayrı print penceresine klonlar; A3 landscape, `margin: 0`. Ana app layout'unu doğrudan `window.print()` ile yazdırma, print preview 2 sayfa/boşluk üretebilir.
+- Açık risk: hızlı hücre değişimlerinde kayıt yarış koşulu oluşabilir. Kalıcı çözüm UI state'i anında güncelleyip kaydı `debounceTime` + `switchMap` ile yalnızca son state üzerinden yapmaktır.
 
 ## Canlı Yayın Planı UI
 
@@ -196,12 +201,14 @@ npm run db:generate -w apps/api
 - `MTIME_SETTLE_SEC=5`, `BATCH_SIZE=100`
 - XML parse `defusedxml.ElementTree` ile yapılır; `xml.etree.ElementTree` geri getirilmemeli.
 - Container `HOME=/data` kullanır; state dosyaları named volume üzerinde kalıcıdır.
+- `/data/.bcms-opta-watcher-state.json` dosyasını doğrulamadan OPTA sync yükünün kalıcı olarak düştüğünü varsayma.
 - API sync lig ve maç yazımlarını tek Prisma transaction içinde yapar.
 
 ## Audit Log
 
 - `apps/api/src/plugins/audit.ts` HTTP bağlamında write audit kayıtlarını successful response için `onSend` içinde flush eder.
 - Audit flush hatası artık sessiz yutulmaz; API `500` döndürür. Worker/background bağlamındaki audit `createMany` hatası da propagate olmalıdır.
+- Audit retention worker background service olarak çalışır. Varsayılan saklama süresi `AUDIT_RETENTION_DAYS` ile yönetilir; mevcut varsayılan 90 gündür.
 
 ## Keycloak / Auth
 
@@ -225,6 +232,7 @@ API `KEYCLOAK_ALLOWED_ISSUERS` env değişkenini okur ve hepsini kabul eder.
 - Rate limiting: 300 istek/dk global; `/health`, `/metrics`, `/api/v1/ingest/callback`, `/api/v1/opta/sync` muaf
 - nginx Güvenlik Header'ları: 6 adet
 - Port Binding: API `127.0.0.1:3000`, PostgreSQL `127.0.0.1:5433`, RabbitMQ UI `127.0.0.1:15673`, Prometheus `127.0.0.1:9090`, Grafana `127.0.0.1:3001`, MailHog `127.0.0.1:8025`
+- Web `0.0.0.0:4200` ve Keycloak `0.0.0.0:8080` LAN erişimi için açık kalmalıdır.
 
 ## CI
 
@@ -258,6 +266,7 @@ apps/api/src/server.ts                           → graceful shutdown
 apps/api/src/app.ts                              → buildApp, health, rate-limit
 apps/api/src/plugins/auth.ts                     → JWT, allowedIssuers
 apps/api/src/plugins/audit.ts                    → Prisma audit $extends
+apps/api/src/modules/audit/audit-retention.job.ts → audit log retention worker job
 apps/api/src/modules/bookings/                   → Ekip İş Takip API
 apps/api/src/modules/weekly-shifts/              → Haftalık Shift API
 apps/web/src/app/features/bookings/              → Ekip İş Takip Frontend

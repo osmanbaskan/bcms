@@ -105,7 +105,7 @@ import type { Schedule, Incident } from '@bcms/shared';
   `],
 })
 export class ScheduleDetailComponent implements OnInit {
-  schedule = signal<(Schedule & { bookings?: unknown[]; incidents?: Incident[]; channel?: { name: string } }) | null>(null);
+  schedule = signal<(Schedule & { bookings?: unknown[]; incidents?: Incident[]; channel?: { name: string } | null }) | null>(null);
 
   constructor(
     private scheduleSvc: ScheduleService,
@@ -114,6 +114,9 @@ export class ScheduleDetailComponent implements OnInit {
 
   ngOnInit() {
     const id = Number(this.route.snapshot.params['id']);
-    this.scheduleSvc.getSchedule(id).subscribe((s) => this.schedule.set(s as never));
+    this.scheduleSvc.getSchedule(id).subscribe({
+      next: (s) => this.schedule.set(s),
+      error: () => this.schedule.set(null),
+    });
   }
 }

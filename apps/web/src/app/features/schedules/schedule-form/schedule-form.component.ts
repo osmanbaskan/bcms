@@ -257,7 +257,7 @@ import type {
 })
 export class ScheduleFormComponent implements OnInit {
   form = this.fb.group({
-    channelId:  [0],
+    channelId:  [0, [Validators.required, Validators.min(1)]],
     title:      ['',  Validators.required],
     startTime:  ['',  Validators.required],
     endTime:    ['',  Validators.required],
@@ -443,8 +443,8 @@ export class ScheduleFormComponent implements OnInit {
     const req$ = this.isEdit
       ? this.scheduleSvc.updateSchedule(this.editId, {
           title:     v.title!,
-          startTime: new Date(v.startTime!).toISOString(),
-          endTime:   new Date(v.endTime!).toISOString(),
+          startTime: this.safeToIso(v.startTime!),
+          endTime:   this.safeToIso(v.endTime!),
           ...(v.status ? { status: v.status as ScheduleStatus } : {}),
         } satisfies UpdateScheduleDto, this.editVersion)
       : this.scheduleSvc.createSchedule({
@@ -471,6 +471,14 @@ export class ScheduleFormComponent implements OnInit {
         }
       },
     });
+  }
+
+  private safeToIso(value: string): string {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) {
+      throw new Error('Geçersiz tarih');
+    }
+    return d.toISOString();
   }
 }
 

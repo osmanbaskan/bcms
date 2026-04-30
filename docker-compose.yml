@@ -145,7 +145,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       NODE_ENV: production
-      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,bxf-watcher
+      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-90}
       CORS_ORIGIN: ${CORS_ORIGIN}
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM}
@@ -211,6 +212,7 @@ services:
     networks:
       - bcms_net
     environment:
+      HOME: /data
       BCMS_API_URL: http://api:3000/api/v1
       BCMS_API_TOKEN: ${OPTA_WATCHER_API_TOKEN}
       OPTA_SMB_SHARE: ${OPTA_SMB_SHARE}
@@ -223,9 +225,6 @@ services:
       - opta_watcher_state:/data
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f opta_smb_watcher.py || exit 1"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
       start_period: 30s
     depends_on:
       - api

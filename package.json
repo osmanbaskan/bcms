@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "webpack": "^5.105.2"
   }
 }

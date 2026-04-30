@@ -37,5 +37,10 @@ import type { Channel } from '@bcms/shared';
 export class ChannelListComponent implements OnInit {
   channels = signal<Channel[]>([]);
   constructor(private api: ApiService) {}
-  ngOnInit() { this.api.get<Channel[]>('/channels').subscribe((ch) => this.channels.set(ch)); }
+  ngOnInit() {
+    this.api.get<Channel[]>('/channels').subscribe({
+      next: (ch) => this.channels.set(ch),
+      error: () => this.channels.set([]),
+    });
+  }
 }

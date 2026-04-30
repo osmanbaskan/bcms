@@ -2,11 +2,11 @@
 
 Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana geliştirici rehberidir. Günlük operasyonlar ve bağlantı bilgileri için masaüstündeki diğer belgelere başvurun.
 
-> **Son güncelleme**: 2026-04-29 — Docker build hygiene, audit fail-fast, Keycloak Admin Client, OPTA watcher kalıcılığı, A3 stüdyo planı PDF export ve canlı yayın planı okunabilirlik notları güncellendi.
+> **Son güncelleme**: 2026-04-30 — Runtime audit v2 sonrası port erişimi, OPTA watcher health/state doğrulaması, RabbitMQ reconnect, audit retention, test kapsamı ve kalan mimari riskler güncellendi.
 
 ## Mimari Kurallar
 
-1. **Servis izolasyonu**: API ve arka plan worker'ları ayrı Docker konteynerlerinde çalışır. `api` servisi yalnızca HTTP isteklerini karşılar (`BCMS_BACKGROUND_SERVICES=none`). Worker servisi RabbitMQ tüketimi ve dosya izlemeyi üstlenir.
+1. **Servis izolasyonu**: API ve arka plan worker'ları ayrı Docker konteynerlerinde çalışır. `api` servisi yalnızca HTTP isteklerini karşılar (`BCMS_BACKGROUND_SERVICES=none`). Worker servisi RabbitMQ tüketimi, dosya izleme ve periyodik bakım job'larını üstlenir.
 2. **Graceful shutdown**: `SIGTERM` alındığında Fastify önce yeni istekleri reddeder, devam eden işlemleri bekler, DB ve RabbitMQ bağlantılarını kapatır. Zaman aşımı: 30 sn (API), 60 sn (worker).
 3. **Degraded mod**: OPTA dizini veya RabbitMQ geçici olarak ulaşılamaz olduğunda API çökmez. `/health` endpoint `status: "degraded"` + HTTP **503** döner; temel DB işlemleri devam eder.
 4. **usageScope kuralı**: `schedules.usage_scope` kolonu karar noktasıdır. `broadcast` = normal yayın, `live-plan` = canlı yayın planı. Metadata JSON filtresi kullanılmaz.
@@ -20,6 +20,7 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 10. **Rate limiting**: API global olarak dakikada 300 istek sınırına tabidir. `/health`, `/metrics`, ingest `/callback` ve `/opta/sync` muaftır.
 11. **Güvenlik header'ları**: nginx tüm yanıtlara 6 güvenlik header'ı ekler.
 12. **Input validation**: Tüm API route'ları Zod ile doğrulama yapar.
+13. **Runtime port erişimi**: Web ve Keycloak LAN erişimi için dış arayüzlere açıktır (`4200:80`, `8080:8080`). API, DB, RabbitMQ, Prometheus, Grafana ve MailHog host-local kalır.
 
 ## Mimari
 
@@ -35,7 +36,7 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 | Servis | Konteyner | Görevi | Health |
 |---|---|---|---|
 | `api` | bcms_api | HTTP istekleri, Swagger, health | `healthy` |
-| `worker` | bcms_worker | RabbitMQ consumer, ingest, bxf, notifications | Healthcheck disabled — worker HTTP port açmaz |
+| `worker` | bcms_worker | RabbitMQ consumer, ingest, bxf, notifications, audit retention | Healthcheck disabled — worker HTTP port açmaz |
 | `opta-watcher` | bcms_opta_watcher | SMB → API HTTP sync (Python), state volume `/data` | `healthy` |
 | `web` | bcms_web | Angular statik dosyalar (nginx) | `healthy` |
 | `postgres` | bcms_postgres | PostgreSQL 16 | — |
@@ -45,7 +46,9 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 | `grafana` | bcms_grafana | Dashboard | — |
 | `mailhog` | bcms_mailhog | SMTP (dev) | — |
 
-> **Worker Health (2026-04-29)**: `bcms_worker` HTTP sunucusu çalıştırmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu loglar, RabbitMQ consumer başlangıç mesajları ve API `/health` degraded kontrolleri ile izlenir.
+> **Worker Health (2026-04-30)**: `bcms_worker` HTTP sunucusu çalıştırmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu loglar, RabbitMQ consumer başlangıç mesajları ve background job logları ile izlenir.
+
+> **Runtime Audit v2 (2026-04-30)**: Web, API, Keycloak, PostgreSQL, RabbitMQ ve OPTA watcher sağlıklı doğrulandı. `/api/v1/opta/sync` bombardımanı durdu; saatlik düşük frekanslı sync normal kabul edilir. `prisma migrate diff` boş çıktı verdi; DB ve Prisma schema eşleşiyor.
 
 ## Dizinler
 
@@ -87,6 +90,7 @@ Adresler:
 - Web: `http://172.28.204.133:4200`
 - API: `http://127.0.0.1:3000` (host-local; LAN erişimi nginx `/api` proxy üzerinden)
 - Swagger: `http://172.28.204.133:4200/docs`
+- Keycloak: `http://172.28.204.133:8080`
 
 ## Geliştirme Akışı
 
@@ -223,6 +227,15 @@ docker compose up -d --build web
 - Stüdyo Planı `Export PDF` ana uygulama DOM'unu yazdırmaz; yalnızca `#studio-plan-export` alanını ayrı print penceresine klonlar.
 - PDF print hedefi A3 landscape (`420mm x 297mm`) ve `margin: 0` olarak tanımlıdır.
 - Canlı Yayın Planı tablo gövdesinde başlıklar hariç içerik fontu büyütülmüş ve kalınlaştırılmıştır. Aksiyon ikonları bu büyütmeden hariç tutulur.
+- **Açık risk (2026-04-30)**: Stüdyo Planı hızlı hücre değişimlerinde `saveCurrentWeek()` hâlâ yarış koşuluna açık olabilir. Kalıcı çözüm `debounceTime` + `switchMap` ile son state'i tek kaydetme akışıdır.
+
+### Test ve Audit Durumu — 2026-04-30
+
+- API/Web/Shared production build doğrulandı.
+- Frontend tarafında `api.service`, `schedule.service`, `auth.guard`, `studio-plan`, `schedule-list`, `ingest-list` ve `schedule-reporting` için 25 headless Karma test geçiyor.
+- Büyük component'lerde test kapsamı başlamıştır; davranış kapsamı hâlâ genişletilmelidir.
+- `npm audit`: high/critical yok; 7 moderate vulnerability ayrı branch'te `npm audit fix --dry-run` ile ele alınmalıdır.
+- `audit_logs` tablosu büyümeye açıktır; worker tarafındaki audit retention job ve `AUDIT_RETENTION_DAYS` env değeri korunmalıdır.
 
 ### Grup Tabanlı Yetkilendirme (RBAC)
 
@@ -321,7 +334,8 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 | PostgreSQL | **127.0.0.1:5433** / 5432 (container) | Sadece localhost | bcms_postgres |
 | RabbitMQ AMQP | **127.0.0.1:5673** / 5672 (container) | Sadece localhost | bcms_rabbitmq |
 | RabbitMQ UI | **127.0.0.1:15673** | Sadece localhost | bcms_rabbitmq |
-| Keycloak | 8080 | Tüm arayüzler | bcms_keycloak |
+| Keycloak | **0.0.0.0:8080** | LAN erişimi açık | bcms_keycloak |
+| Web | **0.0.0.0:4200** | LAN erişimi açık | bcms_web |
 | Prometheus | **127.0.0.1:9090** | Sadece localhost | bcms_prometheus |
 | Grafana | **127.0.0.1:3001** | Sadece localhost | bcms_grafana |
 | Mailhog UI | **127.0.0.1:8025** | Sadece localhost | bcms_mailhog |

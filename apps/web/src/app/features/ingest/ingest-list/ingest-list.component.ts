@@ -14,7 +14,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatChipsModule } from '@angular/material/chips';
-import { interval, Subscription } from 'rxjs';
+import { interval, Subscription, timer } from 'rxjs';
 import { switchMap, take } from 'rxjs/operators';
 
 import { ApiService } from '../../../core/services/api.service';
@@ -956,21 +956,19 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   private startBurstPoll() {
     this.portBoardPollSub?.unsubscribe();
-    this.portBoardPollSub = interval(10000)
+    this.portBoardPollSub = timer(0, 10000)
       .pipe(
         take(6),
         switchMap(() => this.api.get<IngestPlanItem[]>('/ingest/plan', { date: this.portBoardDate() })),
       )
       .subscribe({
-        next: (items) => {
+        next: (items: IngestPlanItem[]) => {
           const next = Array.isArray(items) ? items : [];
-          const current = this.portBoardIngestItems();
-          if (JSON.stringify(next) !== JSON.stringify(current)) {
-            this.portBoardIngestItems.set(next);
-            this.startBurstPoll();
-          }
+          this.portBoardIngestItems.set(next);
         },
-        error: () => {},
+        error: (err: unknown) => {
+          console.error('Burst poll error', err);
+        },
       });
   }
 

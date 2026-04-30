@@ -1,5 +1,5 @@
 import fp from 'fastify-plugin';
-import amqplib, { type Channel, type ChannelModel } from 'amqplib';
+import amqplib, { type Channel, type ChannelModel, type ConsumeMessage } from 'amqplib';
 import type { FastifyInstance } from 'fastify';
 
 // ── Queue / Exchange definitions ──────────────────────────────────────────────
@@ -28,45 +28,86 @@ declare module 'fastify' {
   }
 }
 
+interface ConsumerRecord<T = unknown> {
+  queue: QueueName;
+  handler: (payload: T) => Promise<void>;
+}
+
 async function createRabbitMQClient(url: string, logger: FastifyInstance['log']): Promise<RabbitMQClient> {
   let connection: ChannelModel;
   let channel: Channel;
   let connected = false;
+  let closing = false;
+  const consumers = new Map<QueueName, ConsumerRecord>();
 
-  const connect = async (retries = 5): Promise<void> => {
-    for (let i = 1; i <= retries; i++) {
+  const setupChannel = async () => {
+    channel = await connection.createChannel();
+    for (const queue of Object.values(QUEUES)) {
+      await channel.assertQueue(queue, { durable: true });
+    }
+  };
+
+  const attachEventHandlers = () => {
+    connection.on('error', (err) => {
+      connected = false;
+      logger.error({ err }, 'RabbitMQ connection error');
+    });
+
+    connection.on('close', () => {
+      connected = false;
+      if (closing) return;
+      logger.warn('RabbitMQ connection closed, reconnecting...');
+      scheduleReconnect();
+    });
+  };
+
+  const connectWithBackoff = async (): Promise<void> => {
+    let attempt = 0;
+    while (!closing) {
+      attempt++;
       try {
         connection = await amqplib.connect(url);
-        channel = await connection.createChannel();
-
-        for (const queue of Object.values(QUEUES)) {
-          await channel.assertQueue(queue, { durable: true });
-        }
-
+        await setupChannel();
+        attachEventHandlers();
         connected = true;
-
-        connection.on('error', (err) => {
-          connected = false;
-          logger.error({ err }, 'RabbitMQ connection error');
-        });
-
-        connection.on('close', () => {
-          connected = false;
-          logger.warn('RabbitMQ connection closed, reconnecting...');
-          setTimeout(() => connect(3), 5000);
-        });
-
         logger.info('RabbitMQ connected');
+
+        // Re-register existing consumers after reconnect
+        for (const record of consumers.values()) {
+          await startConsumer(record.queue, record.handler as (payload: unknown) => Promise<void>);
+        }
         return;
       } catch (err) {
-        logger.warn({ attempt: i, err }, 'RabbitMQ connection failed, retrying...');
-        if (i === retries) throw err;
-        await new Promise((r) => setTimeout(r, 3000 * i));
+        logger.warn({ attempt, err }, 'RabbitMQ connection failed, retrying...');
+        const delay = Math.min(3000 * attempt, 30000);
+        await new Promise((r) => setTimeout(r, delay));
       }
     }
   };
 
-  await connect();
+  const scheduleReconnect = () => {
+    setTimeout(() => {
+      connectWithBackoff().catch((err) => {
+        logger.error({ err }, 'RabbitMQ reconnect loop failed permanently');
+      });
+    }, 5000);
+  };
+
+  const startConsumer = async <T>(queue: QueueName, handler: (payload: T) => Promise<void>) => {
+    await channel.consume(queue, async (msg: ConsumeMessage | null) => {
+      if (!msg) return;
+      try {
+        const payload = JSON.parse(msg.content.toString()) as T;
+        await handler(payload);
+        channel.ack(msg);
+      } catch (err) {
+        logger.error({ err }, `Error processing message from ${queue}`);
+        channel.nack(msg, false, false);
+      }
+    });
+  };
+
+  await connectWithBackoff();
 
   return {
     isConnected: () => connected,
@@ -75,19 +116,11 @@ async function createRabbitMQClient(url: string, logger: FastifyInstance['log'])
       channel.sendToQueue(queue, content, { persistent: true });
     },
     async consume<T>(queue: QueueName, handler: (payload: T) => Promise<void>): Promise<void> {
-      await channel.consume(queue, async (msg) => {
-        if (!msg) return;
-        try {
-          const payload = JSON.parse(msg.content.toString()) as T;
-          await handler(payload);
-          channel.ack(msg);
-        } catch (err) {
-          logger.error({ err }, `Error processing message from ${queue}`);
-          channel.nack(msg, false, false);
-        }
-      });
+      consumers.set(queue, { queue, handler: handler as (payload: unknown) => Promise<void> });
+      await startConsumer(queue, handler);
     },
     async close(): Promise<void> {
+      closing = true;
       connected = false;
       await channel.close();
       await connection.close();

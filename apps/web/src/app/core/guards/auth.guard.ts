@@ -22,7 +22,11 @@ export class AuthGuard extends KeycloakAuthGuard {
 
   async isAccessAllowed(route: ActivatedRouteSnapshot): Promise<boolean | UrlTree> {
     if (!this.authenticated) {
-      await this.keycloak.login({ redirectUri: new URL(window.location.pathname + window.location.search + window.location.hash, getPublicAppOrigin()).href });
+      try {
+        await this.keycloak.login({ redirectUri: new URL(window.location.pathname + window.location.search + window.location.hash, getPublicAppOrigin()).href });
+      } catch {
+        return this.router.parseUrl('/login-error');
+      }
       return false;
     }
 

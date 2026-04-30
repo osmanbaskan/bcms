@@ -35,6 +35,7 @@ import { startIngestWorker } from './modules/ingest/ingest.worker.js';
 import { startIngestWatcher } from './modules/ingest/ingest.watcher.js';
 import { startBxfWatcher } from './modules/bxf/bxf.watcher.js';
 import { startOptaWatcher, getOptaWatcherStatus } from './modules/opta/opta.watcher.js';
+import { startAuditRetentionJob } from './modules/audit/audit-retention.job.js';
 
 const BACKGROUND_SERVICES = [
   'notifications',
@@ -42,6 +43,7 @@ const BACKGROUND_SERVICES = [
   'ingest-watcher',
   'bxf-watcher',
   'opta-watcher',
+  'audit-retention',
 ] as const;
 
 type BackgroundService = (typeof BACKGROUND_SERVICES)[number];
@@ -118,6 +120,7 @@ async function startBackgroundServices(app: FastifyInstance): Promise<void> {
   await run('ingest-watcher', () => startIngestWatcher(app));
   await run('bxf-watcher', () => startBxfWatcher(app));
   await run('opta-watcher', () => startOptaWatcher(app));
+  await run('audit-retention', () => startAuditRetentionJob(app));
 }
 
 function errorResponse(error: Error & { statusCode?: number; code?: string }) {
@@ -181,7 +184,7 @@ export async function buildApp() {
     global: true,
     max: 300,
     timeWindow: '1 minute',
-    skipOnError: true,
+    skipOnError: false,
     keyGenerator: (req) => req.headers['x-real-ip'] as string ?? req.ip,
     errorResponseBuilder: (_req, context) => ({
       statusCode: 429,
@@ -235,17 +238,22 @@ export async function buildApp() {
     // RabbitMQ
     checks.rabbitmq = app.rabbitmq.isConnected() ? 'ok' : 'degraded';
 
-    // OPTA — watcher aktif değilse (API none modunda) dizin varlığını kontrol et
-    const opta = getOptaWatcherStatus();
-    if (opta.connected) {
-      checks.opta = 'ok';
-    } else {
-      try {
-        await fs.stat(opta.dir);
+    // OPTA — API modunda (none) dizin varlığını kontrol et; worker'da ayrı container
+    const enabledServices = enabledBackgroundServices();
+    if (enabledServices.size === 0 || enabledServices.has('opta-watcher')) {
+      const opta = getOptaWatcherStatus();
+      if (opta.connected) {
         checks.opta = 'ok';
-      } catch {
-        checks.opta = 'degraded';
+      } else {
+        try {
+          await fs.stat(opta.dir);
+          checks.opta = 'ok';
+        } catch {
+          checks.opta = 'degraded';
+        }
       }
+    } else {
+      checks.opta = 'ok';
     }
 
     const degraded = Object.values(checks).some((v) => v === 'degraded');
