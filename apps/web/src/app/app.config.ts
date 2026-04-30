@@ -10,6 +10,9 @@ import { environment } from '../environments/environment';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { getPublicAppOrigin } from './core/auth/public-origin';
 
+const TOKEN_REFRESH_MIN_VALIDITY_SECONDS = 120;
+const TOKEN_REFRESH_INTERVAL_MS = 60_000;
+
 function initKeycloak(keycloak: KeycloakService) {
   return async () => {
     await keycloak.init({
@@ -26,6 +29,20 @@ function initKeycloak(keycloak: KeycloakService) {
       },
       loadUserProfileAtStartUp: false,
     });
+
+    const kc = keycloak.getKeycloakInstance();
+    kc.onTokenExpired = () => {
+      void keycloak.updateToken(TOKEN_REFRESH_MIN_VALIDITY_SECONDS).catch((err) => {
+        console.warn('Keycloak token refresh failed after expiry', err);
+      });
+    };
+
+    window.setInterval(() => {
+      if (!kc.authenticated) return;
+      void keycloak.updateToken(TOKEN_REFRESH_MIN_VALIDITY_SECONDS).catch((err) => {
+        console.warn('Keycloak token refresh failed', err);
+      });
+    }, TOKEN_REFRESH_INTERVAL_MS);
   };
 }
 

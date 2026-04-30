@@ -248,6 +248,13 @@ docker compose up -d --build web
 
 `Admin` ve `SystemEng` sistem genelinde tam yetkili kabul edilir. Grup adları Keycloak'taki `groups` claim değeriyle birebir aynı olmalıdır; route içinde eski veya farklı yazılmış grup string'i kullanılmamalıdır.
 
+### Oturum Yenileme — 2026-04-30
+
+- Frontend Keycloak token'ını uygulama açık kaldığı sürece periyodik olarak yeniler.
+- API isteklerinden önce `updateToken(60)` çağrılır ve güncel bearer token header'a eklenir.
+- Kullanıcı explicit `Çıkış yap` butonuna basmadığı sürece frontend logout tetiklemez.
+- Tarayıcı/app tamamen kapalı kalır ve Keycloak realm max session süresi aşılırsa yeniden login gerekebilir; bu süre Keycloak realm policy ile yönetilir.
+
 | Sekme / Özellik | Erişim |
 |---|---|
 | Yayın Planı listesi | Tüm authenticated |

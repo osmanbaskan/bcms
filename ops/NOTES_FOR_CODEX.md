@@ -226,6 +226,8 @@ npm run db:generate -w apps/api
 
 - Keycloak oturumları **in-memory** tutulur. Docker restart sonrası tüm oturumlar geçersiz olur.
 - Tarayıcı eski token'ı kullanmaya devam ederse → Ctrl+Shift+R (hard refresh) + yeniden giriş.
+- Frontend token refresh aktiftir: `app.config.ts` periyodik `updateToken(120)` çalıştırır, `auth.interceptor.ts` her API isteğinden önce `updateToken(60)` dener.
+- Kullanıcı explicit logout yapmadığı sürece frontend logout zorlamaz; Keycloak realm max session policy aşılırsa yeniden login yine gerekebilir.
 - Test kullanıcısı: `admin` / `admin123`
 - `infra/keycloak/realm-export.json` yeni importlar için `sslRequired=external` içerir.
 - Mevcut canlı realm import ile overwrite edilmez; `ops/scripts/bcms-keycloak-apply-security.sh` çalışan realm'e `sslRequired=external` uygular.

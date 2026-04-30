@@ -211,6 +211,13 @@ docker compose up -d --build web
 
 Keycloak oturumu Docker restart sonrası geçersiz kalır. Tarayıcıda hard refresh (Ctrl+Shift+R) yapıp yeniden login olunmalıdır.
 
+### Oturum Yenileme — 2026-04-30
+
+- Web uygulaması açık kaldığı sürece Keycloak token periyodik yenilenir.
+- Her API çağrısından önce token minimum 60 saniye geçerli olacak şekilde refresh edilir.
+- Kullanıcı `Çıkış yap` butonuna basmadıkça frontend logout zorlamaz.
+- Keycloak container restart edilirse veya realm max session policy aşılırsa yeniden login gerekir.
+
 ## LAN / Ağ Erişimi (Farklı Bilgisayardan)
 
 `http://172.28.204.133:4200` adresine başka bir PC'den bağlanmak için iki yapılandırma:
