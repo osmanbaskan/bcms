@@ -84,19 +84,17 @@ const LIVE_PLAN_METADATA = {
   source: 'live-plan',
 } as const;
 
-const numberOptions = (count: number, start = 1) => (
-  Array.from({ length: count }, (_, i) => String(i + start).padStart(2, '0'))
-);
-
-const IRD_OPTIONS = [
-  ...numberOptions(60),
-  '4,5G-1', '4,5G-2', '4,5G-3', '4,5G-4',
-  'DOHA 1', 'DOHA 2', 'Fiber1', 'Fiber2', 'Fiber3', 'Fiber4', 'Fiber8',
-  'Gbs 53', 'Gbs 54', 'Gbs 55', 'Gbs 56',
-  'IRD 01', 'IRD 02', 'IRD 03', 'IRD 04', 'IRD 05', 'IRD 06', 'IRD 07', 'IRD 08',
-  'IRD 09', 'IRD 10', 'IRD 11', 'IRD 12', 'IRD 13', 'IRD 14', 'IRD 15',
-  'Quicklink-1', 'Quicklink-2', 'STREAM1 PC', 'STREAM2 PC', 'TVU-4',
+/** TIE dropdown listesi. Edit dialog'da `f.tie` için kullanılır. */
+const TIE_OPTIONS: readonly string[] = [
+  '1', '2', '3', '4', '5', '6',
+  'IRD 48', 'IRD49 RBT1', 'IRD50 RBT2',
+  'PLT SPR5', 'PLT SPR6', 'PLT SPR7', 'PLT SPR8',
+  'STREAM1 PC', 'STREAM2 PC',
+  'TRX SPR14', 'TRX SPR15', 'TRX SPR16', 'TRX SPR17', 'TRX SPR18',
 ];
+
+/** Demod dropdown listesi. Edit dialog'da `f.demod` için kullanılır. */
+const DEMOD_OPTIONS: readonly string[] = ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'];
 
 /** Int / Int 2 dropdown havuzu. Toplam: 46 öğe.
  *  1..12 + AGENT 1..10 + HYRID 1..2 + IP 1..16 + ISDN 1..5 + TEKYON 3.
@@ -212,42 +210,6 @@ const LIVE_DETAIL_GROUPS: { title: string; fields: LiveDetailField[] }[] = [
       { key: 'fiberAudioFormat', label: 'Fiber Audio Format' },
       { key: 'fiberVideoFormat', label: 'Fiber Video Format' },
       { key: 'fiberBandwidth', label: 'Fiber Bant Genişliği' },
-    ],
-  },
-  {
-    title: 'Tahta / Kaynak',
-    fields: [
-      { key: 'upConverter', label: 'Up Conv.' },
-      { key: 'offTubeResource', label: 'Off Tube' },
-      { key: 'recordLocation', label: 'Kayıt Yeri', editOnly: true },
-      { key: 'recordLocation3', label: 'Kayıt Yeri 3' },
-      // editOnly: Düzenle dialog'unun IRD 1/3 ve Fiber 1 alanları aynı keyleri yazar;
-      // duplicate UX'i önlemek için Teknik Detay'da gizlendi. Options burada
-      // tutulur — Edit dialog `fieldOptions()` ile bu listeyi okur (single source of truth).
-      { key: 'ird', label: 'Ird (Slot 1)', editOnly: true, options: RESOURCE_OPTIONS },
-      { key: 'ird3', label: 'Ird (Slot 3)', editOnly: true, options: RESOURCE_OPTIONS },
-      { key: 'fiberResource', label: 'Fiber (Slot 1)', editOnly: true, options: RESOURCE_OPTIONS },
-      { key: 'virtualResource', label: 'Sanal', editOnly: true },
-      { key: 'hdvgResource', label: 'Hdvg' },
-      { key: 'intercom', label: 'Intercom' },
-      { key: 'tie', label: 'TIE', editOnly: true, options: ['1', '2', '3', '4', '5', '6', 'IRD 48', 'IRD49 RBT1', 'IRD50 RBT2', 'PLT SPR5', 'PLT SPR6', 'PLT SPR7', 'PLT SPR8', 'STREAM1 PC', 'STREAM2 PC', 'TRX SPR14', 'TRX SPR15', 'TRX SPR16', 'TRX SPR17', 'TRX SPR18'] },
-      { key: 'demod', label: 'Demod', editOnly: true, options: ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'] },
-      { key: 'dailyReportShortNotes', label: 'Günlük Yayın Raporu Kısa Notlar', wide: true },
-    ],
-  },
-  {
-    title: 'Yedek Kaynak',
-    fields: [
-      { key: 'backupUpConverter', label: 'Up.Conv Yedek' },
-      { key: 'backupOffTube', label: 'Off Tube Yedek' },
-      { key: 'backupRecordLocation', label: 'Kayıt Yeri Yedek' },
-      { key: 'backupIrd', label: 'Ird Yedek', options: IRD_OPTIONS },
-      { key: 'backupFiber', label: 'Fiber Yedek' },
-      { key: 'backupVirtual', label: 'Sanal Yedek' },
-      { key: 'backupHdvg', label: 'Hdvg Yedek' },
-      { key: 'backupIntercom', label: 'Intercom Yedek' },
-      { key: 'backupTie', label: 'TIE Yedek' },
-      { key: 'backupDemod', label: 'Demod Yedek', options: ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'] },
     ],
   },
 ];
@@ -1416,7 +1378,7 @@ export class ScheduleEditDialogComponent {
   }
   readonly modOptions     = ScheduleEditDialogComponent.fieldOptions('modulationType') ?? [];
   readonly codingOptions  = ScheduleEditDialogComponent.fieldOptions('videoCoding')    ?? [];
-  readonly demodOptions   = ScheduleEditDialogComponent.fieldOptions('demod')          ?? [];
+  readonly demodOptions   = DEMOD_OPTIONS;
 
   // Defensive sticky options — constructor'da hesaplanır, dropdown açıldığında
   // mevcut eski format değer (varsa) listenin başında görünür kalır.
@@ -1495,7 +1457,7 @@ export class ScheduleEditDialogComponent {
     this.intOptions2   = optionsWithCurrent(this.f.intField2, INT_OPTIONS);
     // TIE eski free-text alandı; mevcut serbest değerler dropdown başında
     // görünür kalır (defensive sticky).
-    this.tieOptions    = optionsWithCurrent(this.f.tie, ScheduleEditDialogComponent.fieldOptions('tie') ?? []);
+    this.tieOptions    = optionsWithCurrent(this.f.tie, TIE_OPTIONS);
   }
 
   canSave = () => !!(this.f.contentName && this.f.date && this.f.startTime && this.f.endTime);
