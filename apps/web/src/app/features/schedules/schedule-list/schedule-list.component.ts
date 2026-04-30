@@ -1265,10 +1265,10 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
           </mat-form-field>
         </div>
 
-        <!-- IRD slotları (3 adet, alt alta). Slot 1 = liveDetails.ird,
+        <!-- IRD slotları (3 adet, yan yana tek satır). Slot 1 = liveDetails.ird,
              Slot 2 = liveDetails.ird2 (yeni), Slot 3 = liveDetails.ird3.
              Slot 1 ve 3 Teknik Detay ile paylaşılır. -->
-        <div class="eform-stack">
+        <div class="eform-row">
           <mat-form-field>
             <mat-label>IRD 1</mat-label>
             <mat-select [(ngModel)]="f.ird1" [ngModelOptions]="{standalone:true}">
@@ -1298,9 +1298,9 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
           </mat-form-field>
         </div>
 
-        <!-- Fiber slotları (2 adet, alt alta). Slot 1 = liveDetails.fiberResource,
+        <!-- Fiber slotları (2 adet, yan yana tek satır). Slot 1 = liveDetails.fiberResource,
              Slot 2 = liveDetails.fiberResource2 (yeni). Slot 1 Teknik Detay ile paylaşılır. -->
-        <div class="eform-stack">
+        <div class="eform-row">
           <mat-form-field>
             <mat-label>Fiber 1</mat-label>
             <mat-select [(ngModel)]="f.fiber1" [ngModelOptions]="{standalone:true}">
@@ -1364,12 +1364,6 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
     .eform-row { display:flex; gap:12px; margin-bottom:4px; flex-wrap:wrap; }
     .eform-row mat-form-field { flex:1; min-width:120px; }
     .ef-wide { flex:2 !important; }
-    .eform-stack {
-      display:flex; flex-direction:column; gap:0;
-      max-width:360px;
-      margin-bottom:8px;
-    }
-    .eform-stack mat-form-field { width:100%; }
     .eform-section-title {
       font-size: 12px;
       font-weight: 700;
