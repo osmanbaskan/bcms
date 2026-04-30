@@ -2001,7 +2001,7 @@ export class ReportIssueDialogComponent {
     }
     .broadcast-table thead th {
       padding:4px 6px; text-align:center;
-      border:1px solid rgba(255,255,255,0.15);
+      border:1px solid #000;
       white-space:normal; font-weight:700;
       font-size:0.95rem;
       line-height:1.15;
@@ -2018,7 +2018,7 @@ export class ReportIssueDialogComponent {
     .row-odd  { background:#242436; }
 
 	    .broadcast-table td {
-	      padding:4px 6px; border:1px solid rgba(255,255,255,0.06);
+	      padding:4px 6px; border:1px solid #000;
 	      vertical-align:middle; color:rgba(255,255,255,0.87);
 	    }
 	    .broadcast-table tbody td:not(.td-actions) {
