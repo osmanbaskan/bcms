@@ -96,6 +96,9 @@ const TIE_OPTIONS: readonly string[] = [
 /** Demod dropdown listesi. Edit dialog'da `f.demod` için kullanılır. */
 const DEMOD_OPTIONS: readonly string[] = ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'];
 
+/** Sanal kaynak slot listesi. Edit dialog'da `f.virtualResource` için. */
+const SANAL_OPTIONS: readonly string[] = ['1', '2'];
+
 /** Int / Int 2 dropdown havuzu. Toplam: 46 öğe.
  *  1..12 + AGENT 1..10 + HYRID 1..2 + IP 1..16 + ISDN 1..5 + TEKYON 3.
  *  Add ve Edit dialog'larında ortak liste olarak kullanılır. */
@@ -1267,7 +1270,12 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
           </mat-form-field>
           <mat-form-field>
             <mat-label>Sanal</mat-label>
-            <input matInput [(ngModel)]="f.virtualResource" [ngModelOptions]="{standalone:true}">
+            <mat-select [(ngModel)]="f.virtualResource" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (opt of sanalOptions; track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
           </mat-form-field>
         </div>
 
@@ -1344,6 +1352,7 @@ export class ScheduleEditDialogComponent {
   readonly intOptions1:   readonly string[];
   readonly intOptions2:   readonly string[];
   readonly tieOptions:    readonly string[];
+  readonly sanalOptions:  readonly string[];
 
   f: {
     contentName: string; league: string; channelId: number | null;
@@ -1409,6 +1418,9 @@ export class ScheduleEditDialogComponent {
     // TIE eski free-text alandı; mevcut serbest değerler dropdown başında
     // görünür kalır (defensive sticky).
     this.tieOptions    = optionsWithCurrent(this.f.tie, TIE_OPTIONS);
+    // Sanal eski free-text alandı; mevcut kayıtlardaki değer (varsa)
+    // dropdown başında sticky görünür.
+    this.sanalOptions  = optionsWithCurrent(this.f.virtualResource, SANAL_OPTIONS);
   }
 
   canSave = () => !!(this.f.contentName && this.f.date && this.f.startTime && this.f.endTime);
