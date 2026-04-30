@@ -95,6 +95,18 @@ const IRD_OPTIONS = [
   'Quicklink-1', 'Quicklink-2', 'STREAM1 PC', 'STREAM2 PC', 'TVU-4',
 ];
 
+/** Int / Int 2 dropdown havuzu. Toplam: 46 öğe.
+ *  1..12 + AGENT 1..10 + HYRID 1..2 + IP 1..16 + ISDN 1..5 + TEKYON 3.
+ *  Add ve Edit dialog'larında ortak liste olarak kullanılır. */
+const INT_OPTIONS: readonly string[] = [
+  ...Array.from({ length: 12 }, (_, i) => String(i + 1)),
+  ...Array.from({ length: 10 }, (_, i) => `AGENT - ${i + 1}`),
+  'HYRID - 1', 'HYRID - 2',
+  ...Array.from({ length: 16 }, (_, i) => `IP - ${i + 1}`),
+  ...Array.from({ length: 5 }, (_, i) => `ISDN - ${i + 1}`),
+  'TEKYON - 3',
+];
+
 /** Yeni standart kaynak listesi — tabloda IRD/Fiber sütunlarında alt alta gösterilen
  *  3 IRD slot + 2 Fiber slot için ortak dropdown havuzu. Tek tutarlı format
  *  (`<KAYNAK> - <N>`). Eski IRD_OPTIONS yedek kaynak alanları için (backupIrd vb.)
@@ -900,7 +912,7 @@ export class ScheduleAddDialogComponent {
   canSave         = () => this.checkedIds().size > 0;
 
   readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => String(i + 1));
-  readonly intOptions = Array.from({ length: 12 }, (_, i) => String(i + 1));
+  readonly intOptions: readonly string[] = INT_OPTIONS;
   compById = (a: FixtureCompetition | null, b: FixtureCompetition | null) =>
     a?.id === b?.id && a?.season === b?.season;
 
@@ -1199,7 +1211,7 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
             <mat-label>Int</mat-label>
             <mat-select [(ngModel)]="f.intField" [ngModelOptions]="{standalone:true}">
               <mat-option value="">—</mat-option>
-              @for (n of intOptions; track n) {
+              @for (n of intOptions1; track n) {
                 <mat-option [value]="n">{{ n }}</mat-option>
               }
             </mat-select>
@@ -1208,7 +1220,7 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
             <mat-label>Int 2</mat-label>
             <mat-select [(ngModel)]="f.intField2" [ngModelOptions]="{standalone:true}">
               <mat-option value="">—</mat-option>
-              @for (n of intOptions; track n) {
+              @for (n of intOptions2; track n) {
                 <mat-option [value]="n">{{ n }}</mat-option>
               }
             </mat-select>
@@ -1384,7 +1396,6 @@ export class ScheduleEditDialogComponent {
   saving    = signal(false);
 
   readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => String(i + 1));
-  readonly intOptions = Array.from({ length: 12 }, (_, i) => String(i + 1));
 
   // Tahta/Kaynak alan options'ları LIVE_DETAIL_GROUPS'tan tek noktada okunur
   // (Teknik Detay dialog'la eşleşik). Bu sayede enum değişiminde iki dialog
@@ -1407,6 +1418,8 @@ export class ScheduleEditDialogComponent {
   readonly ird3Options:   readonly string[];
   readonly fiber1Options: readonly string[];
   readonly fiber2Options: readonly string[];
+  readonly intOptions1:   readonly string[];
+  readonly intOptions2:   readonly string[];
 
   f: {
     contentName: string; league: string; channelId: number | null;
@@ -1466,6 +1479,10 @@ export class ScheduleEditDialogComponent {
     this.ird3Options   = optionsWithCurrent(this.f.ird3,   RESOURCE_OPTIONS);
     this.fiber1Options = optionsWithCurrent(this.f.fiber1, RESOURCE_OPTIONS);
     this.fiber2Options = optionsWithCurrent(this.f.fiber2, RESOURCE_OPTIONS);
+    // Int dropdown'ları için defensive — eski "01"-"12" pad'li değerler
+    // yeni "1"-"12" formatında, eski kayıtlar listede görünür kalır.
+    this.intOptions1   = optionsWithCurrent(this.f.intField,  INT_OPTIONS);
+    this.intOptions2   = optionsWithCurrent(this.f.intField2, INT_OPTIONS);
   }
 
   canSave = () => !!(this.f.contentName && this.f.date && this.f.startTime && this.f.endTime);
