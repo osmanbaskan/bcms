@@ -45,16 +45,17 @@ Adresler:
 ## Konteyner Yapısı
 
 ```
-api        → BCMS_BACKGROUND_SERVICES=none (HTTP only)
-worker     → BCMS_BACKGROUND_SERVICES=notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention
-opta-watcher → Python, SMB → POST /api/v1/opta/sync
-web        → nginx, Angular statik
-postgres   → PostgreSQL 16
-rabbitmq   → RabbitMQ 3.12
-keycloak   → Auth
-prometheus → Metrikler
-grafana    → Dashboard
-mailhog    → SMTP (dev)
+api              → BCMS_BACKGROUND_SERVICES=none (HTTP only)
+worker           → BCMS_BACKGROUND_SERVICES=notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention
+opta-watcher     → Python, SMB → POST /api/v1/opta/sync
+web              → nginx, Angular statik
+postgres         → PostgreSQL 16
+postgres_backup  → prodrigestivill/postgres-backup-local:16, daily 03:00 pg_dump
+rabbitmq         → RabbitMQ 3.12
+keycloak         → Auth
+prometheus       → Metrikler
+grafana          → Dashboard
+mailhog          → SMTP (dev)
 ```
 
 > **Not (2026-04-30)**: `bcms_worker` HTTP sunucusu çalıştırmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu loglar, consumer başlangıç kayıtları ve audit retention job loglarıyla izlenir.
@@ -282,12 +283,14 @@ apps/api/src/server.ts                           → graceful shutdown
 apps/api/src/app.ts                              → buildApp, health, rate-limit
 apps/api/src/plugins/auth.ts                     → JWT, allowedIssuers
 apps/api/src/plugins/audit.ts                    → Prisma audit $extends
+apps/api/src/plugins/rabbitmq.ts                 → ConfirmChannel + await publish (no silent drop)
 apps/api/src/modules/audit/audit-retention.job.ts → audit log retention worker job
 apps/api/src/modules/bookings/                   → Ekip İş Takip API
 apps/api/src/modules/weekly-shifts/              → Haftalık Shift API
+apps/web/src/app/core/interceptors/auth.interceptor.ts → Token refresh failure → login redirect
 apps/web/src/app/features/bookings/              → Ekip İş Takip Frontend
 apps/web/src/app/features/weekly-shift/          → Haftalık Shift Frontend
-apps/web/src/app/features/schedules/schedule-list/schedule-list.component.ts → Canlı Yayın Planı
+apps/web/src/app/features/schedules/schedule-list/schedule-list.component.ts → Canlı Yayın Planı (Düzenle + Teknik Detay dialog'ları, dedup edildi)
 apps/web/src/app/features/studio-plan/           → Stüdyo Planı
 apps/web/src/app/features/ingest/                → Ingest Planlama
 apps/web/src/app/features/mcr/                   → MCR Panel
@@ -295,5 +298,23 @@ apps/web/angular.json                            → fileReplacements
 apps/web/src/environments/environment.prod.ts    → skipAuth: false
 infra/docker/nginx.conf                          → Angular serve + API proxy
 infra/keycloak/realm-export.json                 → bcms-web client
-docker-compose.yml                               → 10 servis
+infra/postgres/RESTORE.md                        → pg_dump restore runbook
+infra/postgres/backups/                          → host bind mount, gitignored
+docker-compose.yml                               → 11 servis (postgres_backup eklendi)
 ```
+
+## 4-Madde Audit Triage (2026-04-30)
+
+Kapsamlı audit raporu (`BCMS_DETAILED_AUDIT_REPORT_2026-04-30.md`) 138 bulgu içeriyordu. Severity kalibrasyonu zayıftı; triage sonrası gerçek aksiyon listesi 3 + 1 = 4 madde:
+
+1. **Auth interceptor** (CRIT-003): `catchError → next(req)` döngüsü kırıldı; refresh fail → `keycloak.login()` redirect. ✅ DONE
+2. **RabbitMQ confirms** (CRIT-001): `createConfirmChannel()` + Promise-wrapped `sendToQueue`. Bağlantı yokken throw eder, silent drop yok. ✅ DONE
+3. **Ingest race** (CRIT-002): **FALSE POSITIVE** — DB-level GiST exclusion constraint (`migration 20260426000000_ingest_port_no_overlap`) + `isPlanTimeConstraintError` P2002/P2004 catch → 409. Race yapısal olarak imkansız.
+4. **Yedekleme** (OPS-CRIT-011): `postgres_backup` sidecar daily 03:00. Restore drill 110→110 OK. Bilinen quirk: image v0.0.11 compression yapmıyor (`.sql.gz` ama plain SQL); `cat` ile restore. ✅ DONE
+
+Yanlış sınıflandırılan diğer CRITICAL'lar (rapor 13'ten gerçek 3-4'e düştü):
+- **CRIT-006/007/008/009** (afterClosed/onAction "leak"): RxJS auto-complete-once observable'lar → leak değil. False positive.
+- **CRIT-004/005/013**: Severity inflation, MEDIUM/LOW olmalı.
+- **CRIT-010/012**: Real ama HIGH ya da MEDIUM, CRITICAL değil.
+
+Pattern: Audit raporları rakam başlığı (138 bulgu) ile sahte titizlik veriyor; **triage etmeden aksiyon planına çevirme**. RxJS gibi temel kavram hatası 4 CRITICAL üretebilir → yeniden kalibrasyon gerekir.

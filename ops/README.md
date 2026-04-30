@@ -1,6 +1,6 @@
 # BCMS Operasyon — Docker Compose
 
-> Son güncelleme: 2026-04-30 — Stabilizasyon fazı tamamlandı: Studio Plan save flow, audit retention, DB connection tuning, production typing cleanup ve test doğrulamaları güncellendi.
+> Son güncelleme: 2026-04-30 — Audit triage + 4 madde uygulaması: auth interceptor refresh failure → login redirect, RabbitMQ ConfirmChannel + await (silent drop kapandı), ingest race false-positive doğrulandı (DB GiST exclusion zaten var), `postgres_backup` sidecar (günlük 03:00, restore drill OK). Teknik Detay dialog dedup ve Yeni Ekle Teknik Detaylar tabı kaldırıldı.
 
 Proje tamamen **Docker Compose** ile yönetilmektedir. `systemd`, `ng serve`, `tsx watch` kullanılmaz.
 
@@ -50,6 +50,7 @@ npm run smoke:api
 | `prometheus` | bcms_prometheus | Metrikler | — |
 | `grafana` | bcms_grafana | Dashboard | — |
 | `mailhog` | bcms_mailhog | SMTP (dev) | — |
+| `postgres_backup` | bcms_postgres_backup | pg_dump cron (03:00) + retention | localhost:8080 wget |
 
 > **Worker Health (2026-04-30)**: Worker HTTP port açmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu `docker compose logs -f worker`, consumer başlangıç logları ve audit retention job logları ile kontrol edilir.
 
@@ -314,6 +315,48 @@ npm run db:studio -w apps/api
 - `ScheduleStatus` enum'u `schedule_status` olarak yeniden adlandırıldı; diğer enum'larla snake_case naming uyumu sağlandı.
 - `teams`, `matches`, `ingest_plan_items`, `qc_reports` foreign key'leri `ON DELETE CASCADE` davranışı ile yeniden oluşturuldu.
 - `prisma migrate diff` boş çıktı verir → DB ve schema eşleşiyor.
+
+2026-04-30 obsolete-keys cleanup (`20260430130000_strip_obsolete_live_detail_keys`):
+- Tahta/Kaynak ve Yedek Kaynak Teknik Detay'dan kaldırıldı; defansif idempotent jsonb minus ile 16 obsolete key (`upConverter, offTubeResource, recordLocation3, hdvgResource, intercom, dailyReportShortNotes` + 10 backup* key'i) `metadata.liveDetails`'den strip edildi.
+- Pre-check: 110 schedule, 0 etkilenen (key'ler zaten yoktu). Post-check: 0 obsolete key kaldı.
+
+## Yedekleme & Restore
+
+```bash
+# Manuel backup tetikle
+docker exec bcms_postgres_backup /backup.sh
+
+# Backup health
+docker exec bcms_postgres_backup wget -qO- http://localhost:8080
+# Beklenen: "OK"
+
+# Mevcut dump'ları listele
+ls -lh infra/postgres/backups/last/
+ls -lh infra/postgres/backups/daily/ | tail -10
+```
+
+Restore prosedürü (single DB / Keycloak / full disaster) — `infra/postgres/RESTORE.md`.
+
+**Önemli quirk**: Image v0.0.11 wrapper compression yapmıyor; `.sql.gz` uzantılı dosyalar plain SQL. Restore'da `cat` (gunzip değil) kullanılır:
+
+```bash
+cat infra/postgres/backups/last/bcms-latest.sql.gz | \
+  docker exec -i bcms_postgres psql -U bcms_user -d bcms
+```
+
+**Restore drill (2026-04-30)**: Scratch DB'ye restore → kaynak DB ile schedules count match (110 → 110). Drill başarılı.
+
+**Off-host kopya yok**: Mevcut sidecar tek host'ta. Disk arızasında kaybolur — follow-up olarak rsync/S3/borg ekleme RESTORE.md'de listeli.
+
+## RabbitMQ Publisher Confirms (2026-04-30)
+
+`apps/api/src/plugins/rabbitmq.ts` `createConfirmChannel()` kullanır. `publish()` Promise-wrapped `sendToQueue` ile broker ack bekler. Bağlantı yokken `throw` eder (silent drop yok). Caller'lar bu nedenle `try/catch` ile sarmalı veya hata propagate edileceğini kabul etmeli.
+
+Hızlı doğrulama:
+```bash
+docker logs bcms_api 2>&1 | grep "RabbitMQ connected"
+docker logs bcms_worker 2>&1 | grep -E "RabbitMQ connected|Notification consumer"
+```
 
 Prisma Client generate sorunu:
 ```bash

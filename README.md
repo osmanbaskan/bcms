@@ -2,7 +2,7 @@
 
 Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana geliştirici rehberidir. Günlük operasyonlar ve bağlantı bilgileri için masaüstündeki diğer belgelere başvurun.
 
-> **Son güncelleme**: 2026-04-30 — Stabilizasyon fazı tamamlandı: Studio Plan save race condition, audit retention, DB connection tuning, production `as any` temizliği, test kapsamı ve npm audit risk notları güncellendi.
+> **Son güncelleme**: 2026-04-30 — Audit triage + 4 madde uygulaması: (1) Auth interceptor token refresh failure artık login'e yönlendiriyor, eski token sızdırmıyor; (2) RabbitMQ ConfirmChannel + await — silent message drop kapatıldı; (3) Ingest race false-positive doğrulandı (DB-level GiST exclusion zaten korumakta); (4) `postgres_backup` sidecar — günlük pg_dump + restore drill OK. Ayrıca Teknik Detay dialog dedup: Tahta/Kaynak ve Yedek Kaynak bölümleri kaldırıldı, Yeni Ekle'den Teknik Detaylar tabı çıkarıldı (içeriğe-özgü doldurma akışı).
 
 ## Mimari Kurallar
 
@@ -22,6 +22,8 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 12. **Input validation**: Tüm API route'ları Zod ile doğrulama yapar.
 13. **Runtime port erişimi**: Web ve Keycloak LAN erişimi için dış arayüzlere açıktır (`4200:80`, `8080:8080`). API, DB, RabbitMQ, Prometheus, Grafana ve MailHog host-local kalır.
 14. **Prisma connection pool**: API `connection_limit=10`, worker `connection_limit=5`, her ikisi `pool_timeout=20` kullanır. Ayar `apps/api/src/plugins/prisma.ts` içinde `BCMS_BACKGROUND_SERVICES` değerine göre yapılır.
+15. **RabbitMQ publisher confirms**: `apps/api/src/plugins/rabbitmq.ts` `createConfirmChannel()` kullanır; `publish()` Promise-wrapped `sendToQueue` ile broker ack bekler. Bağlantı yokken silent drop yerine throw eder.
+16. **Otomatik yedekleme**: `postgres_backup` sidecar (prodrigestivill/postgres-backup-local:16) günlük 03:00 Europe/Istanbul'da pg_dump alır. Dosyalar `infra/postgres/backups/`. Retention: 7 günlük + 4 haftalık + 6 aylık. Restore prosedürü: `infra/postgres/RESTORE.md`.
 
 ## Mimari
 
@@ -46,6 +48,7 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 | `prometheus` | bcms_prometheus | Metrikler | — |
 | `grafana` | bcms_grafana | Dashboard | — |
 | `mailhog` | bcms_mailhog | SMTP (dev) | — |
+| `postgres_backup` | bcms_postgres_backup | Günlük pg_dump + retention (7/4/6) | localhost:8080 wget |
 
 > **Worker Health (2026-04-30)**: `bcms_worker` HTTP sunucusu çalıştırmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu loglar, RabbitMQ consumer başlangıç mesajları ve background job logları ile izlenir.
 
@@ -252,6 +255,7 @@ docker compose up -d --build web
 
 - Frontend Keycloak token'ını uygulama açık kaldığı sürece periyodik olarak yeniler.
 - API isteklerinden önce `updateToken(60)` çağrılır ve güncel bearer token header'a eklenir.
+- **Token refresh başarısız olursa** (örn. refresh token expired): interceptor request'i eski/boş token ile geçirmez; `keycloak.login()` ile login akışına yönlendirir ve hatayı propagate eder. Önceki davranışta 401-loop'a girip session kurtarma asla tetiklenmiyordu — fix `apps/web/src/app/core/interceptors/auth.interceptor.ts`.
 - Kullanıcı explicit `Çıkış yap` butonuna basmadığı sürece frontend logout tetiklemez.
 - Tarayıcı/app tamamen kapalı kalır ve Keycloak realm max session süresi aşılırsa yeniden login gerekebilir; bu süre Keycloak realm policy ile yönetilir.
 
@@ -365,6 +369,7 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 - 2026-04-29: `booking_work_tracking` migration eklendi
 - 2026-04-29: `integrity_constraints` migration eklendi: `schedules_no_channel_time_overlap` exclusion constraint ve `incidents_open_signal_loss_channel_uidx` partial unique index.
 - 2026-04-30: `reconcile_cascades_and_enums` — cascade davranışları + enum isimleri reconcile edildi; `prisma migrate diff` boş.
+- 2026-04-30: `strip_obsolete_live_detail_keys` — Tahta/Kaynak ve Yedek Kaynak Teknik Detay'dan kaldırıldı; defansif idempotent jsonb minus ile 16 obsolete key strip edildi (pre-check 0 etkilenen, post-check 0 kalan).
 
 ## Ortam Değişkenleri
 
@@ -431,8 +436,33 @@ curl -fsS http://127.0.0.1:4200/
 curl -fsS http://127.0.0.1:4200/api/v1/channels
 ```
 
+## Yedekleme & DR
+
+- **Sidecar**: `postgres_backup` (image `prodrigestivill/postgres-backup-local:16`)
+- **Schedule**: günlük 03:00 Europe/Istanbul (cron `0 3 * * *`)
+- **Retention**: 7 günlük + 4 haftalık + 6 aylık
+- **Veritabanları**: `bcms` + `keycloak`
+- **Konum**: `infra/postgres/backups/{daily,weekly,monthly,last}/` (host bind mount, gitignored)
+- **Healthcheck**: `docker exec bcms_postgres_backup wget -qO- http://localhost:8080`
+- **Manuel tetik**: `docker exec bcms_postgres_backup /backup.sh`
+- **Restore runbook**: `infra/postgres/RESTORE.md`
+- **Bilinen quirk (v1)**: Image v0.0.11 wrapper `.sql.gz` uzantılı dosyaları **gerçekte gzip'lemiyor** — dosyalar plain SQL. Restore için `cat` (gunzip değil) kullanılır. Follow-up: gerçek compression için tool değişikliği.
+- **Off-host kopya**: Henüz yok. Mevcut sidecar tek host'ta kalıyor — disk arızasından korumaz. Follow-up seçenekler RESTORE.md'de listeli (rsync/S3/borg).
+- **Recovery drill**: Çeyreklik tatbikat önerilir (`infra/postgres/RESTORE.md` "Recovery drill" bölümü).
+
+## Canlı Yayın Plan UX — 2026-04-30 Refactor Notları
+
+- **Düzenle dialog**: Tablo kolon alanları (Mod Tipi, Coding Tipi, Demod, IRD slot 1/2/3, Fiber slot 1/2, Kayıt Yeri, TIE, Sanal) + temel meta + intField/intField2/Off Tube/Notlar.
+- **Teknik Detay Düzenle dialog**: Sadece Ana Feed/Transmisyon, Yedek Feed, Fiber bölümleri. Tahta/Kaynak ve Yedek Kaynak gruplar tamamen **kaldırıldı** (UI + DB).
+- **Düzenle ile paylaşılan 9 key** (`modulationType, videoCoding, demod, recordLocation, tie, virtualResource, ird, ird3, fiberResource`) Teknik Detay'da gizlenir — duplicate UX engellendi. Tek kayıt yolu Düzenle.
+- **Yeni Ekle dialog**: Teknik Detaylar tab'ı **kaldırıldı**. N kayıt için tek teknik detay seti yazma anlamsızdı (5 fikstür → hepsi aynı IRD/Fiber). Yeni kayıtlar `metadata.liveDetails` olmadan oluşturulur; teknik bilgileri kayıt sonrası içeriğe-özgü olarak Düzenle/Teknik Detay'dan girilir.
+- **TIE dropdown**: 20 öğe (1-6, IRD 48-50 RBT, PLT SPR5-8, STREAM1/2 PC, TRX SPR14-18). Eski free-text kayıtlar sticky-defensive ile listenin başında kalır.
+- **Mod Tipi dropdown**: 18 öğe (4,5G, DVB S, DVB S2, DVB S2 - 8PSK, DVB S2 QPSK, DVBS2 + NS3, DVBS-2 + NS4, DVB-S2X, FTP, IP Stream, NS3, NS3 + NS4, NS4, NS4 + NS4, Quicklink, Skype, Youtube, Zoom).
+
 ## Operasyon Belgeleri
 
 - `/home/ubuntu/Desktop/BCMS_BAGLANTI_BILGILERI.txt` — bağlantı ve kimlik bilgileri
 - `ops/README.md` — Docker Compose operasyon özeti
 - `ops/NOTES_FOR_CODEX.md` — gelecekteki oturumlar için teknik not
+- `infra/postgres/RESTORE.md` — pg_dump restore runbook (single DB / Keycloak / full disaster)
+- `BCMS_DETAILED_AUDIT_REPORT_2026-04-30.md` — kapsamlı audit raporu (triage edildi: 4 maddeden 3'ü uygulandı, 1 false-positive)
