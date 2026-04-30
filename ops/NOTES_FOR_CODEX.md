@@ -192,13 +192,15 @@ npm install prisma@5.22.0 @prisma/client@5.22.0
 npm run db:generate -w apps/api
 ```
 
-**Migration listesi (güncel — 2026-04-29):**
-- `20260423000000_studio_plans` … `20260423005000_recording_ports_1_44_metus`
+**Migration listesi (güncel — 2026-04-30, toplam 21 migration):**
+- `20260423000000_studio_plans` … `20260423005000_recording_ports_1_44_metus` — studio plans + ingest plan + recording ports kataloğu
 - `20260425000000_add_ingest_job_updated_at`
-- `20260426000000_btree_gist_port_conflict`
+- `20260426000000_ingest_port_no_overlap` — port çakışma btree_gist exclusion constraint
+- `20260427000000_ingest_plan_report_index` — raporlama sorgu indeksi
 - `20260428010000_weekly_shift_assignments` — Haftalık Shift tabloları
 - `20260429010000_booking_work_tracking` — Ekip İş Takip tablosu
 - `20260429020000_integrity_constraints` — schedule zaman çakışması exclusion constraint + açık signal incident partial unique index
+- `20260430000000_reconcile_cascades_and_enums` — `ScheduleStatus`→`schedule_status` enum rename + cascade FK reconcile (`prisma migrate diff` boş)
 
 **DB index temizliği (2026-04-26):** 10 duplicate index silindi.
 

@@ -15,9 +15,9 @@ You are a senior software engineer working on the BCMS (Broadcast Content Manage
 All writes MUST go through the Prisma `$extends` audit plugin in `apps/api/src/plugins/audit.ts`. Never disable it. Never use raw SQL (`$queryRaw`) for INSERT, UPDATE, or DELETE. Raw SQL SELECT is allowed only for reports and aggregations.
 
 ### Mandatory: Group-Based Auth
-Authorization is driven by Keycloak `groups` claim (NOT roles). There are 11 groups: Yayın Muhendisligi, Transmisyon, Booking, Yayın Planlama Mudurlugu, Sistem Muhendisligi, Ingest, Kurgu, MCR, PCR, Ses, Studyo Sefligi. Sistem Muhendisligi has universal access.
+Authorization is driven by Keycloak `groups` claim (NOT roles). There are 12 groups (see `packages/shared/src/types/rbac.ts`): `Admin`, `Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`. The `Admin` group bypasses every `requireGroup` check via `isAdminPrincipal()` in `apps/api/src/plugins/auth.ts`. `SystemEng` is the operational super-group and is listed explicitly in most `PERMISSIONS` arrays, but it does NOT auto-bypass — it must be enumerated.
 
-Never hardcode group strings in route handlers. Always import from `@bcms/shared` using the `PERMISSIONS` map:
+Never hardcode group strings in route handlers. Always import from `@bcms/shared` using the `PERMISSIONS` map (or the `GROUP` constant for single-name references):
 ```ts
 app.get('/', { preHandler: app.requireGroup(...PERMISSIONS.schedules.read) }, ...)
 ```
@@ -41,13 +41,15 @@ Every route handler must validate input with Zod before touching Prisma. The glo
 | Unknown (prod) | 500 | Generic message, hide stack |
 
 ### API / Worker Split (Hard Rule)
-The `api` container runs `BCMS_BACKGROUND_SERVICES=none` (HTTP only). The `worker` container runs background services: notifications, ingest-worker, ingest-watcher, bxf-watcher, opta-watcher. Never merge these roles.
+The `api` container runs `BCMS_BACKGROUND_SERVICES=none` (HTTP only). The `worker` container runs background services: `notifications`, `ingest-worker`, `ingest-watcher`, `bxf-watcher`, `audit-retention`. Never merge these roles. The OPTA watcher is a **separate Python container** (`bcms_opta_watcher`), not a Node background service.
+
+The `audit-retention` job purges `audit_logs` rows older than `AUDIT_RETENTION_DAYS` (default 90) — see `apps/api/src/modules/audit/audit-retention.job.ts`. After changing background services, rebuild with `docker compose up -d --build api worker` — env updates alone don't reload running containers.
 
 ### `usageScope` Canonicality
 The `schedules.usage_scope` DB column is the sole discriminator: `broadcast` vs `live-plan`. Do NOT use metadata JSON filtering for `usageScope` — that approach is obsolete.
 
 ### Rate Limiting
-Global rate limit is 300 req/min per IP. Exempt endpoints must set `config: { rateLimit: false }`. Currently exempt: `/health`. Note: `/opta/sync` is NOT exempt, which causes the Python watcher to hit 429.
+Global rate limit is 300 req/min per IP. Exempt endpoints must set `config: { rateLimit: false }`. Currently exempt: `/health`, `/opta/sync` (Python watcher batch sync), and the ingest `/callback`. The rate-limit `keyGenerator` reads `X-Real-IP` first so nginx-forwarded IPs are preserved.
 
 ## Frontend Rules (Angular 21.2.8)
 

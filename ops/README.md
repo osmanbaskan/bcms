@@ -310,6 +310,11 @@ npm run db:studio -w apps/api
 - `schedules_no_channel_time_overlap`: aynı kanal için CANCELLED olmayan yayınların zaman aralığı çakışamaz.
 - `incidents_open_signal_loss_channel_uidx`: aynı kanal için tek açık `SIGNAL_LOSS` incident bulunabilir.
 
+2026-04-30 reconcile migration (`20260430000000_reconcile_cascades_and_enums`):
+- `ScheduleStatus` enum'u `schedule_status` olarak yeniden adlandırıldı; diğer enum'larla snake_case naming uyumu sağlandı.
+- `teams`, `matches`, `ingest_plan_items`, `qc_reports` foreign key'leri `ON DELETE CASCADE` davranışı ile yeniden oluşturuldu.
+- `prisma migrate diff` boş çıktı verir → DB ve schema eşleşiyor.
+
 Prisma Client generate sorunu:
 ```bash
 rm -rf node_modules/.prisma node_modules/@prisma/client node_modules/prisma

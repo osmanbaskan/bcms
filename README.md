@@ -357,11 +357,14 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 - Sürüm: 5.22.0
 - Generate sorunu çözümü: `rm -rf node_modules/.prisma node_modules/@prisma/client node_modules/prisma && npm install prisma@5.22.0 @prisma/client@5.22.0 && npm run db:generate -w apps/api`
 - DB enum isimleri: `booking_status`, `ingest_status`, `incident_severity`
-- Local DB 2026-04-22'de 8 migration baseline edildi
-- 2026-04-26: 10 adet tekrar eden index kaldırıldı
+- Local DB 2026-04-22'de 8 migration baseline edildi (toplam migration sayısı: 21; tam liste `apps/api/prisma/migrations/`)
+- 2026-04-25: `add_ingest_job_updated_at`
+- 2026-04-26: `ingest_port_no_overlap` (btree_gist exclusion constraint) + 10 adet tekrar eden index kaldırıldı
+- 2026-04-27: `ingest_plan_report_index` (raporlama sorgu hızlandırması)
 - 2026-04-28: `weekly_shift_assignments` migration eklendi
 - 2026-04-29: `booking_work_tracking` migration eklendi
 - 2026-04-29: `integrity_constraints` migration eklendi: `schedules_no_channel_time_overlap` exclusion constraint ve `incidents_open_signal_loss_channel_uidx` partial unique index.
+- 2026-04-30: `reconcile_cascades_and_enums` — cascade davranışları + enum isimleri reconcile edildi; `prisma migrate diff` boş.
 
 ## Ortam Değişkenleri
 
