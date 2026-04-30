@@ -2067,12 +2067,12 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
 
   displayInt(s: Schedule) {
     const values = [
-      ...String(s.metadata?.['intField'] ?? '').split('/'),
+      ...String(s.metadata?.['intField'] ?? '').split(/[/-]/),
       String(s.metadata?.['intField2'] ?? ''),
     ]
       .map((value) => value.trim())
       .filter(Boolean);
-    return Array.from(new Set(values)).join(' / ');
+    return Array.from(new Set(values)).join(' - ');
   }
 
   /** Tabloda metadata.liveDetails altındaki bir alanı gösterir.
@@ -2084,11 +2084,11 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   }
 
   /** Kayıt Yeri kolonu: ingest_plan_items'tan gelen ana + yedek port (read-only).
-   *  Tek edit noktası Ingest sekmesi. "Port 5 / Port 12 (yedek)" formatı. */
+   *  Tek edit noktası Ingest sekmesi. "Port 5 - Port 12" formatı. */
   formatRecordingPorts(s: Schedule): string {
     const primary = (s as Schedule & { recordingPort?: string | null }).recordingPort?.trim();
     const backup  = (s as Schedule & { backupRecordingPort?: string | null }).backupRecordingPort?.trim();
-    if (primary && backup) return `${primary} / ${backup} (yedek)`;
+    if (primary && backup) return `${primary} - ${backup}`;
     if (primary) return primary;
     return '';
   }
