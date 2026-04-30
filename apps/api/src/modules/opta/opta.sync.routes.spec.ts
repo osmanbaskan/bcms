@@ -59,7 +59,10 @@ describe('Opta Sync Routes', () => {
 
     expect(response.statusCode).toBe(200);
     const result = JSON.parse(response.payload);
-    expect(result).toEqual({ inserted: 1, updated: 0, unchanged: 0 });
+    expect(result).toEqual({
+      inserted: 1, updated: 0, unchanged: 0,
+      cascadedSchedules: 0, cascadeConflicts: 0,
+    });
     expect(mockPrisma.league.upsert).toHaveBeenCalledTimes(1);
     expect(mockPrisma.match.create).toHaveBeenCalledTimes(1);
   });
@@ -86,7 +89,10 @@ describe('Opta Sync Routes', () => {
 
     expect(response.statusCode).toBe(200);
     const result = JSON.parse(response.payload);
-    expect(result).toEqual({ inserted: 0, updated: 1, unchanged: 0 });
+    expect(result).toEqual({
+      inserted: 0, updated: 1, unchanged: 0,
+      cascadedSchedules: 0, cascadeConflicts: 0,
+    });
     expect(mockPrisma.match.update).toHaveBeenCalledTimes(1);
   });
 });
