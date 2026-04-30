@@ -2000,11 +2000,12 @@ export class ReportIssueDialogComponent {
       color:#fff;
     }
     .broadcast-table thead th {
-      padding:8px 10px; text-align:left;
+      padding:4px 6px; text-align:center;
       border:1px solid rgba(255,255,255,0.15);
-      white-space:nowrap; font-weight:700;
-      font-size:1.15rem;
-      letter-spacing:0.02em;
+      white-space:normal; font-weight:700;
+      font-size:0.95rem;
+      line-height:1.15;
+      letter-spacing:0.01em;
     }
     .broadcast-table tbody tr {
       border-bottom:1px solid rgba(255,255,255,0.06);
@@ -2017,13 +2018,14 @@ export class ReportIssueDialogComponent {
     .row-odd  { background:#242436; }
 
 	    .broadcast-table td {
-	      padding:6px 10px; border:1px solid rgba(255,255,255,0.06);
+	      padding:4px 6px; border:1px solid rgba(255,255,255,0.06);
 	      vertical-align:middle; color:rgba(255,255,255,0.87);
 	    }
 	    .broadcast-table tbody td:not(.td-actions) {
-	      font-size:1.64rem;
-	      font-weight:700;
-	      line-height:1.25;
+	      font-size:1rem;
+	      font-weight:600;
+	      line-height:1.2;
+	      text-align:center;
 	    }
 	    .no-data { text-align:center; padding:32px; color:#666; }
 
