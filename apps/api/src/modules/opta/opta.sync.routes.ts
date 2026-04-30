@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import crypto from 'node:crypto';
 
 const matchItemSchema = z.object({
@@ -72,7 +73,8 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
 
       // 3. Insert / update listelerini ayır
       const toInsert: typeof validMatches = [];
-      const toUpdate: { id: number; matchDate: Date }[] = [];
+      // Schedule cascade için matchUid + oldMatchDate da takip edilir.
+      const toUpdate: { id: number; matchUid: string; oldMatchDate: Date; newMatchDate: Date }[] = [];
       let unchanged = 0;
 
       for (const m of validMatches) {
@@ -80,9 +82,14 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
         if (!ex) {
           toInsert.push(m);
         } else {
-          const newDate = new Date(m.matchDate).getTime();
-          if (ex.matchDate.getTime() !== newDate) {
-            toUpdate.push({ id: ex.id, matchDate: new Date(m.matchDate) });
+          const newDate = new Date(m.matchDate);
+          if (ex.matchDate.getTime() !== newDate.getTime()) {
+            toUpdate.push({
+              id: ex.id,
+              matchUid: m.matchUid,
+              oldMatchDate: ex.matchDate,
+              newMatchDate: newDate,
+            });
           } else {
             unchanged++;
           }
@@ -105,17 +112,74 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
         })),
         ...toUpdate.map((u) => tx.match.update({
           where: { id: u.id },
-          data:  { matchDate: u.matchDate },
+          data:  { matchDate: u.newMatchDate },
         })),
       ]);
 
-      return { inserted: toInsert.length, updated: toUpdate.length, unchanged };
+      return { inserted: toInsert.length, updated: toUpdate.length, unchanged, toUpdate };
     });
 
+    // ── Schedule cascade ────────────────────────────────────────────────
+    // OPTA tarafından zaman değişen her maç için, o maça bağlı schedule'ları
+    // (orijinal + duplicate'ler — hepsi aynı metadata.optaMatchId taşır)
+    // delta-based shift et. Manuel ayarlar (örn. yayın 30dk önce başlar)
+    // korunur. COMPLETED / CANCELLED dokunulmaz. Channel-overlap çakışması
+    // olursa o schedule skip + warn — OPTA tx zaten commit oldu, rollback yok.
+    const cascade = { shifted: 0, conflicts: 0 };
+    for (const u of result.toUpdate) {
+      const deltaMs = u.newMatchDate.getTime() - u.oldMatchDate.getTime();
+      if (deltaMs === 0) continue;
+
+      const dependents = await fastify.prisma.schedule.findMany({
+        where: {
+          usageScope: 'live-plan',
+          status: { notIn: ['COMPLETED', 'CANCELLED'] },
+          metadata: { path: ['optaMatchId'], equals: u.matchUid },
+        },
+        select: { id: true, startTime: true, endTime: true },
+      });
+
+      for (const dep of dependents) {
+        const newStart = new Date(dep.startTime.getTime() + deltaMs);
+        const newEnd   = new Date(dep.endTime.getTime()   + deltaMs);
+        try {
+          await fastify.prisma.schedule.update({
+            where: { id: dep.id },
+            data: {
+              startTime: newStart,
+              endTime:   newEnd,
+              version:   { increment: 1 },
+            },
+          });
+          cascade.shifted++;
+        } catch (err) {
+          // Channel overlap exclusion (schedules_no_channel_time_overlap) veya
+          // optimistic lock conflict — schedule kaydırılamadı, log ve devam.
+          if (err instanceof Prisma.PrismaClientKnownRequestError
+              || (err instanceof Error && /overlap|exclude/i.test(err.message))) {
+            cascade.conflicts++;
+            fastify.log.warn(
+              { scheduleId: dep.id, matchUid: u.matchUid, deltaMs, err: (err as Error).message },
+              'OPTA cascade — schedule shift skipped (conflict)',
+            );
+          } else {
+            throw err;
+          }
+        }
+      }
+    }
+
     fastify.log.info(
-      `OPTA sync tamamlandı — yeni: ${result.inserted}, güncellenen:${result.updated}, değişmeyen:${result.unchanged}`,
+      `OPTA sync — yeni:${result.inserted}, güncellenen:${result.updated}, değişmeyen:${result.unchanged}, ` +
+      `schedule kaydırılan:${cascade.shifted}, çakışma:${cascade.conflicts}`,
     );
 
-    return result;
+    return {
+      inserted:          result.inserted,
+      updated:           result.updated,
+      unchanged:         result.unchanged,
+      cascadedSchedules: cascade.shifted,
+      cascadeConflicts:  cascade.conflicts,
+    };
   });
 };
