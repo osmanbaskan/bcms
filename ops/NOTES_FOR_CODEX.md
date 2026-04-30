@@ -334,3 +334,29 @@ OPTA sync schedule cascade'i version conflict yaşadığında **kalıcı drift o
 - Log'da scheduleId / matchUid / delta / reason açık
 
 **TODO (ayrı PR)**: Drift scan job — `metadata.optaAppliedMatchDate` field'ı + her sync'te bound schedule'ları tarayıp drift düzelten worker. **Bu PR'da `optaAppliedMatchDate` yazma — kasıtlı**: consumer olmadan field "phantom state" olur, drift scan tasarımını kısıtlar. Atomik introduction (backfill migration + new-create semantics + drift scan) ile birlikte gelecek.
+
+## Recording Port Normalize (2026-05-01)
+
+`ingest_plan_items.recording_port` kolonu drop edildi. Yeni `ingest_plan_item_ports` tablosu plan item başına 1..2 port (primary + opsiyonel backup) tutar. Tek GiST exclusion (`port_name × day × time_range`) cross-role overlap'i DB-level garanti eder.
+
+**Önemli noktalar:**
+- `IngestPlanItem.recordingPort` Prisma model'de YOK; `ports[]` relation üzerinden okunur.
+- API response'unda backward-compat: `mapPlanItem()` ports array'inden primary/backup çıkarıp `recordingPort` + `backupRecordingPort` döner.
+- Schedule'a port atama: `ScheduleService.attachIngestPorts()` batch JOIN ile (N+1 yok). `Schedule.recordingPort` + `Schedule.backupRecordingPort` read-only.
+- Canlı yayın tablosunda Kayıt Yeri kolonu artık `formatRecordingPorts()` helper ile `Port 5 - Port 12` formatında okunur (eski metadata.liveDetails.recordLocation deprecated).
+- Edit dialog'daki Kayıt Yeri input'u kaldırıldı — Ingest sekmesi tek edit noktası.
+- Aynı item'da primary == backup imkansız (UNIQUE(plan_item_id, port_name)) + Zod refine.
+- Ingest UI'da cross-item busy-port warning: `busyPortsMapByRow` computed signal → dropdown option'ları turuncu "· meşgul" + disabled.
+
+## Auth Interceptor — 403 Reload Loop (2026-05-01)
+
+**Pattern teşhisi**: API loglarında 1 saniyede 2× ardışık request (`/channels` + `/schedules` çiftleri) sayfa reload loop signature'ı.
+
+**Sebep**: catchError HTTP error vs token error ayırt etmiyordu, herhangi bir error keycloak.login() tetikliyordu. Permission-fail (403) sayfa reload'a → tekrar 403 → loop.
+
+**Fix algılama**: bug raporu geldiğinde önce
+1. API loglarında 1 saniyede 2× pattern var mı (`docker logs --tail 200 bcms_api | grep "incoming request" | tail -20`)
+2. Hangi endpoint 403 dönüyor (response statusCode=403 logu)
+3. Kullanıcının PERMISSIONS'a göre gerekli grupta olduğundan emin ol
+
+**Schedule-list /channels endpoint sorunu**: `PERMISSIONS.channels.read=['SystemEng']` ama Tekyon kullanıcısı schedule edit'te kanal seçmek istiyor. Kanal seçim için API permission ya da read-only public endpoint follow-up gerekli (loop fix ile karışmamak için ayrı tutuldu).

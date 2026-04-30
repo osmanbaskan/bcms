@@ -2,7 +2,7 @@
 
 Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana geliştirici rehberidir. Günlük operasyonlar ve bağlantı bilgileri için masaüstündeki diğer belgelere başvurun.
 
-> **Son güncelleme**: 2026-04-30 — Audit triage + 4 madde uygulaması: (1) Auth interceptor token refresh failure artık login'e yönlendiriyor, eski token sızdırmıyor; (2) RabbitMQ ConfirmChannel + await — silent message drop kapatıldı; (3) Ingest race false-positive doğrulandı (DB-level GiST exclusion zaten korumakta); (4) `postgres_backup` sidecar — günlük pg_dump + restore drill OK. Ayrıca Teknik Detay dialog dedup: Tahta/Kaynak ve Yedek Kaynak bölümleri kaldırıldı, Yeni Ekle'den Teknik Detaylar tabı çıkarıldı (içeriğe-özgü doldurma akışı).
+> **Son güncelleme**: 2026-05-01 — Recording port normalize (ana + yedek port, normalized table, GiST exclusion DB-level) + OPTA cascade (match shift'i bağlı schedule'lara delta-based yansır, version optimistic lock, FROZEN_STATUSES) + Auth interceptor 403 loop fix (HTTP error vs token error ayrımı, throttle) + Yeni Ekle dialog'da İçerik Türü gate (Müsabaka). Önceki tur (2026-04-30): audit triage 4-madde + Teknik Detay dedup + postgres_backup sidecar.
 
 ## Mimari Kurallar
 
@@ -24,6 +24,8 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 14. **Prisma connection pool**: API `connection_limit=10`, worker `connection_limit=5`, her ikisi `pool_timeout=20` kullanır. Ayar `apps/api/src/plugins/prisma.ts` içinde `BCMS_BACKGROUND_SERVICES` değerine göre yapılır.
 15. **RabbitMQ publisher confirms**: `apps/api/src/plugins/rabbitmq.ts` `createConfirmChannel()` kullanır; `publish()` Promise-wrapped `sendToQueue` ile broker ack bekler. Bağlantı yokken silent drop yerine throw eder.
 16. **Otomatik yedekleme**: `postgres_backup` sidecar (prodrigestivill/postgres-backup-local:16) günlük 03:00 Europe/Istanbul'da pg_dump alır. Dosyalar `infra/postgres/backups/`. Retention: 7 günlük + 4 haftalık + 6 aylık. Restore prosedürü: `infra/postgres/RESTORE.md`.
+17. **Recording port normalize (2026-05-01)**: Ingest plan item başına 1..2 port atanır (`primary` zorunlu + `backup` opsiyonel). Normalized tablo `ingest_plan_item_ports` (FK CASCADE) + tek GiST exclusion constraint cross-role overlap'i DB-level garanti eder (port meşgulse rol farkı yok). Canlı yayın listesinde "Kayıt Yeri" kolonu read-only — sadece Ingest sekmesinden edit edilir. `metadata.liveDetails.recordLocation` deprecated, defansif strip migration uygulandı.
+18. **OPTA cascade (2026-05-01)**: OPTA sync'te match.matchDate değişirse, o maça bağlı tüm canlı yayın schedule'ları (orijinal + duplicate'lar — `metadata.optaMatchId` üzerinden) **delta-based shift** edilir. Manuel ayarlar (transStart/transEnd) korunur, version optimistic lock ile eş zamanlı user edit override edilmez. `FROZEN_STATUSES` (`COMPLETED`, `CANCELLED`, `ON_AIR`) cascade dışında. Conflict durumunda `manualReconcileRequired:true` response sinyali — otomatik retry yok (drift scan follow-up PR).
 
 ## Mimari
 
@@ -370,6 +372,7 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller.
 - 2026-04-29: `integrity_constraints` migration eklendi: `schedules_no_channel_time_overlap` exclusion constraint ve `incidents_open_signal_loss_channel_uidx` partial unique index.
 - 2026-04-30: `reconcile_cascades_and_enums` — cascade davranışları + enum isimleri reconcile edildi; `prisma migrate diff` boş.
 - 2026-04-30: `strip_obsolete_live_detail_keys` — Tahta/Kaynak ve Yedek Kaynak Teknik Detay'dan kaldırıldı; defansif idempotent jsonb minus ile 16 obsolete key strip edildi (pre-check 0 etkilenen, post-check 0 kalan).
+- 2026-04-30: `normalize_recording_ports` — yeni `ingest_plan_item_ports` tablosu (plan_item_id FK CASCADE, port_name, role∈{primary,backup}, denormalized day+start+end). Mevcut 48+ `recording_port` satırı role='primary' ile yeni tabloya migrate edildi. Eski `no_port_time_overlap` exclusion + `recording_port` kolonu drop. Yeni `ingest_plan_item_ports_no_overlap` GiST exclusion cross-role overlap'i DB-level garanti eder. UNIQUE(plan_item_id, role) + UNIQUE(plan_item_id, port_name) ile aynı item içinde primary≠backup zorunlu. Defansif `metadata.liveDetails.recordLocation` strip de aynı migration'da.
 
 ## Ortam Değişkenleri
 
@@ -450,14 +453,75 @@ curl -fsS http://127.0.0.1:4200/api/v1/channels
 - **Off-host kopya**: Henüz yok. Mevcut sidecar tek host'ta kalıyor — disk arızasından korumaz. Follow-up seçenekler RESTORE.md'de listeli (rsync/S3/borg).
 - **Recovery drill**: Çeyreklik tatbikat önerilir (`infra/postgres/RESTORE.md` "Recovery drill" bölümü).
 
-## Canlı Yayın Plan UX — 2026-04-30 Refactor Notları
+## Canlı Yayın Plan UX — 2026-04-30 / 2026-05-01 Refactor Notları
 
-- **Düzenle dialog**: Tablo kolon alanları (Mod Tipi, Coding Tipi, Demod, IRD slot 1/2/3, Fiber slot 1/2, Kayıt Yeri, TIE, Sanal) + temel meta + intField/intField2/Off Tube/Notlar.
+- **Düzenle dialog**: Temel meta + Mod Tipi / Coding Tipi / Demod / IRD slot 1/2/3 / Fiber slot 1/2 / TIE / Sanal / intField/intField2 / Off Tube / Notlar. **Kayıt Yeri input'u kaldırıldı** (2026-05-01) — Ingest sekmesi tek edit noktası.
 - **Teknik Detay Düzenle dialog**: Sadece Ana Feed/Transmisyon, Yedek Feed, Fiber bölümleri. Tahta/Kaynak ve Yedek Kaynak gruplar tamamen **kaldırıldı** (UI + DB).
-- **Düzenle ile paylaşılan 9 key** (`modulationType, videoCoding, demod, recordLocation, tie, virtualResource, ird, ird3, fiberResource`) Teknik Detay'da gizlenir — duplicate UX engellendi. Tek kayıt yolu Düzenle.
-- **Yeni Ekle dialog**: Teknik Detaylar tab'ı **kaldırıldı**. N kayıt için tek teknik detay seti yazma anlamsızdı (5 fikstür → hepsi aynı IRD/Fiber). Yeni kayıtlar `metadata.liveDetails` olmadan oluşturulur; teknik bilgileri kayıt sonrası içeriğe-özgü olarak Düzenle/Teknik Detay'dan girilir.
+- **Düzenle ile paylaşılan 9 key** (`modulationType, videoCoding, demod, recordLocation, tie, virtualResource, ird, ird3, fiberResource`) Teknik Detay'da gizlenir — duplicate UX engellendi. Tek kayıt yolu Düzenle. (`recordLocation` artık deprecated — Ingest'ten gelir.)
+- **Yeni Ekle dialog**: Teknik Detaylar tab'ı **kaldırıldı** (2026-04-30). 2026-05-01: yeni Step 1 **İçerik Türü** (Müsabaka opsiyonu) — seçilmeden Step 2 (İçerik Seçimi) hiç görünmez. Step 3 (Maç Seç / Maç Bilgileri) Müsabaka akışında.
 - **TIE dropdown**: 20 öğe (1-6, IRD 48-50 RBT, PLT SPR5-8, STREAM1/2 PC, TRX SPR14-18). Eski free-text kayıtlar sticky-defensive ile listenin başında kalır.
 - **Mod Tipi dropdown**: 18 öğe (4,5G, DVB S, DVB S2, DVB S2 - 8PSK, DVB S2 QPSK, DVBS2 + NS3, DVBS-2 + NS4, DVB-S2X, FTP, IP Stream, NS3, NS3 + NS4, NS4, NS4 + NS4, Quicklink, Skype, Youtube, Zoom).
+- **Sanal dropdown** (2026-05-01): text input → mat-select `1` / `2` (sticky-defensive eski free-text).
+- **Tablo Kayıt Yeri kolonu** (2026-05-01): read-only, Schedule.recordingPort + backupRecordingPort'tan format `Port 5 - Port 12` (önceden `(yedek)` etiketi vardı, kaldırıldı; "/" → "-" symmetric ayraç).
+- **Tablo Int kolonu** (2026-05-01): "/" → "-" symmetric ayraç (intField + intField2 birleştirme).
+
+## Ingest Sekmesi — Recording Port (2026-05-01)
+
+- **2 dropdown per row**: "Kayıt Portu" (zorunlu) + "Yedek Kayıt Portu" (opsiyonel)
+- **Same-item exclusivity**: aynı item'da primary == backup imkansız (DB UNIQUE + UI cross-disable)
+- **Cross-item busy-port warning**: dropdown'da her port option'u, başka item'da aynı saatte kullanılıyorsa **turuncu (#ff9800) "· meşgul"** etiketi + disabled. Server 409'a düşmeden kullanıcı görür. (Mid-edit time değişikliğinde feedback bir CD cycle gecikir — sınır.)
+- **Atomic write**: PUT `/ingest/plan/:sourceKey` — Prisma `$transaction` ile parent + ports replace strategy (deleteMany + create x{1,2}).
+- **Cross-role overlap**: tek GiST exclusion constraint (port_name × day × time_range) ana × ana, ana × yedek, yedek × yedek hepsini yakalar. Pre-check `findFirst` defense-in-depth — daha açıklayıcı hata mesajı için.
+
+## Ingest Port Görünümü Fullscreen (2026-04-30/05-01)
+
+- **Tüm portlar tek ekrana sığar** — yatay/dikey scroll yok. 5 satır × ~9 kolon = 45+ port viewport'a eşit dağılır (`grid-template-columns: minmax(0, 1fr)` + `display:grid` rows).
+- **Item layout**: time-grid yerine **flex-column özet liste**. Saat-precision kaybı kabul edildi — content readability tercih edildi (200px column-body'ye 24h time-grid sıkıştırınca 30 dk item ~8px = okunmaz oluyordu).
+- **Font ölçekleme**: column tag (port adı) 1.55rem, item title 1.05rem, time 0.95rem, note 0.85rem — okunabilir + kompakt.
+- **Normal mod (non-fullscreen)**: eski time-grid davranışı korundu.
+
+## OPTA Cascade — Match Date Değişimi (2026-05-01)
+
+OPTA sync'te bir maçın `matchDate` değişirse, o maça bağlı **tüm canlı yayın schedule'lar** (orijinal + duplicate'lar) otomatik aynı delta ile shift edilir.
+
+**Filtre**:
+- `usageScope='live-plan'` + `metadata.optaMatchId === matchUid`
+- `status NOT IN ('COMPLETED', 'CANCELLED', 'ON_AIR')` (FROZEN_STATUSES)
+
+**Shift detayı**:
+- Delta = `newMatchDate − oldMatchDate`
+- Top-level: `startTime`, `endTime` += delta
+- Metadata: `transStart`, `transEnd` (HH:MM string) += delta (24h wrap, range check `<24:<60`)
+- Version optimistic lock: `updateMany({where: {id, version}})` + count check. Eş zamanlı user edit varsa skip + warn.
+
+**Best-effort**:
+- Cascade ana OPTA tx **dışında** — bir schedule conflict'i tüm sync'i rollback etmez.
+- Tüm exception outer try/catch'te yakalanır → response 500 dönmez.
+- Per-iteration try/catch → bir schedule patlasa diğerleri çalışır.
+
+**Response shape** (POST `/api/v1/opta/sync`):
+```json
+{
+  "inserted": 0, "updated": 1, "unchanged": 0,
+  "cascadedSchedules": 7, "cascadeConflicts": 0,
+  "manualReconcileRequired": false,
+  "cascadeError": null
+}
+```
+
+**⚠ Drift riski**: Conflict (version mismatch / channel-overlap) yaşayan schedule **kalıcı olarak eski saatte kalır** — OPTA sync sonraki turda match.matchDate'i tekrar değiştirmedikçe cascade tetiklenmez. `manualReconcileRequired:true` sinyali + log'da scheduleId/matchUid/delta. Drift correction follow-up PR (backfill migration + `metadata.optaAppliedMatchDate` field + her sync'te tarama döngüsü atomik introduction olarak).
+
+**RabbitMQ event**: her başarılı cascade için `QUEUES.SCHEDULE_UPDATED` payload `{scheduleId, changes: {startTime, endTime, metadata?}, source: 'opta-cascade'}`. Publish hatası cascade başarısını etkilemez (best-effort).
+
+**Dedupe**: payload aynı `matchUid`'i 2× içerirse `Map<matchUid>` ile tekilleştirilir (schema garanti etmediği için defansif).
+
+## Auth Interceptor — 2026-05-01 Fix
+
+- **Sebep**: önceki sürümde `catchError` HTTP error (401/403) ile token error'ı ayırt etmiyordu. Tekyon group user `/channels` endpoint'inde 403 alıyordu (`PERMISSIONS.channels.read=['SystemEng']`) → interceptor `keycloak.login()` redirect → sayfa reload → ngOnInit → 403 → reload → **sonsuz loop**.
+- **Fix**: `catchError` artık error tipini ayırır:
+  - `HttpErrorResponse` (401/403/500) → propagate, REDIRECT YOK (component/global handler işler)
+  - Token-fetch / Keycloak-instance hatası → throttle'lı redirect (sessionStorage 30sn pencere)
+- Token gerçekten geçersizse `keycloak.login()` redirect, ama HTTP permission errorları sayfa reload tetiklemez.
 
 ## Operasyon Belgeleri
 

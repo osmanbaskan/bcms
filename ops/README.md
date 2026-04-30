@@ -1,6 +1,6 @@
 # BCMS Operasyon — Docker Compose
 
-> Son güncelleme: 2026-04-30 — Audit triage + 4 madde uygulaması: auth interceptor refresh failure → login redirect, RabbitMQ ConfirmChannel + await (silent drop kapandı), ingest race false-positive doğrulandı (DB GiST exclusion zaten var), `postgres_backup` sidecar (günlük 03:00, restore drill OK). Teknik Detay dialog dedup ve Yeni Ekle Teknik Detaylar tabı kaldırıldı.
+> Son güncelleme: 2026-05-01 — Recording port normalize (ana + yedek port, normalized table + GiST exclusion), OPTA cascade (match shift → bağlı schedule'lar delta-based shift, version optimistic lock, FROZEN_STATUSES, best-effort + manualReconcileRequired sinyali), auth interceptor 403 reload loop fix (HTTP error vs token error ayrımı + throttle), Yeni Ekle dialog'da İçerik Türü gate. Önceki tur (2026-04-30): audit triage 4-madde + Teknik Detay dedup + postgres_backup sidecar.
 
 Proje tamamen **Docker Compose** ile yönetilmektedir. `systemd`, `ng serve`, `tsx watch` kullanılmaz.
 
@@ -320,6 +320,12 @@ npm run db:studio -w apps/api
 - Tahta/Kaynak ve Yedek Kaynak Teknik Detay'dan kaldırıldı; defansif idempotent jsonb minus ile 16 obsolete key (`upConverter, offTubeResource, recordLocation3, hdvgResource, intercom, dailyReportShortNotes` + 10 backup* key'i) `metadata.liveDetails`'den strip edildi.
 - Pre-check: 110 schedule, 0 etkilenen (key'ler zaten yoktu). Post-check: 0 obsolete key kaldı.
 
+2026-04-30 normalize recording ports (`20260430140000_normalize_recording_ports`):
+- Yeni `ingest_plan_item_ports` tablosu: plan_item_id (FK CASCADE), port_name, role∈{primary,backup}, denormalized day_date+planned_start/end_minute. Tek GiST exclusion constraint cross-role overlap'i DB-level garanti eder. UNIQUE(plan_item_id,role) + UNIQUE(plan_item_id,port_name).
+- Mevcut 48+ ingest_plan_items.recording_port satırı role='primary' ile yeni tabloya migrate edildi.
+- Eski `no_port_time_overlap` exclusion + `recording_port` kolonu drop.
+- Defansif `metadata.liveDetails.recordLocation` strip de aynı migration'da (zaten 0 doluydu).
+
 ## Yedekleme & Restore
 
 ```bash
@@ -356,6 +362,54 @@ Hızlı doğrulama:
 ```bash
 docker logs bcms_api 2>&1 | grep "RabbitMQ connected"
 docker logs bcms_worker 2>&1 | grep -E "RabbitMQ connected|Notification consumer"
+```
+
+## OPTA Cascade — Match Date Değişimi (2026-05-01)
+
+`POST /api/v1/opta/sync` endpoint'i artık **schedule cascade** içerir. Match'in `matchDate`'i değiştiğinde, o maça bağlı tüm canlı yayın schedule'lar (orijinal + duplicate'lar — `metadata.optaMatchId` üzerinden) delta-based shift edilir.
+
+**Davranış:**
+- Status `COMPLETED`/`CANCELLED`/`ON_AIR` olan schedule'lar dokunulmaz (FROZEN_STATUSES)
+- Top-level `startTime`/`endTime` += delta (duration korunur)
+- Metadata `transStart`/`transEnd` (HH:MM string) += delta (24h wrap, range check < 24:< 60)
+- Version optimistic lock — eş zamanlı user edit varsa cascade skip
+- Channel-overlap exclusion fire ederse o schedule skip
+- Cascade outer try/catch — hiçbir hata response'u patlatmaz
+- RabbitMQ `SCHEDULE_UPDATED` event publish (source: 'opta-cascade')
+- Payload dedupe: aynı `matchUid` 2× gelirse Map ile tekilleştirilir
+
+**Response shape:**
+```json
+{
+  "inserted": 0, "updated": 1, "unchanged": 0,
+  "cascadedSchedules": 7, "cascadeConflicts": 0,
+  "manualReconcileRequired": false,
+  "cascadeError": null
+}
+```
+
+**⚠ Drift riski:** `manualReconcileRequired:true` ise (cascadeConflicts>0 veya cascadeError !=null) o schedule kalıcı drift'te kalır. Sonraki OPTA sync'i `unchanged` görür → cascade tetiklenmez. Manuel reconcile veya drift scan follow-up PR ile çözülür. Logs'ta scheduleId/matchUid/delta açık.
+
+Hızlı test:
+```bash
+# Bir maçı +60dk shift et, cascade gerçekleştiğini doğrula
+curl -X POST http://127.0.0.1:3000/api/v1/opta/sync \
+  -H "Authorization: Bearer $OPTA_SYNC_SECRET" -H "Content-Type: application/json" \
+  -d '{"matches":[{"matchUid":"...","compId":"...","matchDate":"2026-05-01T18:00:00.000Z","season":"2026"}]}'
+```
+
+## Auth Interceptor — 403 Reload Loop Fix (2026-05-01)
+
+**Sebep**: önceki sürümde catchError HTTP error (401/403) ile token error ayırt etmiyordu. Tekyon group user `/channels` 403 alınca → `keycloak.login()` → reload → ngOnInit → 403 → reload → sonsuz loop.
+
+**Fix**:
+- HTTP error → propagate (REDIRECT YOK)
+- Token-fetch / Keycloak-instance hatası → throttle'lı redirect (sessionStorage 30sn)
+
+Belirti tespiti:
+```bash
+docker logs --tail 100 bcms_api 2>&1 | grep -c "incoming request"
+# Eğer 1 saniyede 2× /channels + /schedules pattern görünüyorsa loop signature
 ```
 
 Prisma Client generate sorunu:
