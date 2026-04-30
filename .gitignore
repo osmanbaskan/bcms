@@ -24,3 +24,5 @@ apps/api/tmp/
 # OS
 .DS_Store
 Thumbs.db
+infra/postgres/backups/*
+!infra/postgres/backups/.gitkeep
