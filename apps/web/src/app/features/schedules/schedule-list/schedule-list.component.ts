@@ -163,7 +163,7 @@ const LIVE_DETAIL_GROUPS: { title: string; fields: LiveDetailField[] }[] = [
       { key: 'uplinkPolarization', label: 'Up. Polarizasyon', options: ['H', 'V', 'R', 'L'] },
       { key: 'downlinkFrequency', label: 'Downlink Frekansı' },
       { key: 'downlinkPolarization', label: 'Dwn. Polarizasyon', options: ['H', 'V', 'R', 'L'] },
-      { key: 'modulationType', label: 'Mod Tipi', options: ['4,5G', 'DVB S', 'DVB S2', 'NS3', 'NS4', 'IP Stream'] },
+      { key: 'modulationType', label: 'Mod Tipi', options: ['4,5G', 'DVB S', 'DVB S2', 'DVB S2 - 8PSK', 'DVB S2 QPSK', 'DVBS2 + NS3', 'DVBS-2 + NS4', 'DVB-S2X', 'FTP', 'IP Stream', 'NS3', 'NS3 + NS4', 'NS4', 'NS4 + NS4', 'Quicklink', 'Skype', 'Youtube', 'Zoom'] },
       { key: 'rollOff', label: 'Roll Off', options: ['% 20', '% 25', '% 35'] },
       { key: 'videoCoding', label: 'Video Coding', options: ['H265 4:2:2', 'Mpeg 4:2:0', 'Mpeg 4:2:2', 'Mpeg 4:2:2-10 bit', 'Mpeg 4:2:2-8'] },
       { key: 'audioConfig', label: 'Audio Config' },
@@ -226,7 +226,7 @@ const LIVE_DETAIL_GROUPS: { title: string; fields: LiveDetailField[] }[] = [
       { key: 'virtualResource', label: 'Sanal' },
       { key: 'hdvgResource', label: 'Hdvg' },
       { key: 'intercom', label: 'Intercom' },
-      { key: 'tie', label: 'TIE' },
+      { key: 'tie', label: 'TIE', options: ['1', '2', '3', '4', '5', '6', 'IRD 48', 'IRD49 RBT1', 'IRD50 RBT2', 'PLT SPR5', 'PLT SPR6', 'PLT SPR7', 'PLT SPR8', 'STREAM1 PC', 'STREAM2 PC', 'TRX SPR14', 'TRX SPR15', 'TRX SPR16', 'TRX SPR17', 'TRX SPR18'] },
       { key: 'demod', label: 'Demod', options: ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9'] },
       { key: 'dailyReportShortNotes', label: 'Günlük Yayın Raporu Kısa Notlar', wide: true },
     ],
@@ -1340,7 +1340,12 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
           </mat-form-field>
           <mat-form-field>
             <mat-label>TIE</mat-label>
-            <input matInput [(ngModel)]="f.tie" [ngModelOptions]="{standalone:true}">
+            <mat-select [(ngModel)]="f.tie" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (opt of tieOptions; track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
           </mat-form-field>
           <mat-form-field>
             <mat-label>Sanal</mat-label>
@@ -1420,6 +1425,7 @@ export class ScheduleEditDialogComponent {
   readonly fiber2Options: readonly string[];
   readonly intOptions1:   readonly string[];
   readonly intOptions2:   readonly string[];
+  readonly tieOptions:    readonly string[];
 
   f: {
     contentName: string; league: string; channelId: number | null;
@@ -1483,6 +1489,9 @@ export class ScheduleEditDialogComponent {
     // yeni "1"-"12" formatında, eski kayıtlar listede görünür kalır.
     this.intOptions1   = optionsWithCurrent(this.f.intField,  INT_OPTIONS);
     this.intOptions2   = optionsWithCurrent(this.f.intField2, INT_OPTIONS);
+    // TIE eski free-text alandı; mevcut serbest değerler dropdown başında
+    // görünür kalır (defensive sticky).
+    this.tieOptions    = optionsWithCurrent(this.f.tie, ScheduleEditDialogComponent.fieldOptions('tie') ?? []);
   }
 
   canSave = () => !!(this.f.contentName && this.f.date && this.f.startTime && this.f.endTime);
