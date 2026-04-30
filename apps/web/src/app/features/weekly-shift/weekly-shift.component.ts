@@ -225,9 +225,9 @@ const END_TIMES = ['06:15', '13:15', '15:00', '16:45', '20:00', '22:00', '23:45'
     .table-wrap { overflow:auto; border:1px solid #263241; }
     .shift-table { width:100%; border-collapse:collapse; table-layout:fixed; min-width:0; }
     th, td { border-bottom:1px solid #263241; border-right:1px solid #263241; }
-    th { background:#111827; color:#dbeafe; padding:6px; text-align:left; vertical-align:top; }
-    td { padding:5px; text-align:center; vertical-align:middle; }
-    .person-col { position:sticky; left:0; z-index:1; width:150px; min-width:150px; background:#0f172a; }
+    th { background:#111827; color:#dbeafe; padding:4px; text-align:left; vertical-align:top; }
+    td { padding:3px; text-align:center; vertical-align:middle; }
+    .person-col { position:sticky; left:0; z-index:1; width:135px; min-width:135px; background:#0f172a; }
     th.person-col { z-index:2; }
     .person-name { font-weight:600; font-size:24px; line-height:1.25; text-align:center; }
     .person-meta { display:flex; align-items:center; gap:6px; margin-top:3px; color:#9ca3af; font-size:20px; flex-wrap:wrap; }
@@ -255,8 +255,14 @@ const END_TIMES = ['06:15', '13:15', '15:00', '16:45', '20:00', '22:00', '23:45'
       align-items:center;
     }
     .cell-editor ::ng-deep .mat-mdc-text-field-wrapper {
-      padding-left:6px;
-      padding-right:6px;
+      padding-left:4px;
+      padding-right:4px;
+    }
+    /* Material varsayılan mat-mdc-form-field min-width:180px zorlaması iptal —
+       table-layout:fixed bu sayede kolonları viewport'a sığdırabilir.
+       Font ve yükseklik bilinçli olarak dokunulmadı. */
+    .cell-editor ::ng-deep .mat-mdc-form-field {
+      width:100%; min-width:0;
     }
     .cell-editor ::ng-deep .mat-mdc-select-value,
     .cell-editor ::ng-deep .mat-mdc-floating-label {
