@@ -52,6 +52,14 @@ If you've already started reasoning silently in step 1, the user shouldn't have 
 
 Once the user gives an explicit imperative ("yap", "uygula", "commit") **after** the deliberation, **stop arguing.** Don't reopen settled questions. Execute. Re-litigation after a "yap" wastes the user's time and signals you didn't actually accept the close.
 
+## Heuristics
+
+Decision-making shortcuts to keep available during step 1 (silent evaluation). These compress recurring lessons into rules of thumb — not absolute laws, but defaults that hold unless a stated reason overrides them.
+
+- **Persistent follow-up belongs in issue/docs, not agent memory.** Agent schedule = automated personal reminder; the moment context, runtime, or model changes, it's gone. Issue tracker / doc calendars survive those transitions.
+- **Verification claims must match actual verification depth.** `tsc`, `build`, `test`, `runtime healthy`, `smoke` are different operations. Whichever was done is what gets reported — don't widen the scope to "build doğrulandı" when only `tsc --noEmit` ran.
+- **Git history does not capture runtime state.** Broker queue mutations, manual SQL, ops commands run by hand — these don't appear in `git log`. Document them separately (in the doc that owns the resource, or in a runtime-ops log if multiple accumulate).
+
 ## Anti-Patterns to Reject
 
 - **Reflexive "yapıyorum":** Acting on a proposal without surfacing your read first.

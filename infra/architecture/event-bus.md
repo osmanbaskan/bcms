@@ -5,6 +5,19 @@
 
 BCMS asenkron iletişim için RabbitMQ kullanır. Bu doküman **aktif** ve **reserved** event'leri ayrıştırır, her event'in kontratını sabitler.
 
+## Review Calendar
+
+Doküman içeriğine gömülü `Stale-by` tarihlerinin **tek noktadan görünür** kaydı. Tarih geldiğinde aşağıdaki [Stale-by Review Prosedürü](#stale-by-review-prosedürü) uygulanır.
+
+| Konu | Stale-by | Notlar |
+|---|---|---|
+| `queue.schedule.created` reserved review | **2026-10-31** | Consumer eklenmediyse: uzat / sil / consumer ekle kararı verilecek |
+| `queue.schedule.updated` reserved review | **2026-10-31** | Aynı |
+| `queue.booking.created` reserved review | **2026-10-31** | Aynı |
+| `queue.ingest.completed` reserved review | **2026-10-31** | Aynı |
+
+> **Takip mekanizması:** Şu an doküman içi review calendar yeterli. Ekip büyür veya tarih yaklaştığında consumer ihtiyacı netleşirse GitHub issue/milestone'a yükseltilebilir. Otomatik tetikleyici (cron, agent) bilinçli olarak kullanılmıyor — kalıcı state issue tracker'a aittir, agent memory'sine değil.
+
 ## Aktif Event'ler
 
 Hem publisher hem consumer canlı; üretim akışında kritik.
@@ -117,6 +130,8 @@ Feature olgunlaştı, reserved değil aktif.
 
 ## Kaldırılan Event'ler
 
-| Queue | Kaldırılma Tarihi | Sebep |
-|---|---|---|
-| `queue.notifications.slack` | 2026-04-30 | Publisher yok, consumer yok, feature flag yok. Slack entegrasyonu yapılırsa ayrı feature olarak yeniden tasarlanır. |
+`Kod commit` + `Broker silme` ayrı sütunlar — git history runtime/broker state mutation'larını kapsamadığı için her iki katmanın izi burada bırakılır.
+
+| Queue | Kod commit | Broker silme | Sebep |
+|---|---|---|---|
+| `queue.notifications.slack` | `2e9589c` (2026-04-30) | 2026-04-30 15:35 UTC (`rabbitmqctl delete_queue`, 0 msg / 0 consumer onaylandı) | Publisher yok, consumer yok, feature flag yok. Slack entegrasyonu yapılırsa ayrı feature olarak yeniden tasarlanır. |
