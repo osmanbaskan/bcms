@@ -1,12 +1,12 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import fp from 'fastify-plugin';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient, type AuditLogAction } from '@prisma/client';
 
 interface AuditEntry {
   entityType: string;
   entityId: number;
-  action: string;
+  action: AuditLogAction;
   beforePayload?: any;
   afterPayload?: any;
   user: string;
@@ -111,7 +111,7 @@ function buildAuditExtension(base: PrismaClient) {
             context.pendingAuditLogs.push(...buildEntries());
           } else {
             // Worker/arka plan bağlamı: anında yaz
-            await base.auditLog.createMany({ data: buildEntries().map(toDbRow) as any });
+            await base.auditLog.createMany({ data: buildEntries().map(toDbRow) });
           }
 
           return result;
@@ -121,20 +121,20 @@ function buildAuditExtension(base: PrismaClient) {
   });
 }
 
-function toAuditAction(operation: string): string {
+function toAuditAction(operation: string): AuditLogAction {
   if (operation === 'createMany') return 'CREATEMANY';
   if (operation === 'updateMany') return 'UPDATE';
   if (operation === 'deleteMany') return 'DELETE';
-  return operation.toUpperCase();
+  return operation.toUpperCase() as AuditLogAction;
 }
 
-function toDbRow(e: AuditEntry) {
+function toDbRow(e: AuditEntry): Prisma.AuditLogCreateManyInput {
   return {
     entityType: e.entityType,
     entityId: e.entityId,
     action: e.action,
-    beforePayload: e.beforePayload ?? null,
-    afterPayload: e.afterPayload ?? null,
+    beforePayload: (e.beforePayload ?? null) as Prisma.InputJsonValue | typeof Prisma.JsonNull,
+    afterPayload: (e.afterPayload ?? null) as Prisma.InputJsonValue | typeof Prisma.JsonNull,
     user: e.user,
     ipAddress: e.ipAddress ?? null,
   };
@@ -157,7 +157,7 @@ export const auditPlugin: FastifyPluginAsync = fp(async (fastify: FastifyInstanc
     if (!store?.pendingAuditLogs?.length) return payload;
     const entries = store.pendingAuditLogs.splice(0);
     try {
-      await base.auditLog.createMany({ data: entries.map(toDbRow) as any });
+      await base.auditLog.createMany({ data: entries.map(toDbRow) });
     } catch (err) {
       fastify.log.error({ err }, 'Audit log flush hatası');
       throw Object.assign(new Error('Audit log flush failed'), { statusCode: 500 });

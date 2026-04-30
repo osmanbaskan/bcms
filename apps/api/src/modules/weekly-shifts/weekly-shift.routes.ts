@@ -313,8 +313,8 @@ async function exportWeeklyShiftToStream(plan: Awaited<ReturnType<typeof buildWe
         const rendered = shiftCellExcel(cellObj);
         const cell = dataRow.getCell(dayIdx + 2);
         cell.value = rendered.value;
-        cell.alignment = rendered.style.alignment as any;
-        cell.font = rendered.style.font as any;
+        if (rendered.style.alignment) cell.alignment = rendered.style.alignment;
+        if (rendered.style.font)      cell.font      = rendered.style.font;
         cell.border = thinBorder;
         cell.fill = rendered.style.fill ?? rowFill;
       });
