@@ -72,7 +72,7 @@ interface LiveDetailField {
   key: string;
   label: string;
   type?: 'text' | 'textarea';
-  options?: string[];
+  options?: readonly string[];
   wide?: boolean;
 }
 
@@ -94,6 +94,31 @@ const IRD_OPTIONS = [
   'IRD 09', 'IRD 10', 'IRD 11', 'IRD 12', 'IRD 13', 'IRD 14', 'IRD 15',
   'Quicklink-1', 'Quicklink-2', 'STREAM1 PC', 'STREAM2 PC', 'TVU-4',
 ];
+
+/** Yeni standart kaynak listesi — tabloda IRD/Fiber sütunlarında alt alta gösterilen
+ *  3 IRD slot + 2 Fiber slot için ortak dropdown havuzu. Tek tutarlı format
+ *  (`<KAYNAK> - <N>`). Eski IRD_OPTIONS yedek kaynak alanları için (backupIrd vb.)
+ *  korunur. Toplam: 90 öğe. */
+const RESOURCE_OPTIONS: readonly string[] = [
+  ...Array.from({ length: 56 }, (_, i) => `IRD - ${i + 1}`),
+  ...Array.from({ length: 16 }, (_, i) => `FIBER - ${i + 1}`),
+  'GBS - 53', 'GBS - 54', 'GBS - 55', 'GBS - 56',
+  'DOHA - 1', 'DOHA - 2',
+  '4G - 1', '4G - 2', '4G - 3', '4G - 4',
+  'TVU - 1', 'TVU - 2', 'TVU - 3', 'TVU - 4',
+  'YILDIZ - 1', 'YILDIZ - 2', 'YILDIZ - 3', 'YILDIZ - 4',
+];
+
+/** Defensive UI helper: dropdown'da gösterilecek listeyi hesaplar.
+ *  Mevcut değer ana listede yoksa (örn. eski format `Fiber1`, `DOHA 1`) listenin
+ *  başına geçici option olarak eklenir — kullanıcı dokunmadığı sürece korunur,
+ *  yeni listeden seçim yaparsa değer doğal olarak yeni formata geçer.
+ *  Migration yapılmaz; eski/yeni format aynı anda yaşar. */
+function optionsWithCurrent(current: string, base: readonly string[]): readonly string[] {
+  const trimmed = current.trim();
+  if (!trimmed || base.includes(trimmed)) return base;
+  return [trimmed, ...base];
+}
 
 const LIVE_DETAIL_GROUPS: { title: string; fields: LiveDetailField[] }[] = [
   {
@@ -181,9 +206,11 @@ const LIVE_DETAIL_GROUPS: { title: string; fields: LiveDetailField[] }[] = [
       { key: 'offTubeResource', label: 'Off Tube' },
       { key: 'recordLocation', label: 'Kayıt Yeri' },
       { key: 'recordLocation3', label: 'Kayıt Yeri 3' },
-      { key: 'ird', label: 'Ird', options: IRD_OPTIONS },
-      { key: 'ird3', label: 'Ird 3', options: IRD_OPTIONS },
-      { key: 'fiberResource', label: 'Fiber' },
+      // Tablo IRD/Fiber sütunlarında paylaşılan slot 1 ve slot 3 alanları —
+      // aynı 90-öğeli RESOURCE_OPTIONS havuzunu kullanır (Edit dialog ile senkron).
+      { key: 'ird', label: 'Ird (Slot 1)', options: RESOURCE_OPTIONS },
+      { key: 'ird3', label: 'Ird (Slot 3)', options: RESOURCE_OPTIONS },
+      { key: 'fiberResource', label: 'Fiber (Slot 1)', options: RESOURCE_OPTIONS },
       { key: 'virtualResource', label: 'Sanal' },
       { key: 'hdvgResource', label: 'Hdvg' },
       { key: 'intercom', label: 'Intercom' },
@@ -1228,15 +1255,6 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
             </mat-select>
           </mat-form-field>
           <mat-form-field>
-            <mat-label>IRD</mat-label>
-            <mat-select [(ngModel)]="f.ird" [ngModelOptions]="{standalone:true}">
-              <mat-option value="">—</mat-option>
-              @for (opt of irdOptions; track opt) {
-                <mat-option [value]="opt">{{ opt }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-          <mat-form-field>
             <mat-label>Demod</mat-label>
             <mat-select [(ngModel)]="f.demod" [ngModelOptions]="{standalone:true}">
               <mat-option value="">—</mat-option>
@@ -1246,11 +1264,64 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
             </mat-select>
           </mat-form-field>
         </div>
-        <div class="eform-row">
+
+        <!-- IRD slotları (3 adet, alt alta). Slot 1 = liveDetails.ird,
+             Slot 2 = liveDetails.ird2 (yeni), Slot 3 = liveDetails.ird3.
+             Slot 1 ve 3 Teknik Detay ile paylaşılır. -->
+        <div class="eform-stack">
           <mat-form-field>
-            <mat-label>Fiber</mat-label>
-            <input matInput [(ngModel)]="f.fiberResource" [ngModelOptions]="{standalone:true}">
+            <mat-label>IRD 1</mat-label>
+            <mat-select [(ngModel)]="f.ird1" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (opt of ird1Options; track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
           </mat-form-field>
+          <mat-form-field>
+            <mat-label>IRD 2</mat-label>
+            <mat-select [(ngModel)]="f.ird2" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (opt of ird2Options; track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>IRD 3</mat-label>
+            <mat-select [(ngModel)]="f.ird3" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (opt of ird3Options; track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        <!-- Fiber slotları (2 adet, alt alta). Slot 1 = liveDetails.fiberResource,
+             Slot 2 = liveDetails.fiberResource2 (yeni). Slot 1 Teknik Detay ile paylaşılır. -->
+        <div class="eform-stack">
+          <mat-form-field>
+            <mat-label>Fiber 1</mat-label>
+            <mat-select [(ngModel)]="f.fiber1" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (opt of fiber1Options; track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Fiber 2</mat-label>
+            <mat-select [(ngModel)]="f.fiber2" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (opt of fiber2Options; track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        <div class="eform-row">
           <mat-form-field>
             <mat-label>Kayıt Yeri</mat-label>
             <input matInput [(ngModel)]="f.recordLocation" [ngModelOptions]="{standalone:true}">
@@ -1288,10 +1359,17 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
     </mat-dialog-actions>
   `,
   styles: [`
-    .edit-body { min-width: 680px; }
+    .edit-body { min-width: 0; }
+    mat-dialog-content { max-height: 78vh; }
     .eform-row { display:flex; gap:12px; margin-bottom:4px; flex-wrap:wrap; }
     .eform-row mat-form-field { flex:1; min-width:120px; }
     .ef-wide { flex:2 !important; }
+    .eform-stack {
+      display:flex; flex-direction:column; gap:0;
+      max-width:360px;
+      margin-bottom:8px;
+    }
+    .eform-stack mat-form-field { width:100%; }
     .eform-section-title {
       font-size: 12px;
       font-weight: 700;
@@ -1317,7 +1395,7 @@ export class ScheduleEditDialogComponent {
   // Tahta/Kaynak alan options'ları LIVE_DETAIL_GROUPS'tan tek noktada okunur
   // (Teknik Detay dialog'la eşleşik). Bu sayede enum değişiminde iki dialog
   // birlikte güncellenir.
-  private static fieldOptions(key: string): string[] | undefined {
+  private static fieldOptions(key: string): readonly string[] | undefined {
     return LIVE_DETAIL_GROUPS
       .flatMap((g) => g.fields)
       .find((f) => f.key === key)?.options;
@@ -1325,16 +1403,30 @@ export class ScheduleEditDialogComponent {
   readonly modOptions     = ScheduleEditDialogComponent.fieldOptions('modulationType') ?? [];
   readonly codingOptions  = ScheduleEditDialogComponent.fieldOptions('videoCoding')    ?? [];
   readonly demodOptions   = ScheduleEditDialogComponent.fieldOptions('demod')          ?? [];
-  readonly irdOptions     = ScheduleEditDialogComponent.fieldOptions('ird')            ?? [];
+
+  // Defensive sticky options — constructor'da hesaplanır, dropdown açıldığında
+  // mevcut eski format değer (varsa) listenin başında görünür kalır.
+  // Migration yapılmaz; kullanıcı yeni listeden seçim yaparsa değer doğal
+  // olarak yeni formata geçer.
+  readonly ird1Options:   readonly string[];
+  readonly ird2Options:   readonly string[];
+  readonly ird3Options:   readonly string[];
+  readonly fiber1Options: readonly string[];
+  readonly fiber2Options: readonly string[];
 
   f: {
     contentName: string; league: string; channelId: number | null;
     date: string; startTime: string; endTime: string;
     transStart: string; transEnd: string; houseNumber: string;
     intField: string; intField2: string; offTube: string; language: string; notes: string;
-    // Tahta/Kaynak — tabloda görünür alanlar (metadata.liveDetails altında)
-    modulationType: string; videoCoding: string; ird: string; fiberResource: string;
-    demod: string; recordLocation: string; tie: string; virtualResource: string;
+    modulationType: string; videoCoding: string; demod: string;
+    recordLocation: string; tie: string; virtualResource: string;
+    // IRD slotları (slot 1 = ird, slot 2 = ird2, slot 3 = ird3)
+    // Slot 1 ve slot 3 Teknik Detay ile paylaşılır; slot 2 yeni anahtar.
+    ird1: string; ird2: string; ird3: string;
+    // Fiber slotları (slot 1 = fiberResource, slot 2 = fiberResource2)
+    // Slot 1 Teknik Detay ile paylaşılır; slot 2 yeni anahtar.
+    fiber1: string; fiber2: string;
   };
 
   constructor() {
@@ -1362,13 +1454,24 @@ export class ScheduleEditDialogComponent {
       notes:       String(m['description'] || ''),
       modulationType:  String(ld['modulationType']  || ''),
       videoCoding:     String(ld['videoCoding']     || ''),
-      ird:             String(ld['ird']             || ''),
-      fiberResource:   String(ld['fiberResource']   || ''),
       demod:           String(ld['demod']           || ''),
       recordLocation:  String(ld['recordLocation']  || ''),
       tie:             String(ld['tie']             || ''),
       virtualResource: String(ld['virtualResource'] || ''),
+      ird1:            String(ld['ird']             || ''),
+      ird2:            String(ld['ird2']            || ''),
+      ird3:            String(ld['ird3']            || ''),
+      fiber1:          String(ld['fiberResource']   || ''),
+      fiber2:          String(ld['fiberResource2']  || ''),
     };
+
+    // Sticky defensive options — kayıt açıldığında hesaplanır; eski format
+    // değerler dropdown başında görünür.
+    this.ird1Options   = optionsWithCurrent(this.f.ird1,   RESOURCE_OPTIONS);
+    this.ird2Options   = optionsWithCurrent(this.f.ird2,   RESOURCE_OPTIONS);
+    this.ird3Options   = optionsWithCurrent(this.f.ird3,   RESOURCE_OPTIONS);
+    this.fiber1Options = optionsWithCurrent(this.f.fiber1, RESOURCE_OPTIONS);
+    this.fiber2Options = optionsWithCurrent(this.f.fiber2, RESOURCE_OPTIONS);
   }
 
   canSave = () => !!(this.f.contentName && this.f.date && this.f.startTime && this.f.endTime);
@@ -1386,16 +1489,25 @@ export class ScheduleEditDialogComponent {
     const ldNext: Record<string, string> = {
       ...((currentLd && typeof currentLd === 'object') ? currentLd as Record<string, string> : {}),
     };
+    // Slot 1 ve 3 (ird, ird3) Teknik Detay ile paylaşılan alanlar.
+    // Slot 2 (ird2) ve fiberResource2 yeni anahtarlar — sadece Edit'ten yazılır.
     const ldUpdates: Record<string, string> = {
       modulationType:  f.modulationType.trim(),
       videoCoding:     f.videoCoding.trim(),
-      ird:             f.ird.trim(),
-      fiberResource:   f.fiberResource.trim(),
       demod:           f.demod.trim(),
       recordLocation:  f.recordLocation.trim(),
       tie:             f.tie.trim(),
       virtualResource: f.virtualResource.trim(),
+      ird:             f.ird1.trim(),
+      ird2:            f.ird2.trim(),
+      ird3:            f.ird3.trim(),
+      fiberResource:   f.fiber1.trim(),
+      fiberResource2:  f.fiber2.trim(),
     };
+    // Boş bırakma davranışı: kullanıcı bir alanı boş bıraktıysa mevcut
+    // liveDetails değerini koru (silmez). Açıkça silmek isteyen kullanıcı
+    // dropdown'da "—" seçimi yapar (zaten boş string yazar) — ama bu durumda
+    // da mevcut değer korunur. Veri kaybı önlemek tasarım tercihidir.
     for (const [key, value] of Object.entries(ldUpdates)) {
       if (value) ldNext[key] = value;
     }
@@ -1457,7 +1569,7 @@ export class ScheduleEditDialogComponent {
                 } @else if (field.options) {
                   <mat-select [(ngModel)]="liveDetails[field.key]" [ngModelOptions]="{standalone:true}">
                     <mat-option value="">—</mat-option>
-                    @for (option of field.options; track option) {
+                    @for (option of fieldDropdownOptions(field); track option) {
                       <mat-option [value]="option">{{ option }}</mat-option>
                     }
                   </mat-select>
@@ -1526,6 +1638,17 @@ export class ScheduleTechnicalDialogComponent {
   readonly liveDetailGroups = LIVE_DETAIL_GROUPS;
   readonly liveDetails = createLiveDetails(this.data.schedule.metadata?.['liveDetails']);
   readonly contentTitle = String(this.data.schedule.metadata?.['contentName'] || this.data.schedule.title || '');
+
+  /** Defensive dropdown helper — eğer mevcut değer field.options'ta yoksa
+   *  (eski format), liste başına geçici option olarak ekler. Edit dialog'la
+   *  paylaşılan ird/ird3/fiberResource alanları için format çakışmasını
+   *  şeffaf yönetir; kullanıcı eski değer görür ve dilerse yeni listeden
+   *  seçim yaparak doğal olarak yeni formata geçer. */
+  fieldDropdownOptions(field: LiveDetailField): readonly string[] {
+    if (!field.options) return [];
+    const current = String(this.liveDetails[field.key] ?? '');
+    return optionsWithCurrent(current, field.options);
+  }
 
   save() {
     const s = this.data.schedule;
@@ -1722,8 +1845,16 @@ export class ReportIssueDialogComponent {
                     <div>{{ liveDetailValue(s, 'modulationType') }}</div>
                     <div class="td-mod-sub">{{ liveDetailValue(s, 'videoCoding') }}</div>
                   </td>
-                  <td class="td-mono">{{ liveDetailValue(s, 'ird') }}</td>
-                  <td class="td-mono">{{ liveDetailValue(s, 'fiberResource') }}</td>
+                  <td class="td-mono td-stack">
+                    @for (v of irdValues(s); track $index) {
+                      <div>{{ v }}</div>
+                    }
+                  </td>
+                  <td class="td-mono td-stack">
+                    @for (v of fiberValues(s); track $index) {
+                      <div>{{ v }}</div>
+                    }
+                  </td>
                   <td class="td-mono">{{ liveDetailValue(s, 'demod') }}</td>
                   <td class="td-mono">{{ liveDetailValue(s, 'recordLocation') }}</td>
                   <td class="td-mono">{{ liveDetailValue(s, 'tie') }}</td>
@@ -1891,6 +2022,9 @@ export class ReportIssueDialogComponent {
 	    .td-mono    { font-family:monospace; color:#90a4ae; text-align:center; }
 	    .td-mod     { font-family:monospace; color:#90a4ae; text-align:center; line-height:1.15; }
 	    .td-mod-sub { color:#78909c; font-size:0.85em; }
+	    .td-stack   { line-height:1.18; }
+	    .td-stack > div { white-space:nowrap; }
+	    .td-stack > div + div { margin-top:1px; color:#78909c; }
 	    .td-lang    { text-align:center; color:#bdbdbd; white-space:nowrap; }
 	    .td-channel { color:#ffd600; font-weight:600; white-space:nowrap; min-width:110px; }
 	    .td-league  { color:#aaa; white-space:nowrap; }
@@ -2001,6 +2135,23 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
     return value !== null && value !== undefined ? String(value) : '';
   }
 
+  /** IRD slotları: ird (slot 1) + ird2 (slot 2) + ird3 (slot 3). Boş slotlar
+   *  filter'lanır — tabloda sadece dolu olanlar alt alta görünür. */
+  irdValues(s: Schedule): string[] {
+    const ld = (s.metadata?.['liveDetails'] ?? {}) as Record<string, unknown>;
+    return ['ird', 'ird2', 'ird3']
+      .map((k) => String(ld[k] ?? '').trim())
+      .filter(Boolean);
+  }
+
+  /** Fiber slotları: fiberResource (slot 1) + fiberResource2 (slot 2). */
+  fiberValues(s: Schedule): string[] {
+    const ld = (s.metadata?.['liveDetails'] ?? {}) as Record<string, unknown>;
+    return ['fiberResource', 'fiberResource2']
+      .map((k) => String(ld[k] ?? '').trim())
+      .filter(Boolean);
+  }
+
   load() {
     this.loading.set(true);
     const from = new Date(`${this.selectedDate}T00:00:00+03:00`).toISOString();
@@ -2060,8 +2211,9 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   openEditDialog(s: Schedule) {
     const ref = this.dialog.open(ScheduleEditDialogComponent, {
       data: { schedule: s, channels: this.channels() },
-      width: '860px',
-      maxWidth: '98vw',
+      width: '90vw',
+      maxWidth: '1200px',
+      maxHeight: '90vh',
       panelClass: 'dark-dialog',
     });
     ref.afterClosed().subscribe((result) => {
