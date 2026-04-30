@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
-import { BCMS_GROUPS, PERMISSIONS, type BcmsGroup, type JwtPayload } from '@bcms/shared';
+import { BCMS_GROUPS, type BcmsGroup, type JwtPayload } from '@bcms/shared';
 import type { CreateBookingDto, UpdateBookingDto } from './booking.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import type { EmailPayload } from '../notifications/notification.consumer.js';
@@ -49,8 +49,11 @@ function tokenGroups(claims: JwtPayload): BcmsGroup[] {
   return (claims.groups ?? []).filter(isBcmsGroup);
 }
 
-function isSistemMuhendisligi(claims: JwtPayload): boolean {
-  return claims.groups?.some((group) => PERMISSIONS.weeklyShifts.admin.includes(group as BcmsGroup)) ?? false;
+/** Tüm grupları görme + tüm assignment yetkileri. Sadece Admin claim'i taşıyan
+ *  user için true (SystemEng'in eski "ops super-grubu" davranışı 2026-05-01'de
+ *  kaldırıldı; SystemEng artık kendi grubunun bookings'ini görür). */
+function isAdminUser(claims: JwtPayload): boolean {
+  return claims.groups?.includes('Admin') ?? false;
 }
 
 function keycloakAttributeValue(attributes: any, key: string): string | undefined {
@@ -122,15 +125,15 @@ export class BookingService {
   async findAll(request: FastifyRequest, scheduleId?: number, group?: string, page = 1, pageSize = 50) {
     const claims = request.user as JwtPayload;
     const visibleGroups = this.visibleGroups(claims);
-    const currentUserType = isSistemMuhendisligi(claims) ? 'supervisor' : await fetchUserType(claims.preferred_username);
-    const canAssignGroups = isSistemMuhendisligi(claims) || currentUserType === 'supervisor' ? visibleGroups : [];
+    const currentUserType = isAdminUser(claims) ? 'supervisor' : await fetchUserType(claims.preferred_username);
+    const canAssignGroups = isAdminUser(claims) || currentUserType === 'supervisor' ? visibleGroups : [];
     const selectedGroup = group && isBcmsGroup(group) && visibleGroups.includes(group) ? group : undefined;
     const skip = (page - 1) * pageSize;
     const where: Prisma.BookingWhereInput = {
       ...(scheduleId && { scheduleId }),
       ...(selectedGroup
         ? { userGroup: selectedGroup }
-        : isSistemMuhendisligi(claims)
+        : isAdminUser(claims)
           ? { OR: [{ userGroup: { in: visibleGroups } }, { userGroup: null }] }
           : { userGroup: { in: visibleGroups } }),
     };
@@ -341,12 +344,12 @@ export class BookingService {
   }
 
   private visibleGroups(claims: JwtPayload): BcmsGroup[] {
-    if (isSistemMuhendisligi(claims)) return [...BCMS_GROUPS];
+    if (isAdminUser(claims)) return [...BCMS_GROUPS];
     return tokenGroups(claims);
   }
 
   private canSee(claims: JwtPayload, group: string | null): boolean {
-    if (isSistemMuhendisligi(claims)) return true;
+    if (isAdminUser(claims)) return true;
     return Boolean(group && this.visibleGroups(claims).includes(group as BcmsGroup));
   }
 
@@ -361,13 +364,13 @@ export class BookingService {
 
   private async canAssign(request: FastifyRequest, group: string | null): Promise<boolean> {
     const claims = request.user as JwtPayload;
-    if (isSistemMuhendisligi(claims)) return true;
+    if (isAdminUser(claims)) return true;
     if (!group || !claims.groups?.includes(group)) return false;
     return await fetchUserType(claims.preferred_username) === 'supervisor';
   }
 
   private canDelete(claims: JwtPayload, booking: Awaited<ReturnType<BookingService['findById']>>): boolean {
-    if (isSistemMuhendisligi(claims)) return true;
+    if (isAdminUser(claims)) return true;
     const username = claims.preferred_username;
     return booking.requestedBy === username
       || booking.assigneeId === claims.sub

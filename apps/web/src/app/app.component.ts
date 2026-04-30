@@ -117,7 +117,7 @@ export class AppComponent implements OnInit {
   readonly navItems: NavItem[] = [
     { label: 'Canlı Yayın Plan Listesi', icon: 'list', route: '/schedules', groups: [], exactMatch: true },
     { label: 'Ekip iş takip',        icon: 'book_online',    route: '/bookings',               groups: [] },
-    { label: 'Raporlama',             icon: 'summarize',      route: '/schedules/reporting',    groups: [] },
+    { label: 'Raporlama',             icon: 'summarize',      route: '/schedules/reporting',    groups: [GROUP.Admin] },
     { label: 'Stüdyo Planı',          icon: 'event_seat',     route: '/studio-plan',            groups: [] },
     { label: 'Haftalık Shift',        icon: 'groups',         route: '/weekly-shift',           groups: [] },
     { label: 'Provys İçerik Kontrol', icon: 'fact_check',     route: '/provys-content-control', groups: [GROUP.SystemEng] },

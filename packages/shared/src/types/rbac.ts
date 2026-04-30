@@ -41,16 +41,25 @@ export interface JwtPayload {
 }
 
 /** Permissions matrix — groups allowed for each action.
- *  Initially only SystemEng has access; update as department permissions are defined. */
+ *
+ *  ## Yetki Modeli (2026-05-01 itibariyle)
+ *
+ *  - **Admin**: tüm endpoint'lerde bypass (auth.ts isAdminPrincipal). Tek "full yetki" grubu.
+ *  - **SystemEng**: sadece operasyonel sekmelerde (audit, kullanıcılar, ayarlar, kanallar,
+ *    monitoring, incidents, ingest). Canlı yayın / studio plan / raporlama / bookings /
+ *    weekly-shift admin yetkilerinden çıkarıldı — kendi grubu = Tekyon vb. davranışına
+ *    benzer kısıtlı kullanıcı.
+ *  - Diğer gruplar: kendi rollerinin gerektirdiği endpoint'lerde explicit listelenir.
+ */
 export const PERMISSIONS = {
   schedules: {
-    read:          [] as BcmsGroup[],                                                                      // all authenticated
-    add:           ['SystemEng', 'Booking', 'YayınPlanlama'] as BcmsGroup[],                              // yeni ekle butonu
-    edit:          ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],     // düzenle
-    technicalEdit: ['SystemEng', 'Transmisyon', 'Booking'] as BcmsGroup[],                                // teknik detay
-    duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking'] as BcmsGroup[],                      // çoğaltma
-    delete:        ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],     // silme
-    write:         ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],     // API PATCH/POST
+    read:          [] as BcmsGroup[],                                                                  // all authenticated (izleme her grupta)
+    add:           ['Booking', 'YayınPlanlama'] as BcmsGroup[],                                        // yeni ekle butonu
+    edit:          ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],               // düzenle
+    technicalEdit: ['Transmisyon', 'Booking'] as BcmsGroup[],                                          // teknik detay
+    duplicate:     ['Tekyon', 'Transmisyon', 'Booking'] as BcmsGroup[],                                // çoğaltma
+    delete:        ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],               // silme
+    write:         ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],               // API PATCH/POST
   },
   bookings: {
     read:   [] as BcmsGroup[],
@@ -82,17 +91,17 @@ export const PERMISSIONS = {
     read:   ['SystemEng'] as BcmsGroup[],
   },
   reports: {
-    read:   ['SystemEng'] as BcmsGroup[],
-    export: ['SystemEng'] as BcmsGroup[],
+    read:   ['Admin'] as BcmsGroup[],                     // SystemEng dahil non-Admin grupları görmesin
+    export: ['Admin'] as BcmsGroup[],
   },
   studioPlans: {
-    read:   [] as BcmsGroup[],
-    write:  ['SystemEng', 'StudyoSefi'] as BcmsGroup[],
-    delete: ['SystemEng', 'StudyoSefi'] as BcmsGroup[],
+    read:   [] as BcmsGroup[],                             // all authenticated (liste görüntüleme)
+    write:  ['StudyoSefi'] as BcmsGroup[],                 // SystemEng OUT — sadece StudyoSefi düzenler
+    delete: ['StudyoSefi'] as BcmsGroup[],
   },
   weeklyShifts: {
     read:  [] as BcmsGroup[],
     write: [] as BcmsGroup[],
-    admin: ['Admin', 'SystemEng'] as BcmsGroup[],
+    admin: ['Admin'] as BcmsGroup[],                       // "tüm grupları gör" yetkisi sadece Admin'de
   },
 } as const;
