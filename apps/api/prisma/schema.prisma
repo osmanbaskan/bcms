@@ -189,7 +189,6 @@ model IngestPlanItem {
   sourceKey          String           @unique @map("source_key") @db.VarChar(500)
   dayDate            DateTime         @map("day_date") @db.Date
   sourcePath         String?          @map("source_path")
-  recordingPort      String?          @map("recording_port") @db.VarChar(50)
   plannedStartMinute Int?             @map("planned_start_minute")
   plannedEndMinute   Int?             @map("planned_end_minute")
   status             IngestPlanStatus @default(WAITING)
@@ -200,12 +199,36 @@ model IngestPlanItem {
   updatedAt          DateTime         @updatedAt @map("updated_at")
   deleted_at         DateTime?
   job                IngestJob?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  ports              IngestPlanItemPort[]
 
   @@index([dayDate])
   @@index([status])
   @@index([jobId])
   @@index([dayDate, plannedStartMinute, sourceKey], map: "ingest_plan_items_report_idx")
   @@map("ingest_plan_items")
+}
+
+/// Ana + yedek kayıt portu atamaları. 1 plan item = 1..2 port (primary + opsiyonel backup).
+/// Cross-role overlap kontrolü tek GiST exclusion ile DB seviyesinde garanti edilir
+/// (port meşgulse rol farkı yok). day_date ve start/end alanları parent'tan kopyalanır
+/// (denormalized) — app layer Prisma $transaction ile sync tutar.
+model IngestPlanItemPort {
+  id                 Int      @id @default(autoincrement())
+  planItemId         Int      @map("plan_item_id")
+  portName           String   @map("port_name") @db.VarChar(50)
+  role               String   @db.VarChar(20)
+  dayDate            DateTime @map("day_date") @db.Date
+  plannedStartMinute Int      @map("planned_start_minute")
+  plannedEndMinute   Int      @map("planned_end_minute")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  planItem           IngestPlanItem @relation(fields: [planItemId], references: [id], onDelete: Cascade)
+
+  @@unique([planItemId, role], map: "ingest_plan_item_ports_role_unique")
+  @@unique([planItemId, portName], map: "ingest_plan_item_ports_port_per_item_unique")
+  @@index([planItemId], map: "ingest_plan_item_ports_plan_item_idx")
+  @@index([dayDate, portName], map: "ingest_plan_item_ports_day_idx")
+  @@map("ingest_plan_item_ports")
 }
 
 model RecordingPort {

@@ -22,6 +22,9 @@ export interface Schedule {
   updatedAt: string;
   finishedAt?: string;
   channel?: { id: number; name: string; type: string } | null;
+  /** Ingest sekmesinden read-only — canlı yayın için kayıt portu ataması */
+  recordingPort?: string | null;
+  backupRecordingPort?: string | null;
 }
 
 export interface CreateScheduleDto {

@@ -44,6 +44,7 @@ export interface IngestPlanItem {
   dayDate: string;
   sourcePath?: string | null;
   recordingPort?: string | null;
+  backupRecordingPort?: string | null;
   plannedStartMinute?: number | null;
   plannedEndMinute?: number | null;
   status: IngestPlanStatus;
@@ -59,6 +60,7 @@ export interface SaveIngestPlanItemDto {
   day: string;
   sourcePath?: string | null;
   recordingPort?: string | null;
+  backupRecordingPort?: string | null;
   plannedStartMinute?: number | null;
   plannedEndMinute?: number | null;
   status?: IngestPlanStatus;
