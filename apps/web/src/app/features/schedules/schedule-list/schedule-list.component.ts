@@ -1202,6 +1202,70 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
               <mat-option value="ES">İspanyolca</mat-option>
             </mat-select>
           </mat-form-field>
+        </div>
+
+        <!-- Tahta / Kaynak alanları — tabloda görünen teknik kolonlar.
+             Aynı veriler Teknik Detay dialog'unda da düzenlenebilir;
+             her iki dialog metadata.liveDetails altına yazar. -->
+        <div class="eform-section-title">Tahta / Kaynak (Tablo Kolonları)</div>
+        <div class="eform-row">
+          <mat-form-field>
+            <mat-label>Mod Tipi</mat-label>
+            <mat-select [(ngModel)]="f.modulationType" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (opt of modOptions; track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Coding Tipi</mat-label>
+            <mat-select [(ngModel)]="f.videoCoding" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (opt of codingOptions; track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>IRD</mat-label>
+            <mat-select [(ngModel)]="f.ird" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (opt of irdOptions; track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Demod</mat-label>
+            <mat-select [(ngModel)]="f.demod" [ngModelOptions]="{standalone:true}">
+              <mat-option value="">—</mat-option>
+              @for (opt of demodOptions; track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        </div>
+        <div class="eform-row">
+          <mat-form-field>
+            <mat-label>Fiber</mat-label>
+            <input matInput [(ngModel)]="f.fiberResource" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Kayıt Yeri</mat-label>
+            <input matInput [(ngModel)]="f.recordLocation" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>TIE</mat-label>
+            <input matInput [(ngModel)]="f.tie" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Sanal</mat-label>
+            <input matInput [(ngModel)]="f.virtualResource" [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+        </div>
+
+        <div class="eform-row">
           <mat-form-field class="ef-wide">
             <mat-label>Açıklama ve Notlar</mat-label>
             <textarea matInput rows="2" [(ngModel)]="f.notes" [ngModelOptions]="{standalone:true}"></textarea>
@@ -1228,6 +1292,16 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
     .eform-row { display:flex; gap:12px; margin-bottom:4px; flex-wrap:wrap; }
     .eform-row mat-form-field { flex:1; min-width:120px; }
     .ef-wide { flex:2 !important; }
+    .eform-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #90caf9;
+      margin: 12px 0 6px;
+      border-top: 1px solid rgba(255,255,255,0.12);
+      padding-top: 10px;
+    }
   `],
 })
 export class ScheduleEditDialogComponent {
@@ -1240,16 +1314,33 @@ export class ScheduleEditDialogComponent {
   readonly hdvgOptions = Array.from({ length: 15 }, (_, i) => String(i + 1));
   readonly intOptions = Array.from({ length: 12 }, (_, i) => String(i + 1));
 
+  // Tahta/Kaynak alan options'ları LIVE_DETAIL_GROUPS'tan tek noktada okunur
+  // (Teknik Detay dialog'la eşleşik). Bu sayede enum değişiminde iki dialog
+  // birlikte güncellenir.
+  private static fieldOptions(key: string): string[] | undefined {
+    return LIVE_DETAIL_GROUPS
+      .flatMap((g) => g.fields)
+      .find((f) => f.key === key)?.options;
+  }
+  readonly modOptions     = ScheduleEditDialogComponent.fieldOptions('modulationType') ?? [];
+  readonly codingOptions  = ScheduleEditDialogComponent.fieldOptions('videoCoding')    ?? [];
+  readonly demodOptions   = ScheduleEditDialogComponent.fieldOptions('demod')          ?? [];
+  readonly irdOptions     = ScheduleEditDialogComponent.fieldOptions('ird')            ?? [];
+
   f: {
     contentName: string; league: string; channelId: number | null;
     date: string; startTime: string; endTime: string;
     transStart: string; transEnd: string; houseNumber: string;
     intField: string; intField2: string; offTube: string; language: string; notes: string;
+    // Tahta/Kaynak — tabloda görünür alanlar (metadata.liveDetails altında)
+    modulationType: string; videoCoding: string; ird: string; fiberResource: string;
+    demod: string; recordLocation: string; tie: string; virtualResource: string;
   };
 
   constructor() {
     const s   = this.data.schedule;
     const m   = (s.metadata ?? {}) as Record<string, unknown>;
+    const ld  = (m['liveDetails'] ?? {}) as Record<string, unknown>;
     const st  = new Date(s.startTime);
     const et  = new Date(s.endTime);
     const [intField, intField2] = splitIntField(m['intField']);
@@ -1269,6 +1360,14 @@ export class ScheduleEditDialogComponent {
       offTube:     String(m['offTube']     || ''),
       language:    String(m['language']    || 'Yok'),
       notes:       String(m['description'] || ''),
+      modulationType:  String(ld['modulationType']  || ''),
+      videoCoding:     String(ld['videoCoding']     || ''),
+      ird:             String(ld['ird']             || ''),
+      fiberResource:   String(ld['fiberResource']   || ''),
+      demod:           String(ld['demod']           || ''),
+      recordLocation:  String(ld['recordLocation']  || ''),
+      tie:             String(ld['tie']             || ''),
+      virtualResource: String(ld['virtualResource'] || ''),
     };
   }
 
@@ -1279,6 +1378,27 @@ export class ScheduleEditDialogComponent {
     const f   = this.f;
     const toISO = (t: string) => new Date(`${f.date}T${t}${environment.utcOffset}`).toISOString();
     const s   = this.data.schedule;
+
+    // Mevcut liveDetails'i koru; sadece bu form'da DOLU bırakılan alanları üzerine yaz.
+    // Boş bırakılan alanlar (kullanıcı dokunmamış olabilir) Teknik Detay tarafındaki
+    // değeri silmesin diye dokunulmaz. Açıkça silmek isteyen Teknik Detay dialog'una gider.
+    const currentLd = ((s.metadata ?? {}) as Record<string, unknown>)['liveDetails'];
+    const ldNext: Record<string, string> = {
+      ...((currentLd && typeof currentLd === 'object') ? currentLd as Record<string, string> : {}),
+    };
+    const ldUpdates: Record<string, string> = {
+      modulationType:  f.modulationType.trim(),
+      videoCoding:     f.videoCoding.trim(),
+      ird:             f.ird.trim(),
+      fiberResource:   f.fiberResource.trim(),
+      demod:           f.demod.trim(),
+      recordLocation:  f.recordLocation.trim(),
+      tie:             f.tie.trim(),
+      virtualResource: f.virtualResource.trim(),
+    };
+    for (const [key, value] of Object.entries(ldUpdates)) {
+      if (value) ldNext[key] = value;
+    }
 
     this.saving.set(true);
     this.api.patch<Schedule>(`/schedules/${s.id}`, {
@@ -1300,6 +1420,7 @@ export class ScheduleEditDialogComponent {
         intField2:    f.intField2 || undefined,
         offTube:      f.offTube     || undefined,
         description:  f.notes      || undefined,
+        liveDetails:  Object.keys(ldNext).length > 0 ? ldNext : undefined,
       },
     }, s.version).subscribe({
       next:  (updated) => { this.saving.set(false); this.dialogRef.close(updated); },
@@ -1563,6 +1684,13 @@ export class ReportIssueDialogComponent {
                 <th>Saat</th>
                 <th>Yayın Adı</th>
                 <th colspan="2">Trans. Saati</th>
+                <th>Mod Tipi /<br>Coding Tipi</th>
+                <th>IRD</th>
+                <th>Fiber</th>
+                <th>Demod</th>
+                <th>Kayıt Yeri</th>
+                <th>TIE</th>
+                <th>Sanal</th>
                 <th>HDVG</th>
                 <th>Int</th>
                 <th>Off Tube</th>
@@ -1576,7 +1704,7 @@ export class ReportIssueDialogComponent {
             <tbody>
               @if (schedules().length === 0) {
                 <tr>
-                  <td colspan="12" class="no-data">Bu tarih için kayıt bulunamadı</td>
+                  <td colspan="19" class="no-data">Bu tarih için kayıt bulunamadı</td>
                 </tr>
               }
               @for (s of schedules(); track s.id; let odd = $odd) {
@@ -1590,6 +1718,16 @@ export class ReportIssueDialogComponent {
                   </td>
                   <td class="td-trans">{{ s.metadata?.['transStart'] || (s.startTime | date:'HH:mm') }}</td>
                   <td class="td-trans">{{ s.metadata?.['transEnd']   || (s.endTime   | date:'HH:mm') }}</td>
+                  <td class="td-mod">
+                    <div>{{ liveDetailValue(s, 'modulationType') }}</div>
+                    <div class="td-mod-sub">{{ liveDetailValue(s, 'videoCoding') }}</div>
+                  </td>
+                  <td class="td-mono">{{ liveDetailValue(s, 'ird') }}</td>
+                  <td class="td-mono">{{ liveDetailValue(s, 'fiberResource') }}</td>
+                  <td class="td-mono">{{ liveDetailValue(s, 'demod') }}</td>
+                  <td class="td-mono">{{ liveDetailValue(s, 'recordLocation') }}</td>
+                  <td class="td-mono">{{ liveDetailValue(s, 'tie') }}</td>
+                  <td class="td-mono">{{ liveDetailValue(s, 'virtualResource') }}</td>
                   <td class="td-mono">{{ s.metadata?.['houseNumber'] ?? '' }}</td>
                   <td class="td-mono">{{ displayInt(s) }}</td>
                   <td class="td-mono">{{ s.metadata?.['offTube'] ?? '' }}</td>
@@ -1751,6 +1889,8 @@ export class ReportIssueDialogComponent {
 	    .content-main { font-weight:700; display:block; }
 	    .td-trans   { white-space:nowrap; color:#aaa; min-width:48px; text-align:center; }
 	    .td-mono    { font-family:monospace; color:#90a4ae; text-align:center; }
+	    .td-mod     { font-family:monospace; color:#90a4ae; text-align:center; line-height:1.15; }
+	    .td-mod-sub { color:#78909c; font-size:0.85em; }
 	    .td-lang    { text-align:center; color:#bdbdbd; white-space:nowrap; }
 	    .td-channel { color:#ffd600; font-weight:600; white-space:nowrap; min-width:110px; }
 	    .td-league  { color:#aaa; white-space:nowrap; }
@@ -1851,6 +1991,14 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
       .map((value) => value.trim())
       .filter(Boolean);
     return Array.from(new Set(values)).join(' / ');
+  }
+
+  /** Tabloda metadata.liveDetails altındaki bir alanı gösterir.
+   *  Hem Düzenle hem Teknik Detay dialog'ları aynı yere yazar. */
+  liveDetailValue(s: Schedule, key: string): string {
+    const ld = (s.metadata?.['liveDetails'] ?? {}) as Record<string, unknown>;
+    const value = ld[key];
+    return value !== null && value !== undefined ? String(value) : '';
   }
 
   load() {
