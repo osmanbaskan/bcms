@@ -1,8 +1,13 @@
 import { Injectable } from '@angular/core';
 import { ActivatedRouteSnapshot, RouterStateSnapshot, Router, UrlTree } from '@angular/router';
 import { KeycloakAuthGuard, KeycloakService } from 'keycloak-angular';
+import type { KeycloakTokenParsed } from 'keycloak-js';
 import { getPublicAppOrigin } from '../auth/public-origin';
 import { GROUP } from '@bcms/shared';
+
+interface BcmsTokenParsed extends KeycloakTokenParsed {
+  groups?: string[];
+}
 
 @Injectable({ providedIn: 'root' })
 export class AuthGuard extends KeycloakAuthGuard {
@@ -33,7 +38,7 @@ export class AuthGuard extends KeycloakAuthGuard {
     const requiredGroups: string[] = route.data['groups'] ?? [];
     if (requiredGroups.length === 0) return true;
 
-    const tokenParsed = this.keycloak.getKeycloakInstance().tokenParsed as any;
+    const tokenParsed = this.keycloak.getKeycloakInstance().tokenParsed as BcmsTokenParsed | undefined;
     const userGroups: string[] = tokenParsed?.groups ?? [];
     if (userGroups.includes(GROUP.Admin)) return true;
     const hasGroup = requiredGroups.some((g) => userGroups.includes(g));

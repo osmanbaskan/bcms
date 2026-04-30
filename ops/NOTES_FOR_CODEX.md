@@ -11,11 +11,21 @@ This applies to all destructive operations (`git checkout`, `git reset`, `rm`, `
 ## Mimari Kurallar (Değiştirilmez)
 
 1. **API/Worker ayrıştırması**: `api` servisi `BCMS_BACKGROUND_SERVICES=none` ile çalışır. Worker servisi `notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention` çalıştırır. OPTA Python watcher ayrı konteyner. Bu ayrım bozulmamalı.
+2. **Prisma connection limit**: API `connection_limit=10`, Worker `connection_limit=5`, `pool_timeout=20`. `apps/api/src/plugins/prisma.ts`'te `BCMS_BACKGROUND_SERVICES` env değişkenine göre ayarlanır.
 2. **Graceful shutdown**: `server.ts`'de SIGTERM/SIGINT → `app.close()` → 30 sn timeout. Worker için 60 sn. `--force` veya anında kill önerilmez.
 3. **usageScope kanonik**: `schedules.usage_scope` DB kolonudur. Metadata JSON filtresi yoktur. Ham SQL köprüsü eklenmez.
 4. **Nginx static serve**: Angular dosyaları `infra/docker/web.Dockerfile` → nginx:alpine ile sunulur.
 5. **Audit log**: `apps/api/src/plugins/audit.ts` Prisma `$extends` ile tüm write işlemlerini loglar. Bu plugin'i devre dışı bırakma.
 6. **Angular production environment**: `apps/web/angular.json` production konfigürasyonunda `fileReplacements` ile `environment.ts` → `environment.prod.ts` değişimi tanımlı olmalı.
+
+## Güvenlik / npm Audit Notları
+
+- **2026-04-30**: `npm audit`'te 7 moderate vulnerability (`postcss` XSS, `uuid` buffer bounds check). Bunlar production'da etkisiz:
+  - `postcss`: Build-time XSS; production'da nginx static serve ediyor.
+  - `webpack-dev-server → sockjs → uuid`: Sadece development.
+  - `exceljs → uuid`: Excel export path'inde kullanılıyor; advisory `v3/v5/v6` buffer bounds check içeriyor, `exceljs` muhtemelen `v4` kullanıyor.
+- **Kural**: `npm audit fix --force` **kesinlikle çalıştırma** — Angular peer dep conflict (`@angular-devkit/build-angular@21.2.9` `@angular/compiler@21.2.11` istiyor) ve `exceljs` downgrade breaking change yaratır.
+- **Plan**: Ayrı branch'te Angular patch upgrade (`@angular/*` → `21.2.11`), ardından `npm audit fix` denenecek.
 
 ## Primary Runtime
 
@@ -53,7 +63,9 @@ mailhog    → SMTP (dev)
 
 > **Not (2026-04-30, LAN erişimi)**: Web ve Keycloak dış istemcilerden kullanılmalıdır. `docker-compose.yml` portları `4200:80` ve `8080:8080` olmalı. Bunları `127.0.0.1:` prefix'iyle kapatırsan kullanıcı `http://172.28.204.133:4200` sitesine ulaşamaz ve Keycloak login çalışmaz.
 
-> **Runtime Audit v2 (2026-04-30)**: `bcms_web`, `bcms_keycloak`, `bcms_api`, `bcms_opta_watcher` healthy doğrulandı. `prisma migrate diff` boş, `/api/v1/opta/sync` bombardımanı durmuş, high/critical npm vulnerability yok. Kalan ana risk: Stüdyo Planı save race condition.
+> **Runtime Audit v2 (2026-04-30)**: `bcms_web`, `bcms_keycloak`, `bcms_api`, `bcms_opta_watcher` healthy doğrulandı. `prisma migrate diff` boş, `/api/v1/opta/sync` bombardımanı durmuş, high/critical npm vulnerability yok.
+
+> **Stabilizasyon fazı tamamlandı (2026-04-30)**: Studio Plan race condition `debounceTime(400)` + `switchMap` ile kapatıldı; audit retention worker job aktif; DB pool tuning API `10`, worker `5`, `pool_timeout=20`; production `as any` cast'leri `auth.guard.ts`, `booking.service.ts`, `audit.routes.ts`, `opta.parser.ts` içinde temizlendi; web testleri `25/25 SUCCESS`.
 
 ## Degraded Mod
 
@@ -143,7 +155,7 @@ Canlı Yayın Plan Listesi ekranında her satırda **Sorun Bildir** ikonu bulunu
 - `weekStart` Pazartesi tarihi olmak zorundadır
 - Liste görünümünde geçmiş günler gizlenir
 - `Export PDF` sadece `#studio-plan-export` DOM'unu ayrı print penceresine klonlar; A3 landscape, `margin: 0`. Ana app layout'unu doğrudan `window.print()` ile yazdırma, print preview 2 sayfa/boşluk üretebilir.
-- Açık risk: hızlı hücre değişimlerinde kayıt yarış koşulu oluşabilir. Kalıcı çözüm UI state'i anında güncelleyip kaydı `debounceTime` + `switchMap` ile yalnızca son state üzerinden yapmaktır.
+- Studio Plan save flow hızlı hücre değişimleri için debounce/cancellation kullanır. UI state anında güncellenir, backend'e yalnızca son state yazılır.
 
 ## Canlı Yayın Planı UI
 

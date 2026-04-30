@@ -1,6 +1,6 @@
 # BCMS Operasyon — Docker Compose
 
-> Son güncelleme: 2026-04-30 — Runtime audit v2, web/keycloak dış erişim portları, OPTA watcher health/state, audit retention ve kalan operasyon riskleri güncellendi.
+> Son güncelleme: 2026-04-30 — Stabilizasyon fazı tamamlandı: Studio Plan save flow, audit retention, DB connection tuning, production typing cleanup ve test doğrulamaları güncellendi.
 
 Proje tamamen **Docker Compose** ile yönetilmektedir. `systemd`, `ng serve`, `tsx watch` kullanılmaz.
 
@@ -54,6 +54,8 @@ npm run smoke:api
 > **Worker Health (2026-04-30)**: Worker HTTP port açmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu `docker compose logs -f worker`, consumer başlangıç logları ve audit retention job logları ile kontrol edilir.
 
 > **Runtime Audit v2 (2026-04-30)**: `bcms_web`, `bcms_keycloak`, `bcms_api` ve `bcms_opta_watcher` healthy doğrulandı. Web ve Keycloak dış erişim için yeniden `0.0.0.0` port binding kullanır; API ve veri servisleri localhost'a kapalı kalır.
+
+> **Stabilizasyon fazı (2026-04-30)**: Studio Plan race condition kapatıldı (`debounceTime(400)` + `switchMap`), audit retention job eklendi, API/worker Prisma pool limitleri ayarlandı, production `as any` cast'leri temizlendi ve web testleri `25/25 SUCCESS` geçti.
 
 ## Graceful Shutdown
 
@@ -254,10 +256,17 @@ docker inspect bcms_web --format='{{.State.Health.Status}}'
 
 ## Kalan Operasyon Riskleri — 2026-04-30
 
-- Stüdyo Planı hızlı hücre değişimlerinde save race condition riski sürüyor; `debounceTime` + `switchMap` ile tek son-state save akışı eklenmeli.
-- `audit_logs` tablosu büyür; audit retention job açık kalmalı ve `AUDIT_RETENTION_DAYS` izlenmeli.
-- Büyük frontend component'lerde test kapsamı sınırlı; özellikle `studio-plan`, `ingest-list` ve `schedule-list` için davranış testleri eklenmeli.
+- Stüdyo Planı save race condition kapatıldı; hızlı hücre değişimleri son state üzerinden kaydedilir.
+- `audit_logs` tablosu için retention job açık kalmalı ve `AUDIT_RETENTION_DAYS` izlenmeli.
+- Büyük frontend component'lerde test kapsamı başladı; edge case ve error path testleri genişletilmeli.
 - `npm audit` high/critical göstermiyor, ancak 7 moderate vulnerability ayrı branch'te dry-run ve build/test ile ele alınmalı.
+
+## Prisma Connection Pool — 2026-04-30
+
+- API (`BCMS_BACKGROUND_SERVICES=none`): `connection_limit=10`
+- Worker (`BCMS_BACKGROUND_SERVICES!=none`): `connection_limit=5`
+- Her iki runtime: `pool_timeout=20`
+- Uygulama noktası: `apps/api/src/plugins/prisma.ts` → `buildDatabaseUrl()`.
 
 Uzaktan erişim için SSH tüneli:
 ```bash

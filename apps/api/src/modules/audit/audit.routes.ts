@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { PERMISSIONS } from '@bcms/shared';
 
@@ -22,11 +23,11 @@ export async function auditRoutes(app: FastifyInstance) {
 
     const skip = (q.page - 1) * q.pageSize;
 
-    const where = {
+    const where: Prisma.AuditLogWhereInput = {
       ...(q.entityType && { entityType: q.entityType }),
       ...(q.entityId   && { entityId:   q.entityId }),
       ...(q.action     && { action: q.action }),
-      ...(q.user       && { user: { contains: q.user, mode: 'insensitive' as const } }),
+      ...(q.user       && { user: { contains: q.user, mode: 'insensitive' } }),
       ...(q.from || q.to
         ? {
             timestamp: {
@@ -38,8 +39,8 @@ export async function auditRoutes(app: FastifyInstance) {
     };
 
     const [data, total] = await Promise.all([
-      app.prisma.auditLog.findMany({ where: where as any, skip, take: q.pageSize, orderBy: { timestamp: 'desc' } }),
-      app.prisma.auditLog.count({ where: where as any }),
+      app.prisma.auditLog.findMany({ where, skip, take: q.pageSize, orderBy: { timestamp: 'desc' } }),
+      app.prisma.auditLog.count({ where }),
     ]);
 
     return { data, total, page: q.page, pageSize: q.pageSize, totalPages: Math.ceil(total / q.pageSize) };

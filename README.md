@@ -2,7 +2,7 @@
 
 Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana geliştirici rehberidir. Günlük operasyonlar ve bağlantı bilgileri için masaüstündeki diğer belgelere başvurun.
 
-> **Son güncelleme**: 2026-04-30 — Runtime audit v2 sonrası port erişimi, OPTA watcher health/state doğrulaması, RabbitMQ reconnect, audit retention, test kapsamı ve kalan mimari riskler güncellendi.
+> **Son güncelleme**: 2026-04-30 — Stabilizasyon fazı tamamlandı: Studio Plan save race condition, audit retention, DB connection tuning, production `as any` temizliği, test kapsamı ve npm audit risk notları güncellendi.
 
 ## Mimari Kurallar
 
@@ -21,6 +21,7 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 11. **Güvenlik header'ları**: nginx tüm yanıtlara 6 güvenlik header'ı ekler.
 12. **Input validation**: Tüm API route'ları Zod ile doğrulama yapar.
 13. **Runtime port erişimi**: Web ve Keycloak LAN erişimi için dış arayüzlere açıktır (`4200:80`, `8080:8080`). API, DB, RabbitMQ, Prometheus, Grafana ve MailHog host-local kalır.
+14. **Prisma connection pool**: API `connection_limit=10`, worker `connection_limit=5`, her ikisi `pool_timeout=20` kullanır. Ayar `apps/api/src/plugins/prisma.ts` içinde `BCMS_BACKGROUND_SERVICES` değerine göre yapılır.
 
 ## Mimari
 
@@ -49,6 +50,8 @@ Bu dosya, projenin teknik mimarisini ve geliştirme süreçlerini kapsayan ana g
 > **Worker Health (2026-04-30)**: `bcms_worker` HTTP sunucusu çalıştırmadığı için Docker Compose worker healthcheck'i devre dışıdır. Worker durumu loglar, RabbitMQ consumer başlangıç mesajları ve background job logları ile izlenir.
 
 > **Runtime Audit v2 (2026-04-30)**: Web, API, Keycloak, PostgreSQL, RabbitMQ ve OPTA watcher sağlıklı doğrulandı. `/api/v1/opta/sync` bombardımanı durdu; saatlik düşük frekanslı sync normal kabul edilir. `prisma migrate diff` boş çıktı verdi; DB ve Prisma schema eşleşiyor.
+
+> **Stabilizasyon fazı (2026-04-30)**: Studio Plan kayıt akışı `debounceTime(400)` + `switchMap` ile son state'i kaydeder. Audit retention worker job, DB connection tuning, production `as any` temizliği ve 25/25 headless web test seti doğrulandı.
 
 ## Dizinler
 
@@ -227,7 +230,7 @@ docker compose up -d --build web
 - Stüdyo Planı `Export PDF` ana uygulama DOM'unu yazdırmaz; yalnızca `#studio-plan-export` alanını ayrı print penceresine klonlar.
 - PDF print hedefi A3 landscape (`420mm x 297mm`) ve `margin: 0` olarak tanımlıdır.
 - Canlı Yayın Planı tablo gövdesinde başlıklar hariç içerik fontu büyütülmüş ve kalınlaştırılmıştır. Aksiyon ikonları bu büyütmeden hariç tutulur.
-- **Açık risk (2026-04-30)**: Stüdyo Planı hızlı hücre değişimlerinde `saveCurrentWeek()` hâlâ yarış koşuluna açık olabilir. Kalıcı çözüm `debounceTime` + `switchMap` ile son state'i tek kaydetme akışıdır.
+- Stüdyo Planı hızlı hücre değişimleri için kayıt akışı `debounceTime(400)` + `switchMap` kullanır; UI anında güncellenir, yalnızca son state backend'e yazılır.
 
 ### Test ve Audit Durumu — 2026-04-30
 
@@ -236,6 +239,8 @@ docker compose up -d --build web
 - Büyük component'lerde test kapsamı başlamıştır; davranış kapsamı hâlâ genişletilmelidir.
 - `npm audit`: high/critical yok; 7 moderate vulnerability ayrı branch'te `npm audit fix --dry-run` ile ele alınmalıdır.
 - `audit_logs` tablosu büyümeye açıktır; worker tarafındaki audit retention job ve `AUDIT_RETENTION_DAYS` env değeri korunmalıdır.
+- Production kodundaki kritik `as any` cast'leri `auth.guard.ts`, `booking.service.ts`, `audit.routes.ts` ve `opta.parser.ts` içinde explicit typing/Prisma DTO/type guard yaklaşımıyla temizlenmiştir.
+- `postcss` ve `uuid` kaynaklı 7 moderate npm advisory production runtime etkisi düşük olduğu için dokümante edilmiştir; `npm audit fix --force` Angular peer dependency conflict nedeniyle kullanılmamalıdır.
 
 ### Grup Tabanlı Yetkilendirme (RBAC)
 

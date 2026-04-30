@@ -126,14 +126,14 @@ export class BookingService {
     const canAssignGroups = isSistemMuhendisligi(claims) || currentUserType === 'supervisor' ? visibleGroups : [];
     const selectedGroup = group && isBcmsGroup(group) && visibleGroups.includes(group) ? group : undefined;
     const skip = (page - 1) * pageSize;
-    const where = {
+    const where: Prisma.BookingWhereInput = {
       ...(scheduleId && { scheduleId }),
       ...(selectedGroup
         ? { userGroup: selectedGroup }
         : isSistemMuhendisligi(claims)
           ? { OR: [{ userGroup: { in: visibleGroups } }, { userGroup: null }] }
           : { userGroup: { in: visibleGroups } }),
-    } as any;
+    };
     const [data, total, displayNames] = await Promise.all([
       this.app.prisma.booking.findMany({
         where,
@@ -170,7 +170,7 @@ export class BookingService {
 
   async findByIdForRequest(id: number, claims: JwtPayload) {
     const booking = await this.findById(id);
-    if (!this.canSee(claims, (booking as any).userGroup)) {
+    if (!this.canSee(claims, booking.userGroup)) {
       throw Object.assign(new Error('Booking not found'), { statusCode: 404 });
     }
     return booking;
@@ -210,7 +210,7 @@ export class BookingService {
         status:      dto.status,
         notes:       dto.notes,
         metadata:    dto.metadata as Prisma.InputJsonValue,
-      } as any,
+      },
       include: { team: true, schedule: { include: { channel: true } } },
     });
 
@@ -222,7 +222,7 @@ export class BookingService {
   async update(id: number, dto: UpdateBookingDto, ifMatchVersion: number | undefined, request: FastifyRequest) {
     const claims = request.user as JwtPayload;
     const existing = await this.findByIdForRequest(id, claims);
-    const canAssign = await this.canAssign(request, (existing as any).userGroup);
+    const canAssign = await this.canAssign(request, existing.userGroup);
 
     if (ifMatchVersion !== undefined && existing.version !== ifMatchVersion) {
       throw Object.assign(
@@ -235,7 +235,7 @@ export class BookingService {
       throw Object.assign(new Error('Sorumlu kullanıcı seçme yetkiniz yok'), { statusCode: 403 });
     }
 
-    const data = {
+    const data: Prisma.BookingUpdateManyMutationInput = {
       ...(dto.status   && { status: dto.status }),
       ...(dto.taskTitle !== undefined && { taskTitle: dto.taskTitle }),
       ...(dto.taskDetails !== undefined && { taskDetails: dto.taskDetails }),
@@ -248,7 +248,7 @@ export class BookingService {
       ...(dto.notes    !== undefined && { notes: dto.notes }),
       ...(dto.metadata && { metadata: dto.metadata as Prisma.InputJsonValue }),
       version: { increment: 1 },
-    } as any;
+    };
 
     const updated = await this.app.prisma.$transaction(async (tx) => {
       const result = await tx.booking.updateMany({
@@ -369,9 +369,8 @@ export class BookingService {
   private canDelete(claims: JwtPayload, booking: Awaited<ReturnType<BookingService['findById']>>): boolean {
     if (isSistemMuhendisligi(claims)) return true;
     const username = claims.preferred_username;
-    const task = booking as any;
-    return task.requestedBy === username
-      || task.assigneeId === claims.sub
-      || task.assigneeName === username;
+    return booking.requestedBy === username
+      || booking.assigneeId === claims.sub
+      || booking.assigneeName === username;
   }
 }

@@ -397,16 +397,19 @@ function loadF1Fixtures(): OptaFixture[] {
       isArray: (name) => ['schedule'].includes(name),
     });
     const parsed   = parser.parse(xml);
-    const sessions = (parsed?.block?.schedule ?? []) as any[];
+    const rawSessions = parsed?.block?.schedule ?? [];
+    const sessions = Array.isArray(rawSessions) ? rawSessions : [];
 
     for (const s of sessions) {
-      const session: string  = s.session ?? '';
-      const eventname: string = s.eventname ?? '';
-      const dateStr: string  = s.date ?? '';
-      const startStr: string = String(s.start ?? '');
-      const utcOffset        = Number(s.utc ?? 0);
-      const gpno             = Number(s.gpno ?? 0);
-      const schedId: string  = String(s['@_id'] ?? '');
+      if (typeof s !== 'object' || s === null) continue;
+      const item = s as Record<string, unknown>;
+      const session   = String(item.session ?? '');
+      const eventname = String(item.eventname ?? '');
+      const dateStr   = String(item.date ?? '');
+      const startStr  = String(item.start ?? '');
+      const utcOffset = Number(item.utc ?? 0);
+      const gpno      = Number(item.gpno ?? 0);
+      const schedId   = String(item['@_id'] ?? '');
 
       if (!dateStr || !startStr || !session || !eventname) continue;
 
