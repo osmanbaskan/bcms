@@ -121,7 +121,7 @@ export class AppComponent implements OnInit {
     { label: 'Stüdyo Planı',          icon: 'event_seat',     route: '/studio-plan',            groups: [] },
     { label: 'Haftalık Shift',        icon: 'groups',         route: '/weekly-shift',           groups: [] },
     { label: 'Provys İçerik Kontrol', icon: 'fact_check',     route: '/provys-content-control', groups: [GROUP.Admin] },
-    { label: 'Kanallar',              icon: 'live_tv',        route: '/channels',               groups: [GROUP.SystemEng] },
+    { label: 'Kanallar',              icon: 'live_tv',        route: '/channels',               groups: [GROUP.Admin] },
     { label: 'Ingest',                icon: 'cloud_upload',   route: '/ingest',                 groups: [GROUP.Admin, GROUP.Ingest] },
     { label: 'Monitoring',            icon: 'monitor_heart',  route: '/monitoring',             groups: [GROUP.Admin] },
     { label: 'MCR',                   icon: 'videocam',       route: '/mcr',                    groups: [GROUP.Admin, GROUP.MCR] },

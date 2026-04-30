@@ -73,9 +73,9 @@ export const PERMISSIONS = {
     reportIssue:  [] as BcmsGroup[],                       // tüm authenticated — her rol yayın sorunu bildirebilir
   },
   channels: {
-    read:   ['SystemEng'] as BcmsGroup[],                  // ops gereği SystemEng korunur (kullanıcı Channels'i listelemedi)
-    write:  ['SystemEng'] as BcmsGroup[],
-    delete: ['SystemEng'] as BcmsGroup[],
+    read:   ['Admin'] as BcmsGroup[],                      // Admin-only (2026-05-01 SystemEng OUT)
+    write:  ['Admin'] as BcmsGroup[],
+    delete: ['Admin'] as BcmsGroup[],
   },
   incidents: {
     read:        ['SystemEng'] as BcmsGroup[],

@@ -48,7 +48,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/channels/channels.routes').then((m) => m.channelsRoutes),
     canActivate: [AuthGuard],
-    data: { groups: [GROUP.SystemEng] },
+    data: { groups: [GROUP.Admin] },
   },
   {
     path: 'ingest',
