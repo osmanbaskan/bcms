@@ -74,8 +74,10 @@ export class ScheduleService {
       this.app.prisma.schedule.count({ where }),
     ]);
 
+    const enriched = await this.attachIngestPorts(data);
+
     return {
-      data,
+      data: enriched,
       total,
       page,
       pageSize,
@@ -92,7 +94,55 @@ export class ScheduleService {
       const err = Object.assign(new Error('Schedule not found'), { statusCode: 404 });
       throw err;
     }
-    return schedule;
+    const [enriched] = await this.attachIngestPorts([schedule]);
+    return enriched;
+  }
+
+  /**
+   * Canlı yayın schedule'larına ingest_plan_items'tan port atamalarını
+   * read-only olarak ekler. Tek batch query — N+1 yok. Live olmayan
+   * schedule'lar dokunulmaz; recordingPort/backupRecordingPort null gelir.
+   * Edit kanalı sadece Ingest sekmesinden.
+   */
+  private async attachIngestPorts<T extends { id: number; usageScope: string }>(
+    schedules: T[],
+  ): Promise<Array<T & { recordingPort: string | null; backupRecordingPort: string | null }>> {
+    const liveIds = schedules
+      .filter((s) => s.usageScope === 'live-plan')
+      .map((s) => s.id);
+
+    if (liveIds.length === 0) {
+      return schedules.map((s) => ({ ...s, recordingPort: null, backupRecordingPort: null }));
+    }
+
+    const sourceKeys = liveIds.map((id) => `live:${id}`);
+    const planItems = await this.app.prisma.ingestPlanItem.findMany({
+      where: { sourceKey: { in: sourceKeys } },
+      select: {
+        sourceKey: true,
+        ports: { select: { portName: true, role: true } },
+      },
+    });
+
+    const portsByScheduleId = new Map<number, { primary: string | null; backup: string | null }>();
+    for (const item of planItems) {
+      const idStr = item.sourceKey.replace(/^live:/, '');
+      const id = Number(idStr);
+      if (!Number.isFinite(id)) continue;
+      portsByScheduleId.set(id, {
+        primary: item.ports.find((p) => p.role === 'primary')?.portName ?? null,
+        backup:  item.ports.find((p) => p.role === 'backup')?.portName ?? null,
+      });
+    }
+
+    return schedules.map((s) => {
+      const ports = portsByScheduleId.get(s.id);
+      return {
+        ...s,
+        recordingPort: ports?.primary ?? null,
+        backupRecordingPort: ports?.backup ?? null,
+      };
+    });
   }
 
   async create(dto: CreateScheduleDto, request: FastifyRequest) {

@@ -51,6 +51,7 @@ const savePlanItemSchema = z.object({
   day: dateSchema,
   sourcePath: z.string().trim().optional().nullable(),
   recordingPort: z.string().trim().max(50).optional().nullable(),
+  backupRecordingPort: z.string().trim().max(50).optional().nullable(),
   plannedStartMinute: z.number().int().min(0).max(48 * 60).optional().nullable(),
   plannedEndMinute: z.number().int().min(0).max(48 * 60).optional().nullable(),
   status: ingestPlanStatusSchema.optional(),
@@ -62,6 +63,18 @@ const savePlanItemSchema = z.object({
     || value.plannedStartMinute < value.plannedEndMinute
   ),
   { message: 'Plan başlangıç dakikası bitişten küçük olmalıdır', path: ['plannedEndMinute'] },
+).refine(
+  // Aynı item'da ana ve yedek port aynı olamaz
+  (value) => {
+    const p = value.recordingPort?.trim();
+    const b = value.backupRecordingPort?.trim();
+    return !p || !b || p !== b;
+  },
+  { message: 'Ana ve yedek port aynı olamaz', path: ['backupRecordingPort'] },
+).refine(
+  // Yedek port seçildiyse ana port da gerekli
+  (value) => !value.backupRecordingPort?.trim() || !!value.recordingPort?.trim(),
+  { message: 'Yedek port için ana port da seçilmelidir', path: ['backupRecordingPort'] },
 );
 
 const recordingPortSchema = z.object({
@@ -118,7 +131,7 @@ function mapPlanItem(item: {
   sourceKey: string;
   dayDate: Date;
   sourcePath: string | null;
-  recordingPort: string | null;
+  ports: { portName: string; role: string }[];
   plannedStartMinute: number | null;
   plannedEndMinute: number | null;
   status: string;
@@ -128,13 +141,17 @@ function mapPlanItem(item: {
   createdAt: Date;
   updatedAt: Date;
 }) {
+  // Normalized ports tablosundan ana/yedek çıkar.
+  const recordingPort = item.ports.find((p) => p.role === 'primary')?.portName ?? null;
+  const backupRecordingPort = item.ports.find((p) => p.role === 'backup')?.portName ?? null;
   return {
     id: item.id,
     sourceType: item.sourceType,
     sourceKey: item.sourceKey,
     dayDate: dateOnly(item.dayDate),
     sourcePath: item.sourcePath,
-    recordingPort: item.recordingPort,
+    recordingPort,
+    backupRecordingPort,
     plannedStartMinute: item.plannedStartMinute,
     plannedEndMinute: item.plannedEndMinute,
     status: item.status,
@@ -145,6 +162,10 @@ function mapPlanItem(item: {
     updatedAt: item.updatedAt.toISOString(),
   };
 }
+
+const PLAN_ITEM_INCLUDE = {
+  ports: { select: { portName: true, role: true } },
+} as const;
 
 const PLAN_STATUS_LABELS: Record<string, string> = {
   WAITING: 'Bekliyor',
@@ -259,6 +280,7 @@ export async function ingestRoutes(app: FastifyInstance) {
           lte: parseDate(dateSchema.parse(to)),
         },
       },
+      include: PLAN_ITEM_INCLUDE,
       orderBy: [{ dayDate: 'asc' }, { plannedStartMinute: 'asc' }, { sourceKey: 'asc' }],
     });
     return items.map(mapPlanItem);
@@ -277,6 +299,7 @@ export async function ingestRoutes(app: FastifyInstance) {
           lte: parseDate(dateSchema.parse(to)),
         },
       },
+      include: PLAN_ITEM_INCLUDE,
       orderBy: [{ dayDate: 'asc' }, { plannedStartMinute: 'asc' }, { sourceKey: 'asc' }],
     });
 
@@ -289,7 +312,8 @@ export async function ingestRoutes(app: FastifyInstance) {
       { header: 'Tarih',       width: 14 },
       { header: 'Kaynak Tipi', width: 14 },
       { header: 'İçerik',      width: 50 },
-      { header: 'Port',        width: 14 },
+      { header: 'Ana Port',    width: 14 },
+      { header: 'Yedek Port',  width: 14 },
       { header: 'Başlangıç',   width: 12 },
       { header: 'Bitiş',       width: 12 },
       { header: 'Süre (dk)',   width: 12 },
@@ -314,6 +338,7 @@ export async function ingestRoutes(app: FastifyInstance) {
         mapped.sourceType,
         sanitizeCell(describeSourceKey(mapped.sourceKey)),
         mapped.recordingPort ?? '-',
+        mapped.backupRecordingPort ?? '-',
         minuteToTime(mapped.plannedStartMinute),
         minuteToTime(mapped.plannedEndMinute),
         dur ?? '-',
@@ -324,7 +349,7 @@ export async function ingestRoutes(app: FastifyInstance) {
     });
 
     if (items.length > 0) {
-      const totalRow = sheet.addRow(['', 'TOPLAM', `${items.length} kayıt`, '', '', '', '', totalDuration, '', '', '']);
+      const totalRow = sheet.addRow(['', 'TOPLAM', `${items.length} kayıt`, '', '', '', '', '', totalDuration, '', '', '']);
       totalRow.font = { bold: true };
     }
 
@@ -345,6 +370,7 @@ export async function ingestRoutes(app: FastifyInstance) {
     const day = dateSchema.parse(q.date);
     const items = await app.prisma.ingestPlanItem.findMany({
       where: { dayDate: parseDate(day) },
+      include: PLAN_ITEM_INCLUDE,
       orderBy: [{ sourceType: 'asc' }, { sourceKey: 'asc' }],
     });
     return items.map(mapPlanItem);
@@ -361,66 +387,122 @@ export async function ingestRoutes(app: FastifyInstance) {
 
     const sourcePath = dto.sourcePath?.trim() || null;
     const recordingPort = dto.recordingPort?.trim() || null;
+    const backupRecordingPort = dto.backupRecordingPort?.trim() || null;
     const plannedStartMinute = dto.plannedStartMinute ?? null;
     const plannedEndMinute = dto.plannedEndMinute ?? null;
 
-    if (recordingPort) {
-      const port = await app.prisma.recordingPort.findFirst({
-        where: { name: recordingPort, active: true },
-        select: { id: true },
+    // 1) Port katalog doğrulaması (her iki port da aktif olmalı)
+    const portsToValidate = [recordingPort, backupRecordingPort].filter((p): p is string => !!p);
+    if (portsToValidate.length > 0) {
+      const activePorts = await app.prisma.recordingPort.findMany({
+        where: { name: { in: portsToValidate }, active: true },
+        select: { name: true },
       });
-      if (!port) {
-        throw Object.assign(new Error('Seçilen kayıt portu aktif değil'), { statusCode: 400 });
+      const activeNames = new Set(activePorts.map((p) => p.name));
+      for (const port of portsToValidate) {
+        if (!activeNames.has(port)) {
+          throw Object.assign(new Error(`Seçilen kayıt portu aktif değil: ${port}`), { statusCode: 400 });
+        }
       }
     }
 
-    if (recordingPort && plannedStartMinute !== null && plannedEndMinute !== null) {
-      const conflict = await app.prisma.ingestPlanItem.findFirst({
+    // 2) Pre-check overlap (defense-in-depth — DB GiST exclusion ana garanti).
+    // Hem ana hem yedek port için ayrı kontrol; rol farkı önemli değil çünkü
+    // "port meşgul mü" sorusu rol-bağımsız (cross-overlap dahil).
+    const checkConflict = async (portName: string) => {
+      if (plannedStartMinute === null || plannedEndMinute === null) return;
+      const conflict = await app.prisma.ingestPlanItemPort.findFirst({
         where: {
-          sourceKey: { not: sourceKey },
+          portName,
           dayDate: parseDate(dto.day),
-          recordingPort,
           plannedStartMinute: { lt: plannedEndMinute },
           plannedEndMinute: { gt: plannedStartMinute },
+          planItem: { sourceKey: { not: sourceKey } },
         },
-        select: { sourceKey: true, recordingPort: true, plannedStartMinute: true, plannedEndMinute: true },
+        select: {
+          portName: true,
+          plannedStartMinute: true,
+          plannedEndMinute: true,
+          role: true,
+          planItem: { select: { sourceKey: true } },
+        },
       });
       if (conflict) {
         const conflictRange = `${minuteToTime(conflict.plannedStartMinute)} - ${minuteToTime(conflict.plannedEndMinute)}`;
+        const roleLabel = conflict.role === 'backup' ? ' (yedek)' : '';
         throw Object.assign(
-          new Error(`${recordingPort} ${conflictRange} aralığında "${describeSourceKey(conflict.sourceKey)}" için atanmış`),
+          new Error(`${portName} ${conflictRange} aralığında "${describeSourceKey(conflict.planItem.sourceKey)}"${roleLabel} için atanmış`),
           { statusCode: 409 },
         );
       }
-    }
+    };
+    if (recordingPort)        await checkConflict(recordingPort);
+    if (backupRecordingPort)  await checkConflict(backupRecordingPort);
 
+    // 3) Atomic transaction: parent item + ports replace
     let item;
     try {
-      item = await app.prisma.ingestPlanItem.upsert({
-        where: { sourceKey },
-        update: {
-          sourceType: dto.sourceType,
-          dayDate: parseDate(dto.day),
-          sourcePath,
-          recordingPort,
-          plannedStartMinute,
-          plannedEndMinute,
-          status: dto.status ?? undefined,
-          note: dto.note?.trim() || null,
-          updatedBy: user,
-        },
-        create: {
-          sourceKey,
-          sourceType: dto.sourceType,
-          dayDate: parseDate(dto.day),
-          sourcePath,
-          recordingPort,
-          plannedStartMinute,
-          plannedEndMinute,
-          status: dto.status ?? 'WAITING',
-          note: dto.note?.trim() || null,
-          updatedBy: user,
-        },
+      item = await app.prisma.$transaction(async (tx) => {
+        const planItem = await tx.ingestPlanItem.upsert({
+          where: { sourceKey },
+          update: {
+            sourceType: dto.sourceType,
+            dayDate: parseDate(dto.day),
+            sourcePath,
+            plannedStartMinute,
+            plannedEndMinute,
+            status: dto.status ?? undefined,
+            note: dto.note?.trim() || null,
+            updatedBy: user,
+          },
+          create: {
+            sourceKey,
+            sourceType: dto.sourceType,
+            dayDate: parseDate(dto.day),
+            sourcePath,
+            plannedStartMinute,
+            plannedEndMinute,
+            status: dto.status ?? 'WAITING',
+            note: dto.note?.trim() || null,
+            updatedBy: user,
+          },
+        });
+
+        // Replace strategy: tüm port atamalarını silip yenisini yaz.
+        // Port-time sync transaction içinde garanti — yarım state olamaz.
+        await tx.ingestPlanItemPort.deleteMany({ where: { planItemId: planItem.id } });
+
+        if (plannedStartMinute !== null && plannedEndMinute !== null) {
+          if (recordingPort) {
+            await tx.ingestPlanItemPort.create({
+              data: {
+                planItemId: planItem.id,
+                portName: recordingPort,
+                role: 'primary',
+                dayDate: parseDate(dto.day),
+                plannedStartMinute,
+                plannedEndMinute,
+              },
+            });
+          }
+          if (backupRecordingPort) {
+            await tx.ingestPlanItemPort.create({
+              data: {
+                planItemId: planItem.id,
+                portName: backupRecordingPort,
+                role: 'backup',
+                dayDate: parseDate(dto.day),
+                plannedStartMinute,
+                plannedEndMinute,
+              },
+            });
+          }
+        }
+
+        return tx.ingestPlanItem.findUniqueOrThrow({
+          where: { id: planItem.id },
+          include: PLAN_ITEM_INCLUDE,
+        });
       });
     } catch (error) {
       if (!isPlanTimeConstraintError(error)) throw error;
