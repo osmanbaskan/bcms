@@ -105,8 +105,8 @@ curl -fsS http://127.0.0.1:3000/health
 | Raporlama | SystemEng |
 | Stüdyo Planı (görüntüle) | Tüm authenticated |
 | Stüdyo Planı (düzenle) | Admin, SystemEng, StudyoSefi |
-| Ekip İş Takip | Her grup kendi işleri; Admin/SystemEng tüm gruplar |
-| Haftalık Shift | Her grup kendi shifti; supervisor kendi grubunu düzenler; Admin/SystemEng tüm gruplar |
+| Ekip İş Takip | Her grup kendi işleri; Admin tüm gruplar (SystemEng kendi grubu) |
+| Haftalık Shift | Her grup kendi shifti; supervisor kendi grubunu düzenler; Admin tüm gruplar (SystemEng kendi grubu) |
 | Ingest | Admin, SystemEng, Ingest |
 | MCR | Admin, SystemEng, MCR |
 | Provys, Kanallar, Monitoring | Admin, SystemEng |
@@ -121,16 +121,16 @@ curl -fsS http://127.0.0.1:3000/health
   - `Canlı Yayın Planı` — tarih aralığı veya lig/hafta filtresi, Excel + PDF export
   - `Stüdyo Kullanım Raporu` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
   - `Ingest` — tarih aralığı filtresi, Excel + PDF export (TOPLAM satırı)
-- `Stüdyo Planı` → `/studio-plan` (`StudyoSefi`, `SystemEng`, `Admin` düzenler; diğerleri liste görür)
-- `Ekip İş Takip` → `/bookings` (kullanıcı kendi grubu, `Admin`/`SystemEng` tüm gruplar)
-- `Haftalık Shift` → `/weekly-shift` (kullanıcı kendi grubu, supervisor düzenler, `Admin`/`SystemEng` tüm gruplar)
-- `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab) — `SystemEng`, `Admin`, `Ingest`
-- `MCR` → `/mcr` — `SystemEng`, `Admin`, `MCR`
-- `Provys İçerik Kontrol` → `/provys-content-control` — `SystemEng`, `Admin`
-- `Kanallar` → `/channels` — `SystemEng`, `Admin`
-- `Monitoring` → `/monitoring` — `SystemEng`, `Admin`
-- `Kullanıcılar` → `/users` — `SystemEng`, `Admin`
-- `Ayarlar` → `/settings` — `SystemEng`, `Admin`
+- `Stüdyo Planı` → `/studio-plan` (`StudyoSefi` düzenler; `Admin` auto-bypass; diğerleri — `SystemEng` dahil — sadece liste görür)
+- `Ekip İş Takip` → `/bookings` (kullanıcı kendi grubu; `Admin` tüm gruplar; `SystemEng` kendi grubu)
+- `Haftalık Shift` → `/weekly-shift` (kullanıcı kendi grubu; supervisor kendi grubunu düzenler; `Admin` tüm gruplar; `SystemEng` kendi grubu)
+- `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab) — `Ingest`; `Admin` auto-bypass — `SystemEng` OUT
+- `MCR` → `/mcr` — `MCR`; `Admin` auto-bypass — `SystemEng` OUT
+- `Provys İçerik Kontrol` → `/provys-content-control` — `Admin` only — `SystemEng` OUT
+- `Kanallar` → `/channels` — `Admin` only — `SystemEng` OUT
+- `Monitoring` → `/monitoring` — `Admin` only — `SystemEng` OUT
+- `Kullanıcılar` → `/users` — `SystemEng`; `Admin` auto-bypass
+- `Ayarlar` → `/settings` — `SystemEng`; `Admin` auto-bypass
 
 ## Frontend Build / Görsel Notları
 
@@ -151,7 +151,7 @@ curl -fsS http://127.0.0.1:3000/health
 - Durumlar: `PENDING` (Açık), `APPROVED` (Tamamlandı), `REJECTED` (Reddedildi), `CANCELLED` (İptal)
 - Sıralama: Açık (PENDING) işler yukarıda, sonra tarihe göre
 - Dialog: `BookingTaskDialogComponent` — İş Başlığı, Grup, Başlama/Tamamlanma, Sorumlu, Durum, Detaylar, Rapor
-- Yetki: Her kullanıcı kendi grubunun işlerini görür ve iş oluşturabilir. Grup `supervisor` kullanıcısı sorumlu atayabilir; işi oluşturan veya sorumlu kişi silebilir. `Admin`/`SystemEng` tüm gruplarda tam yetkilidir.
+- Yetki: Her kullanıcı kendi grubunun işlerini görür ve iş oluşturabilir. Grup `supervisor` kullanıcısı sorumlu atayabilir; işi oluşturan veya sorumlu kişi silebilir. `Admin` `isAdminPrincipal` ile auto-bypass — tüm gruplarda tam yetkili. Diğer gruplar `rbac.ts` PERMISSIONS map'ine göre kapsamlandırılmıştır (SystemEng dahil).
 
 ## Haftalık Shift (Weekly Shift) — 2026-04-29
 
@@ -162,7 +162,7 @@ curl -fsS http://127.0.0.1:3000/health
 - Excel/PDF export: Renkli hücreler, zebra striping
 - Çıkış saatleri: `06:15`, `13:15`, `15:00`, `16:45`, `20:00`, `22:00`, `23:45`
 - Kural: izin ve saat bilgisi aynı hücrede birlikte seçilemez.
-- Yetki: kullanıcı kendi grubunu görür; grup `supervisor` kullanıcısı kendi grubunu düzenler; `Admin`/`SystemEng` tüm gruplarda tam yetkilidir.
+- Yetki: kullanıcı kendi grubunu görür; grup `supervisor` kullanıcısı kendi grubunu düzenler; `Admin` `isAdminPrincipal` ile auto-bypass — tüm gruplarda tam yetkili. Diğer gruplar `rbac.ts` PERMISSIONS map'ine göre (SystemEng dahil).
 
 ## Ingest Operasyon Mimarisi
 

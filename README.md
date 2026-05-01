@@ -301,7 +301,7 @@ SystemEng artık ayrıcalıklı değil — sadece audit/kullanıcılar/ayarlar/d
 | Dökümanlar | Admin, SystemEng |
 
 Yetki matrisi: `packages/shared/src/types/rbac.ts` → `PERMISSIONS` sabiti.
-API: `app.requireGroup(...groups)` — `auth.ts` plugin Admin token'ında SystemEng auto-augment yapıyor + `isAdminPrincipal` early return ile tüm `requireGroup` kontrollerini bypass ediyor.
+API: `app.requireGroup(...groups)` — `auth.ts` plugin'i Admin için `isAdminPrincipal` early return ile tüm `requireGroup` kontrollerini bypass ediyor. Eski "Admin → SystemEng auto-augment" mekanizması 2026-05-01 commit `0220b3e` ile kaldırıldı; auth.ts:101 sadece tarihsel comment.
 Frontend: `tokenParsed.groups` + `computed()` sinyaller, `hasGroup()` helper Admin için early return true. AuthGuard route guard'ı Admin için bypass.
 
 **SystemEng yetki düşürme rasyonalitesi**: tek "full yetki" sahibi grup olması için. Önceden SystemEng pek çok yerde Admin gibi davranıyordu — operasyonel rolün (network/sistem mühendisi) iş akış yetkilerini de kapsamasına sebep oluyordu. Şimdi SystemEng = audit/ayarlar/kullanıcılar/dökümanlar + incident yönetimi olarak daraltıldı. Admin tek tam yetki sahibi.
@@ -317,10 +317,10 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller, `hasGroup()` helper Adm
 - Sıralama: PENDING işler yukarıda, sonra `startDate`'e göre
 - Dialog: `BookingTaskDialogComponent` — İş Başlığı, Grup, Başlama/Tamamlanma Tarihi, Sorumlu, Durum, Detaylar, Rapor
 - API: `GET/POST/PATCH/DELETE /api/v1/bookings`
-- Görünürlük: kullanıcı sadece kendi grubunun işlerini görür. `Admin`/`SystemEng` tüm grupları görür.
+- Görünürlük: kullanıcı sadece kendi grubunun işlerini görür. `Admin` tüm grupları görür (auto-bypass); `SystemEng` dahil diğer gruplar kendi grubunun işlerini görür (`booking.service.ts` visibleGroups filter).
 - İş oluşturma: tüm authenticated kullanıcılar kendi grubu için iş başlığı oluşturabilir.
-- Sorumlu seçme: grup `supervisor` kullanıcısı veya `Admin`/`SystemEng` yapabilir.
-- Silme: işi oluşturan, atanan sorumlu, grup supervisor'ı veya `Admin`/`SystemEng`.
+- Sorumlu seçme: grup `supervisor` kullanıcısı kendi grubu için; `Admin` auto-bypass tüm gruplarda.
+- Silme: işi oluşturan, atanan sorumlu, grup supervisor'ı veya `Admin`.
 
 ### Haftalık Shift (Weekly Shift) — 2026-04-29
 
@@ -334,13 +334,13 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller, `hasGroup()` helper Adm
 - Excel/PDF export: Renkli hücreler, zebra striping
 - Çıkış saatleri: `06:15`, `13:15`, `15:00`, `16:45`, `20:00`, `22:00`, `23:45`
 - Kural: bir hücrede ya izin ya saat bilgisi olur; ikisi aynı anda seçilemez.
-- Görünürlük: kullanıcı sadece kendi grubunun shiftini görür. `Admin`/`SystemEng` tüm grupları görür.
-- Düzenleme: grup `supervisor` kullanıcısı kendi grubunu, `Admin`/`SystemEng` tüm grupları düzenler.
+- Görünürlük: kullanıcı sadece kendi grubunun shiftini görür. `Admin` tüm grupları görür (auto-bypass); `SystemEng` dahil diğer gruplar kendi grubunu görür (`weeklyShifts.admin = ['Admin']`).
+- Düzenleme: grup `supervisor` kullanıcısı kendi grubunu düzenler; `Admin` auto-bypass tüm gruplarda.
 - API: `GET /api/v1/weekly-shifts`, `PUT /api/v1/weekly-shifts/:weekStart`
 
 ### Stüdyo Planı
 
-- `StudyoSefi`, `SystemEng` ve `Admin` tam yetkili; diğerleri yalnızca liste görünümü.
+- `StudyoSefi` tam yetkili (`PERMISSIONS.studioPlans.write = ['StudyoSefi']`); `Admin` `isAdminPrincipal` ile auto-bypass. SystemEng kapsam dışı (2026-05-01 RBAC restructure). Diğer gruplar yalnızca liste görünümü.
 - **Liste görünümünde geçmiş günler gizlenir**.
 - 5 stüdyo kolonu: Stüdyo 1-4 + beIN Gurme.
 - Program/renk backend katalogdan.

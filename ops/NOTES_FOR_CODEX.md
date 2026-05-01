@@ -83,7 +83,7 @@ Auth sistemi rol tabanlıdan **grup tabanlıya** geçirildi.
 ### Gruplar (12 adet)
 `Admin`, `Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`
 
-`Admin` ve `SystemEng` sistem genelinde tam yetkili kabul edilir. Grup adları Keycloak `groups` claim'i ile birebir aynı yazılmalıdır. Route içinde grup stringlerini hardcode etme; `@bcms/shared` içindeki `PERMISSIONS` ve `BCMS_GROUPS` kullanılmalıdır.
+`Admin` tek tam yetkili gruptur — `isAdminPrincipal` ile her `requireGroup` kontrolünü auto-bypass eder. `SystemEng` kısıtlı bir gruptur; PERMISSIONS array'lerinde explicit listelenir (audit/incidents/users vb.), tüm sistemde tam yetkili **değildir** (2026-05-01 RBAC restructure, commit `b3171d9` + `0220b3e`). Grup adları Keycloak `groups` claim'i ile birebir aynı yazılmalıdır. Route içinde grup stringlerini hardcode etme; `@bcms/shared` içindeki `PERMISSIONS` ve `BCMS_GROUPS` kullanılmalıdır. **Canonical yetki kaynağı**: `packages/shared/src/types/rbac.ts` — bu doc'taki tablolar drift edebilir, çelişki olduğunda `rbac.ts` geçerlidir.
 
 ### Mimari
 - Keycloak: `oidc-group-membership-mapper` → JWT `groups` claim
@@ -106,6 +106,29 @@ Bu doc'taki listeyi tekrarlamak drift kaynağı olduğu için (geçmişte 2026-0
 - PERMISSIONS array'inde `Admin` yazmana **gerek yok** — `requireGroup` zaten `isAdminPrincipal` ile bypass ediyor.
 - `SystemEng`'i de yazma — tek istisna `audit/users/settings` legacy listings.
 - Frontend nav'da Admin için açık olan sekme: `groups: [GROUP.Admin]`. Diğer gruplar görmesin.
+
+### SystemEng Yetki Kapsamı — Canonical Tablo
+
+`SystemEng` artık operasyonel kısıtlı kullanıcıdır, "her yerde tam yetki" yoktur. Sekme bazında:
+
+| Sekme | SystemEng yetkisi |
+|---|---|
+| **Canlı Yayın Plan** | Sadece **viewer + sorun bildir** (`schedules.read=[]`, `incidents.reportIssue` listeli). Ekleme/düzenleme/silme **yok**. |
+| **Ekip İş Takip** | Sadece **kendi grubunun** işlerini görür (`booking.service.ts` visibleGroups filter). Tüm gruplar görmez. |
+| **Stüdyo Planı** | Sadece **liste görüntüleme** (`studioPlans.read=[]`). Edit/delete **yok** (`studioPlans.write=['StudyoSefi']`). |
+| **Haftalık Shift** | Sadece **kendi grubu** (`weeklyShifts.admin=['Admin']` — tüm grupları görme yetkisi sadece Admin'de). |
+| **Raporlama** | **Görmez** (`reports.read=['Admin']`, nav `[GROUP.Admin]` only). |
+| **Provys İçerik Kontrol** | **Görmez** (nav `[GROUP.Admin]` only). |
+| **Kanallar** | **Görmez** (`channels.read=['Admin']`, nav `[GROUP.Admin]` only). |
+| **Ingest** | **Görmez** (`ingest.read=['Ingest']`, nav `[GROUP.Admin, GROUP.Ingest]`). |
+| **Monitoring** | **Görmez** (`monitoring.read=['Admin']`, nav `[GROUP.Admin]` only). |
+| **MCR** | **Görmez** (nav `[GROUP.Admin, GROUP.MCR]`). |
+| **Kullanıcılar** | **Tam yetki** (nav `[GROUP.SystemEng]`). |
+| **Ayarlar** | **Tam yetki** (nav `[GROUP.SystemEng]`). |
+| **Audit Logları** | **Tam yetki** (`auditLogs.read=['SystemEng']`). |
+| **Dökümanlar** | **Tam yetki** (nav `[GROUP.SystemEng]`). |
+
+**Drift uyarısı**: Bu tablo `rbac.ts` ve `app.component.ts` navItems'a göre yazıldı. Çelişki çıkarsa **kod canonical**, bu tablo güncellenmeli. Tabloyu doc'larda tekrar etme — buraya işaret et.
 
 ### Kullanıcı Yönetimi — KRİTİK
 Keycloak Admin API kullanır. `docker-compose.yml` api servisinde `KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}` ZORUNLU.
@@ -368,7 +391,7 @@ OPTA sync schedule cascade'i version conflict yaşadığında **kalıcı drift o
 **Yeni feature/endpoint eklerken hatırla:**
 - Yeni endpoint için PERMISSIONS array kurarken: SystemEng dahil etme (sadece Admin gerekli ise array boş bırak — `isAdminPrincipal` bypass eder).
 - Admin auto-bypass tüm `requireGroup` çağrılarında çalışır → array'e Admin yazmana gerek yok.
-- Frontend nav item `groups: [GROUP.Admin]` koyduğunda hem Admin görür (auto-augment SystemEng grup'una rağmen `groups.includes('Admin')` zaten true).
+- Frontend nav item `groups: [GROUP.Admin]` koyduğunda Admin görür (centralized bypass: `visibleNavItems` filter Admin için early return true).
 
 **Admin auto-augment 2026-05-01 (geç saat) KALDIRILDI:**
 - Önceki sürümde `auth.ts:101-103` Admin token'ına SystemEng ekliyordu — eski "Admin = ops super-grup" modelin kalıntısıydı.
