@@ -12,24 +12,23 @@
 |---|---|---|---|
 | 🔴 CRITICAL (code) | 0 | — | 0 |
 | 🟠 OPS-CRITICAL aday | 1 | — | 1 |
-| 🟠 HIGH | 1 🔴 + 2 🟡 | — | 3 |
-| 🟡 MEDIUM | 4 🔴 | 1 | 5 |
-| 🟢 LOW | 3 🔴 | 1 | 4 |
+| 🟠 HIGH | 1 🔴 + 1 🟡 | 1 ✅ (HIGH-002) | 3 |
+| 🟡 MEDIUM | 4 🔴 | 1 ✅ (MED-005) | 5 |
+| 🟢 LOW | 3 🔴 | 1 ✅ (LOW-1) | 4 |
 
 **Genel durum**: Production-ready, *host kaybı senaryosu hariç*. Code-critical gap yok; HIGH ve OPS-CRITICAL bulgular operasyonel hijyen + DR kapsamında. Race condition'lar DB-level GiST + P2002 catch ile defense-in-depth korunmuş.
 
-**Açık riskler özet** (önceliklendirilmiş):
-1. **Migration baseline-absent** (HIGH-001) — fresh env replay imkansız
-2. **Off-host backup yok** (OPS-CRITICAL) — host kaybı = total veri kaybı
-3. **Doc drift 4 dosyada** (HIGH-002) — AI ajan/yeni developer yanıltma riski
-4. **OPTA observability eksik** (HIGH-003) — burst tekrar olursa görünmez
-5. **Soft-delete schema redesign** (MED-001) — semantic karar yokluğu
+**Açık riskler özet** (önceliklendirilmiş, post-fix durumu):
+1. **Migration baseline-absent** (HIGH-001) 🔴 — fresh env replay imkansız
+2. **Off-host backup yok** (OPS-CRITICAL) 🔴 — host kaybı = total veri kaybı
+3. **OPTA notification delivery** (HIGH-003) 🟡 — detection ✅ kuruldu (metric + alert rule), notification katmanı (Alertmanager + Slack/email) eksik
+4. **Soft-delete schema redesign** (MED-001) 🔴 — semantic karar yokluğu, ayrı PR
 
 **Kapatılan başlıca işler** (Section 3'te tablo):
-- HIGH-001 FS-name drift (`05829f8`)
-- HIGH-003 League dedupe + P2002 outer retry (`a0946c4`, `0d67c6e`)
-- HIGH-002 doc drift büyük kısmı (`feed1d3`)
-- LOW-1 + MED-005 UI dead code & canEdit reactive (`feed1d3`)
+- **HIGH-002 doc drift tamamen kapatıldı** ✅ (`feed1d3` + `90c8779`) — son sweep'te kalan 17 line + canonical SystemEng tablosu
+- HIGH-003 detection katmanı ✅ (`a0946c4` dedupe, `0d67c6e` P2002 retry, `4e364f3` metric + alerts)
+- HIGH-001 FS-name drift ✅ (`05829f8`) — ama core baseline-absent açık
+- LOW-1 + MED-005 ✅ (`feed1d3`) — UI dead code & canEdit reactive
 
 ---
 
@@ -75,23 +74,16 @@
 
 ---
 
-### HIGH-002 — Doc drift kalan 4 line 🟡
+### HIGH-002 — Doc drift ✅ KAPATILDI
 
-**Status**: `feed1d3` doc drift'in büyük kısmını kapattı; 4 line kalan kalıntı.
+**Status**: ✅ **Kapatıldı** (`feed1d3` ilk büyük kısmı + `90c8779` kalan sweep). Live verify: 0 stale hit (Pattern A/B/C/D/E/F sweep, README + ops/README + ops/NOTES_FOR_CODEX).
 
-**Kalan drift** (live grep, son verify):
-| Lokasyon | Eski wording | Düzeltme |
-|---|---|---|
-| `README.md:304` | "auth.ts plugin Admin token'ında SystemEng auto-augment yapıyor" | "Auto-augment kaldırıldı (`0220b3e`); Admin'in tam yetkisi `isAdminPrincipal` early return ile" |
-| `README.md:343` | "StudyoSefi, SystemEng ve Admin tam yetkili" | reports için Admin-only (rbac.ts: `reports.{read,export} = ['Admin']`) |
-| `ops/NOTES_FOR_CODEX.md:86` | "Admin ve SystemEng sistem genelinde tam yetkili" | "Sadece Admin tam yetkili" |
-| `ops/README.md:154, 165` | "Admin/SystemEng tüm gruplarda tam yetkilidir" | "Admin tüm gruplarda; diğer gruplar `rbac.ts` PERMISSIONS map'ine göre" |
+**Kapsam ve yöntem**:
+- `feed1d3`: RBAC restructure docs first-pass alignment (~10 paragraf düzeltildi)
+- `90c8779`: kalan 17 line sweep — booking/weekly-shift wording, per-module RBAC matrix tablosu (124-133 ops/README), NOTES_FOR_CODEX:371 stale parenthetical
+- **Yapısal eklenti**: `ops/NOTES_FOR_CODEX.md`'a "SystemEng Yetki Kapsamı — Canonical Tablo" eklendi; sekme bazında SystemEng yetkileri tek kaynaktan okunabilir, doc'larda tekrar etmek yerine bu tabloya işaret edilir → drift kaynağı kapatıldı
 
-**AI agent risk**: `NOTES_FOR_CODEX.md:86` dosyanın açılış paragrafı; Codex/Claude ajanı buradan PERMISSIONS okursa SystemEng'e yanlış yetki ekleyebilir. En kritik kalan satır.
-
-**Sonraki adım** (~15 dk):
-1. Yukarıdaki 4 line düzeltilir
-2. **Yapısal**: NOTES_FOR_CODEX'te PERMISSIONS matrisini tekrar etmek yerine `packages/shared/src/types/rbac.ts`'yi canonical kaynak olarak işaret et — drift kaynağını ortadan kaldır.
+**Sonraki audit önlem**: Sweep'te kullanılan 6 pattern (`Admin/SystemEng`, `Admin ve SystemEng`, backtick variant, `SystemEng.*tüm grup`, `SystemEng.*tam yetki`, `SystemEng,\s*Admin`) gelecekte yeni RBAC değişikliği olursa tekrar çalıştırılır.
 
 ---
 
@@ -99,10 +91,21 @@
 
 **Geçmiş olay**: 2026-04-30 saat 00:00–09:30 arası ~9.5 saatlik burst. Saatte ~31k league upsert (~528/dakika, ~8.8/saniye). Audit_logs'a ~205k satır (snapshot anında ~%36). Burst içinde League ratio %99.99. Root cause: API log retention yokluğunda caller belirlenemedi.
 
-**Status**:
-- Idempotent UPSERT dedupe ✅ `a0946c4` (League upsert'te eski + yeni değer aynıysa audit yazılmaz)
-- P2002 outer retry ✅ `0d67c6e`
-- Observability/alert + post-mortem 🔴 hâlâ açık
+**Status — detection vs notification ayrımı**:
+- **Detection katmanı** ✅:
+  - Idempotent UPSERT dedupe `a0946c4` (League upsert'te eski + yeni değer aynıysa audit yazılmaz)
+  - P2002 outer retry `0d67c6e` (concurrent sync race)
+  - **Metric** `bcms_opta_league_sync_total{action="create|update|skip"}` `4e364f3` (3 label sıfırla initialize)
+  - **Alert rules** `infra/prometheus/alerts.yml`:
+    - `OptaLeagueSyncBurst`: `sum(increase(...[1h])) > 500` (caller anomali, post-dedupe skip-heavy senaryosunu yakalar)
+    - `OptaLeagueWriteBurst`: `sum(increase(...{action=~"create|update"}[1h])) > 200` (gerçek DB write hızı)
+  - Prometheus rules loaded; firing state Prometheus UI/API'de görünür (`/api/v1/alerts`)
+- **Notification katmanı** 🔴:
+  - **Alertmanager** kurulu değil; firing alert'ler operasyonel alarm üretmiyor
+  - Slack/email/PagerDuty webhook routing yok
+  - Senaryo: "burst oldu, Prometheus 'firing' diyor, kimse bakmıyor" hâlâ mümkün
+  - Post-hoc: tarih + sayım izlenebilir; proaktif uyarı **yok**
+- **Caller post-mortem** 🔴: API log retention (Loki/Promtail veya json-file rotation) hâlâ kurulmamış
 
 **P2002 retry — canonical desen** (opta.sync.routes.ts'te uygulandı):
 ```ts
@@ -117,12 +120,12 @@ withLeagueCreateConflictRetry(() =>
 
 ⚠️ **Inline `try/catch` + `findUniqueOrThrow` ÇALIŞMAZ** — PG aborted-tx state'i nedeniyle. Outer retry zorunlu desen. Bu nüans race condition note'una gelecek refactor için kritik.
 
-**Sonraki adım**:
-1. Prometheus metric ekle (`opta_sync_league_upserts_total` saatlik diff, alert eşiği N/saat)
-2. API log retention (Loki/Promtail veya json-file rotation) — gelecek burst post-mortem için
-3. Caller-bazlı rate limit son seçenek; sıkı limit gerçek güncellemeleri kaçırma riski (warn-only ilk hafta önerilir)
+**Sonraki adımlar** (kalan iş):
+1. **Notification delivery** (öncelikli kalan iş): Alertmanager container + route config + webhook delivery (Slack veya email). Secret/webhook yönetimi gerekir, ayrı kapsam.
+2. **API log retention** (Loki/Promtail veya json-file rotation) — gelecek burst caller post-mortem için
+3. **Caller-bazlı rate limit** son seçenek; sıkı limit gerçek güncellemeleri kaçırma riski (warn-only ilk hafta önerilir)
 
-**Etki**: Mevcut audit_logs ~565k / ~104 MB (snapshot 2026-05-01 geç saat). 90-gün retention ile temizlenecek, doğrudan zarar yok. Aynı pattern tekrar olursa milyonluk satır + retention job lock pressure.
+**Etki**: Mevcut audit_logs ~565k / ~104 MB (snapshot 2026-05-01 geç saat). 90-gün retention ile temizlenecek, doğrudan zarar yok. Aynı pattern tekrar olursa milyonluk satır + retention job lock pressure. Notification delivery kuruluncaya kadar **proaktif alarm yok**, ama detection veri katmanı hazır (post-hoc analiz ve manuel monitoring mümkün).
 
 ---
 
@@ -150,15 +153,19 @@ withLeagueCreateConflictRetry(() =>
 
 ## 3. Closed / Partial Fixes (commit bazlı)
 
-| Bulgu | Status | Commit | Not |
-|---|---|---|---|
-| HIGH-001 FS-name drift | ✅ | `05829f8` | 4 missing migration directory eklendi; baseline-absent ayrı problem |
-| HIGH-002 Doc drift büyük kısmı | 🟡 | `feed1d3` | 4 line kalan (Section 2) |
-| HIGH-003 League upsert dedupe | ✅ | `a0946c4` | findMany→create/update; idempotent çağrılarda 0 audit satırı |
-| HIGH-003 P2002 outer retry | ✅ | `0d67c6e` | `withLeagueCreateConflictRetry` + dar predicate |
-| LOW-1 schedule-list:2070 dead code | ✅ | `feed1d3` | Admin auto-augment satırı silindi |
-| MED-005 studio-plan canEdit signal | ✅ | `feed1d3` | `_userGroups` signal pattern uygulandı |
-| Schedules.id=32 deferral tracking | 📝 | `9c8b690` | Section 4'e taşındı |
+Tablo "component fix" granülünde — her satır bir kod/doc commit'ini gösterir. **Bulgu overall status'u Section 1 sayım tablosunda** ayrı tutulur (örn. HIGH-003 component'leri ✅ ama bulgu overall 🟡 partial; HIGH-001 FS-name component'i ✅ ama bulgu overall 🔴 — baseline-absent açık).
+
+| Component fix | Bulgu | Component status | Commit | Not |
+|---|---|---|---|---|
+| FS-name migration drift | HIGH-001 (overall 🔴) | ✅ | `05829f8` | 4 missing migration directory eklendi; baseline-absent ayrı problem |
+| RBAC docs first-pass alignment | HIGH-002 (overall ✅) | ✅ | `feed1d3` | İlk büyük kısmı kapatıldı |
+| RBAC docs final sweep | HIGH-002 (overall ✅) | ✅ | `90c8779` | Kalan 17 line + canonical SystemEng tablosu — drift kaynağı kapandı |
+| League upsert audit dedupe | HIGH-003 (overall 🟡) | ✅ | `a0946c4` | findMany→create/update; idempotent çağrılarda 0 audit satırı |
+| P2002 outer transaction retry | HIGH-003 (overall 🟡) | ✅ | `0d67c6e` | `withLeagueCreateConflictRetry` + dar predicate |
+| Prometheus metric + alert rules | HIGH-003 (overall 🟡) | ✅ | `4e364f3` | `bcms_opta_league_sync_total{action}` + 2 alert rule. Notification delivery 🔴 ayrı |
+| schedule-list:2070 dead code | LOW-1 (overall ✅) | ✅ | `feed1d3` | Admin auto-augment satırı silindi |
+| studio-plan canEdit signal | MED-005 (overall ✅) | ✅ | `feed1d3` | `_userGroups` signal pattern uygulandı |
+| Schedules.id=32 deferral tracking | (Section 4) | 📝 | `9c8b690` | Section 4'e taşındı |
 
 ---
 
@@ -213,7 +220,7 @@ Bu raporda canlı sayaçlar (audit_logs total, container Up süresi, FS migratio
 ### Static iddialar (drift etmez, sadece kapatılırsa değişir)
 
 - **21 tablo `deleted_at` kolonu** (schema-level, migration ile değişir)
-- **4 dosya doc drift line ref'leri** (HIGH-002, kapatılmadıkça aynı)
+- ~~**4 dosya doc drift line ref'leri** (HIGH-002, kapatılmadıkça aynı)~~ → ✅ kapatıldı `90c8779`. Gelecek RBAC değişikliklerinde 6-pattern grep sweep tekrar çalıştırılır (Section 5 verify komutları)
 - **`withLeagueCreateConflictRetry` outer pattern** (kod-level kanıt, opta.sync.routes.ts)
 - **3 orphan ingest_plan_items id'leri** (54, 107, 108)
 - **schedules.id=32 detayları** (tek soft-deleted satır)
@@ -258,9 +265,12 @@ docker exec -i bcms_postgres psql -U bcms_user -d bcms -c "
   WHERE id NOT IN (SELECT plan_item_id FROM ingest_plan_item_ports);
 "
 
-# HIGH-002 kalan doc drift (4 line)
-grep -n "Admin ve SystemEng\|Admin/SystemEng tüm\|auto-augment yapıyor" \
-  README.md ops/README.md ops/NOTES_FOR_CODEX.md
+# HIGH-002 RBAC drift sweep (6 pattern, 0 hit beklenir post-90c8779)
+for p in "Admin/SystemEng" "Admin ve SystemEng" "SystemEng.*tam yetki" \
+         "SystemEng.*tüm grup" "auto-augment yapıyor" '`Admin`.*`SystemEng`'; do
+  echo "=== $p ==="
+  grep -nE "$p" README.md ops/README.md ops/NOTES_FOR_CODEX.md || echo "no hits"
+done
 
 # Type-check
 (cd apps/api && npx tsc --noEmit) && (cd apps/web && npx tsc --noEmit)
@@ -268,6 +278,10 @@ grep -n "Admin ve SystemEng\|Admin/SystemEng tüm\|auto-augment yapıyor" \
 # OPTA P2002 retry pattern (kod-level kanıt)
 grep -n "withLeagueCreateConflictRetry\|isLeagueCodeUniqueConflict" \
   apps/api/src/modules/opta/opta.sync.routes.ts
+
+# OPTA observability metric + alerts (4e364f3)
+curl -sf http://127.0.0.1:3000/metrics | grep "bcms_opta_league_sync_total"
+curl -sf http://127.0.0.1:9090/api/v1/rules | grep -E "OptaLeague(Sync|Write)Burst"
 ```
 
 ---
@@ -327,10 +341,15 @@ LOW-1 ve MED-005 `feed1d3` ile ✅ kapatıldı (Section 3 tablosunda).
 | 2026-05-01 | Schedules.id=32 deferral tracking | Section 8 follow-up #9 | `9c8b690` |
 | 2026-05-01 | Critical review pass-1 | 10 hata spot-fix | `faec08e` |
 | 2026-05-01 | Critical review pass-2 | Grep-based sweep, 13 hata | `19d3450` |
-| 2026-05-01 | Critical review pass-3 + rewrite | 9 yeni hata + 5-bölümlü sadeleştirme | bu sürüm |
+| 2026-05-01 | Critical review pass-3 + rewrite | 9 yeni hata + 5-bölümlü sadeleştirme | `469967f` |
+| 2026-05-01 | RBAC doc final sweep | 6-pattern grep sweep (3 docs) | `90c8779` HIGH-002 ✅ |
+| 2026-05-01 | OPTA observability detection | prom-client kontrollü geçişi + metric + 2 alert rule | `4e364f3` HIGH-003 detection ✅ |
+| 2026-05-01 | State sync pass | Bu commit — Section 1/2/3 + Appendix D state güncelleme | bu sürüm |
 
 **Pass-3 kazanımı**: Spot-fix döngüsü (pass-1 + pass-2) raporu yamalı bir belgeye çevirmişti. Kritik hata olan "race condition note inline catch öneriyordu" pass-3'te yakalandı — outer retry canonical'i Section 2 HIGH-003'e geldi. Cleanup principle (data-write deferred until audit-traced path) Section 4'te tekleştirildi.
 
+**Post-rewrite kazanımı**: Rapor patching döngüsünden gerçek iş yapma evresine geçildi. HIGH-002 ve HIGH-003 detection katmanı kapatıldı. Section 3 tablosu artık "component vs finding status" ayrımıyla — okur "HIGH-003 dedupe ✅" görüp tüm bulguyu kapatılmış sanmaz; bulgu overall status'u Section 1 sayım tablosunda ayrı tutuluyor.
+
 ---
 
-*Bu rapor read-only audit ile başladı, iteratif kritik review'larla evrildi, pass-3'te 5-bölümlü yapıya yeniden yazıldı. Mevcut sürüm tek doğruluk kaynağı; eski detay/tarihsel narrative Appendix'lerde tutuldu. Aksiyon kararları kullanıcıda.*
+*Bu rapor read-only audit ile başladı, iteratif kritik review'larla evrildi, pass-3'te 5-bölümlü yapıya yeniden yazıldı, sonraki turlarda RBAC doc sweep + OPTA observability detection ile açık riskler azaltıldı. Mevcut sürüm tek doğruluk kaynağı; eski detay/tarihsel narrative Appendix'lerde tutuldu. Aksiyon kararları kullanıcıda.*
