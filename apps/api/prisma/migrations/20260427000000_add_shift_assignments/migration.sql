@@ -1,3 +1,11 @@
+-- ============================================================
+-- ✅  REAL DDL — REPLAY EQUIVALENCE EXPECTED (clean-room verify pending)
+-- ============================================================
+-- Bu dosya gerçek DDL içerir (live DB'den reverse-engineered).
+-- Replay'de orijinal davranışla eşit sonuç üretmesi BEKLENİR.
+-- Kanıt: clean-room PG'ye replay + schema dump diff (TBD).
+-- ============================================================
+
 -- Migration: shift_assignments tablosu (Haftalık Shift modülü)
 --
 -- BU MIGRATION BIR DR/REPLAY KURTARMA ÇALIŞMASIDIR (2026-05-01 audit):

@@ -1,3 +1,14 @@
+-- ============================================================
+-- ⚠️  REPLAY EQUIVALENCE NOT PROVEN  ⚠️
+-- ============================================================
+-- Bu dosya `_prisma_migrations` adı/checksum uyumunu sağlar.
+-- Ama yeni bir DB'ye replay edildiğinde ORIJINAL DDL ETKILERINI
+-- ÜRETMEZ — sadece no-op çalışır.
+--
+-- Tam DR coverage için: clean-room replay + schema dump diff
+-- doğrulaması yapılmalı. Bkz: BCMS_AUDIT_REPORT_2026-05-01.md HIGH-001.
+-- ============================================================
+
 -- Migration: index düzeltmeleri ve temizlik (2026-04-27)
 --
 -- ⚠️ FS RECOVERY (2026-05-01 audit):

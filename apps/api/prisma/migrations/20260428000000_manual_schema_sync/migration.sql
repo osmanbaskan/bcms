@@ -1,3 +1,11 @@
+-- ============================================================
+-- ✅  REPLAY-SAFE NO-OP (intentional)
+-- ============================================================
+-- DB'de applied_steps_count=0 — orijinal niyet zaten no-op idi.
+-- Bu placeholder güvenli: yeni env'e replay'de hiçbir şey değişmez,
+-- davranış orijinaliyle eşit (her ikisi de no-op).
+-- ============================================================
+
 -- Migration: manual schema sync (2026-04-28)
 --
 -- ⚠️ FS RECOVERY (2026-05-01 audit):

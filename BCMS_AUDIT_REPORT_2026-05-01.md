@@ -69,6 +69,13 @@ Hiçbir auth bypass, açık endpoint, secret leak, race condition kanıtı, veya
 
 ### HIGH-001 — Prisma migration drift: DB ↔ filesystem uyumsuzluğu
 
+**Status (2026-05-01 geç saat — commit `05829f8`)**: 🟡 **PARTIAL FIX, replay equivalence not proven**
+- ✅ FS klasör adları `_prisma_migrations` satırlarıyla eşleşti (4 yeni directory eklendi)
+- ✅ `prisma migrate deploy` checksum mismatch atmıyor — "No pending migrations to apply"
+- ✅ `shift_assignments` için gerçek DDL (live DB'den reverse-engineered, replay-safe expected)
+- ⚠️ **3 migration placeholder no-op** — orijinal DDL içeriği kayıp, yeni env'e replay'de uygulanmaz
+- ❌ **Tam DR eşdeğerliği henüz kanıtlanmadı** — clean-room replay + schema dump diff yapılmalı
+
 **Lokasyon**: `apps/api/prisma/migrations/` ve `_prisma_migrations` tablosu
 
 **Kanıt** (psql ve `ls`):
@@ -469,7 +476,7 @@ docker exec -i bcms_postgres psql -U bcms_user -d bcms -c "..."
 
 | Öncelik | Aksiyon | Effort |
 |---|---|---|
-| **P0** | HIGH-001: Migration drift çözümü (`prisma migrate status` → 4 migration directory FS'e geri ekle) | 1-2 saat |
+| ~~P0~~ ✅🟡 | ~~HIGH-001: Migration drift çözümü~~ — **PARTIAL** (commit `05829f8`): FS adı/checksum hizalandı; `shift_assignments` real DDL; 3 placeholder no-op. **Replay equivalence kanıtlanmadı** — clean-room verify follow-up. | 1-2 saat |
 | **P0** | HIGH-002: README + ops/NOTES_FOR_CODEX + ops/README RBAC + migration count düzeltme | 30 dk |
 | **P0** | OPS-CRITICAL aday: Off-host backup kararı (rsync/S3/borg seçimi + ilk implementasyon) | 1-3 saat |
 | **P1** | HIGH-003 (1): Idempotent UPSERT audit dedupe (League upsert için) | 2 saat |

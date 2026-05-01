@@ -1,3 +1,18 @@
+-- ============================================================
+-- ⚠️  REPLAY EQUIVALENCE NOT PROVEN  ⚠️
+-- ============================================================
+-- Bu dosya `_prisma_migrations` adı/checksum uyumunu sağlar.
+-- Ama yeni bir DB'ye replay edildiğinde ORIJINAL DDL ETKILERINI
+-- ÜRETMEZ — sadece no-op çalışır.
+--
+-- Migration adından tahmin edilen kapsam (FK CASCADE, eksik index,
+-- timestamptz dönüşümü, muhtemel GiST exclusion) replay'de
+-- UYGULANMAZ. Bu en yüksek riskli placeholder.
+--
+-- Tam DR coverage için: clean-room replay + schema dump diff
+-- doğrulaması yapılmalı. Bkz: BCMS_AUDIT_REPORT_2026-05-01.md HIGH-001.
+-- ============================================================
+
 -- Migration: FK + indexes + CASCADE + timestamptz dönüşümü (2026-04-27)
 --
 -- ⚠️ FS RECOVERY (2026-05-01 audit):

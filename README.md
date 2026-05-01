@@ -387,7 +387,12 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller, `hasGroup()` helper Adm
 - Local DB 2026-04-22'de 8 migration baseline edildi.
 - Repodaki migration sayısı: **23** (`ls apps/api/prisma/migrations/2*/ | wc -l`).
 - DB `_prisma_migrations` finished sayısı: **27** (live psql).
-- ⚠ **Drift**: 4 migration DB-only (`20260427000000_add_shift_assignments`, `20260427003000_fix_indexes_and_cleanup`, `20260427160000_add_fks_indexes_cascade_timestamptz`, `20260428000000_manual_schema_sync`). DR/staging deploy'unda kırılır — `BCMS_AUDIT_REPORT_2026-05-01.md` HIGH-001'e bak.
+- 🟡 **Drift status (commit `05829f8`)**: PARTIAL FIX. FS klasör adları `_prisma_migrations` ile eşleşti; `prisma migrate deploy` checksum hatası atmıyor. Eski 4 DB-only migration FS'e directory olarak eklendi:
+  - `20260427000000_add_shift_assignments` — gerçek DDL (live DB'den reverse-engineered, replay-safe expected)
+  - `20260427003000_fix_indexes_and_cleanup` — placeholder no-op (orijinal DDL kayıp)
+  - `20260427160000_add_fks_indexes_cascade_timestamptz` — placeholder no-op (orijinal DDL kayıp)
+  - `20260428000000_manual_schema_sync` — placeholder no-op (intentional, applied_steps_count=0)
+- ⚠️ **Replay equivalence not proven**: clean-room PG'ye replay + schema dump diff yapılana kadar yeni env'e deploy'da 3 placeholder migration'ın orijinal etkilerini üretmediği bilinmeli. Detay: `BCMS_AUDIT_REPORT_2026-05-01.md` HIGH-001.
 - 2026-04-25: `add_ingest_job_updated_at`
 - 2026-04-26: `ingest_port_no_overlap` (btree_gist exclusion constraint) + 10 adet tekrar eden index kaldırıldı
 - 2026-04-27: `ingest_plan_report_index` (raporlama sorgu hızlandırması)
