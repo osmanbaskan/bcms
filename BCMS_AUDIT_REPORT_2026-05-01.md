@@ -39,7 +39,7 @@
 **Cross-cutting temalar**:
 - **Doc-code drift**: 2026-05-01 RBAC refactor kod tarafında temiz; docs paragrafların yarısı eski "Admin → SystemEng auto-augment" modelinden kalıntı.
 - **Soft-delete tutarsızlığı**: 5+ tabloda `deleted_at` kolonu var, sadece `weekly_shifts` queries'te filter var. Diğerlerinde kolon görmezden geliniyor.
-- **Audit log büyüme dinamikleri**: 90-gün retention iyi tasarlanmış ama burst senaryolarında throttle/dedupe yok. 2026-04-30'da 6.5 saatlik bir burst gerçekleşmiş, root cause unknown.
+- **Audit log büyüme dinamikleri**: 90-gün retention iyi tasarlanmış ama burst senaryolarında throttle/dedupe yok. 2026-04-30'da 9.5 saatlik (00:00–09:30) bir burst gerçekleşmiş — 205,022 satır (toplam audit_logs'un %36'sı), root cause unknown.
 - **Race conditions kapatılmış**: DB-level GiST exclusion + P2002 catch ile defense-in-depth. Yapısal güvende.
 
 **Sistem genel sağlığı**: **Production-ready** — *ancak host kaybı senaryosu hariç*. Tüm container'lar healthy, type-check temiz, OPTA cascade ve recording port normalize sağlam, optimistic locking doğru uygulanmış. Kritik kod gap'i yok; HIGH bulgular operasyonel hijyen + doc kalitesi düzeyinde.
@@ -145,25 +145,46 @@ ops/README.md:406  "auth.ts:101-102 Admin token'ı SystemEng auto-augment"
 
 ---
 
-### HIGH-003 — OPTA League upsert burst (2026-04-30 03:00–09:30): audit_logs %99'u
+### HIGH-003 — OPTA League upsert burst (2026-04-30 00:00–09:30): audit_logs %36'sı, burst içinde League %99.99
 
 **Lokasyon**: `apps/api/src/modules/opta/opta.sync.routes.ts` (kod kendisi sağlam — burst kaynağı sync caller / Python watcher davranışı)
 
-**Kanıt**:
+**Kanıt** (doğrulanmış live psql, 2026-05-01 geç saat):
 ```
-psql:
-  2026-04-30 03:00:14.748 ile 09:29:32.139 arası League UPSERT: ~200k+ satır
-  Sabit ritim: 513 upsert/dakika × 6.5 saat = ~200,070 toplam
-  → ~8.5 upsert/saniye → ~0.12 sync POST/saniye (chunk başına ~69 unique league)
-
 audit_logs durumu:
-  total: 565,032
-  son 24h: 314,949 (~%56)
-  son 7d: 564,907
-  Burst sırasında (03-09): %99'u bu pencerede üretilmiş
+  total:    565,032
+  son 24h:  297,541 (toplam ~%53)
+  son 7d:   564,907
+  size:     104 MB
+
+Burst pencere sayım (2026-04-30 00:00–09:30):
+  burst_window:  205,022 satır  (toplam audit_logs'un %36.29'u)
+  burst_league:  205,021 satır  (burst içinde League %99.99 — neredeyse tamamı)
+
+Saatlik breakdown (2026-04-30):
+  hour                    total   League
+  00:00              ──── 31,744  31,744  ┐
+  01:00              ──── 31,744  31,744  │
+  02:00              ──── 31,744  31,744  │ Sabit ritim
+  03:00              ──── 31,744  31,744  │ ~31k/saat = ~528/dakika = ~8.8/saniye
+  04:00              ──── 32,256  32,256  │
+  05:00              ──── 31,777  31,776  │
+  06:00              ──── 31,806  31,806  │
+  07:00              ──── 31,806  31,806  │
+  08:00              ──── 31,275  31,275  │
+  09:00              ──── 24,759  24,759  ┘ (azalmaya başlıyor)
+  10:00                       4       4   ┐
+  11:00                       8       7   │ Normal seviyeye dönüş
+  12:00–23:00            ~5–84   varies   ┘ (saatte birkaç-onlarca)
 ```
 
-**Açıklama**: OPTA Python watcher (`scripts/opta_smb_watcher.py`) `DEFAULT_INTERVAL=3600` (saatte 1 sync) ile çalışıyor. Burst sırasında dakikada 513 League upsert üretildi → saatlik sync ritmi ile uyumsuz. **API log retention olmadığı için root cause analizi imkansız** (4 dakika önce restart sonrası eski log'lar kayıp). Şu anda ritim normale dönmüş (saatlik 4-14 League upsert).
+**Açıklama**: 
+- Burst gerçekte **00:00'dan 09:30'a** kadar devam etti (~9.5 saat, agent ilk taslakta 03-09 dedi — saatlik breakdown başlangıç saati daha erken).
+- OPTA Python watcher (`scripts/opta_smb_watcher.py`) `DEFAULT_INTERVAL=3600` (saatte 1 sync) ile çalışıyor. Burst sırasında saatte 31,744 upsert sabit ritim → 528/dakika = 8.8/saniye → saatlik sync ritmi ile **kesinlikle uyumsuz**.
+- Burst İÇİNDE League ratio **%99.99** (205,021 / 205,022) — yani burst tamamen League upsert'lerden oluşuyor.
+- Total audit_logs'a göre payı **%36.29** — tüm log'un üçte birinden fazlası.
+- **API log retention olmadığı için root cause analizi imkansız** — eski API log'ları erişilebilir değil, hangi caller bu kadar sürekli sync POST attı bilinmiyor.
+- Şu anda ritim normale dönmüş (saatte 4-84 League upsert, tipik OPTA polling).
 
 **Etki**:
 - Doğrudan zarar yok — audit purge job 90 gün sonra temizleyecek; disk'te 104 MB
@@ -261,7 +282,7 @@ psql:
 **Lokasyon**: `apps/api/src/modules/audit/audit-retention.job.ts`
 
 **Kanıt**:
-- 565k satır = 104 MB; son 24h içinde 314k eklendi (ama %99'u burst — HIGH-003)
+- 565,032 satır = 104 MB; son 24h içinde 297,541 eklendi (büyük çoğunluğu 2026-04-30 00:00–09:30 burst penceresinden — HIGH-003)
 - Normal günlük büyüme tahmini: ~5k satır
 - 90 × 5000 = 450k normal; bursts olursa milyonluk
 - Retention job 10k batch sıralı; 28M satır = 2800 batch × ~50 ms = 140 saniye lock pressure
