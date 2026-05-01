@@ -1,9 +1,10 @@
 # BCMS Read-Only Audit Report — 2026-05-01 (geç saat)
 
-> **Mod**: Read-only — hiçbir dosya/komut/DB değişikliği yapılmadı.
-> **Kapsam**: `apps/api/src` (46 dosya), `apps/web/src` (62 dosya), `packages/shared/src`, Prisma schema + 23 migration, canlı PostgreSQL/RabbitMQ/Keycloak/Docker, README/ops docs, son 30 commit.
-> **Süre**: 12.5 dakika, 141 tool çağrısı.
+> **Mod**: İlk audit fazı read-only idi (hiçbir dosya/komut/DB değişikliği yapılmadı). Bu doküman sonradan iteratif olarak güncellendi — kapatılan bulgular işaretlendi, line ref'ler ve sayımlar tazelendi. Commit history'si aşağıdaki hash'lerde: `d074bcd` (initial), `5e3f238`, `feed1d3`, `05829f8`, `01dbe76`, `6d491e6`, `9b603f5`, `eac6454`, `9925422`, `73257b0`, `0d67c6e`, `9c8b690`.
+> **Kapsam**: `apps/api/src` (46 dosya), `apps/web/src` (62 dosya), `packages/shared/src`, Prisma schema + migration'lar, canlı PostgreSQL/RabbitMQ/Keycloak/Docker, README/ops docs, son 30 commit.
+> **Süre**: 12.5 dakika, 141 tool çağrısı (ilk audit).
 > **Yöntem**: Statik kod analizi + canlı runtime doğrulama (psql SELECT, docker logs/ps, curl health, npx tsc --noEmit).
+> **Status legend**: 🔴 açık · 🟡 partial · ✅ kapatıldı
 
 ---
 
@@ -17,7 +18,7 @@
 | Migration drift için (a)+(b) eşit ağırlık | Sadece **(a) — FS'e migration directory geri ekle**. (b) `_prisma_migrations` satır silme + DDL re-apply önerilmiyor — Prisma internal state'i bozar. |
 | OPTA burst için "caller-bazlı rate limit ilk aksiyon" | Rate limit **son aksiyon**. Doğru sıra: (1) idempotent UPSERT audit dedupe → (2) observability/alert → (3) gerekirse limit. Trusted endpoint'te sert limit gerçek güncellemeleri kaçırır. |
 | Soft-delete P2 | **P1** — semantic karar yokluğu yeni endpoint'lerde tutarsızlık üretir, borç büyür. |
-| "4 katman Admin bypass tutarlı" | "Centralized bypass mekanizmaları çalışıyor; auto-augment kaldırıldı **ama UI'da kalıntı dead code (`schedule-list:2070`) ve PERMISSIONS convention'da kısmi tutarsızlık var**." |
+| "4 katman Admin bypass tutarlı" | "Centralized bypass mekanizmaları çalışıyor; auto-augment kaldırıldı. UI'daki `schedule-list:2070` dead code da `feed1d3` ile ✅ temizlendi. PERMISSIONS convention'da kısmi tutarsızlık (LOW-2) duruyor." |
 
 ---
 
@@ -27,9 +28,9 @@
 |---|---|---|
 | 🔴 **CRITICAL (code)** | **0** | Auth bypass, secret leak, race kanıtı, production-stop sınıfı bulgu yok |
 | 🟠 **OPS-CRITICAL aday** | **1** | Off-host backup yok — partial mitigation (local volume backup var, host failure'da kaybolur) |
-| 🟠 **HIGH** | **3** | Migration drift; doc drift; OPTA League upsert burst |
-| 🟡 **MEDIUM** | **5** | Soft-delete filter; redundant GiST; orphan ports; audit growth; canEdit reactive değil |
-| 🟢 **LOW** | **4** | Auto-augment dead code; PERMISSIONS namespace; `as any` (audit plugin); console.* (kabul edilebilir) |
+| 🟠 **HIGH** | **3** (1 🟡 partial + 2 🔴) | Migration drift (FS-name 🟡 closed, baseline-absent 🔴); doc drift 🟡 partial; OPTA League upsert burst 🔴 |
+| 🟡 **MEDIUM** | **4 🔴 + 1 ✅** | Soft-delete filter; redundant GiST; orphan ports; audit growth. ~~MED-005 canEdit reactive~~ ✅ kapatıldı (`feed1d3`) |
+| 🟢 **LOW** | **3 🔴 + 1 ✅** | PERMISSIONS namespace; `as any` (audit plugin); console.* (kabul edilebilir). ~~LOW-1 auto-augment dead code~~ ✅ kapatıldı (`feed1d3`) |
 
 **En yüksek 3 risk** (önceliklendirilmiş):
 1. **Prisma migration drift** — DB'de 27 finished migration, FS'te 23 → 4 migration DB-only. DR/staging/CI senaryolarında kırılır.
@@ -37,12 +38,12 @@
 3. **Doc drift** — README + NOTES_FOR_CODEX RBAC ve migration count tutarsız. AI ajanları/yeni developer'lar için aktif yanlış-yönlendirme riski.
 
 **Cross-cutting temalar**:
-- **Doc-code drift**: 2026-05-01 RBAC refactor kod tarafında temiz; docs paragrafların yarısı eski "Admin → SystemEng auto-augment" modelinden kalıntı.
-- **Soft-delete tutarsızlığı**: 5+ tabloda `deleted_at` kolonu var, sadece `weekly_shifts` queries'te filter var. Diğerlerinde kolon görmezden geliniyor.
-- **Audit log büyüme dinamikleri**: 90-gün retention iyi tasarlanmış ama burst senaryolarında throttle/dedupe yok. 2026-04-30'da 9.5 saatlik (00:00–09:30) bir burst gerçekleşmiş — 205,022 satır (toplam audit_logs'un %36'sı), root cause unknown.
+- **Doc-code drift**: 2026-05-01 RBAC refactor kod tarafında temiz; `feed1d3` ile docs'un büyük kısmı temizlendi ama bazı paragraflar (README:304, 343; ops/NOTES_FOR_CODEX.md:86; ops/README.md:154, 165) hâlâ eski "Admin → SystemEng auto-augment" modelinden kalıntı.
+- **Soft-delete tutarsızlığı**: **21 tabloda** `deleted_at` kolonu var (live: `COUNT(DISTINCT) → 21`), sadece `shift_assignments` model'i için (`weekly-shift.routes.ts:144`) filter kullanılıyor. Diğer 20 tabloda kolon görmezden geliniyor.
+- **Audit log büyüme dinamikleri**: 90-gün retention iyi tasarlanmış ama burst senaryolarında throttle/dedupe yok. 2026-04-30'da 9.5 saatlik (00:00–09:30) bir burst gerçekleşmiş — 205,022 satır (toplam audit_logs'un %36'sı), root cause unknown. **Update**: `0d67c6e` ile P2002 retry desenli idempotent dedupe kuruldu (HIGH-003 tarafı kısmen kapatıldı).
 - **Race conditions kapatılmış**: DB-level GiST exclusion + P2002 catch ile defense-in-depth. Yapısal güvende.
 
-**Sistem genel sağlığı**: **Production-ready** — *ancak host kaybı senaryosu hariç*. Tüm container'lar healthy, type-check temiz, OPTA cascade ve recording port normalize sağlam, optimistic locking doğru uygulanmış. Kritik kod gap'i yok; HIGH bulgular operasyonel hijyen + doc kalitesi düzeyinde.
+**Sistem genel sağlığı**: **Production-ready** — *ancak host kaybı senaryosu hariç*. Kritik servisler healthy (api/web/postgres/keycloak/rabbitmq/postgres_backup/opta_watcher). `bcms_worker`, `bcms_grafana`, `bcms_prometheus`, `bcms_mailhog` container'ları "Up" ama healthcheck tanımsız (Section 8 #7). Type-check temiz, OPTA cascade ve recording port normalize sağlam, optimistic locking doğru uygulanmış. Kritik kod gap'i yok; HIGH bulgular operasyonel hijyen + doc kalitesi düzeyinde.
 
 ---
 
@@ -123,64 +124,54 @@ Bu iş **ayrı bir tasarım dokümanı + ayrı PR** olarak ele alınmalı, mevcu
 
 **Lokasyon**: `apps/api/prisma/migrations/` ve `_prisma_migrations` tablosu
 
-**Kanıt** (psql ve `ls`):
-```
-DB'de 27 finished migration; filesystem'de 23 (migration_lock.toml hariç).
-DB'de var ama FS'te yok:
-  20260427000000_add_shift_assignments
-  20260427003000_fix_indexes_and_cleanup
-  20260427160000_add_fks_indexes_cascade_timestamptz
-  20260428000000_manual_schema_sync
-```
+✅ **FS-name drift bölümü `05829f8` ile kapatıldı** (live verify: FS 27 = DB 27). Aşağıdaki orijinal kanıt + (a)/(b) reçetesi tarihsel kayıt için tutuldu — **canonical guidance yukarıda (line 102-115)**, "ayrı tasarım dokümanı + ayrı PR" yaklaşımı geçerli. Asıl açık problem **baseline-absent** (replay equivalence), bu farklı bir konu.
 
-**Açıklama**: 4 migration DB'ye uygulanmış ama repoda yok. Aşağıdaki senaryolar kırılır:
-- `prisma migrate deploy` yeni bir ortamda (staging/restore drill) yarım state üretir
-- CI/CD pipeline migration başarısı kontrol ederse kırılır
-- Postgres backup restore + `migrate deploy` kombinasyonu başarısız olur (zira backup zaten son şemada, FS'teki migration'lar hash check'i kalifiye etmez)
+<details>
+<summary>📜 Eski snapshot — FS-name drift (kapatıldı `05829f8`)</summary>
 
-**Etki**: Mevcut production canlı sistemde belirgin bir sorun yok. DR ve env-replication senaryolarında kırılır.
+**Eski kanıt** (commit `05829f8` öncesi, şu an stale):
+- DB'de 27 finished migration, FS'te 23 (eski sayım — şu an FS de 27)
+- DB-only listesi: `20260427000000_add_shift_assignments`, `20260427003000_fix_indexes_and_cleanup`, `20260427160000_add_fks_indexes_cascade_timestamptz`, `20260428000000_manual_schema_sync` (hepsi şimdi FS'te)
 
-**Önerilen düzeltme** — sadece (a) yolu kabul edilir:
-1. **`prisma migrate status`** çalıştır (read-only diagnostic) ve drift'i net tanımla
-2. DB'deki bu 4 migration için DDL'i reverse-engineer et (her birinin ne yaptığını belirle — `pg_stat_user_indexes`, `\d table` vb. ile)
-3. Bu DDL'leri repoya migration directory olarak ekle: `apps/api/prisma/migrations/<timestamp>_<name>/migration.sql`
-4. `_prisma_migrations` zaten "applied" olarak işaretli olduğu için yeni migration'lar idempotent — restore drill'de "no pending migrations" döner
+**Eski "Önerilen düzeltme — sadece (a)"** (sadece FS-name drift için, replay equivalence kapsamı dışında):
+1. `prisma migrate status` ile drift'i net tanımla
+2. DB'deki 4 migration için DDL reverse-engineer
+3. Repoya migration directory ekle
+4. `_prisma_migrations` zaten "applied" → idempotent
 
-**(b) yolu önerilmiyor**: `_prisma_migrations`'tan satır silme + DDL re-apply Prisma'nın internal state'ini kontrolsüz değiştirir; production'da çok riskli.
+**(b) yolu önerilmedi**: `_prisma_migrations`'tan satır silme + re-apply Prisma internal state'ini bozar.
 
-**Doğrulama**: `npx prisma migrate status` "Database schema is up to date" mesajı ile çıkmalı, hiçbir "missing in filesystem" uyarısı kalmamalı.
+✅ Adımlar `05829f8` ile uygulandı; FS-name drift kapatıldı. Replay equivalence ayrı problem.
+
+</details>
 
 ---
 
-### HIGH-002 — Doc drift: README + NOTES_FOR_CODEX RBAC ve migration count tutarsız
+### HIGH-002 — Doc drift: README + NOTES_FOR_CODEX RBAC kalıntıları 🟡 partial
 
-**Lokasyon**:
-- `README.md:254, 270, 277-281, 288-291, 294, 310, 312, 313, 327, 328, 333, 377`
-- `ops/NOTES_FOR_CODEX.md:86, 97-110, 133, 148, 196, 354, 374, 376-377`
-- `ops/README.md:103, 406, 442`
+**Status (2026-05-01 geç saat — `feed1d3` sonrası live re-verify)**: 🟡 **Partial fix**. `feed1d3` doc drift'in büyük kısmını kapattı; kalan kalıntılar aşağıda. **Orijinal raporun line ref'leri post-`feed1d3` kaymış**, aşağıdaki liste güncel grep sonuçları.
 
-**Kanıt** (örnekler):
+**Kalan gerçek drift** (live grep, 2026-05-01 son verify):
 ```
-README.md:254  "Admin ve SystemEng sistem genelinde tam yetkili kabul edilir."
-            ❌ Gerçek: 2026-05-01 commit b3171d9 + 0220b3e ile sadece Admin tam yetkili.
+README.md:304   "auth.ts plugin Admin token'ında SystemEng auto-augment yapıyor"
+              ❌ Şu anki zaman, yanlış. Kaldırıldı (`0220b3e`); auth.ts:101 sadece comment.
 
-README.md:294  "auth.ts plugin Admin token'ında SystemEng auto-augment yapıyor"
-            ❌ Gerçek: auto-augment kaldırıldı (commit 0220b3e); auth.ts:101-104 sadece comment.
+README.md:343   "StudyoSefi, SystemEng ve Admin tam yetkili"
+              ❌ Eski wording. rbac.ts'e göre reports.{read,export} = ['Admin'] only.
 
-README.md:288-291  "Kullanıcılar / Ayarlar / Audit / Dökümanlar = Admin, SystemEng"
-            ⚠️ Yarı doğru: bu sekmelerde Admin requireGroup bypass'la geçer; SystemEng explicit listelenir.
+ops/NOTES_FOR_CODEX.md:86  "Admin ve SystemEng sistem genelinde tam yetkili kabul edilir."
+              ❌ Yanlış. Sadece Admin tam yetkili (`b3171d9` + `0220b3e`).
 
-README.md:377  "toplam migration sayısı: 21"
-            ❌ Gerçek: FS'te 23, DB'de 27 (HIGH-001).
-
-NOTES_FOR_CODEX.md:97-110  "schedules.add: ['SystemEng', 'Booking', ...]"
-            ❌ Gerçek (rbac.ts): ['Booking', 'YayınPlanlama'] — SystemEng yok.
-
-ops/README.md:406  "auth.ts:101-102 Admin token'ı SystemEng auto-augment"
-            ❌ Gerçek: kaldırıldı.
+ops/README.md:154, 165  "Admin/SystemEng tüm gruplarda tam yetkilidir"
+              ❌ Eski wording.
 ```
 
-**Açıklama**: 2026-05-01 RBAC refactor sırasında kod doğru yazıldı, fakat doc dosyaları kısmen güncellendi. Aynı dosya içinde hem yeni hem eski model paragrafları ardışık duruyor (README:266 yeni vs :254/:294 eski). NOTES_FOR_CODEX.md Yetki Matrisi (97-110) tamamen eski.
+**`feed1d3` ile zaten kapatılan / doğru olan paragraflar** (orijinal raporun bahsettiği ama düzeltilmiş yerler):
+- `README.md:5, 274, 307` → yeni doğru içerik
+- `ops/NOTES_FOR_CODEX.md:103` → "auto-augment **kaldırıldı**" (doğru)
+- `ops/README.md:3, 411` → yeni doğru içerik
+
+**Açıklama**: 2026-05-01 RBAC refactor sırasında kod doğru yazıldı; `feed1d3` ile docs paragraflarının çoğu güncellendi ama 4 dosyada toplam ~5-6 paragraf hâlâ eski wording'i içeriyor.
 
 **Etki**: 
 - AI ajanları (Codex/Claude) doc'tan PERMISSIONS okursa SystemEng'e yanlış yetki ekleyebilir
@@ -416,44 +407,38 @@ grep -n "deletedAt\|deleted_at" apps/api/src
 
 ---
 
-### MED-005 — `studio-plan.component.ts canEdit` reactive değil
+### MED-005 — `studio-plan.component.ts canEdit` reactive değil ✅ KAPATILDI
 
-**Lokasyon**: `apps/web/src/app/features/studio-plan/studio-plan.component.ts:136-141`
+**Status**: ✅ **Kapatıldı (`feed1d3`)**.
 
-**Kanıt**:
-```ts
-readonly canEdit = computed(() => {
-  const parsed = this.keycloak.getKeycloakInstance().tokenParsed as { groups?: string[] } | undefined;
-  ...
-});
-```
+**Çözüm uygulandı** (live verify):
+- `studio-plan.component.ts:139` → `private readonly _userGroups = signal<string[]>([]);`
+- `studio-plan.component.ts:141` → `canEdit = computed(() => { const userGroups = this._userGroups(); ... });` (signal-reactive)
+- `studio-plan.component.ts:226` → ngOnInit içinde `this._userGroups.set(parsed?.groups ?? []);`
 
-**Açıklama**: `tokenParsed` Keycloak instance'ından okunur ama signal değil. `computed()` reactive izleyemez. Token refresh sonrasında groups değişirse component re-render etmez.
+`app.component.ts` pattern'iyle uyumlu hâle getirildi. Token refresh + signal güncellemesi sonrasında `canEdit()` doğru re-evaluate olur.
 
-**Etki**: Pratik olarak token refresh sırasında groups claim'i değişmez. Risk minimal.
-
-**Öneri**: Diğer component'lerle uyumlu signal pattern (örn. `app.component.ts` ngOnInit'te `_userGroups.set()` ile signal'e atıyor). Bu pattern'i studio-plan'a da uygula.
+**Eski açıklama** (tarihsel kayıt): `tokenParsed` Keycloak instance'ından okunduğu için `computed()` reactive izleyemiyordu; risk pratikte minimaldi (token refresh'te groups claim'i değişmez), düzeltme defensive idi.
 
 ---
 
 ## 5. LOW / Cosmetic
 
-### LOW-1 — `schedule-list.component.ts:2070` Admin auto-augment dead code
+### LOW-1 — `schedule-list.component.ts:2070` Admin auto-augment dead code ✅ KAPATILDI
 
-**Kanıt**:
+**Status**: ✅ **Kapatıldı (`feed1d3`)**.
+
+**Çözüm uygulandı** (live verify): Mevcut kodda `schedule-list.component.ts:2073` → `this._userGroups.set(groups);` (temiz). Admin → SystemEng augment satırları silindi. `hasGroup()` helper (line 36-39) Admin short-circuit'ı zaten yetkiyi karşılıyor; augment hiçbir davranış kazandırmıyordu, dead code temizlendi.
+
+**Eski kanıt** (tarihsel kayıt — `feed1d3` öncesi):
 ```ts
-// app.component.ts:161 commit 0220b3e ile auto-augment kaldırıldı
-// Ama schedule-list.component.ts:2070 hâlâ:
+// schedule-list.component.ts:2070 (eski):
 this._userGroups.set(
   groups.includes(GROUP.Admin)
     ? Array.from(new Set([...groups, GROUP.SystemEng]))
     : groups
 );
 ```
-
-**Açıklama**: Component-local userGroups signal'inde Admin → SystemEng augment hâlâ duruyor. `hasGroup()` helper (line 36-39) Admin için zaten short-circuit yapıyor → bu augment hiçbir yetki kazandırmıyor. **Dead code**, kaldırılabilir. Commit `0220b3e` ile uyumsuz — refactor eksik kaldı.
-
-**Öneri**: Satırı `this._userGroups.set(groups);` olarak sadeleştir. Hiçbir davranış değişmez.
 
 ### LOW-2 — `users.routes.ts` PERMISSIONS namespace overload
 
@@ -577,38 +562,40 @@ docker exec -i bcms_postgres psql -U bcms_user -d bcms -c "..."
 - **Auth**: Centralized bypass mekanizmaları çalışıyor — `requireGroup` `isAdminPrincipal` + `AuthGuard` + `visibleNavItems` filter + `hasGroup()` helper. `requireGroup` her route'ta uygun. `SKIP_AUTH` production'da iki yerde block edilmiş.
 - **Type-check**: API + Web tertemiz (tsc --noEmit exit 0).
 - **Docker compose**: tüm servisler healthy, port bindings güvenli (sadece web/Keycloak public, gerisi 127.0.0.1).
-- **Postgres backup**: çalışıyor, restore drill geçmiş, rotation aktif (off-host kopya hariç).
+- **Postgres backup**: çalışıyor, rotation aktif (off-host kopya hariç). `infra/postgres/RESTORE.md` runbook olarak dokümante edilmiş; **fiili drill execution kanıtı bu audit kapsamında bulunmadı** — drill yapılmış mı belirsiz.
 
 ### Sistem zayıf olduğu yerler
 
-- **Doc drift** — kod doğru ama docs yanlış-yönlendirme riski (özellikle NOTES_FOR_CODEX AI ajanları için)
-- **Migration drift** — DR/CI senaryolarında kırılır
-- **Off-host backup yok** — host failure → tüm veri kayıp
-- **Audit log inflation potansiyeli** — burst senaryoları için throttle/dedupe yok
-- **Soft-delete tutarsızlığı** — net strateji eksik, borç büyür
-- **UI dead code kalıntıları** — `schedule-list:2070` Admin auto-augment dead
+- **Doc drift** 🟡 partial — `feed1d3` çoğunu kapattı, 4 dosyada hâlâ eski wording (HIGH-002 yenilenmiş line listesi)
+- **Migration baseline-absent** 🔴 — FS-name drift kapatıldı; standalone replay imkansız (DR/CI senaryolarında)
+- **Off-host backup yok** 🔴 — host failure → tüm veri kayıp
+- **Audit log inflation potansiyeli** 🟡 — `0d67c6e` ile dedupe kuruldu, observability/alert eksik
+- **Soft-delete tutarsızlığı** 🔴 — schema redesign kapsamı, ayrı PR (MED-001)
+- **Restore drill kanıtsız** 🔴 — runbook var, fiili execution kanıtlanmadı
 
 ### Önceliklendirilmiş Aksiyon Planı
 
-| Öncelik | Aksiyon | Effort |
+| Öncelik | Aksiyon | Status |
 |---|---|---|
-| ~~P0~~ ✅🟡 | ~~HIGH-001: Migration drift çözümü~~ — **PARTIAL** (commit `05829f8`): FS adı/checksum hizalandı; `shift_assignments` real DDL; 3 placeholder no-op. **Replay equivalence kanıtlanmadı** — clean-room verify follow-up. | 1-2 saat |
-| **P0** | HIGH-002: README + ops/NOTES_FOR_CODEX + ops/README RBAC + migration count düzeltme | 30 dk |
-| **P0** | OPS-CRITICAL aday: Off-host backup kararı (rsync/S3/borg seçimi + ilk implementasyon) | 1-3 saat |
-| **P1** | HIGH-003 (1): Idempotent UPSERT audit dedupe (League upsert için) | 2 saat |
-| **P1** | HIGH-003 (2): Observability — Prometheus opta_sync metrics + alert | 1-2 saat |
-| **P1** | MED-001: Soft-delete strategy net karar (drop kolon veya filter ekle) | 2-3 saat |
-| **P1** | LOW-1: schedule-list:2070 dead code sil | 5 dk |
-| **P1** | MED-005: studio-plan canEdit signal pattern'e dönüştür | 30 dk |
-| **P2** | MED-002: Redundant GiST drop migration (HIGH-001 sonrası) | 30 dk |
-| **P2** | MED-003: 3 orphan ingest_plan_items satırı temizle | 15 dk |
-| **P2** | API log retention (Loki/Promtail) — gelecek burst post-mortem için | 1-2 saat |
+| ~~P0~~ | ~~HIGH-001: FS-name drift~~ | ✅ `05829f8` |
+| **P0** 🔴 | HIGH-001: Baseline-absent — ayrı tasarım dokümanı + clean-room kanıt PR | open, ayrı PR |
+| **P0** 🟡 | HIGH-002: Kalan 4 dosya doc drift (README:304/343, NOTES_FOR_CODEX:86, ops/README:154/165) | partial, ~15 dk |
+| **P0** 🔴 | OPS-CRITICAL aday: Off-host backup (S3-compatible PR `9925422` requirements) | open, credential bekliyor |
+| **P1** 🟡 | HIGH-003: League dedupe (`a0946c4`) + P2002 retry (`0d67c6e`) | partial, observability eksik |
+| **P1** 🔴 | HIGH-003 observability: Prometheus opta_sync metrics + alert | open, 1-2 saat |
+| **P1** 🔴 | MED-001: Soft-delete schema redesign — ayrı PR (geniş kapsam) | open |
+| ~~P1~~ | ~~LOW-1: schedule-list:2070 dead code~~ | ✅ `feed1d3` |
+| ~~P1~~ | ~~MED-005: studio-plan canEdit signal pattern~~ | ✅ `feed1d3` |
+| **P2** 🔴 | MED-002: Redundant GiST drop migration (baseline-absent sonrası) | open |
+| **P2** 🔴 | MED-003: 3 orphan ingest_plan_items temizle (54, 107, 108) | open, audit-traced maintenance pattern bekliyor |
+| **P2** 🔴 | Restore drill execution + log/kanıt | open |
+| **P2** 🔴 | API log retention (Loki/Promtail) — gelecek burst post-mortem için | open |
 | **P3** | Follow-up'lar (OPTA drift scan, Tekyon /channels UX, healthcheck'ler) | proje düzeyinde |
 
 ### Final Hüküm
 
-**Production-ready, host kaybı senaryosu hariç.** Kod düzeyinde kritik gap yok. Operasyonel hijyen + doc kalitesi düzeyinde 3 HIGH bulgu var (P0 olarak ele alınmalı). Bir adet OPS-CRITICAL aday (off-host backup) — partial mitigation, full coverage gerekiyor. Audit refactor doğru ve tamamlanmış; tek eksik doc senkronizasyonu ve UI dead code temizliği.
+**Production-ready, host kaybı senaryosu hariç.** Kod düzeyinde kritik gap yok. Operasyonel hijyen + doc kalitesi düzeyinde HIGH bulgular kısmen kapatıldı (`feed1d3`, `05829f8`, `a0946c4`, `0d67c6e`). Açık kalan asıl problemler: **migration baseline-absent** (ayrı tasarım PR'ı), **off-host backup** (credential bekliyor — `9925422` requirements doc), **soft-delete schema redesign** (ayrı PR). UI dead code (LOW-1) ve canEdit reactive (MED-005) `feed1d3` ile temizlendi.
 
 ---
 
-*Bu rapor read-only modda hazırlandı. Hiçbir kod, DB, Docker veya doc dosyası değiştirilmedi. Aksiyon kararları kullanıcıya bırakıldı.*
+*İlk audit fazı (2026-05-01) read-only modda hazırlandı. Doküman sonradan iteratif olarak güncellendi: kapatılan bulgular ✅ ile işaretlendi, line ref'ler tazelendi, iç tutarsızlıklar düzeltildi. Aksiyon kararları kullanıcıya bırakılmaya devam ediyor.*
