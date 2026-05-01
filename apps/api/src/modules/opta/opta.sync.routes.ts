@@ -66,6 +66,39 @@ const EMPTY_RESPONSE: SyncResponse = {
   cascadeError: null,
 };
 
+/** P2002 sadece `leagues.code` kaynaklı ise true. Concurrent OPTA sync
+ *  ikinci tx'in `findMany` → `create` arasındaki pencerede aynı `code`'u
+ *  insert ettiyse retry doğru aksiyon. Match.create'in P2002'sini (matchUid)
+ *  retry etmek gereksiz double-work + log spam üretirdi — bu yüzden filter dar. */
+function isLeagueCodeUniqueConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (error.code !== 'P2002') return false;
+  const target = (error.meta as { target?: unknown } | undefined)?.target;
+  if (Array.isArray(target)) return target.includes('code');
+  if (typeof target === 'string') return target === 'code' || target.includes('leagues_code');
+  return false;
+}
+
+/** Yalnızca League.code unique conflict için outer retry. Inline catch + continue
+ *  PG aborted-tx state'i nedeniyle güvenilir değil; tüm $transaction'ı tekrarla.
+ *  Max 2 deneme yeterli — concurrent insert ikinci attempt'te `findMany`'da görülür. */
+async function withLeagueCreateConflictRetry<T>(
+  operation: () => Promise<T>,
+  log: { warn: (obj: unknown, msg: string) => void },
+  maxAttempts = 2,
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isLeagueCodeUniqueConflict(error) || attempt === maxAttempts) throw error;
+      const meta = (error as Prisma.PrismaClientKnownRequestError).meta;
+      log.warn({ attempt, target: meta?.target }, 'opta sync league code conflict, retrying transaction');
+    }
+  }
+  throw new Error('League create conflict retry exhausted');
+}
+
 export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Reply: SyncResponse | { error: string; issues?: unknown } }>(
     '/sync',
@@ -108,7 +141,8 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      const result = await fastify.prisma.$transaction(async (tx) => {
+      const result = await withLeagueCreateConflictRetry(
+        () => fastify.prisma.$transaction(async (tx) => {
         const leagueMap = new Map<string, number>(); // compId → leagueId
 
         // ── 1a. Mevcut league'leri toplu çek (audit log dedupe için) ──
@@ -211,7 +245,9 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
         ]);
 
         return { inserted: toInsert.length, updated: toUpdate.length, unchanged, toUpdate };
-      });
+      }),
+        fastify.log,
+      );
 
       // ── Schedule cascade ────────────────────────────────────────────────
       // OPTA tx commit'i sonrası best-effort cascade. Ana transaction dışında
