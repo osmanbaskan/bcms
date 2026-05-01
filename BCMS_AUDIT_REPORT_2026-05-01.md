@@ -75,10 +75,12 @@ Hiçbir auth bypass, açık endpoint, secret leak, race condition kanıtı, veya
 
 **Clean-room replay sonucu (2026-05-01)**:
 ```
-Clean PG container yarat → btree_gist extension → migrate deploy
+Clean PG container yarat → btree_gist extension MANUEL inject → migrate deploy
 Result: FAIL on first migration (20260416000000_add_matches)
 Error: relation "schedules" does not exist
 ```
+
+⚠️ **Test kalitesi notu**: `btree_gist` extension migration içinde değil, manuel olarak clean PG container'a inject edildi. Eğer fresh replay gerçekten standalone desteklenecekse, extension `CREATE EXTENSION IF NOT EXISTS btree_gist` adımı bir migration içinde olmalı. Manuel injection testi zayıflatıyor — gerçek fresh env'de extension yok varsayımıyla replay denenmeli.
 
 **Açıklama**: 
 - 27 FS / 27 DB sembolik eşleşmesi tam (commit `05829f8` sonrası)
@@ -92,25 +94,31 @@ Error: relation "schedules" does not exist
 | Senaryo | Etki |
 |---|---|
 | Mevcut prod çalışıyor mu? | ✅ Evet (DDL'ler zaten DB'de) |
-| Postgres backup → restore (DR) | ✅ Safe (pg_dump full schema içerir, replay gerekmez) |
+| Postgres backup → restore (DR) | 🟡 Code-level safe (pg_dump full schema içerir, replay gerekmez) — **DR güvencesi ancak off-host kopya + restore drill ile söylenebilir**. Local volume'daki backup host kaybında prod'la birlikte gider. Off-host yokken "DR safe" denmez. |
 | CI/CD clean-DB build | ❌ Kırılır (replay fail) |
 | Yeni dev env "fresh setup" | ❌ Kırılır (replay fail) |
 | Staging environment provisioning | ❌ Kırılır |
 
-**Doğru çözüm** (büyük iş, ayrı PR):
-1. Production'dan `pg_dump --schema-only` ile baseline schema dump al
-2. Yeni baseline migration olarak repoya koy: `apps/api/prisma/migrations/00000000000000_baseline/migration.sql`
-3. Eski 27 migration'ı archive'a taşı (`apps/api/prisma/migrations/_archive/`)
-4. `_prisma_migrations` tablosunu yeniden init et (riskli, prod'a dokunur)
-5. Yeni baseline'ı `migrate resolve --applied` ile işaretle
+**Doğru çözüm yönü (ayrı design + clean-room kanıt PR'ı gerektirir — bu rapor sadece problem tanımı)**:
 
-**Geçici durum (kabul edilebilir)**: DR mevcut postgres_backup ile zaten safe. CI/CD ve fresh dev env için workaround: `pg_dump --schema-only` çıktısını `seed.sql` olarak elden uygulanabilir.
+⚠️ Aşağıdaki adım listesi **reçete değil yön**. Naive uygulama (örn. `pg_dump --schema-only` → `000_baseline`) clean-room replay'de duplicate constraint / index / sequence hataları üretir, çünkü mevcut FS migration'ları aynı tabloları yeniden ALTER ediyor. Doğru çözüm:
+
+1. Production'dan schema dump alma stratejisi (hangi flag'ler, hangi sıra) **clean-room PG'de fiilen test edilmeli**
+2. Mevcut 27 FS migration'ından hangileri archive'a taşınacak, hangileri baseline ile çakışmayan increment olarak kalacak — dosya bazında karar
+3. `_prisma_migrations` tablosu re-init stratejisi prod'a dokunur — staging'de tam dry-run gerekir
+4. Tüm akış clean-room'da **ucundan ucuna replay başarılı** kanıtlanmadan prod'a uygulanmaz
+
+Bu iş **ayrı bir tasarım dokümanı + ayrı PR** olarak ele alınmalı, mevcut audit fix akışına dahil edilmemeli.
+
+**Geçici durum**: 
+- DR güvencesi off-host backup + restore drill ile sağlanmalı (OPS-CRITICAL aday — yukarı bakın)
+- CI/CD ve fresh dev env için workaround: `pg_dump --schema-only` çıktısını `seed.sql` olarak elden uygulanabilir, ama bu **kalıcı çözüm değil**.
 
 **Eski "PARTIAL FIX" notları (commit `05829f8`)**:
 - ✅ FS klasör adları `_prisma_migrations` satırlarıyla eşleşti (4 yeni directory)
 - ✅ `prisma migrate deploy` checksum mismatch atmıyor (mevcut prod'da)
 - ✅ `shift_assignments` için gerçek DDL (replay'de o adımdan sonra çalışır eğer baseline varsa)
-- ⚠️ 3 migration placeholder no-op
+- ⚠️ 3 migration placeholder **no-op** — bu dosyalar `SELECT 1;` içerir, **gerçek schema değişikliklerini içermez**. Sadece `_prisma_migrations` tablosundaki "applied" kayıtları için bookkeeping placeholder'dır. **Yeni env provisioning için GÜVENİLMEZ**: replay edildiğinde DDL uygulanmaz, sadece migration entry'si işaretlenir. Fresh DB kurulumunda eksik index/constraint/cascade ile kalırsınız. Sadece mevcut prod DB'de Prisma'nın "schema in sync" demesi için var.
 - ❌ Replay equivalence: **standalone replay imkansız** (baseline absent)
 
 **Lokasyon**: `apps/api/prisma/migrations/` ve `_prisma_migrations` tablosu
@@ -241,6 +249,13 @@ Saatlik breakdown (2026-04-30):
 2. **Observability + alert** (görünürlük): Prometheus metric ekle — `opta_sync_league_upserts_total` ve saatlik diff. Alert: saatlik delta > N geçerse Slack/email.
 3. **Caller-bazlı rate limit** (son seçenek, dikkatli): Yalnızca (1) ve (2) yetersiz kalırsa. Bearer token veya x-real-ip ile keylenen sınır. Sıkı limit gerçek güncellemeleri kaçırma riski taşıdığı için yumuşak başlanmalı (warn-only ilk hafta).
 
+⚠️ **Race condition notu (dedupe implementasyonu için)** — commit `a0946c4` `findMany` → `create`/`update` deseni kullanıyor (upsert yerine, audit dedupe için). Bu desen concurrent OPTA sync'lerde race açar:
+- T1: `findMany` → `code` kaydını bulmaz → `create` çağıracak
+- T2: aynı anda `findMany` → bulmaz → `create` çağıracak
+- T1 commit eder, T2 unique constraint hata atar → P2002
+
+Çözüm: `create` çağrısını `try/catch` ile sar, P2002 yakalanırsa `findUniqueOrThrow` yapıp `leagueMap.set(compId, existing.id)` ile haritayı doldur. Aksi halde sonraki match.create'lerde `leagueId` undefined kalır → cascade hata. Bu retry pattern dedupe PR'ının zorunlu parçasıdır.
+
 **API log retention öneri**: Loki/Promtail veya docker logging driver (json-file rotation) — gelecek burst'leri post-mortem yapabilmek için.
 
 **Doğrulama**: Aynı sync 100 kez ardışık çağrıldığında League satırları için audit_logs sayısı ilk sync'ten sonra sabit kalmalı (0 yeni satır).
@@ -288,14 +303,24 @@ sadece ShiftAssignment model'inde @map("deleted_at") + camelCase
 deletedAt kullanılıyor.
 ```
 
-**Hard delete migration kapsam (adım 4 için)**:
-1. `weekly-shifts/weekly-shift.routes.ts:144` filter kaldır → servis hard delete'e geç
-2. `schedules.id=32` ya restore (eğer kullanıcı hatası ise) ya hard delete (şu an ölü kayıt)
-3. Tüm 21 tablodan `deleted_at` kolonu DROP (migration)
-4. Prisma schema'dan tüm `deleted_at` / `deletedAt` field tanımları kaldır
-5. `shift_assignments` modelinden `deletedAt` field'ı kaldır + servis kodu güncellemesi
+**Kapsam revizyonu**: 21 tabloda kolon DROP işlemi başlangıçta "30 dk hard delete" olarak değerlendirildi — yanlış değerlendirme. Doğru kapsam:
 
-⚠️ **Bu adım prod DB'ye dokunur** — kullanıcı onayı bekleniyor (adım 4).
+⚠️ **Bu schema redesign seviyesinde iş** — küçük bir migration değil. Kontrol edilmesi gerekenler:
+- Prisma schema 21 model field değişikliği
+- Raw SQL SELECT'ler (raporlar, audit serializer, import/export)
+- Mevcut indexes ve partial unique constraints (`deleted_at IS NULL` partial index var mı?)
+- FK behavior — soft-delete'i CASCADE/RESTRICT bağlamında etkileyen bir yer var mı?
+- Audit serializer (`audit.ts`) deletedAt field'ı how serializing
+- 21 tabloda fiili soft-deleted satır SADECE 1 (schedules.id=32) — 20 tablo zaten boş, ama kolonlar drop edilince schema migration replay edilince eski snapshot'larla uyumsuzluk
+
+**Bu yüzden öneri**: 
+1. **Önce mini-karar**: `schedules.id=32` restore mi hard delete mi? (ayrı kullanıcı kararı, izole iş)
+2. **Sonra ayrı PR** olarak schema redesign — kapsam geniş, hızlı PR olarak yapılmaz, ayrı tasarım + review + staging'de test gerektirir
+3. `weekly-shifts/weekly-shift.routes.ts:144` filter kaldırma — bu adım da schema redesign PR'ında, izole değil
+
+**Eski tahmin yanlış**: "P1, 2-3 saat" → Gerçek: **schema redesign, ayrı PR, kapsam geniş**.
+
+⚠️ **Bu adım prod DB'ye dokunur** — kullanıcı onayı bekleniyor.
 
 **Eski lokasyon**: 
 - `apps/api/src/modules/schedules/schedule.service.ts:48-86, :88-99`
