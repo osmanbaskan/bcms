@@ -351,19 +351,26 @@ grep -n "deletedAt\|deleted_at" apps/api/src
 
 ### MED-003 — 3 ingest_plan_items satırı port atamasız
 
-**Lokasyon**: DB veri kalıntısı (recording_port normalize migration sonrası)
+**Status (2026-05-01 geç saat — Adım 6a bağlantı kontrolü tamam)**: 🟢 **Tamamen orphan — silmek güvenli**
 
-**Kanıt**:
-```
-psql:
-  id=54   source_key='manual:2026-04-25:810:930:1777083508042'      status=WAITING port_count=0
-  id=107  source_key='ingest-plan:2026-04-26:870:990:1777153809824' status=WAITING port_count=0
-  id=108  source_key='ingest-plan:2026-04-26:870:990:1777153810664' status=WAITING port_count=0
-```
+**3 orphan satır detay**:
+| id | gün | saat | tip | not | yaratılış |
+|---|---|---|---|---|---|
+| 54 | 2026-04-25 | 13:30-15:30 | manual | - | 02:18:28 |
+| 107 | 2026-04-26 | 14:30-16:30 | ingest-plan | yedek | 21:50:07.067 |
+| 108 | 2026-04-26 | 14:30-16:30 | ingest-plan | - | 21:50:07.907 |
 
-**Açıklama**: Recording port normalize migration (20260430140000) replace pattern'i sırasında bir kayıt eski `recording_port=NULL` durumda olabilir. Yeni kod (`PUT /plan/:sourceKey`) port assignment için plannedStart+End non-null + recordingPort non-empty zorunlu kılıyor. Bu 3 kayıt geçişten kalmış.
+**Bağlantı kontrolü (live psql, 0 hit her tabloda)**:
+- `ingest_jobs.job_id` → 0 satır (job_id zaten NULL)
+- `qc_reports` → 0 satır
+- `incidents.metadata.sourceKey` → 0 satır
+- `ingest_plan_item_ports` → 0 satır
 
-**Öneri**: Manuel port ata veya orphan-cleanup migration ile temizle. Schema'ya göre legitimate (ports nullable design); production etkisi minimal (3 satır, status=WAITING). UI'da nasıl görünüyor doğrulanmalı (form muhtemelen "kayıt yeri belirsiz" gösterir).
+**Açıklama**: 107 ve 108 aynı gün/saat 840ms farkla yaratılmış; muhtemelen UI'da double-click veya eski "yedek" pattern artığı. 54 tek başına manual entry. Hiçbir downstream sistem bu satırlara referans vermiyor.
+
+**Adım 6b için karar**: Cascade etki yok, hard delete güvenli. ⚠️ **Prod DB'ye dokunur — kullanıcı onayı bekleniyor.**
+
+**Eski lokasyon**: DB veri kalıntısı (recording_port normalize migration sonrası)
 
 ---
 
