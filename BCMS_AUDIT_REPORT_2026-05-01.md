@@ -251,7 +251,53 @@ Saatlik breakdown (2026-04-30):
 
 ### MED-001 — Soft-delete filter eksik (P1, kapsam genişleme riski)
 
-**Lokasyon**: 
+**Status (2026-05-01 geç saat — Adım 3 inventory tamamlandı)**: 🔍 **Inventory net, hard delete kararı netleşti**
+
+**Inventory sonuçları (live psql + grep)**:
+
+**A. DB tarafı — 21 tablo `deleted_at` kolonuna sahip**:
+```
+audit_logs, bookings, broadcast_types, channels, incidents, ingest_jobs,
+ingest_plan_items, leagues, matches, qc_reports, recording_ports,
+schedules, shift_assignments, signal_telemetry, studio_plan_colors,
+studio_plan_programs, studio_plan_slots, studio_plans, teams,
+timeline_events, workspaces
+```
+
+**B. Veri durumu**:
+```
+TÜM TABLOLARDA SOFT-DELETED SATIR SAYISI: 1
+  schedules: id=32 ("Manchester United - Brentford", 2026-04-28 09:13:50.141)
+DİĞER 20 TABLO: 0 soft-deleted satır
+```
+
+**C. Kod kullanımı — sadece 1 yer aktif kullanıyor**:
+```
+[Backend]
+apps/api/src/modules/weekly-shifts/weekly-shift.routes.ts:144
+  where: { weekStart, deletedAt: null }
+  ↑ Tek aktif soft-delete pattern. Bu tablo (shift_assignments) Prisma
+  schema'da deletedAt camelCase (diğer 19 tablo snake_case deleted_at).
+
+[Frontend]
+Hiç referans yok.
+
+[Prisma schema'da]
+21 tabloda deleted_at field tanımlı (default Prisma naming) — ama
+sadece ShiftAssignment model'inde @map("deleted_at") + camelCase
+deletedAt kullanılıyor.
+```
+
+**Hard delete migration kapsam (adım 4 için)**:
+1. `weekly-shifts/weekly-shift.routes.ts:144` filter kaldır → servis hard delete'e geç
+2. `schedules.id=32` ya restore (eğer kullanıcı hatası ise) ya hard delete (şu an ölü kayıt)
+3. Tüm 21 tablodan `deleted_at` kolonu DROP (migration)
+4. Prisma schema'dan tüm `deleted_at` / `deletedAt` field tanımları kaldır
+5. `shift_assignments` modelinden `deletedAt` field'ı kaldır + servis kodu güncellemesi
+
+⚠️ **Bu adım prod DB'ye dokunur** — kullanıcı onayı bekleniyor (adım 4).
+
+**Eski lokasyon**: 
 - `apps/api/src/modules/schedules/schedule.service.ts:48-86, :88-99`
 - (Ayrıca: bookings, incidents, studio_plan_*, audit_logs — kolonlar var, filter yok)
 
