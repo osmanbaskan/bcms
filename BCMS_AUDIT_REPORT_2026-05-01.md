@@ -32,10 +32,10 @@
 | 🟡 **MEDIUM** | **4 🔴 + 1 ✅** | Soft-delete filter; redundant GiST; orphan ports; audit growth. ~~MED-005 canEdit reactive~~ ✅ kapatıldı (`feed1d3`) |
 | 🟢 **LOW** | **3 🔴 + 1 ✅** | PERMISSIONS namespace; `as any` (audit plugin); console.* (kabul edilebilir). ~~LOW-1 auto-augment dead code~~ ✅ kapatıldı (`feed1d3`) |
 
-**En yüksek 3 risk** (önceliklendirilmiş):
-1. **Prisma migration drift** — DB'de 27 finished migration, FS'te 23 → 4 migration DB-only. DR/staging/CI senaryolarında kırılır.
-2. **Off-host backup eksikliği (OPS-CRITICAL aday)** — `postgres_backup` sidecar local volume'da dump alıyor; disk/host arızası → backup da kaybolur. Yarım mitigation.
-3. **Doc drift** — README + NOTES_FOR_CODEX RBAC ve migration count tutarsız. AI ajanları/yeni developer'lar için aktif yanlış-yönlendirme riski.
+**En yüksek 3 risk** (önceliklendirilmiş, post-fix durumu):
+1. **Migration baseline-absent** 🔴 — FS-name drift `05829f8` ile kapatıldı (FS=DB=27 ✓ live verify). Asıl açık problem: `add_matches` migration'ı `schedules`/`bookings`/`leagues` tablolarına ALTER yapıyor, baseline'da yaratılmış olmaları gerekir; baseline DDL'i FS'te yok → standalone replay imkansız. DR/CI/fresh dev env senaryolarında kırılır.
+2. **Off-host backup eksikliği (OPS-CRITICAL aday)** 🔴 — `postgres_backup` sidecar local volume'da dump alıyor; disk/host arızası → backup da kaybolur. `9925422` requirements doc hazır, credential bekliyor.
+3. **Doc drift** 🟡 partial — `feed1d3` çoğunu kapattı; 4 dosyada hâlâ eski wording (README:304/343, NOTES_FOR_CODEX:86, ops/README:154/165). AI ajanları/yeni developer'lar için yanıltıcı.
 
 **Cross-cutting temalar**:
 - **Doc-code drift**: 2026-05-01 RBAC refactor kod tarafında temiz; `feed1d3` ile docs'un büyük kısmı temizlendi ama bazı paragraflar (README:304, 343; ops/NOTES_FOR_CODEX.md:86; ops/README.md:154, 165) hâlâ eski "Admin → SystemEng auto-augment" modelinden kalıntı.
@@ -68,9 +68,9 @@ Hiçbir auth bypass, açık endpoint, secret leak, race condition kanıtı, veya
 
 ## 3. HIGH Bulgular
 
-### HIGH-001 — Prisma migration baseline drift: standalone replay imkansız
+### HIGH-001 — Prisma migration baseline drift: standalone replay imkansız 🟡 partial
 
-**Status (2026-05-01 geç saat — commit `05829f8` + `01dbe76` + clean-room verify)**: 🟠 **DEEPER PROBLEM REVEALED**
+**Status (2026-05-01 geç saat — commit `05829f8` + `01dbe76` + clean-room verify)**: 🟡 **Partial** — FS-name drift ✅ kapatıldı (`05829f8`); core problem **baseline-absent** 🔴 hâlâ açık.
 
 İlk taslak audit "drift" demişti; clean-room replay ile gerçek karakter ortaya çıktı: **bu pure drift değil, baseline absent.**
 
@@ -175,20 +175,22 @@ ops/README.md:154, 165  "Admin/SystemEng tüm gruplarda tam yetkilidir"
 
 **Etki**: 
 - AI ajanları (Codex/Claude) doc'tan PERMISSIONS okursa SystemEng'e yanlış yetki ekleyebilir
-- Yeni gelen developer eski paragrafa inanırsa yanlış mental model edinir
-- 21-migration claim'i operasyon sırasında "şüpheli durum" yaratır (gerçekten ne var, ne yok)
+- Yeni gelen developer kalan eski paragraflara inanırsa yanlış mental model edinir
 
-**Önerilen düzeltme**:
-1. README + ops/README + NOTES_FOR_CODEX'te eski "Admin → SystemEng auto-augment" referanslarını sil
-2. "Admin/SystemEng tüm grupları görür" → "Admin tüm grupları görür; SystemEng kendi grubu" düzelt
-3. Migration count'u canonical sayıya update et (FS sayısı + DB drift notu HIGH-001 çözülene kadar)
-4. NOTES_FOR_CODEX'te PERMISSIONS matrisini tekrar etmek yerine `packages/shared/src/types/rbac.ts`'yi canonical kaynak olarak işaret et — drift kaynağını ortadan kaldır
+**Kalan iş** (kapatma için, ~15 dk):
+1. `README.md:304` "auth.ts plugin Admin token'ında SystemEng auto-augment yapıyor" → kaldırıldı bilgisine düzelt
+2. `README.md:343` "StudyoSefi, SystemEng ve Admin tam yetkili" → reports için Admin-only düzelt
+3. `ops/NOTES_FOR_CODEX.md:86` "Admin ve SystemEng sistem genelinde tam yetkili" → "Sadece Admin tam yetkili"
+4. `ops/README.md:154, 165` "Admin/SystemEng tüm gruplarda tam yetkilidir" → "Admin tüm gruplarda; diğer gruplar `rbac.ts` PERMISSIONS map'ine göre"
+5. (Yapısal) NOTES_FOR_CODEX'te PERMISSIONS matrisini tekrar etmek yerine `packages/shared/src/types/rbac.ts`'yi canonical kaynak olarak işaret et — drift kaynağını ortadan kaldır
 
-**Doğrulama**: Doc'taki yetki tablosu ve `rbac.ts` PERMISSIONS array'leri diff'lenince fark çıkmamalı. `ls apps/api/prisma/migrations/ | wc -l` ile doc'taki sayı eşit olmalı.
+**Doğrulama**: Yukarıdaki 4 line ref'in mevcut wording'i `rbac.ts` ile uyumlu olmalı. Migration count drift artık yok (HIGH-001 FS-name closed).
 
 ---
 
-### HIGH-003 — OPTA League upsert burst (2026-04-30 00:00–09:30): audit_logs %36'sı, burst içinde League %99.99
+### HIGH-003 — OPTA League upsert burst (2026-04-30 00:00–09:30): audit_logs %36'sı, burst içinde League %99.99 🟡 partial
+
+**Status**: 🟡 **Partial** — Idempotent dedupe ✅ (`a0946c4`); P2002 retry ✅ (`0d67c6e`); observability/alert + caller post-mortem 🔴 hâlâ açık.
 
 **Lokasyon**: `apps/api/src/modules/opta/opta.sync.routes.ts` (kod kendisi sağlam — burst kaynağı sync caller / Python watcher davranışı)
 
@@ -333,9 +335,18 @@ grep -n "deletedAt\|deleted_at" apps/api/src
 
 **Severity revision**: P2 yerine **P1** — kullanıcı feedback'i: "1 satır küçük görünebilir ama semantic karar net değilse büyür."
 
-**Öneri**: İki seçenekten birini net seç:
+⚠️ **Aşağıdaki (a)/(b) öneri "kapsam revizyonu" ile geçersiz kılındı** — yukarıdaki "schema redesign, ayrı PR" guidance canonical. (a)/(b) tarihsel kayıt için tutuldu.
+
+<details>
+<summary>📜 Eski "ikiye böl" önerisi (kapsam revizyonu öncesi)</summary>
+
+**Eski öneri**: İki seçenekten birini net seç:
 - (a) **Hard delete only**: tüm soft-delete kolonları drop (migration), `delete()` zaten hard çalışıyor
 - (b) **Universal soft-delete**: tüm modüllerde `findAll`/`findById` query'lerine `deletedAt: null` filter, ayrıca `restore()` endpoint'i
+
+Bu çerçeveleme yetersiz çünkü "schema redesign" boyutunu yansıtmıyor; ayrı PR + tasarım tartışması gerektiren iş, single-decision değil.
+
+</details>
 
 ---
 
@@ -357,11 +368,11 @@ grep -n "deletedAt\|deleted_at" apps/api/src
 **Açıklama**: İki constraint çakışıyor — `channel_id IS NULL` durumunda her ikisi de NULL'ı "not equal" sayar (GiST default), `[)` vs `()` range sınırı küçük fark ama overlap testi açısından çoğu zaman aynı sonuç. Üst üste tutmak: insert/update başına iki kez index kontrolü → ekstra DB CPU.
 
 **Öneri**: 
-1. Migration definition'larını ve order'ı verify et (HIGH-001 drift'i ile birleşir — bu migration DB-only listesinde)
+1. Migration definition'larını ve order'ı verify et (her iki migration FS'te mevcut: `20260427160000_add_fks_indexes_cascade_timestamptz` placeholder + `20260429020000_integrity_constraints`)
 2. **`[)` semantik daha sağlam** olduğu için `_no_channel_time_overlap` kalsın, eski `_no_overlap` drop edilsin
 3. **DİKKAT**: drop sırasında definition + migration order kontrolü — sadece isimden karar değil
 
-**Risk**: HIGH-001 ile bağlı — migration drift çözülmeden bu drop migration'ı eklemek state'i daha karışık hale getirir.
+**Risk**: HIGH-001 baseline-absent problem'i çözülmeden bu drop migration'ı eklemek replay senaryosunu daha karışık hale getirir (clean-room replay zaten kırık; ek ALTER eklemek ileride remediation PR'ının kapsamını büyütür).
 
 ---
 
@@ -480,17 +491,17 @@ Bug gibi görünen ama olmayanlar — gelecekteki audit'lerin tekrar tuzağa dü
 
 ---
 
-## 7. Doc Drift Detail
+## 7. Doc Drift Detail (post-`feed1d3` snapshot)
 
-(HIGH-002'de ana liste; bu bölüm ek nüans:)
+(HIGH-002'de güncel ana liste; bu bölüm ek nüans:)
 
-**Aynı dosya içinde yeni-eski karışım**:
-- `README.md` satır 254 (eski) ve 266 (yeni) ardışık duruyor — okuyucu hangisi canonical bilemez
-- `ops/NOTES_FOR_CODEX.md` satır 97-110 (eski tablo) ve 196 (yeni RBAC bölümü) çelişiyor
+**`feed1d3` ile yapılan**: README, ops/README ve ops/NOTES_FOR_CODEX.md'de RBAC paragraflarının çoğu yenilendi. Eski "Admin → SystemEng auto-augment" wording'i çoğu yerden silindi; canonical "Admin tek full yetki" wording'i geçerli.
 
-**AI agent risk faktörü**: Codex/Claude ajanları doc okuyup PERMISSIONS refactor'ü yaparlarsa eski paragrafa inanma riski var. NOTES_FOR_CODEX özellikle "Codex için yazılmış" — drift bu dosyada en kritik.
+**Kalan drift** (4 line, HIGH-002'de listelendi — çoğunlukla eski tablo wording'lerinin "Admin/SystemEng tüm gruplarda" formatından kaynaklı).
 
-**Çözüm**: Single source of truth principle — PERMISSIONS matrisini doc'ta tekrar etmek yerine `rbac.ts` dosyasına işaret et. Doc drift kaynağı kapanır.
+**AI agent risk faktörü** (hâlâ geçerli ama daraldı): Codex/Claude ajanları **kalan 4 line**'a düşerse yanlış mental model. NOTES_FOR_CODEX:86 özellikle yüksek risk — "Codex için yazılmış" dosyanın açılış paragrafı.
+
+**Yapısal çözüm önerisi**: Single source of truth — PERMISSIONS matrisini doc'ta tekrar etmek yerine `packages/shared/src/types/rbac.ts` dosyasına işaret et. NOTES_FOR_CODEX:97-110'daki migration listesi gibi referans yöntemiyle drift kaynağını ortadan kaldır.
 
 ---
 
@@ -510,7 +521,9 @@ Pending iş listesi (gerçekleştirilmemiş, sadece commit notlarında işaretle
 
 ---
 
-## 9. Verification Commands Used
+## 9. Verification Commands Used (ilk audit + sonraki turlardan eklenenler)
+
+İlk audit fazında kullanılan komut seti aşağıda. Sonraki critical-review turlarında eklenen komutlar (`git log --oneline -40`, `grep _userGroups.set`, post-`feed1d3` line check, `COUNT(DISTINCT) FROM information_schema.columns`, current FS migrations count) audit_history içinde commit log'unda izlenebilir.
 
 ```bash
 # Repo & status
@@ -561,7 +574,7 @@ docker exec -i bcms_postgres psql -U bcms_user -d bcms -c "..."
 - **Backend mimari sağlam**: Prisma audit extension `als` ile request-bağlamlı, phantom write koruması var; optimistic locking pattern Schedule + Booking için doğru uygulanmış (TOCTOU yok); RabbitMQ ConfirmChannel ile silent drop kapatılmış; SERIALIZABLE retry pattern doğru.
 - **Auth**: Centralized bypass mekanizmaları çalışıyor — `requireGroup` `isAdminPrincipal` + `AuthGuard` + `visibleNavItems` filter + `hasGroup()` helper. `requireGroup` her route'ta uygun. `SKIP_AUTH` production'da iki yerde block edilmiş.
 - **Type-check**: API + Web tertemiz (tsc --noEmit exit 0).
-- **Docker compose**: tüm servisler healthy, port bindings güvenli (sadece web/Keycloak public, gerisi 127.0.0.1).
+- **Docker compose**: kritik servisler healthy (api/web/postgres/keycloak/rabbitmq/postgres_backup/opta_watcher); `bcms_worker`, `bcms_grafana`, `bcms_prometheus`, `bcms_mailhog` "Up" ama healthcheck tanımsız (Section 8 #7). Port bindings güvenli (sadece web/Keycloak public, gerisi 127.0.0.1).
 - **Postgres backup**: çalışıyor, rotation aktif (off-host kopya hariç). `infra/postgres/RESTORE.md` runbook olarak dokümante edilmiş; **fiili drill execution kanıtı bu audit kapsamında bulunmadı** — drill yapılmış mı belirsiz.
 
 ### Sistem zayıf olduğu yerler
@@ -594,7 +607,12 @@ docker exec -i bcms_postgres psql -U bcms_user -d bcms -c "..."
 
 ### Final Hüküm
 
-**Production-ready, host kaybı senaryosu hariç.** Kod düzeyinde kritik gap yok. Operasyonel hijyen + doc kalitesi düzeyinde HIGH bulgular kısmen kapatıldı (`feed1d3`, `05829f8`, `a0946c4`, `0d67c6e`). Açık kalan asıl problemler: **migration baseline-absent** (ayrı tasarım PR'ı), **off-host backup** (credential bekliyor — `9925422` requirements doc), **soft-delete schema redesign** (ayrı PR). UI dead code (LOW-1) ve canEdit reactive (MED-005) `feed1d3` ile temizlendi.
+**Production-ready, host kaybı senaryosu hariç.** Kod düzeyinde kritik gap yok. HIGH bulguların durum nüansı:
+- **HIGH-001**: 🟡 FS-name drift ✅ (`05829f8`); core baseline-absent 🔴 hâlâ açık (asıl problem!)
+- **HIGH-002**: 🟡 Doc drift `feed1d3` ile büyük kısmı kapandı; 4 line kalan (~15 dk iş)
+- **HIGH-003**: 🟡 Idempotent dedupe ✅ (`a0946c4`) + P2002 retry ✅ (`0d67c6e`); observability/alert + caller post-mortem 🔴
+
+Açık kalan asıl problemler: **migration baseline-absent** (ayrı tasarım PR'ı), **off-host backup** (credential bekliyor — `9925422` requirements doc), **soft-delete schema redesign** (ayrı PR), **HIGH-003 observability**. UI dead code (LOW-1) ve canEdit reactive (MED-005) `feed1d3` ile temizlendi.
 
 ---
 
