@@ -110,15 +110,52 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
 
       const result = await fastify.prisma.$transaction(async (tx) => {
         const leagueMap = new Map<string, number>(); // compId → leagueId
+
+        // ── 1a. Mevcut league'leri toplu çek (audit log dedupe için) ──
+        // Eski kod her sync'te tüm league'leri tx.league.upsert ile çağırıyordu;
+        // idempotent çağrılarda bile audit_logs satır yazılıyordu.
+        // 2026-04-30 6.5 saatlik burst'te ~205k audit satırı bunun sonucu.
+        // Yeni: name değişmemiş ise upsert ATLA → audit log yok.
+        // HIGH-003 audit raporu detayında.
+        const compCodes = Array.from(uniqueComps.values()).map((c) => `opta-${c.compId}`);
+        const existingLeagues = compCodes.length > 0
+          ? await tx.league.findMany({
+              where: { code: { in: compCodes } },
+              select: { id: true, code: true, name: true },
+            })
+          : [];
+        const existingByCode = new Map(existingLeagues.map((l) => [l.code, l]));
+
+        // ── 1b. Her unique comp için: create / update (name diff) / skip ──
         await Promise.all(
-          Array.from(uniqueComps.values()).map(async ({ compId, compName }) => tx.league.upsert({
-            where:  { code: `opta-${compId}` },
-            create: { code: `opta-${compId}`, name: compName, country: '', metadata: { optaCompId: compId } },
-            update: { name: compName },
-            select: { id: true },
-          }).then((league) => {
+          Array.from(uniqueComps.values()).map(async ({ compId, compName }) => {
+            const code = `opta-${compId}`;
+            const existing = existingByCode.get(code);
+
+            if (!existing) {
+              // Yeni lig — create + audit yazılır (gerçek değişiklik)
+              const league = await tx.league.create({
+                data: { code, name: compName, country: '', metadata: { optaCompId: compId } },
+                select: { id: true },
+              });
+              leagueMap.set(compId, league.id);
+              return;
+            }
+
+            if (existing.name === compName) {
+              // No-op: idempotent çağrı, audit log üretme
+              leagueMap.set(compId, existing.id);
+              return;
+            }
+
+            // Name değişmiş — gerçek update + audit yazılır
+            const league = await tx.league.update({
+              where: { id: existing.id },
+              data: { name: compName },
+              select: { id: true },
+            });
             leagueMap.set(compId, league.id);
-          })),
+          }),
         );
 
         // ── 2. Mevcut maçları toplu sorgula ──
