@@ -67,14 +67,51 @@ Hiçbir auth bypass, açık endpoint, secret leak, race condition kanıtı, veya
 
 ## 3. HIGH Bulgular
 
-### HIGH-001 — Prisma migration drift: DB ↔ filesystem uyumsuzluğu
+### HIGH-001 — Prisma migration baseline drift: standalone replay imkansız
 
-**Status (2026-05-01 geç saat — commit `05829f8`)**: 🟡 **PARTIAL FIX, replay equivalence not proven**
-- ✅ FS klasör adları `_prisma_migrations` satırlarıyla eşleşti (4 yeni directory eklendi)
-- ✅ `prisma migrate deploy` checksum mismatch atmıyor — "No pending migrations to apply"
-- ✅ `shift_assignments` için gerçek DDL (live DB'den reverse-engineered, replay-safe expected)
-- ⚠️ **3 migration placeholder no-op** — orijinal DDL içeriği kayıp, yeni env'e replay'de uygulanmaz
-- ❌ **Tam DR eşdeğerliği henüz kanıtlanmadı** — clean-room replay + schema dump diff yapılmalı
+**Status (2026-05-01 geç saat — commit `05829f8` + `01dbe76` + clean-room verify)**: 🟠 **DEEPER PROBLEM REVEALED**
+
+İlk taslak audit "drift" demişti; clean-room replay ile gerçek karakter ortaya çıktı: **bu pure drift değil, baseline absent.**
+
+**Clean-room replay sonucu (2026-05-01)**:
+```
+Clean PG container yarat → btree_gist extension → migrate deploy
+Result: FAIL on first migration (20260416000000_add_matches)
+Error: relation "schedules" does not exist
+```
+
+**Açıklama**: 
+- 27 FS / 27 DB sembolik eşleşmesi tam (commit `05829f8` sonrası)
+- ❗ Ama `add_matches` migration'ı `schedules`/`bookings`/`leagues` tablolarına ALTER yapıyor — baseline'da yaratılmış olmaları gerekir
+- `ops/NOTES_FOR_CODEX.md` içinde belirtildiği gibi: "Local DB 2026-04-22'de 8 migration baseline edildi" — bu baseline'ın **gerçek DDL'i FS'te yok**
+- DB en eski migration entry'si `20260420000000_schedule_finished_at_and_timestamps` (2026-04-22 uygulanmış); bundan önceki migration'lar baseline'a dahil
+- FS'teki tüm migration'lar **baseline-dependent**, standalone replay edilemez
+
+**Gerçek etki matrisi**:
+
+| Senaryo | Etki |
+|---|---|
+| Mevcut prod çalışıyor mu? | ✅ Evet (DDL'ler zaten DB'de) |
+| Postgres backup → restore (DR) | ✅ Safe (pg_dump full schema içerir, replay gerekmez) |
+| CI/CD clean-DB build | ❌ Kırılır (replay fail) |
+| Yeni dev env "fresh setup" | ❌ Kırılır (replay fail) |
+| Staging environment provisioning | ❌ Kırılır |
+
+**Doğru çözüm** (büyük iş, ayrı PR):
+1. Production'dan `pg_dump --schema-only` ile baseline schema dump al
+2. Yeni baseline migration olarak repoya koy: `apps/api/prisma/migrations/00000000000000_baseline/migration.sql`
+3. Eski 27 migration'ı archive'a taşı (`apps/api/prisma/migrations/_archive/`)
+4. `_prisma_migrations` tablosunu yeniden init et (riskli, prod'a dokunur)
+5. Yeni baseline'ı `migrate resolve --applied` ile işaretle
+
+**Geçici durum (kabul edilebilir)**: DR mevcut postgres_backup ile zaten safe. CI/CD ve fresh dev env için workaround: `pg_dump --schema-only` çıktısını `seed.sql` olarak elden uygulanabilir.
+
+**Eski "PARTIAL FIX" notları (commit `05829f8`)**:
+- ✅ FS klasör adları `_prisma_migrations` satırlarıyla eşleşti (4 yeni directory)
+- ✅ `prisma migrate deploy` checksum mismatch atmıyor (mevcut prod'da)
+- ✅ `shift_assignments` için gerçek DDL (replay'de o adımdan sonra çalışır eğer baseline varsa)
+- ⚠️ 3 migration placeholder no-op
+- ❌ Replay equivalence: **standalone replay imkansız** (baseline absent)
 
 **Lokasyon**: `apps/api/prisma/migrations/` ve `_prisma_migrations` tablosu
 
