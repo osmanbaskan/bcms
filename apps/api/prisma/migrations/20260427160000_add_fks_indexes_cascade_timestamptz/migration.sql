@@ -1,0 +1,24 @@
+-- Migration: FK + indexes + CASCADE + timestamptz dönüşümü (2026-04-27)
+--
+-- ⚠️ FS RECOVERY (2026-05-01 audit):
+-- Bu migration DB'de uygulanmış (`_prisma_migrations` finished_at NOT NULL,
+-- applied_steps_count=1, checksum=111164ea...) ama filesystem'de kayıp idi.
+-- DDL içeriği yeniden üretilemedi.
+--
+-- Migration adından tahmin edilen kapsam:
+--   - FK constraint'lerine ON DELETE CASCADE eklenmesi
+--   - Eksik index'lerin eklenmesi
+--   - bazı timestamp kolonlarının `timestamptz`'e dönüştürülmesi
+--   - MED-002 audit bulgusundaki redundant `schedules_no_overlap` GiST exclusion
+--     constraint'i de muhtemelen burada veya 20260429020000_integrity_constraints'te
+--
+-- Bu placeholder dosya FS'i `_prisma_migrations` ile hizalar. Yeni bir env'e
+-- replay yapılırsa **no-op** çalışır — gerçek FK/index/timestamptz değişiklikleri
+-- uygulanmaz. Mevcut prod canlı sistem etkilenmez (zaten "applied").
+--
+-- TAM DR İÇİN GEREKEN: pg_dump --schema-only ile gerçek DB ↔ FS migrations
+-- baseline diff'i alınıp eksik DDL bu dosyaya yazılmalı.
+-- Audit raporu: `BCMS_AUDIT_REPORT_2026-05-01.md` HIGH-001.
+
+-- No-op (idempotent): SELECT 1 yer-tutucu
+SELECT 1;

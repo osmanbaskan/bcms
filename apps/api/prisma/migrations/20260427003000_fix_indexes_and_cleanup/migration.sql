@@ -1,0 +1,22 @@
+-- Migration: index düzeltmeleri ve temizlik (2026-04-27)
+--
+-- ⚠️ FS RECOVERY (2026-05-01 audit):
+-- Bu migration DB'de uygulanmış (`_prisma_migrations` finished_at NOT NULL,
+-- applied_steps_count=1) ama filesystem'de kayıp idi. _prisma_migrations
+-- tablosunda checksum NULL — yani manuel SQL veya `prisma migrate resolve
+-- --applied` ile işaretlenmiş, gerçek DDL içeriği bilinmiyor.
+--
+-- Bu placeholder dosya FS'i `_prisma_migrations` ile hizalar (resolve --applied
+-- sonrası migrate deploy hata vermez). Yeni bir env'e replay yapılırsa bu
+-- migration **no-op** olarak çalışır — gerçek index temizliği uygulanmaz.
+-- Mevcut prod ekran zaten "applied" işaretli olduğu için canlı sistem etkilenmez.
+--
+-- TAM DR İÇİN GEREKEN: bu migration'ın yaptığı işin reverse-engineer edilmesi.
+-- Şu anki DB schema'sından çıkarılabilecekler:
+--   - `\di+` (tüm index'ler)
+--   - `pg_dump --schema-only` ile FS migration'larından gelen baseline schema
+--     diff'i alınmalı.
+-- Audit raporu: `BCMS_AUDIT_REPORT_2026-05-01.md` HIGH-001.
+
+-- No-op (idempotent): SELECT 1 yer-tutucu
+SELECT 1;
