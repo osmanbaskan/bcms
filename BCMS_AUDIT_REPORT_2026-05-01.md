@@ -521,6 +521,7 @@ Pending iş listesi (gerçekleştirilmemiş, sadece commit notlarında işaretle
 6. **Architecture decoupling** — OPTA ingest vs cascade ayrıştırması
 7. **`bcms_grafana` ve `bcms_prometheus` healthcheck eksik** — Up ama healthy değil
 8. **2026-04-30 burst post-mortem** (HIGH-003) — log retention yok, gelecek anomaliler kayıp
+9. **`schedules.id=32` kalıntı kayıt** — DRAFT, channel/match FK/booking boş, deleted_at dolu ama live-plan query'lerinde görünür. Düşük risk. Audit-traced maintenance pattern netleşmeden yazma yapılmayacak; MED-001 soft-delete strategy PR'ında ele alınacak.
 
 ---
 
