@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import crypto from 'node:crypto';
 import { QUEUES } from '../../plugins/rabbitmq.js';
+import { optaLeagueSyncTotal } from '../../plugins/metrics.js';
 
 const matchItemSchema = z.object({
   matchUid:   z.string().min(1),
@@ -173,12 +174,14 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
                 select: { id: true },
               });
               leagueMap.set(compId, league.id);
+              optaLeagueSyncTotal.inc({ action: 'create' });
               return;
             }
 
             if (existing.name === compName) {
               // No-op: idempotent çağrı, audit log üretme
               leagueMap.set(compId, existing.id);
+              optaLeagueSyncTotal.inc({ action: 'skip' });
               return;
             }
 
@@ -189,6 +192,7 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
               select: { id: true },
             });
             leagueMap.set(compId, league.id);
+            optaLeagueSyncTotal.inc({ action: 'update' });
           }),
         );
 

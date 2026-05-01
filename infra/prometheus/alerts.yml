@@ -1,0 +1,32 @@
+groups:
+  - name: opta_observability
+    interval: 1m
+    rules:
+      # HIGH-003 — Caller anomaly: total OPTA league sync rate (create+update+skip) > 500/h
+      # Catches "silent burst" where post-dedupe (a0946c4) most calls become skip but
+      # caller is still hitting /opta/sync at high rate. This rule fires regardless of
+      # action breakdown because what matters is the caller behavior.
+      - alert: OptaLeagueSyncBurst
+        expr: sum(increase(bcms_opta_league_sync_total[1h])) > 500
+        for: 0m
+        labels:
+          severity: warning
+          area: opta
+        annotations:
+          summary: "OPTA league sync rate anormal yüksek (caller anomali)"
+          description: "Son 1 saat içinde toplam {{ $value }} league sync action — normal saatlik ritim ~4-84. Burst tekrar olabilir; /opta/sync caller davranışını kontrol et."
+          runbook: "BCMS_AUDIT_REPORT_2026-05-01.md HIGH-003"
+
+      # Data write anomaly: actual create+update operations (excludes idempotent skip).
+      # Allow-list matcher (=~"create|update") instead of negative (!="skip") to avoid
+      # silently catching unexpected new label values.
+      - alert: OptaLeagueWriteBurst
+        expr: sum(increase(bcms_opta_league_sync_total{action=~"create|update"}[1h])) > 200
+        for: 0m
+        labels:
+          severity: warning
+          area: opta
+        annotations:
+          summary: "OPTA league actual write rate anormal yüksek (data anomali)"
+          description: "Son 1 saat içinde {{ $value }} gerçek League DB write (create+update). Normal beklenti < 200/h; üst sınır audit_logs şişmesine de neden olur."
+          runbook: "BCMS_AUDIT_REPORT_2026-05-01.md HIGH-003"
