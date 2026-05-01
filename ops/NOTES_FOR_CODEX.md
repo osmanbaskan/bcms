@@ -92,23 +92,20 @@ Auth sistemi rol tabanlıdan **grup tabanlıya** geçirildi.
 - Kaynak: `packages/shared/src/types/rbac.ts` → `BcmsGroup` tipi + `PERMISSIONS` matrisi
 
 ### Yetki Matrisi
-```
-schedules.read:          [] (tüm authenticated)
-schedules.add:           ['SystemEng', 'Booking', 'YayınPlanlama'] + Admin bypass
-schedules.edit:          ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] + Admin bypass
-schedules.technicalEdit: ['SystemEng', 'Transmisyon', 'Booking'] + Admin bypass
-schedules.duplicate:     ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking'] + Admin bypass
-schedules.delete:        ['SystemEng', 'Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] + Admin bypass
-incidents.read/write/delete: ['SystemEng'] + Admin bypass
-incidents.reportIssue:   ['SystemEng', 'Tekyon', 'Transmisyon'] + Admin bypass
-ingest.read/write/delete:['SystemEng', 'Ingest'] + Admin bypass
-ingest.reportIssue:      [] (tüm authenticated)
-studioPlans.read:        [] (tüm authenticated)
-studioPlans.write/delete:['SystemEng', 'StudyoSefi'] + Admin bypass
-bookings.read/write/delete: [] route seviyesinde tüm authenticated; servis içinde grup izolasyonu uygulanır
-weeklyShifts.read/write: [] route seviyesinde tüm authenticated; servis içinde grup izolasyonu uygulanır
-weeklyShifts.admin:      ['Admin', 'SystemEng']
-```
+
+**Canonical kaynak**: `packages/shared/src/types/rbac.ts` → `PERMISSIONS` sabiti.
+Bu doc'taki listeyi tekrarlamak drift kaynağı olduğu için (geçmişte 2026-05-01 RBAC restructure sonrası bir tur drift yaşadık) **tek doğruluk kaynağı** olarak `rbac.ts` referans verilmelidir.
+
+**2026-05-01 (geç saat) RBAC restructure özet**:
+- **Tek "full yetki" grubu**: `Admin` (4 katman centralized bypass: `requireGroup`, `AuthGuard`, `visibleNavItems`, `hasGroup()`)
+- **SystemEng** "ops super-grup" davranışından çıkarıldı; sadece `auditLogs.read`, `incidents.{read,write,delete,reportIssue}` ve `/users`, `/settings`, `/audit-logs`, `/documents` route guards'ında explicit listeli.
+- Schedules (`add/edit/delete/duplicate/technicalEdit/write`), `studioPlans.{write,delete}`, `reports.{read,export}`, `weeklyShifts.admin`, `channels`, `ingest`, `monitoring` SystemEng'den çıkarıldı.
+- `auth.ts:101-102` Admin → SystemEng auto-augment **kaldırıldı** (commit `0220b3e`); bu eski "ops super-grup" modelin kalıntısıydı.
+
+**Yeni feature/endpoint eklerken kural**:
+- PERMISSIONS array'inde `Admin` yazmana **gerek yok** — `requireGroup` zaten `isAdminPrincipal` ile bypass ediyor.
+- `SystemEng`'i de yazma — tek istisna `audit/users/settings` legacy listings.
+- Frontend nav'da Admin için açık olan sekme: `groups: [GROUP.Admin]`. Diğer gruplar görmesin.
 
 ### Kullanıcı Yönetimi — KRİTİK
 Keycloak Admin API kullanır. `docker-compose.yml` api servisinde `KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}` ZORUNLU.
@@ -130,7 +127,7 @@ Canlı Yayın Plan Listesi ekranında her satırda **Sorun Bildir** ikonu bulunu
 - Sütunlar: İş Başlığı, Grup, Oluşturan, Durum, Tarih, Sorumlu, Aksiyonlar
 - Dialog: `BookingTaskDialogComponent` — İş Başlığı, Grup, Başlama/Tamamlanma Tarihi, Sorumlu, Durum, Detaylar, Rapor
 - API endpoint: `GET/POST/PATCH/DELETE /api/v1/bookings`
-- Yetki: kullanıcı kendi grubunun işlerini görür ve iş oluşturabilir. Grup `supervisor` kullanıcısı sorumlu atayabilir; işi oluşturan veya sorumlu kişi silebilir. `Admin`/`SystemEng` tüm gruplarda tam yetkilidir.
+- Yetki: kullanıcı kendi grubunun işlerini görür ve iş oluşturabilir. Grup `supervisor` kullanıcısı sorumlu atayabilir; işi oluşturan veya sorumlu kişi silebilir. **`Admin` tüm gruplarda tam yetkilidir** (2026-05-01 SystemEng kısıtlandı, kendi grubunu görür).
 
 ## Haftalık Shift (Weekly Shift) — 2026-04-29
 
@@ -145,7 +142,7 @@ Canlı Yayın Plan Listesi ekranında her satırda **Sorun Bildir** ikonu bulunu
 - Giriş saatleri: `05:00`, `06:00`, `07:45`, `10:00`, `12:00`, `14:45`, `16:30`, `23:30`
 - Çıkış saatleri: `06:15`, `13:15`, `15:00`, `16:45`, `20:00`, `22:00`, `23:45`
 - Kural: izin ve saat bilgisi aynı hücrede birlikte seçilemez.
-- Yetki: kullanıcı kendi grubunu görür; grup `supervisor` kullanıcısı kendi grubunu düzenler; `Admin`/`SystemEng` tüm gruplarda tam yetkilidir.
+- Yetki: kullanıcı kendi grubunu görür; grup `supervisor` kullanıcısı kendi grubunu düzenler; **`Admin` tüm gruplarda tam yetkilidir** (2026-05-01 SystemEng kısıtlandı, kendi grubunu görür — `PERMISSIONS.weeklyShifts.admin = ['Admin']`).
 - Tarih formatı: `gg.aa.yyyy`
 
 ## Stüdyo Planı

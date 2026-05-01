@@ -2067,7 +2067,10 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
     } else {
       const parsed = this.keycloak.getKeycloakInstance().tokenParsed as BcmsTokenParsed | undefined;
       const groups: string[] = parsed?.groups ?? [];
-      this._userGroups.set(groups.includes(GROUP.Admin) ? Array.from(new Set([...groups, GROUP.SystemEng])) : groups);
+      // 2026-05-01: Admin → SystemEng auto-augment kaldırıldı.
+      // hasGroup() helper Admin için early return yapıyor (line 36-39),
+      // augment hiçbir yetki kazandırmıyordu.
+      this._userGroups.set(groups);
     }
     this.api.get<Channel[]>('/channels').subscribe({
       next: (res) => this.channels.set(Array.isArray(res) ? res : []),

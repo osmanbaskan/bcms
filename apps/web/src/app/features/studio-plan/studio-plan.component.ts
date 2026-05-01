@@ -133,9 +133,13 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   private readonly studioPlanService = inject(StudioPlanService);
   private readonly keycloak = inject(KeycloakService);
 
+  /** Reactive userGroups signal — ngOnInit'te tokenParsed'dan set edilir.
+   *  Eski sürüm computed içinde non-reactive okuyorduk; signal pattern
+   *  app.component.ts ve schedule-list.component.ts ile tutarlı. */
+  private readonly _userGroups = signal<string[]>([]);
+
   readonly canEdit = computed(() => {
-    const parsed = this.keycloak.getKeycloakInstance().tokenParsed as { groups?: string[] } | undefined;
-    const userGroups: string[] = parsed?.groups ?? [];
+    const userGroups = this._userGroups();
     if (userGroups.includes(GROUP.Admin)) return true;
     return STUDIO_EDIT_GROUPS.some((g) => userGroups.includes(g));
   });
@@ -217,6 +221,9 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
+    // tokenParsed'dan grupları oku ve signal'e set et — canEdit reactive olur
+    const parsed = this.keycloak.getKeycloakInstance()?.tokenParsed as { groups?: string[] } | undefined;
+    this._userGroups.set(parsed?.groups ?? []);
     if (!this.canEdit()) {
       this.viewMode.set('list');
     }

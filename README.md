@@ -251,7 +251,9 @@ docker compose up -d --build web
 
 12 grup: `Admin`, `Tekyon`, `Transmisyon`, `Booking`, `YayınPlanlama`, `SystemEng`, `Ingest`, `Kurgu`, `MCR`, `PCR`, `Ses`, `StudyoSefi`
 
-`Admin` ve `SystemEng` sistem genelinde tam yetkili kabul edilir. Grup adları Keycloak'taki `groups` claim değeriyle birebir aynı olmalıdır; route içinde eski veya farklı yazılmış grup string'i kullanılmamalıdır.
+**Tek "full yetki" grubu Admin'dir** (2026-05-01 RBAC restructure). SystemEng artık kısıtlı bir kullanıcı grubu — yalnızca audit/ayarlar/kullanıcılar/dökümanlar + incident yönetimi yetkisinde, diğer alanlarda diğer kısıtlı gruplar (Tekyon, vb.) gibi davranır. Detaylı yetki matrisi aşağıda.
+
+Grup adları Keycloak'taki `groups` claim değeriyle birebir aynı olmalıdır; route içinde eski veya farklı yazılmış grup string'i kullanılmamalıdır.
 
 ### Oturum Yenileme — 2026-04-30
 
@@ -263,7 +265,15 @@ docker compose up -d --build web
 
 ### Yetki Matrisi (2026-05-01 itibariyle)
 
-**Tek "full yetki" grubu**: Admin (auto-bypass `auth.ts:101-102` + `:112`). SystemEng artık ayrıcalıklı değil — sadece audit/ops/kullanıcılar/ayarlar gibi belirli sekmelerde explicit listelendiği yerlerde geçerli.
+**Tek "full yetki" grubu**: Admin. 4 katmanda centralized bypass:
+- `auth.ts requireGroup` `isAdminPrincipal` early return
+- `auth.guard.ts` `userGroups.includes(GROUP.Admin)` early return
+- `app.component.ts visibleNavItems` `isAdmin` filter bypass
+- `schedule-list.ts hasGroup()` helper Admin early return
+
+(2026-05-01 commit `0220b3e` ile eski "Admin → SystemEng auto-augment" mekanizması kaldırıldı; Admin tam yetkisi yalnızca centralized bypass üzerinden.)
+
+SystemEng artık ayrıcalıklı değil — sadece audit/kullanıcılar/ayarlar/dökümanlar + incident yönetimi gibi belirli sekmelerde explicit listelendiği yerlerde geçerli.
 
 | Sekme / Özellik | Erişim |
 |---|---|
@@ -374,7 +384,10 @@ Frontend: `tokenParsed.groups` + `computed()` sinyaller, `hasGroup()` helper Adm
 - Sürüm: 5.22.0
 - Generate sorunu çözümü: `rm -rf node_modules/.prisma node_modules/@prisma/client node_modules/prisma && npm install prisma@5.22.0 @prisma/client@5.22.0 && npm run db:generate -w apps/api`
 - DB enum isimleri: `booking_status`, `ingest_status`, `incident_severity`
-- Local DB 2026-04-22'de 8 migration baseline edildi (toplam migration sayısı: 21; tam liste `apps/api/prisma/migrations/`)
+- Local DB 2026-04-22'de 8 migration baseline edildi.
+- Repodaki migration sayısı: **23** (`ls apps/api/prisma/migrations/2*/ | wc -l`).
+- DB `_prisma_migrations` finished sayısı: **27** (live psql).
+- ⚠ **Drift**: 4 migration DB-only (`20260427000000_add_shift_assignments`, `20260427003000_fix_indexes_and_cleanup`, `20260427160000_add_fks_indexes_cascade_timestamptz`, `20260428000000_manual_schema_sync`). DR/staging deploy'unda kırılır — `BCMS_AUDIT_REPORT_2026-05-01.md` HIGH-001'e bak.
 - 2026-04-25: `add_ingest_job_updated_at`
 - 2026-04-26: `ingest_port_no_overlap` (btree_gist exclusion constraint) + 10 adet tekrar eden index kaldırıldı
 - 2026-04-27: `ingest_plan_report_index` (raporlama sorgu hızlandırması)

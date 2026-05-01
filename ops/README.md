@@ -402,10 +402,13 @@ curl -X POST http://127.0.0.1:3000/api/v1/opta/sync \
 
 **Karar**: Tek "full yetki" grubu Admin. SystemEng "ops super-grubu" davranışından çıkarıldı.
 
-**Backend bypass mekanizmaları (Admin için)**:
-- `auth.ts:101-102` — Admin token'ı SystemEng auto-augment (defense-in-depth)
-- `auth.ts:112` — `isAdminPrincipal` early return → `requireGroup` bypass
-- `auth.guard.ts:44` (frontend) — `userGroups.includes(GROUP.Admin)` early return
+**Admin için 4 katman centralized bypass**:
+- Backend `auth.ts requireGroup` (~satır 109) — `isAdminPrincipal` early return → tüm requireGroup-protected endpoint'leri bypass
+- Frontend `auth.guard.ts:44` — `userGroups.includes(GROUP.Admin)` early return → tüm route guard'ları bypass
+- Frontend `app.component.ts visibleNavItems` — `isAdmin = groups.includes(GROUP.Admin)` filter bypass → tüm nav item'ları görür
+- Frontend `schedule-list.component.ts hasGroup()` (line ~37) — Admin için early return true → tüm canEdit/canAdd/canDelete butonları açık
+
+**Eski "Admin → SystemEng auto-augment" mekanizması (2026-05-01 commit `0220b3e` ile KALDIRILDI)**: önceki sürümde `auth.ts:101-103` ve `app.component.ts:161` Admin token'ına SystemEng eklerdi. Eski "Admin = ops super-grup" modelin kalıntısıydı. Yeni RBAC ile çakıştığı için temizlendi.
 
 **SystemEng PERMISSIONS değişiklikleri**:
 - schedules.{add,edit,technicalEdit,duplicate,delete,write}: SystemEng OUT
@@ -439,7 +442,7 @@ PERMISSIONS.incidents.read.includes('SystemEng')     // true (korunan)
 ```
 
 **Admin gap audit**:
-8 farklı yetki yolu (backend `requireGroup`, Admin → SystemEng auto-augment, frontend AuthGuard, nav visibility, hasGroup helper, users.routes.ts:47, booking.service isAdminUser, weekly-shifts hasAnyGroup) tek tek kontrol edildi — Admin user her endpoint, route, UI button'a erişiyor, gap yok.
+4 ana centralized bypass + 3 manuel grup kontrol noktası (`users.routes.ts:47`, `booking.service.ts isAdminUser`, `weekly-shifts hasAnyGroup`) tek tek kontrol edildi — Admin user her endpoint, route, UI button'a erişiyor. **Auto-augment kalıntısı kaldırıldı**, Admin yetkisi artık tek bir tutarlı pattern üzerinden sağlanıyor.
 
 ## Auth Interceptor — 403 Reload Loop Fix (2026-05-01)
 
