@@ -305,7 +305,7 @@ Pending iş listesi (ana rapor kapsamı dışı, commit notlarından + audit'ten
 | 3 | Tekyon /channels permission UX | Tekyon kanal seçemeyince 403, ya read-only public endpoint ya yetki ekleme |
 | 4 | Channel-overlap cascade conflict resolution UX | OPTA cascade conflict yaşadığında kullanıcıya UI'da gösterme |
 | 5 | Architecture decoupling | OPTA ingest vs cascade ayrıştırması |
-| 6 | `bcms_grafana`, `bcms_prometheus` healthcheck eksik | Up ama healthy değil; ek olarak `bcms_worker`, `bcms_mailhog` da aynı durumda |
+| 6 | `bcms_grafana`, `bcms_prometheus` healthcheck eksik | Up ama healthy değil; ek olarak `bcms_mailhog` da aynı durumda. **Design doc**: `ops/REQUIREMENTS-HEALTHCHECK.md` (`13ae22c`) — per-service health semantiği netleştirildi. Bulgular: (a) Prometheus + Grafana healthcheck eksik (PR-1 implementation aday); (b) `bcms_worker` `healthcheck: disable: true` (bilinçli karar, doc'la formalize edildi); (c) **yeni discovery — `bcms_opta_watcher` `pgrep -f` sahte process check kullanıyor**, "(healthy)" sinyali aldatıcı (SMB unmount / password expire'da yine pass). Design doc default önerisi: ya disable + dokümante, ya gerçek readiness check tasarlanana kadar mevcut sahte healthcheck'i kaldırma. Karar implementation PR'ında verilir, bu rapor pozisyon almaz. |
 | 7 | Restore drill execution | `infra/postgres/RESTORE.md` runbook var, fiili drill kanıtı yok |
 | 8 | API log retention (Loki/Promtail) | HIGH-003 ile bağlı, gelecek burst post-mortem için |
 | 9 | MED-002 redundant GiST drop | `schedules` tablosunda `_no_channel_time_overlap` ve `_no_overlap` GiST exclusion'ları çakışıyor. Drop migration HIGH-001 baseline-absent çözüldükten sonra eklenmeli (replay senaryosunu daha karışık hale getirmesin) |
@@ -356,7 +356,9 @@ LOW-1 ve MED-005 `feed1d3` ile ✅ kapatıldı (Section 3 tablosunda).
 | 2026-05-02 | OPTA notification delivery design doc | Alertmanager + routing + secret yönetimi (4 alternatif) — decision-ready / implementation-scoped | `9be627a` |
 | 2026-05-02 | Audit-traced maintenance pattern design doc | App-booted command + ALS context + metadata schema prerequisite — MED-001/MED-003/schedules.id=32 unblock'u | `cc6d688` |
 | 2026-05-02 | Migration baseline-absent design doc | Measurement-first strategy selection (clean-room harness PR-1, A vs B prototype PR-2) — naive 8-dosya sahte güveni reddedildi | `2e2b6a4` |
-| 2026-05-03 | Cross-ref state sync (4 design docs) | Section 2 her open risk'te design doc pointer + Appendix D Review History entries | bu sürüm |
+| 2026-05-03 | Cross-ref state sync (4 design docs) | Section 2 her open risk'te design doc pointer + Appendix D Review History entries | `08802e4` |
+| 2026-05-03 | Healthcheck design doc | Per-service health semantiği inventory + decision matrix; opta_watcher sahte `pgrep` healthcheck yeni discovery | `13ae22c` |
+| 2026-05-03 | State sync (5th design doc + opta_watcher finding) | Appendix A #6 + closing italic update | bu sürüm |
 
 **Pass-3 kazanımı**: Spot-fix döngüsü (pass-1 + pass-2) raporu yamalı bir belgeye çevirmişti. Kritik hata olan "race condition note inline catch öneriyordu" pass-3'te yakalandı — outer retry canonical'i Section 2 HIGH-003'e geldi. Cleanup principle (data-write deferred until audit-traced path) Section 4'te tekleştirildi.
 
@@ -364,4 +366,4 @@ LOW-1 ve MED-005 `feed1d3` ile ✅ kapatıldı (Section 3 tablosunda).
 
 ---
 
-*Bu rapor read-only audit ile başladı, iteratif kritik review'larla evrildi, pass-3'te 5-bölümlü yapıya yeniden yazıldı, sonraki turlarda RBAC doc sweep + OPTA observability detection ile açık riskler azaltıldı. Mevcut sürüm tek doğruluk kaynağı; eski detay/tarihsel narrative Appendix'lerde tutuldu. **Açık risklerin 4'ü için design doc tamamlandı** (S3 backup, OPTA notification, maintenance pattern, migration baseline) — hepsi decision-ready / implementation-scoped: implementation aşaması kullanıcı kararları, credential ve strateji onaylarına bağlı. Aksiyon kararları kullanıcıda.*
+*Bu rapor read-only audit ile başladı, iteratif kritik review'larla evrildi, pass-3'te 5-bölümlü yapıya yeniden yazıldı, sonraki turlarda RBAC doc sweep + OPTA observability detection ile açık riskler azaltıldı. Mevcut sürüm tek doğruluk kaynağı; eski detay/tarihsel narrative Appendix'lerde tutuldu. **Açık risklerin 4'ü için design doc + 1 hijyen design doc** tamamlandı (toplam 5: S3 backup, OPTA notification, maintenance pattern, migration baseline, per-service healthcheck) — hepsi decision-ready / implementation-scoped: implementation aşaması kullanıcı kararları, credential ve strateji onaylarına bağlı. Aksiyon kararları kullanıcıda.*
