@@ -55,6 +55,8 @@
 
 **Lokasyon**: `apps/api/prisma/migrations/` ve `_prisma_migrations` tablosu.
 
+**Design doc**: `ops/REQUIREMENTS-MIGRATION-BASELINE.md` (`2e2b6a4`) — measurement-first strategy selection, decision-ready / implementation-scoped. Naive "8 dosya ekleyelim" sahte güven riski yerine clean-room replay harness ile A vs B prototype karşılaştırması.
+
 ---
 
 ### OPS-CRITICAL — Off-host backup yok 🔴
@@ -71,6 +73,8 @@
 **Sonraki adım**: S3-compatible (B2/AWS/Wasabi/R2) provider seçimi + access key, sonra `9925422` requirements doc'taki Seçenek A (rclone sidecar) implementasyonu. Implementasyon PR'ı **kullanıcı kararları + credential bekliyor** (provider, bucket adı, region, retention, encryption).
 
 **Severity rasyonalitesi**: "Tam OPS-CRITICAL" değil çünkü backup VAR. "Tam OK" değil çünkü kapsam dar (host'a bağımlı). **Aday** sınıfı: yarım mitigation, mitigation tamamlanırsa CRITICAL'dan düşer.
+
+**Design doc**: `ops/REQUIREMENTS-S3-BACKUP.md` (`9925422`) — S3-compatible provider matrix (MinIO / B2 / AWS S3 / Wasabi / R2), retention/encryption/sync-tool kararları, decision-ready / implementation-scoped (credential + provider seçimi bekliyor).
 
 ---
 
@@ -127,6 +131,8 @@ withLeagueCreateConflictRetry(() =>
 
 **Etki**: Mevcut audit_logs ~565k / ~104 MB (snapshot 2026-05-01 geç saat). 90-gün retention ile temizlenecek, doğrudan zarar yok. Aynı pattern tekrar olursa milyonluk satır + retention job lock pressure. Notification delivery kuruluncaya kadar **proaktif alarm yok**, ama detection veri katmanı hazır (post-hoc analiz ve manuel monitoring mümkün).
 
+**Notification design doc**: `ops/REQUIREMENTS-NOTIFICATION-DELIVERY.md` (`9be627a`) — Alertmanager + routing + secret yönetimi (4 alternatif analizi), mesaj format prensipleri, layer-isolated test prosedürü, decision-ready / implementation-scoped (Slack webhook + secret yöntemi bekliyor).
+
 ---
 
 ### MED-001 — Soft-delete schema redesign 🔴
@@ -148,6 +154,8 @@ withLeagueCreateConflictRetry(() =>
 3. Schema redesign uygulanır (ayrı tasarım PR'ı, staging dry-run + review)
 
 **Eski tahmin yanlış**: "P1, 2-3 saat" → Gerçek: schema redesign, ayrı PR, geniş kapsam.
+
+**Maintenance pattern doc**: `ops/REQUIREMENTS-MAINTENANCE-PATTERN.md` (`cc6d688`) — audit-traced entry-point design (app-booted one-off command, no HTTP attack surface), `audit_logs.metadata` schema prerequisite, transaction-aware queue+flush pattern, decision-ready / implementation-scoped. Bu pattern aynı zamanda **MED-003 orphan ingest_plan_items** ve **schedules.id=32 cleanup**'larını da unblock eder.
 
 ---
 
@@ -344,7 +352,11 @@ LOW-1 ve MED-005 `feed1d3` ile ✅ kapatıldı (Section 3 tablosunda).
 | 2026-05-01 | Critical review pass-3 + rewrite | 9 yeni hata + 5-bölümlü sadeleştirme | `469967f` |
 | 2026-05-01 | RBAC doc final sweep | 6-pattern grep sweep (3 docs) | `90c8779` HIGH-002 ✅ |
 | 2026-05-01 | OPTA observability detection | prom-client kontrollü geçişi + metric + 2 alert rule | `4e364f3` HIGH-003 detection ✅ |
-| 2026-05-01 | State sync pass | Bu commit — Section 1/2/3 + Appendix D state güncelleme | bu sürüm |
+| 2026-05-01 | State sync pass | Section 1/2/3 + Appendix D state güncelleme | `c6dace0` |
+| 2026-05-02 | OPTA notification delivery design doc | Alertmanager + routing + secret yönetimi (4 alternatif) — decision-ready / implementation-scoped | `9be627a` |
+| 2026-05-02 | Audit-traced maintenance pattern design doc | App-booted command + ALS context + metadata schema prerequisite — MED-001/MED-003/schedules.id=32 unblock'u | `cc6d688` |
+| 2026-05-02 | Migration baseline-absent design doc | Measurement-first strategy selection (clean-room harness PR-1, A vs B prototype PR-2) — naive 8-dosya sahte güveni reddedildi | `2e2b6a4` |
+| 2026-05-03 | Cross-ref state sync (4 design docs) | Section 2 her open risk'te design doc pointer + Appendix D Review History entries | bu sürüm |
 
 **Pass-3 kazanımı**: Spot-fix döngüsü (pass-1 + pass-2) raporu yamalı bir belgeye çevirmişti. Kritik hata olan "race condition note inline catch öneriyordu" pass-3'te yakalandı — outer retry canonical'i Section 2 HIGH-003'e geldi. Cleanup principle (data-write deferred until audit-traced path) Section 4'te tekleştirildi.
 
@@ -352,4 +364,4 @@ LOW-1 ve MED-005 `feed1d3` ile ✅ kapatıldı (Section 3 tablosunda).
 
 ---
 
-*Bu rapor read-only audit ile başladı, iteratif kritik review'larla evrildi, pass-3'te 5-bölümlü yapıya yeniden yazıldı, sonraki turlarda RBAC doc sweep + OPTA observability detection ile açık riskler azaltıldı. Mevcut sürüm tek doğruluk kaynağı; eski detay/tarihsel narrative Appendix'lerde tutuldu. Aksiyon kararları kullanıcıda.*
+*Bu rapor read-only audit ile başladı, iteratif kritik review'larla evrildi, pass-3'te 5-bölümlü yapıya yeniden yazıldı, sonraki turlarda RBAC doc sweep + OPTA observability detection ile açık riskler azaltıldı. Mevcut sürüm tek doğruluk kaynağı; eski detay/tarihsel narrative Appendix'lerde tutuldu. **Açık risklerin 4'ü için design doc tamamlandı** (S3 backup, OPTA notification, maintenance pattern, migration baseline) — hepsi decision-ready / implementation-scoped: implementation aşaması kullanıcı kararları, credential ve strateji onaylarına bağlı. Aksiyon kararları kullanıcıda.*
