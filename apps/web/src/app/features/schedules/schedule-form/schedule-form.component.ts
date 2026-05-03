@@ -300,7 +300,7 @@ export class ScheduleFormComponent implements OnInit {
   ) {}
 
   ngOnInit() {
-    this.api.get<{ id: number; name: string }[]>('/channels').subscribe((ch) => this.channels.set(ch));
+    this.api.get<{ id: number; name: string }[]>('/channels/catalog').subscribe((ch) => this.channels.set(ch));
     this.api.get<League[]>('/matches/leagues').subscribe((lg) => this.leagues.set(lg));
 
     const id = this.route.snapshot.params['id'];

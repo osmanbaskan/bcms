@@ -2072,7 +2072,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
       // augment hiçbir yetki kazandırmıyordu.
       this._userGroups.set(groups);
     }
-    this.api.get<Channel[]>('/channels').subscribe({
+    this.api.get<Channel[]>('/channels/catalog').subscribe({
       next: (res) => this.channels.set(Array.isArray(res) ? res : []),
     });
     this.load();

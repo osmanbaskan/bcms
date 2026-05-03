@@ -21,6 +21,20 @@ export async function channelRoutes(app: FastifyInstance) {
     });
   });
 
+  // Minimal projection for selection dropdowns (schedule create/edit, live plan).
+  // Any authenticated user — no group gate, since channel listesi UI'da görünür
+  // bir reference data ve PERMISSIONS.channels.read sadece Admin'i kapsıyor.
+  app.get('/catalog', {
+    preHandler: app.requireGroup(),
+    schema: { tags: ['Channels'], summary: 'Channel catalog (minimal projection) for any authenticated user' },
+  }, async () => {
+    return app.prisma.channel.findMany({
+      where: { active: true },
+      select: { id: true, name: true, type: true, active: true },
+      orderBy: { name: 'asc' },
+    });
+  });
+
   app.get<{ Params: { id: string } }>('/:id', {
     preHandler: app.requireGroup(...PERMISSIONS.channels.read),
     schema: { tags: ['Channels'] },
