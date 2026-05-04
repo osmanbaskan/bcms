@@ -5,6 +5,8 @@ export type ScheduleUsage = ScheduleUsageScope | 'all';
 export interface Schedule {
   id: number;
   channelId: number | null;
+  /** OPTA müsabaka kaydına bağlantı; manuel girilen yayınlarda null (HIGH-SHARED-001 fix). */
+  matchId?: number | null;
   startTime: string; // ISO 8601
   endTime: string;
   title: string;
@@ -45,6 +47,8 @@ export interface UpdateScheduleDto {
   title?: string;
   status?: ScheduleStatus;
   contentId?: number;
+  /** PATCH'te de broadcastTypeId güncellenebilsin (HIGH-SHARED-005 fix). */
+  broadcastTypeId?: number;
   usageScope?: ScheduleUsageScope;
   metadata?: Record<string, unknown>;
 }

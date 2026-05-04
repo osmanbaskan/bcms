@@ -55,3 +55,11 @@ export interface UpdateBookingDto {
   notes?: string;
   metadata?: Record<string, unknown>;
 }
+
+/** HIGH-SHARED-003 fix (2026-05-05) — booking.findAll'da hesaplanan ek alanlar.
+ *  Base Booking interface'i salt-DB schema; list view'da requestedByName Keycloak
+ *  user listesinden join ediliyor, base type'a koymak yanıltıcı olur. */
+export interface BookingListItem extends Booking {
+  /** Keycloak'dan join edilmiş display name; createdBy ID'sine karşılık. */
+  requestedByName?: string | null;
+}

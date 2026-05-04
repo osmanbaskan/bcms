@@ -34,7 +34,10 @@ export const GROUP = {
 export interface JwtPayload {
   sub: string;
   preferred_username: string;
-  email: string;
+  /** HIGH-SHARED-007 fix (2026-05-05): Keycloak service-account token'larında
+   *  `email` claim'i bulunmayabilir. Optional işaretledik; runtime'da değer
+   *  eksikse fallback yapan kod (preferred_username vb.) kullanılır. */
+  email?: string;
   groups: string[];
   iat: number;
   exp: number;
