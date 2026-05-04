@@ -529,10 +529,18 @@ class TrDateAdapter extends NativeDateAdapter {
     </div>
   `,
   styles: [`
-    .page-container  { max-width: 1380px; margin: 0 auto; }
-    .page-header     { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-    .page-header h1  { margin-bottom: 2px; }
-    .page-subtitle   { margin: 0; color: #9aa2b3; font-size: 0.9rem; }
+    /* beINport UI V2 — page header + status badges + selected selectors restyle */
+    .page-container  { padding: var(--bp-sp-6) var(--bp-sp-8) var(--bp-sp-8); }
+    .page-header     { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--bp-sp-3); }
+    .page-header h1  {
+      margin: 0 0 4px;
+      font-family: var(--bp-font-display);
+      font-size: var(--bp-text-3xl);
+      font-weight: var(--bp-fw-semibold);
+      letter-spacing: var(--bp-ls-tight);
+      color: var(--bp-fg-1);
+    }
+    .page-subtitle   { margin: 0; color: var(--bp-fg-3); font-size: 12.5px; }
     .header-actions  { display: flex; align-items: center; gap: 12px; }
     .auto-refresh-label { display: flex; align-items: center; gap: 4px; font-size: 0.85rem; opacity: 0.7; }
     .workspace-tabs  { margin-top: 10px; }
@@ -607,14 +615,19 @@ class TrDateAdapter extends NativeDateAdapter {
     .job-row         { cursor: default; }
 
     .status-badge {
-      padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;
+      padding: 3px 8px;
+      border-radius: var(--bp-r-pill);
+      font-size: 9.5px;
+      font-weight: var(--bp-fw-bold);
+      letter-spacing: var(--bp-ls-status);
+      text-transform: uppercase;
     }
-    .status-badge.PENDING    { background: #37474f; color: #cfd8dc; }
-    .status-badge.PROCESSING { background: #1565c0; color: #fff; }
-    .status-badge.PROXY_GEN  { background: #6a1b9a; color: #fff; }
-    .status-badge.QC         { background: #e65100; color: #fff; }
-    .status-badge.COMPLETED  { background: #2e7d32; color: #fff; }
-    .status-badge.FAILED     { background: #b71c1c; color: #fff; }
+    .status-badge.PENDING    { background: rgba(107,114,128,0.20); color: var(--bp-fg-3); }
+    .status-badge.PROCESSING { background: rgba(124,58,237,0.18); color: var(--bp-purple-300); }
+    .status-badge.PROXY_GEN  { background: rgba(167,139,250,0.18); color: var(--bp-purple-300); }
+    .status-badge.QC         { background: rgba(245,158,11,0.16); color: #fbbf24; }
+    .status-badge.COMPLETED  { background: rgba(16,185,129,0.16); color: #6ee7b7; }
+    .status-badge.FAILED     { background: rgba(239,68,68,0.18); color: #fca5a5; }
 
     .detail-row td   { padding: 0 !important; border: none; }
     .qc-detail       { padding: 12px 24px; background: rgba(255,255,255,0.04); border-radius: 4px; margin: 4px 0; }
