@@ -422,12 +422,21 @@ function describeIngestKey(sourceKey: string): string {
   `,
   styles: [`
     .report-page { display:flex; flex-direction:column; gap:18px; }
+    /* beINport UI V2 — page header restyle */
     .page-header {
-      display:flex; justify-content:space-between; align-items:flex-start; gap:16px;
-      padding-bottom:14px; border-bottom:1px solid rgba(255,255,255,.1);
+      display:flex; justify-content:space-between; align-items:flex-start; gap: var(--bp-sp-4);
+      padding: var(--bp-sp-6) var(--bp-sp-8) var(--bp-sp-3);
+      border-bottom: 1px solid var(--bp-line-2);
     }
-    .page-header h1 { margin:0 0 6px; font-size:1.7rem; font-weight:600; }
-    .page-header p { margin:0; color:#a8adba; }
+    .page-header h1 {
+      margin: 0 0 4px;
+      font-family: var(--bp-font-display);
+      font-size: var(--bp-text-3xl);
+      font-weight: var(--bp-fw-semibold);
+      letter-spacing: var(--bp-ls-tight);
+      color: var(--bp-fg-1);
+    }
+    .page-header p { margin: 0; color: var(--bp-fg-3); font-size: 12.5px; }
     .header-actions { display:flex; gap:8px; flex-wrap:wrap; }
     .filter-band {
       display:flex; align-items:center; gap:14px; flex-wrap:wrap;
