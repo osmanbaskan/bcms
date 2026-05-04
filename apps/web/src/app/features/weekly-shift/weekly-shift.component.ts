@@ -207,10 +207,18 @@ const END_TIMES = ['06:15', '13:15', '15:00', '16:45', '20:00', '22:00', '23:45'
     </section>
   `,
   styles: [`
-    .page { display:flex; flex-direction:column; gap:14px; }
-    .toolbar { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; padding:12px 16px 0; flex-wrap:wrap; }
-    h1 { margin:0; font-size:48px; font-weight:600; }
-    p { margin:4px 0 0; color:#9ca3af; }
+    /* beINport UI V2 — page header restyle */
+    .page { display:flex; flex-direction:column; gap: var(--bp-sp-4); padding: var(--bp-sp-6) var(--bp-sp-8) var(--bp-sp-8); }
+    .toolbar { display:flex; justify-content:space-between; gap: var(--bp-sp-3); align-items:flex-start; padding: 0; flex-wrap:wrap; }
+    h1 {
+      margin: 0;
+      font-family: var(--bp-font-display);
+      font-size: var(--bp-text-3xl);
+      font-weight: var(--bp-fw-semibold);
+      letter-spacing: var(--bp-ls-tight);
+      color: var(--bp-fg-1);
+    }
+    p { margin: 4px 0 0; color: var(--bp-fg-3); font-size: 12.5px; }
     .week-controls { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
     .week-controls mat-form-field { width:164px; }
     .loading { display:flex; justify-content:center; padding:60px; }
