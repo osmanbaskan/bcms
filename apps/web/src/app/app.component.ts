@@ -1,20 +1,25 @@
 import {
   Component, OnInit, OnDestroy, signal, computed, ChangeDetectorRef,
-  HostListener, inject,
+  inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, Router, NavigationEnd } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { Subscription, interval } from 'rxjs';
 import { filter } from 'rxjs/operators';
 
 import { KeycloakService } from 'keycloak-angular';
+import type { KeycloakTokenParsed } from 'keycloak-js';
 import { environment } from '../environments/environment';
 import { getPublicAppOrigin } from './core/auth/public-origin';
 import { GROUP } from '@bcms/shared';
-import { CommandPaletteComponent, CommandItem } from './core/ui/command-palette.dialog';
 import { AlertPopoverComponent, AlertItem } from './core/ui/alert-popover.component';
+
+/** Keycloak token + BCMS özel `groups` claim'i (HIGH-FE-002 fix). */
+interface BcmsTokenParsed extends KeycloakTokenParsed {
+  preferred_username?: string;
+  groups?: string[];
+}
 
 interface NavItem {
   label:       string;
@@ -46,7 +51,6 @@ interface NavGroup {
     RouterOutlet,
     RouterLink,
     MatIconModule,
-    MatDialogModule,
     AlertPopoverComponent,
   ],
   template: `
@@ -58,7 +62,6 @@ interface NavGroup {
             <div class="brand">
               <span class="brand-be">be</span><span class="brand-in">IN</span><span class="brand-port">port</span>
             </div>
-            <div class="brand-tag">WORKFLOW</div>
           </a>
           <button class="collapse-btn"
                   type="button"
@@ -93,6 +96,12 @@ interface NavGroup {
             <div class="user-name">{{ username || 'Kullanıcı' }}</div>
             <div class="user-sub">{{ userSub() }}</div>
           </div>
+          <button class="user-btn"
+                  (click)="toggleTheme()"
+                  [title]="themeMode() === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'"
+                  type="button">
+            <mat-icon class="material-icons-outlined">{{ themeMode() === 'dark' ? 'light_mode' : 'dark_mode' }}</mat-icon>
+          </button>
           <button class="user-btn" (click)="logout()" title="Çıkış yap" type="button">
             <mat-icon class="material-icons-outlined">logout</mat-icon>
           </button>
@@ -103,12 +112,6 @@ interface NavGroup {
       <main class="main">
         <!-- ─── Top header ────────────────────────────────────────────── -->
         <header class="top">
-          <div class="search" (click)="openCommandPalette()" role="button" tabindex="0"
-               (keydown.enter)="openCommandPalette()">
-            <mat-icon class="material-icons-outlined search-ico">search</mat-icon>
-            <span class="search-placeholder">Yayın, kanal, takım, port ara…</span>
-            <span class="kbd">⌘K</span>
-          </div>
           <div class="top-right">
             <span class="date-mono">{{ currentDate() }}</span>
             <button class="icon-btn"
@@ -221,7 +224,6 @@ interface NavGroup {
       justify-content: center;
     }
     .side.collapsed .brand-port { display: none; }
-    .side.collapsed .brand-tag { display: none; }
     .brand {
       font-family: var(--bp-font-display);
       font-size: 26px;
@@ -233,13 +235,6 @@ interface NavGroup {
     }
     .brand-be, .brand-in { color: #fff; }
     .brand-port { color: var(--bp-purple-200); font-weight: var(--bp-fw-regular); font-size: 16px; margin-left: 1px; }
-    .brand-tag {
-      font-size: 10px;
-      letter-spacing: 0.18em;
-      color: var(--bp-purple-200);
-      margin-top: 6px;
-      font-weight: var(--bp-fw-semibold);
-    }
 
     .section { padding: 4px 12px; }
     .section-label {
@@ -399,41 +394,6 @@ interface NavGroup {
       gap: 16px;
       background: var(--bp-bg-1);
     }
-    .search {
-      flex: 1;
-      max-width: 480px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: var(--bp-bg-0);
-      border: 1px solid var(--bp-line-2);
-      border-radius: var(--bp-r-md);
-      padding: 8px 12px;
-      cursor: pointer;
-      transition: border-color var(--bp-dur-fast);
-    }
-    .search:hover { border-color: var(--bp-line); }
-    .search-ico {
-      color: var(--bp-fg-3);
-      font-size: 18px !important;
-      width: 18px !important;
-      height: 18px !important;
-      opacity: 0.5;
-    }
-    .search-placeholder {
-      flex: 1;
-      color: var(--bp-fg-3);
-      font-size: 13px;
-    }
-    .kbd {
-      font-size: 10px;
-      font-family: var(--bp-font-mono);
-      color: var(--bp-fg-4);
-      background: var(--bp-bg-2);
-      border: 1px solid var(--bp-line-2);
-      border-radius: 3px;
-      padding: 1px 5px;
-    }
     .top-right {
       margin-left: auto;
       display: flex;
@@ -443,7 +403,7 @@ interface NavGroup {
     .date-mono {
       font-family: var(--bp-font-mono);
       font-size: 11.5px;
-      color: var(--bp-fg-3);
+      color: var(--bp-fg-2);
     }
     .icon-btn {
       background: transparent;
@@ -509,13 +469,11 @@ interface NavGroup {
     /* ─── Responsive ──────────────────────────────────────────────────── */
     @media (max-width: 720px) {
       .top { padding: 0 16px; gap: 12px; }
-      .search-placeholder { display: none; }
       .date-mono { display: none; }
     }
   `],
 })
 export class AppComponent implements OnInit, OnDestroy {
-  private dialog = inject(MatDialog);
   private router = inject(Router);
   private keycloak = inject(KeycloakService);
   private cdr = inject(ChangeDetectorRef);
@@ -541,6 +499,29 @@ export class AppComponent implements OnInit, OnDestroy {
     const next = !this.sidebarCollapsed();
     this.sidebarCollapsed.set(next);
     try { localStorage.setItem(this.SIDEBAR_KEY, next ? '1' : '0'); }
+    catch { /* ignore */ }
+  }
+
+  /** Theme mode (dark/light) — kullanıcı tercihi, localStorage'da kalıcı.
+   *  FOUC önlemek için index.html'deki inline script erken set eder; burada
+   *  yalnızca runtime toggle ve signal sync sağlanır. */
+  private readonly THEME_KEY = 'bp.theme';
+  themeMode = signal<'dark' | 'light'>(this.readThemePref());
+
+  private readThemePref(): 'dark' | 'light' {
+    try { return localStorage.getItem(this.THEME_KEY) === 'light' ? 'light' : 'dark'; }
+    catch { return 'dark'; }
+  }
+
+  private applyTheme(t: 'dark' | 'light') {
+    document.documentElement.setAttribute('data-theme', t);
+  }
+
+  toggleTheme() {
+    const next = this.themeMode() === 'dark' ? 'light' : 'dark';
+    this.themeMode.set(next);
+    this.applyTheme(next);
+    try { localStorage.setItem(this.THEME_KEY, next); }
     catch { /* ignore */ }
   }
 
@@ -654,51 +635,19 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // HIGH-FE-002 fix (2026-05-05): `any` yerine BcmsTokenParsed yapılı cast.
+    // Keycloak'ın tokenParsed'i runtime KeycloakTokenParsed; biz `groups` claim'i
+    // ekliyoruz, bu yüzden lokal alt-tip kullanıyoruz.
     const kc = this.keycloak.getKeycloakInstance();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const parsed: any = kc?.tokenParsed ?? {};
-    this.username = parsed['preferred_username'] ?? '';
-    const groups: string[] = parsed?.groups ?? [];
-    this.userGroups.set(groups);
+    const parsed: BcmsTokenParsed = (kc?.tokenParsed as BcmsTokenParsed | undefined) ?? {};
+    this.username = parsed.preferred_username ?? '';
+    this.userGroups.set(parsed.groups ?? []);
     this.cdr.detectChanges();
   }
 
   ngOnDestroy() {
     this.routerSub?.unsubscribe();
     this.clockSub?.unsubscribe();
-  }
-
-  /** Cmd+K (Mac) / Ctrl+K (Win/Linux) — global shortcut. */
-  @HostListener('document:keydown', ['$event'])
-  handleKeydown(event: KeyboardEvent) {
-    const mod = event.metaKey || event.ctrlKey;
-    if (mod && event.key.toLowerCase() === 'k') {
-      event.preventDefault();
-      this.openCommandPalette();
-    }
-  }
-
-  openCommandPalette() {
-    const items: CommandItem[] = [];
-    for (const g of this.visibleGroups()) {
-      for (const it of g.items) {
-        items.push({ label: it.label, icon: it.icon, route: it.route, group: g.label });
-      }
-    }
-    const ref = this.dialog.open<CommandPaletteComponent, { items: CommandItem[] }, string>(
-      CommandPaletteComponent,
-      {
-        data: { items },
-        width: '560px',
-        maxWidth: '92vw',
-        panelClass: 'bp-command-palette-panel',
-        autoFocus: false,
-        position: { top: '15vh' },
-      },
-    );
-    ref.afterClosed().subscribe((route) => {
-      if (route) this.router.navigateByUrl(route);
-    });
   }
 
   toggleAlerts() {

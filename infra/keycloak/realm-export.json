@@ -1,7 +1,12 @@
 {
   "realm": "bcms",
   "enabled": true,
-  "displayName": "BCMS",
+  "displayName": "beINport",
+  "displayNameHtml": "<strong>be</strong>IN<span style=\"color:#a78bfa\">port</span>",
+  "loginTheme": "beinport",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["tr"],
+  "defaultLocale": "tr",
   "sslRequired": "external",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,

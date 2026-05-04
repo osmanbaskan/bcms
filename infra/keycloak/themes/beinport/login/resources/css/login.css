@@ -1,0 +1,368 @@
+/* beINport — Keycloak login custom theme (parent: keycloak.v2)
+   Dark bg + violet primary (#7c3aed), system font stack. */
+
+:root {
+  --bp-bg-0: #1a1b20;
+  --bp-bg-1: #22232a;
+  --bp-bg-2: #2d2f36;
+  --bp-bg-3: #383a42;
+  --bp-fg-1: #e6e7eb;
+  --bp-fg-2: #c4c6cf;
+  --bp-fg-3: #a0a3ad;
+  --bp-fg-4: #6b6f7a;
+  --bp-line-2: #3a3c45;
+  --bp-line: #4a4c56;
+  --bp-purple-200: #ddd6fe;
+  --bp-purple-300: #c4b5fd;
+  --bp-purple-500: #7c3aed;
+  --bp-purple-600: #6d28d9;
+  --bp-sidebar-gradient: linear-gradient(180deg, #4c1d95, #2e1065);
+  --bp-r-md: 8px;
+  --bp-r-lg: 12px;
+  --bp-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+html, body {
+  background: var(--bp-bg-0) !important;
+  color: var(--bp-fg-1) !important;
+  font-family: var(--bp-font-sans) !important;
+  min-height: 100vh;
+}
+
+/* ─── Sayfa background — radial purple glow ───────────────────────────── */
+body.login-pf,
+.login-pf body,
+.login-pf-page {
+  background:
+    radial-gradient(ellipse at top, rgba(124, 58, 237, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse at bottom, rgba(76, 29, 149, 0.14) 0%, transparent 55%),
+    var(--bp-bg-0) !important;
+  background-attachment: fixed !important;
+}
+
+/* Eski PatternFly bgImage / overlay’i temizle */
+.login-pf-page .login-pf-header,
+.login-pf-page .login-pf-brand {
+  display: none !important;
+}
+
+/* ─── Header (realm displayNameHtml — beINport branding) ──────────────── */
+#kc-header,
+#kc-header-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff !important;
+  font-family: var(--bp-font-sans) !important;
+  font-size: 36px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.025em !important;
+  padding: 48px 24px 16px !important;
+  text-shadow: 0 0 24px rgba(124, 58, 237, 0.45);
+}
+
+#kc-header-wrapper strong { font-weight: 700; }
+#kc-header-wrapper span { font-weight: 400; font-size: 0.62em; margin-left: 2px; }
+
+/* ─── Card ─────────────────────────────────────────────────────────────── */
+.card-pf,
+.login-pf-page .card-pf {
+  background: var(--bp-bg-1) !important;
+  border: 1px solid var(--bp-line-2) !important;
+  border-radius: var(--bp-r-lg) !important;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(124, 58, 237, 0.08) !important;
+  padding: 36px 32px !important;
+  color: var(--bp-fg-1) !important;
+  max-width: 440px !important;
+  margin: 0 auto !important;
+}
+
+#kc-page-title,
+.pf-c-login__main-header-title,
+.kc-login-tooltip {
+  color: var(--bp-fg-1) !important;
+  font-weight: 600 !important;
+  font-family: var(--bp-font-sans) !important;
+  font-size: 22px !important;
+  margin: 0 0 24px !important;
+  letter-spacing: -0.015em !important;
+}
+
+/* ─── Form fields ──────────────────────────────────────────────────────── */
+.pf-c-form__label,
+label,
+.control-label {
+  color: var(--bp-fg-2) !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  margin-bottom: 6px !important;
+  font-family: var(--bp-font-sans) !important;
+}
+
+/* PatternFly base form-control reset — beyaz top/bottom border ve
+   ::after underline'ı tamamen kapat. */
+input.pf-c-form-control,
+input.pf-v5-c-form-control,
+.pf-c-form-control input,
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+select.pf-c-form-control {
+  background: var(--bp-bg-2) !important;
+  background-color: var(--bp-bg-2) !important;
+  border: 1px solid var(--bp-line-2) !important;
+  border-top-color: var(--bp-line-2) !important;
+  border-right-color: var(--bp-line-2) !important;
+  border-bottom-color: var(--bp-line-2) !important;
+  border-left-color: var(--bp-line-2) !important;
+  color: var(--bp-fg-1) !important;
+  border-radius: var(--bp-r-md) !important;
+  padding: 11px 13px !important;
+  font-size: 14px !important;
+  font-family: var(--bp-font-sans) !important;
+  height: auto !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+  --pf-c-form-control--BorderTopColor: var(--bp-line-2);
+  --pf-c-form-control--BorderRightColor: var(--bp-line-2);
+  --pf-c-form-control--BorderBottomColor: var(--bp-line-2);
+  --pf-c-form-control--BorderLeftColor: var(--bp-line-2);
+  --pf-c-form-control--BackgroundColor: var(--bp-bg-2);
+  --pf-c-form-control--Color: var(--bp-fg-1);
+  --pf-c-form-control--after--BorderBottomColor: var(--bp-line-2);
+  --pf-c-form-control--after--BorderBottomWidth: 0;
+  --pf-c-form-control--focus--after--BorderBottomColor: var(--bp-purple-500);
+  --pf-c-form-control--focus--after--BorderBottomWidth: 0;
+  --pf-global--BorderColor--200: var(--bp-line-2);
+  --pf-global--BorderColor--300: var(--bp-line-2);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* PatternFly inputs use ::after for the "underline" focus indicator —
+   tamamen kaldır, modern flat border kullanıyoruz. */
+input.pf-c-form-control::after,
+input.pf-v5-c-form-control::after,
+.pf-c-form-control::after,
+.pf-v5-c-form-control::after {
+  content: none !important;
+  display: none !important;
+  border: 0 !important;
+}
+
+input.pf-c-form-control:focus,
+input.pf-v5-c-form-control:focus,
+input:focus {
+  border-color: var(--bp-purple-500) !important;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.22) !important;
+  outline: 0 !important;
+  --pf-c-form-control--BorderTopColor: var(--bp-purple-500);
+  --pf-c-form-control--BorderRightColor: var(--bp-purple-500);
+  --pf-c-form-control--BorderBottomColor: var(--bp-purple-500);
+  --pf-c-form-control--BorderLeftColor: var(--bp-purple-500);
+}
+
+input::placeholder { color: var(--bp-fg-4) !important; }
+
+input.pf-c-form-control[aria-invalid="true"],
+.has-error input {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18) !important;
+}
+
+/* ─── Password input-group (Şifre + göz butonu) ─────────────────────────
+   Keycloak password kutusu .pf-c-input-group içinde; default border'ları
+   beyaz/gri görünüyor. Tek bütün bir kutu olarak göster. */
+.pf-c-input-group,
+.pf-v5-c-input-group {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  --pf-c-input-group--BorderColor: var(--bp-line-2);
+}
+
+.pf-c-input-group input,
+.pf-v5-c-input-group input {
+  border-right: 0 !important;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+.pf-c-input-group button,
+.pf-v5-c-input-group button,
+.pf-c-input-group .pf-c-button,
+.pf-v5-c-input-group .pf-v5-c-button {
+  background: var(--bp-bg-2) !important;
+  background-color: var(--bp-bg-2) !important;
+  border: 1px solid var(--bp-line-2) !important;
+  border-left: 0 !important;
+  color: var(--bp-fg-3) !important;
+  border-radius: 0 var(--bp-r-md) var(--bp-r-md) 0 !important;
+  box-shadow: none !important;
+  --pf-c-button--after--BorderColor: transparent;
+  --pf-c-button--after--BorderWidth: 0;
+  padding: 0 12px !important;
+}
+.pf-c-input-group button::after,
+.pf-v5-c-input-group button::after,
+.pf-c-button::after { content: none !important; display: none !important; border: 0 !important; }
+
+.pf-c-input-group button:hover,
+.pf-v5-c-input-group button:hover { color: var(--bp-fg-1) !important; }
+
+.pf-c-input-group button:focus,
+.pf-v5-c-input-group button:focus {
+  outline: 0 !important;
+  border-color: var(--bp-purple-500) !important;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.22) !important;
+}
+
+/* Şifre kutusu input-group olarak focus aldığında — kutu + buton birlikte glow */
+.pf-c-input-group:focus-within input,
+.pf-v5-c-input-group:focus-within input {
+  border-color: var(--bp-purple-500) !important;
+}
+.pf-c-input-group:focus-within button,
+.pf-v5-c-input-group:focus-within button {
+  border-color: var(--bp-purple-500) !important;
+}
+
+/* ─── Buttons ──────────────────────────────────────────────────────────── */
+.pf-c-button.pf-m-primary,
+.pf-v5-c-button.pf-m-primary,
+input.kc-login,
+input[type="submit"],
+button[type="submit"],
+.btn-primary {
+  background: var(--bp-purple-500) !important;
+  border: 0 !important;
+  color: #fff !important;
+  border-radius: var(--bp-r-md) !important;
+  padding: 11px 20px !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  font-family: var(--bp-font-sans) !important;
+  width: 100% !important;
+  cursor: pointer !important;
+  transition: background 0.18s ease, transform 0.05s ease !important;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35) !important;
+  letter-spacing: 0.005em;
+}
+.pf-c-button.pf-m-primary:hover,
+input.kc-login:hover,
+input[type="submit"]:hover,
+button[type="submit"]:hover {
+  background: var(--bp-purple-600) !important;
+}
+.pf-c-button.pf-m-primary:active,
+input.kc-login:active,
+button[type="submit"]:active { transform: translateY(1px); }
+
+.pf-c-button.pf-m-secondary,
+.btn-default {
+  background: transparent !important;
+  border: 1px solid var(--bp-line-2) !important;
+  color: var(--bp-fg-1) !important;
+  border-radius: var(--bp-r-md) !important;
+}
+.pf-c-button.pf-m-secondary:hover { border-color: var(--bp-line) !important; }
+
+/* Linkler */
+a, .login-pf-page a, #kc-info a {
+  color: var(--bp-purple-300) !important;
+  text-decoration: none !important;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+a:hover { color: #fff !important; }
+
+/* ─── Alerts (hata mesajları) ──────────────────────────────────────────── */
+.alert,
+.pf-c-alert,
+.pf-v5-c-alert,
+.alert-error,
+.pf-c-alert.pf-m-danger,
+.pf-v5-c-alert.pf-m-danger {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(239, 68, 68, 0.45) !important;
+  color: #fca5a5 !important;
+  border-radius: var(--bp-r-md) !important;
+  padding: 12px 14px !important;
+  font-size: 13px !important;
+  margin-bottom: 18px !important;
+}
+
+.pf-c-alert.pf-m-warning {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.45) !important;
+  color: #fcd34d !important;
+}
+.pf-c-alert.pf-m-success {
+  background: rgba(34, 197, 94, 0.12) !important;
+  border-color: rgba(34, 197, 94, 0.45) !important;
+  color: #86efac !important;
+}
+
+/* ─── Misc — info bar, checkbox, divider, spinner ─────────────────────── */
+#kc-info,
+#kc-info-wrapper {
+  background: transparent !important;
+  border-top: 1px solid var(--bp-line-2) !important;
+  margin-top: 18px !important;
+  padding-top: 18px !important;
+  color: var(--bp-fg-3) !important;
+  font-size: 13px !important;
+  text-align: center;
+}
+
+.checkbox label,
+.pf-c-check__label {
+  color: var(--bp-fg-3) !important;
+  font-size: 13px !important;
+}
+input[type="checkbox"] {
+  accent-color: var(--bp-purple-500) !important;
+}
+
+#kc-form-options { display: flex; align-items: center; justify-content: space-between; }
+
+/* Locale switcher */
+#kc-locale-dropdown,
+.kc-dropdown,
+#kc-locale ul {
+  background: var(--bp-bg-2) !important;
+  border: 1px solid var(--bp-line-2) !important;
+  color: var(--bp-fg-1) !important;
+  border-radius: var(--bp-r-md) !important;
+}
+
+/* PatternFly select arrows / icons */
+.pf-c-form-control[aria-disabled="true"] { opacity: 0.5; }
+
+/* Eski Bootstrap badge / tooltip artıkları */
+.pf-c-tooltip__content {
+  background: var(--bp-bg-2) !important;
+  color: var(--bp-fg-1) !important;
+  border: 1px solid var(--bp-line-2) !important;
+}
+
+/* ─── Footer brand-tag + designer credit ──────────────────────────────── */
+.login-pf-page::after {
+  content: 'beINport · Yayın Operasyon Paneli\A Designed by Osman Başkan';
+  white-space: pre;
+  display: block;
+  text-align: center;
+  color: var(--bp-fg-4);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 24px 0 12px;
+  line-height: 1.8;
+  font-family: var(--bp-font-sans);
+}
+
+/* ─── Mobile ──────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  #kc-header-wrapper { font-size: 28px !important; padding-top: 32px !important; }
+  .card-pf { padding: 28px 22px !important; margin: 0 12px !important; }
+}

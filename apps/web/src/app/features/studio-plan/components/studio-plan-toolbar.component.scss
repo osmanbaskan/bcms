@@ -1,3 +1,4 @@
+/* beINport UI V2 — Studio Plan toolbar (edit area) dark theme remap */
 .toolbar {
   display: flex;
   align-items: center;
@@ -5,8 +6,9 @@
   gap: 12px;
   flex-wrap: wrap;
   padding: 12px;
-  border: 1px solid #d0d5dd;
-  background: #f8fafc;
+  border: 1px solid var(--bp-line-2);
+  border-radius: var(--bp-r-lg);
+  background: var(--bp-bg-2);
 }
 
 mat-form-field {
@@ -31,7 +33,7 @@ mat-form-field {
 .color-swatch {
   width: 34px;
   height: 12px;
-  border: 1px solid rgba(17, 24, 39, 0.3);
+  border: 1px solid var(--bp-line-2);
   flex: 0 0 auto;
 }
 
@@ -39,22 +41,22 @@ mat-form-field {
 .toolbar ::ng-deep .mat-mdc-select-arrow,
 .toolbar ::ng-deep .mat-mdc-floating-label,
 .toolbar ::ng-deep .mat-mdc-form-field-label {
-  color: #111827 !important;
+  color: var(--bp-fg-1) !important;
 }
 
 .toolbar ::ng-deep .mat-mdc-text-field-wrapper {
-  background: #ffffff !important;
+  background: var(--bp-bg-1) !important;
 }
 
 .toolbar ::ng-deep .mdc-notched-outline__leading,
 .toolbar ::ng-deep .mdc-notched-outline__notch,
 .toolbar ::ng-deep .mdc-notched-outline__trailing {
-  border-color: #98a2b3 !important;
+  border-color: var(--bp-line-2) !important;
 }
 
 .action-button {
   min-height: 44px;
-  color: #111827 !important;
+  color: var(--bp-fg-1) !important;
   border-width: 2px !important;
   font-weight: 700;
 }
@@ -64,18 +66,21 @@ mat-form-field {
 }
 
 .danger-action {
-  background: #fff4e5 !important;
+  background: rgba(247, 144, 9, 0.16) !important;
   border-color: #f79009 !important;
+  color: #fcd34d !important;
 }
 
 .copy-action {
-  background: #e8f5ff !important;
-  border-color: #1570ef !important;
+  background: rgba(124, 58, 237, 0.18) !important;
+  border-color: var(--bp-purple-500) !important;
+  color: var(--bp-purple-300) !important;
 }
 
 .eraser-action {
-  background: #fff1f3 !important;
+  background: rgba(217, 45, 32, 0.18) !important;
   border-color: #d92d20 !important;
+  color: #fca5a5 !important;
 }
 
 .active-tool {
@@ -85,11 +90,62 @@ mat-form-field {
 }
 
 .save-state {
-  color: #475467;
+  color: var(--bp-fg-3);
   font-size: 13px;
   font-weight: 600;
 }
 
 .save-state.error {
-  color: #b42318;
+  color: #fca5a5;
+}
+
+@media print {
+  .toolbar {
+    border: 1px solid #d0d5dd;
+    background: #f8fafc;
+  }
+
+  .toolbar ::ng-deep .mat-mdc-select-value,
+  .toolbar ::ng-deep .mat-mdc-select-arrow,
+  .toolbar ::ng-deep .mat-mdc-floating-label,
+  .toolbar ::ng-deep .mat-mdc-form-field-label {
+    color: #111827 !important;
+  }
+
+  .toolbar ::ng-deep .mat-mdc-text-field-wrapper {
+    background: #ffffff !important;
+  }
+
+  .toolbar ::ng-deep .mdc-notched-outline__leading,
+  .toolbar ::ng-deep .mdc-notched-outline__notch,
+  .toolbar ::ng-deep .mdc-notched-outline__trailing {
+    border-color: #98a2b3 !important;
+  }
+
+  .action-button {
+    color: #111827 !important;
+  }
+
+  .danger-action {
+    background: #fff4e5 !important;
+    color: #111827 !important;
+  }
+
+  .copy-action {
+    background: #e8f5ff !important;
+    color: #111827 !important;
+  }
+
+  .eraser-action {
+    background: #fff1f3 !important;
+    color: #111827 !important;
+  }
+
+  .save-state {
+    color: #475467;
+  }
+
+  .save-state.error {
+    color: #b42318;
+  }
 }

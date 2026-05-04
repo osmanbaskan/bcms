@@ -337,11 +337,10 @@ interface StudioSlot {
     .placeholder-eyebrow {
       font-size: 9.5px;
       letter-spacing: 0.10em;
-      color: var(--bp-fg-4);
       font-weight: var(--bp-fw-bold);
-      background: rgba(245, 158, 11, 0.10);
-      border: 1px solid rgba(245, 158, 11, 0.30);
-      color: #f59e0b;
+      background: var(--bp-status-PENDING-bg);
+      border: 1px solid var(--bp-status-PENDING-fg);
+      color: var(--bp-status-PENDING-fg);
       padding: 3px 8px;
       border-radius: 4px;
     }

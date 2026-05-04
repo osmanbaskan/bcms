@@ -323,15 +323,15 @@ export class BookingTaskDialogComponent implements OnInit {
       background: transparent;
       width: 100%;
       --mat-table-background-color: transparent;
-      --mat-table-header-container-color: var(--bp-bg-0);
+      --mat-table-header-container-color: var(--bp-bg-3);
       --mat-table-row-item-container-color: transparent;
-      --mat-table-header-headline-color: var(--bp-purple-300);
+      --mat-table-header-headline-color: var(--bp-fg-2);
       --mat-table-row-item-label-text-color: var(--bp-fg-1);
       --mat-table-row-item-outline-color: var(--bp-line-2);
     }
     .booking-table .mat-mdc-header-cell {
-      background: var(--bp-bg-0);
-      color: var(--bp-purple-300);
+      background: var(--bp-bg-3);
+      color: var(--bp-fg-2);
       font-weight: var(--bp-fw-bold);
       font-size: 9.5px;
       text-transform: uppercase;
@@ -362,10 +362,10 @@ export class BookingTaskDialogComponent implements OnInit {
       letter-spacing: var(--bp-ls-status);
       text-transform: uppercase;
     }
-    .status-badge.PENDING   { background: rgba(245,158,11,0.16); color: #fbbf24; }
-    .status-badge.APPROVED  { background: rgba(16,185,129,0.16); color: #6ee7b7; }
-    .status-badge.REJECTED  { background: rgba(239,68,68,0.18); color: #fca5a5; }
-    .status-badge.CANCELLED { background: rgba(107,114,128,0.20); color: var(--bp-fg-3); }
+    .status-badge.PENDING   { background: var(--bp-status-PENDING-bg);   color: var(--bp-status-PENDING-fg); }
+    .status-badge.APPROVED  { background: var(--bp-status-APPROVED-bg);  color: var(--bp-status-APPROVED-fg); }
+    .status-badge.REJECTED  { background: var(--bp-status-REJECTED-bg);  color: var(--bp-status-REJECTED-fg); }
+    .status-badge.CANCELLED { background: var(--bp-status-CANCELLED-bg); color: var(--bp-status-CANCELLED-fg); }
 
     .actions-cell { white-space: nowrap; text-align: right; }
     .empty, .spinner {

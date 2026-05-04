@@ -47,7 +47,7 @@ export interface PageTab {
     .eyebrow {
       font-size: var(--bp-text-xs);
       letter-spacing: var(--bp-ls-eyebrow);
-      color: var(--bp-purple-300);
+      color: var(--bp-fg-3);
       font-weight: var(--bp-fw-semibold);
       text-transform: uppercase;
       margin-bottom: 6px;

@@ -12,13 +12,17 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { ApiService } from '../../core/services/api.service';
 
+/** JSON value tipi — `any` yerine güvenli union (HIGH-FE-001 fix 2026-05-05). */
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [k: string]: JsonValue };
+
 interface AuditLog {
   id: number;
   entityType: string;
   entityId: number;
   action: string;
-  beforePayload: any;
-  afterPayload: any;
+  beforePayload: JsonValue | null;
+  afterPayload: JsonValue | null;
   user: string;
   ipAddress: string | null;
   timestamp: string;
@@ -247,12 +251,12 @@ const ACTION_CLASS: Record<string, string> = {
       display: grid;
       grid-template-columns: 140px 110px 160px 60px 130px 120px 48px;
       padding: 10px 14px;
-      background: var(--bp-bg-0);
+      background: var(--bp-bg-3);
       font-size: 9.5px;
       font-weight: var(--bp-fw-bold);
       text-transform: uppercase;
       letter-spacing: var(--bp-ls-eyebrow);
-      color: var(--bp-purple-300);
+      color: var(--bp-fg-2);
       border-bottom: 1px solid var(--bp-line-2);
     }
 
@@ -296,9 +300,9 @@ const ACTION_CLASS: Record<string, string> = {
       font-size: 9.5px; font-weight: var(--bp-fw-bold); letter-spacing: var(--bp-ls-status);
       width: fit-content;
     }
-    .a-create { background: rgba(16, 185, 129, 0.16); color: #6ee7b7; }
-    .a-update { background: rgba(124, 58, 237, 0.18); color: var(--bp-purple-300); }
-    .a-delete { background: rgba(239, 68, 68, 0.18);  color: #fca5a5; }
+    .a-create { background: var(--bp-status-COMPLETED-bg); color: var(--bp-status-COMPLETED-fg); }
+    .a-update { background: var(--bp-status-CONFIRMED-bg); color: var(--bp-status-CONFIRMED-fg); }
+    .a-delete { background: var(--bp-status-REJECTED-bg);  color: var(--bp-status-REJECTED-fg); }
 
     .audit-detail {
       background: var(--bp-bg-0);
@@ -314,8 +318,8 @@ const ACTION_CLASS: Record<string, string> = {
       margin-bottom: 8px;
     }
     .json-icon { font-size: 15px; width: 15px; height: 15px; }
-    .json-icon.before { color: #fca5a5; }
-    .json-icon.after  { color: #6ee7b7; }
+    .json-icon.before { color: var(--bp-status-REJECTED-fg); }
+    .json-icon.after  { color: var(--bp-status-COMPLETED-fg); }
     .json-pre {
       margin: 0; padding: 10px 12px;
       background: var(--bp-bg-1);
@@ -418,7 +422,7 @@ export class AuditLogComponent implements OnInit {
     return ACTION_CLASS[action] ?? 'a-update';
   }
 
-  formatJson(value: any): string {
+  formatJson(value: unknown): string {
     try {
       return JSON.stringify(value, null, 2);
     } catch {

@@ -30,3 +30,10 @@ infra/postgres/backups/*
 # TLS — private keys ASLA commit edilmez
 infra/tls/**/*.key
 infra/tls/**/*.srl
+
+# Playwright artifacts
+tests/playwright/screenshots/
+tests/playwright/test-results/
+tests/playwright/report/
+tests/playwright/storage/
+tests/playwright/playwright-report/

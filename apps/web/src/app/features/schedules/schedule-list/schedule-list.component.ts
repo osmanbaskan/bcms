@@ -260,6 +260,13 @@ function normalizeLeagueName(name: unknown): string {
   return String(name ?? '').trim().toLocaleLowerCase('tr-TR');
 }
 
+function isLightTheme(): boolean {
+  return typeof document !== 'undefined'
+    && document.documentElement.getAttribute('data-theme') === 'light';
+}
+
+/** Lig rengini her temada aynı vivid hex döndür — dark mode'daki görünüm light
+ *  mode'da da geçerli. Beyaz metin CSS tarafında attr-selector ile override edilir. */
 function leagueBackground(name: unknown): string {
   const normalized = normalizeLeagueName(name);
   if (!normalized) return '';
@@ -718,19 +725,26 @@ function transmissionEndDate(schedule: Schedule): Date {
       background:#1976d2; color:#fff; font-size:11px; font-weight:700; flex-shrink:0;
     }
 
-    .info-row  { display:flex; align-items:center; gap:6px; color:#888; font-size:12px; margin-bottom:8px; }
+    .info-row  { display:flex; align-items:center; gap:6px; color:var(--bp-fg-3); font-size:12px; margin-bottom:8px; }
     .info-icon { font-size:16px; height:16px; width:16px; }
-    .league-option { color:#fff; }
+    /* Lig dropdown option — bg vivid (her temada aynı), text her temada beyaz.
+       Global .mat-mdc-option override'ını kırmak için !important. */
+    .league-option,
+    ::ng-deep .mat-mdc-option.league-option,
+    ::ng-deep .mat-mdc-option.league-option .mdc-list-item__primary-text,
+    ::ng-deep .mat-mdc-option.league-option * {
+      color: #fff !important;
+    }
     .league-swatch {
       display:inline-block; width:10px; height:10px; border-radius:2px;
-      margin-right:8px; border:1px solid rgba(255,255,255,.45);
+      margin-right:8px; border:1px solid var(--bp-line);
       vertical-align:-1px;
     }
 
     .select-all-row { display:flex; align-items:center; gap:12px; padding:4px 8px; margin-bottom:4px; }
     .badge { background:#1976d2; color:#fff; border-radius:10px; padding:1px 8px; font-size:11px; }
 
-    .match-list { max-height:min(42vh, 360px); overflow-y:auto; border:1px solid #333; border-radius:4px; margin-bottom:8px; }
+    .match-list { max-height:min(42vh, 360px); overflow-y:auto; border:1px solid var(--bp-line-2); border-radius:4px; margin-bottom:8px; }
     .match-item {
       display:flex; align-items:center; gap:10px;
       padding:6px 10px; cursor:pointer; transition:filter .15s, box-shadow .15s;
@@ -749,30 +763,30 @@ function transmissionEndDate(schedule: Schedule): Date {
     }
     .entry-table th {
       padding:6px 8px; text-align:left; font-weight:600;
-      white-space:nowrap; border-right:1px solid rgba(255,255,255,.15);
+      white-space:nowrap; border-right:1px solid var(--bp-line);
     }
-    .entry-table tbody tr { border-bottom:1px solid #333; }
+    .entry-table tbody tr { border-bottom:1px solid var(--bp-line-2); }
     .entry-table tbody tr:hover { filter:brightness(1.12); }
     .entry-table td { padding:4px 6px; vertical-align:middle; }
 
     .cell-input {
-      background:transparent; border:none; border-bottom:1px solid #555;
+      background:transparent; border:none; border-bottom:1px solid var(--bp-line);
       color:inherit; font-size:12px; width:100%; outline:none; padding:2px 4px;
       min-width:60px;
     }
-    .cell-input:focus { border-bottom-color:#90caf9; }
+    .cell-input:focus { border-bottom-color:var(--bp-purple-500); }
     .cell-input.full  { min-width:140px; }
     .cell-select {
-      background:#1e1e1e; border:1px solid #555; color:inherit;
+      background:var(--bp-bg-2); border:1px solid var(--bp-line); color:inherit;
       font-size:12px; padding:2px 4px; border-radius:3px; width:100%; outline:none;
     }
-    .cell-select.empty { color:#888; }
-    .cell-select:focus { border-color:#90caf9; }
+    .cell-select.empty { color:var(--bp-fg-3); }
+    .cell-select:focus { border-color:var(--bp-purple-500); }
 
     .col-title   { min-width:200px; font-weight:500; }
     .team-input  { min-width:80px; width:calc(50% - 10px); }
-    .team-sep    { margin:0 4px; color:#888; }
-    .col-time    { white-space:nowrap; color:#aaa; }
+    .team-sep    { margin:0 4px; color:var(--bp-fg-3); }
+    .col-time    { white-space:nowrap; color:var(--bp-fg-3); }
     .col-channel { min-width:120px; }
     .col-trans   { min-width:150px; display:table-cell; }
     .col-trans input { display:block; margin-bottom:2px; }
@@ -795,7 +809,7 @@ function transmissionEndDate(schedule: Schedule): Date {
     .mf-wide { flex:2 !important; }
     .technical-tab { padding-bottom:16px; }
     .technical-section {
-      border:1px solid rgba(255,255,255,.12);
+      border:1px solid var(--bp-line-2);
       border-radius:6px;
       padding:10px 12px 0;
       margin-bottom:12px;
@@ -1345,7 +1359,7 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
       text-transform: uppercase;
       color: #90caf9;
       margin: 12px 0 6px;
-      border-top: 1px solid rgba(255,255,255,0.12);
+      border-top: 1px solid var(--bp-line-2);
       padding-top: 10px;
     }
   `],
@@ -1587,7 +1601,7 @@ export class ScheduleEditDialogComponent {
       margin:0 0 12px;
     }
     .technical-section {
-      border:1px solid rgba(255,255,255,.12);
+      border:1px solid var(--bp-line-2);
       border-radius:6px;
       padding:10px 12px 0;
       margin-bottom:12px;
@@ -1664,12 +1678,12 @@ export class ScheduleTechnicalDialogComponent {
     </h2>
     <mat-dialog-content style="min-width:420px;max-width:560px">
       <!-- İçerik Bilgileri -->
-      <div style="background:#1e1e1e;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:13px;line-height:1.8">
-        <div><span style="color:#888">İçerik:</span>&nbsp;<strong>{{ data.schedule.title }}</strong></div>
-        <div><span style="color:#888">Tarih:</span>&nbsp;{{ formatDate(data.schedule.startTime) }}</div>
-        <div><span style="color:#888">Saat:</span>&nbsp;{{ formatTime(data.schedule.startTime) }} – {{ formatTime(data.schedule.endTime) }}</div>
+      <div style="background:var(--bp-bg-3);border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:13px;line-height:1.8">
+        <div><span style="color:var(--bp-fg-3)">İçerik:</span>&nbsp;<strong>{{ data.schedule.title }}</strong></div>
+        <div><span style="color:var(--bp-fg-3)">Tarih:</span>&nbsp;{{ formatDate(data.schedule.startTime) }}</div>
+        <div><span style="color:var(--bp-fg-3)">Saat:</span>&nbsp;{{ formatTime(data.schedule.startTime) }} – {{ formatTime(data.schedule.endTime) }}</div>
         @if (data.schedule.channel?.name) {
-          <div><span style="color:#888">Kanal:</span>&nbsp;{{ data.schedule.channel!.name }}</div>
+          <div><span style="color:var(--bp-fg-3)">Kanal:</span>&nbsp;{{ data.schedule.channel!.name }}</div>
         }
       </div>
 

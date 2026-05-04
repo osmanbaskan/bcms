@@ -95,8 +95,15 @@ services:
       # -1 → port issuer URL'ye eklenmez (443 standart HTTPS port'u)
       KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:--1}
       KC_HTTP_RELATIVE_PATH: "/"
+      # Theme static resource Cache-Control max-age (saniye); -1 → no-cache.
+      # Default 30 gün — dev sırasında CSS değişiklikleri browser cache'ten dolayı görünmüyor.
+      KC_SPI_THEME_STATIC_MAX_AGE: ${KC_SPI_THEME_STATIC_MAX_AGE:--1}
+      KC_SPI_THEME_CACHE_THEMES: ${KC_SPI_THEME_CACHE_THEMES:-false}
+      KC_SPI_THEME_CACHE_TEMPLATES: ${KC_SPI_THEME_CACHE_TEMPLATES:-false}
     volumes:
       - ./infra/keycloak:/opt/keycloak/data/import
+      # Custom theme — sadece beinport subdir mount edilir (built-in themes overshadow olmasın).
+      - ./infra/keycloak/themes/beinport:/opt/keycloak/themes/beinport:ro
     # Ports kaldırıldı (audit CRIT-001): Keycloak dış ağa bind edilmez.
     # Erişim sadece nginx reverse proxy üzerinden /realms/, /admin/, /resources/ path'leriyle.
     healthcheck:
@@ -207,13 +214,15 @@ services:
     volumes:
       - ingest_watch:/app/tmp/watch
       - bxf_watch:/app/tmp/bxf
+    # HIGH-INF-017 (kapatıldı 2026-05-05): `api`'ye depends_on kaldırıldı.
+    # Worker'ın API'ye runtime bağımlılığı yok; aynı imajdan farklı entry'lerle
+    # çalışıyorlar. depends_on sadece startup ordering kontrol eder, ama buradaki
+    # cascading restart riskini de ortadan kaldırıyor.
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      api:
-        condition: service_started
     networks:
       - bcms_net
 

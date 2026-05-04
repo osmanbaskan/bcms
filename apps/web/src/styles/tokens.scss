@@ -1,20 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// beINport Design Tokens — UI V2 (2026-05-04)
+// beINport Design Tokens — UI V2 (2026-05-04, light/dark refactor 2026-05-05)
 // Kaynak: /home/ubuntu/website/beINport/tokens.css
-// Dark theme + mor accent. Inter / Inter Tight / JetBrains Mono.
+//
+// Üç katman:
+//   1. :root  — yapısal token'lar (purple, font, spacing, motion, status semantics)
+//              Tema değişikliğinden bağımsız, tüm temalarda aynı.
+//   2. [data-theme="dark"]  — koyu tema (default)
+//   3. [data-theme="light"] — açık tema
+//
+// KORUMA: --bp-purple-* ve --bp-sidebar-gradient her temada aynıdır.
 // ─────────────────────────────────────────────────────────────────────────────
 
 :root {
-  // ── Antrasit ölçeği (#2d2f36 base) ─────────────────────────────────────────
-  --bp-bg-0: #1a1b20;     // search input, in-card deepest
-  --bp-bg-1: #22232a;     // app body, header
-  --bp-bg-2: #2d2f36;     // card, dialog (raised)
-  --bp-bg-3: #383a42;     // hover, table header
-  --bp-bg-4: #44464f;     // emphasized
-  --bp-line:    #4a4c55;
-  --bp-line-2:  rgba(255, 255, 255, 0.08);
-
-  // ── Mor ölçeği (#7c3aed primary) ───────────────────────────────────────────
+  // ── Mor ölçeği (#7c3aed primary) — TÜM TEMALARDA SABİT ─────────────────────
   --bp-purple-50:  #f3e8ff;
   --bp-purple-200: #c4b5fd;
   --bp-purple-300: #a78bfa;     // accent, link, eyebrow
@@ -25,45 +23,20 @@
   --bp-purple-800: #4c1d95;     // sidebar gradient top
   --bp-purple-900: #2e1065;     // sidebar gradient bottom
 
-  // Sidebar gradient (computed)
+  // Sidebar gradient (KORUMA: her temada aynı mor gradient)
   --bp-sidebar-gradient: linear-gradient(180deg, #4c1d95 0%, #2e1065 100%);
 
-  // ── Foreground / text ──────────────────────────────────────────────────────
-  --bp-fg-1: #f4f4f6;     // default body
-  --bp-fg-2: #c8cad3;     // secondary
-  --bp-fg-3: #8e909c;     // muted, label
-  --bp-fg-4: #5c5e6a;     // disabled, very muted
-
-  // ── Status (yayın state) ───────────────────────────────────────────────────
+  // ── Status (yayın state) — semantic, theme-independent ─────────────────────
   --bp-status-live:    #ef4444;
   --bp-status-onair:   #ef4444;
   --bp-status-queued:  #f59e0b;
   --bp-status-done:    #10b981;
   --bp-status-draft:   #6b7280;
 
-  // ── Severity (alarm) ───────────────────────────────────────────────────────
+  // ── Severity (alarm) — semantic, theme-independent ─────────────────────────
   --bp-sev-critical: #ef4444;
   --bp-sev-warning:  #f59e0b;
   --bp-sev-info:     #3b82f6;
-
-  // ── BCMS legacy schedule status (KORUMA — schedule list başlıkları) ────────
-  // Mevcut status badge'leri korunur, yeni dark tema renkleriyle harmonize edildi
-  --bp-status-DRAFT-bg:     rgba(107, 114, 128, 0.20);
-  --bp-status-DRAFT-fg:     #9ca3af;
-  --bp-status-CONFIRMED-bg: rgba(59, 130, 246, 0.18);
-  --bp-status-CONFIRMED-fg: #93c5fd;
-  --bp-status-ON_AIR-bg:    rgba(239, 68, 68, 0.20);
-  --bp-status-ON_AIR-fg:    #fca5a5;
-  --bp-status-COMPLETED-bg: rgba(16, 185, 129, 0.18);
-  --bp-status-COMPLETED-fg: #6ee7b7;
-  --bp-status-CANCELLED-bg: rgba(75, 85, 99, 0.30);
-  --bp-status-CANCELLED-fg: #9ca3af;
-  --bp-status-PENDING-bg:   rgba(245, 158, 11, 0.20);
-  --bp-status-PENDING-fg:   #fbbf24;
-  --bp-status-APPROVED-bg:  rgba(34, 197, 94, 0.18);
-  --bp-status-APPROVED-fg:  #86efac;
-  --bp-status-REJECTED-bg:  rgba(239, 68, 68, 0.20);
-  --bp-status-REJECTED-fg:  #fca5a5;
 
   // ── Type families ──────────────────────────────────────────────────────────
   --bp-font-sans:    'Inter', 'Roboto', system-ui, -apple-system, sans-serif;
@@ -71,14 +44,14 @@
   --bp-font-mono:    'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
 
   // ── Type scale ─────────────────────────────────────────────────────────────
-  --bp-text-xs:   11px;     // eyebrow, kbd, badge counter
-  --bp-text-sm:   12.5px;   // small label
-  --bp-text-base: 13.5px;   // body sm (sidebar item, table cell)
-  --bp-text-md:   14px;     // default body
+  --bp-text-xs:   11px;
+  --bp-text-sm:   12.5px;
+  --bp-text-base: 13.5px;
+  --bp-text-md:   14px;
   --bp-text-lg:   16px;
-  --bp-text-xl:   18.5px;   // card title
-  --bp-text-2xl:  22px;     // dialog title
-  --bp-text-3xl:  28px;     // page h1
+  --bp-text-xl:   18.5px;
+  --bp-text-2xl:  22px;
+  --bp-text-3xl:  28px;
 
   // ── Weights ────────────────────────────────────────────────────────────────
   --bp-fw-regular:  400;
@@ -87,10 +60,10 @@
   --bp-fw-bold:     700;
 
   // ── Letter spacing ─────────────────────────────────────────────────────────
-  --bp-ls-tight: -0.02em;     // h1, h2, brand
-  --bp-ls-eyebrow: 0.10em;    // page eyebrow uppercase
-  --bp-ls-label:   0.08em;    // section label
-  --bp-ls-status:  0.06em;    // status tag
+  --bp-ls-tight: -0.02em;
+  --bp-ls-eyebrow: 0.10em;
+  --bp-ls-label:   0.08em;
+  --bp-ls-status:  0.06em;
 
   // ── Radius ─────────────────────────────────────────────────────────────────
   --bp-r-sm:    3px;
@@ -121,16 +94,103 @@
   --bp-dur-slow:    250ms;
   --bp-dur-pulse:   1.5s;
 
-  // ── Shadow ─────────────────────────────────────────────────────────────────
-  --bp-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.20);
-  --bp-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.30);
-  --bp-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.40);
-  --bp-shadow-xl: 0 24px 80px rgba(0, 0, 0, 0.50);
-
   // ── Z-index scale ──────────────────────────────────────────────────────────
   --bp-z-sidebar:  10;
   --bp-z-toolbar:  20;
   --bp-z-dropdown: 30;
   --bp-z-modal:    100;
   --bp-z-toast:    150;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DARK THEME (default)
+// ─────────────────────────────────────────────────────────────────────────────
+:root,
+html[data-theme="dark"] {
+  // ── Antrasit ölçeği ────────────────────────────────────────────────────────
+  --bp-bg-0: #1a1b20;
+  --bp-bg-1: #22232a;
+  --bp-bg-2: #2d2f36;
+  --bp-bg-3: #383a42;
+  --bp-bg-4: #44464f;
+  --bp-line:    #4a4c55;
+  --bp-line-2:  rgba(255, 255, 255, 0.08);
+
+  // ── Foreground / text ──────────────────────────────────────────────────────
+  --bp-fg-1: #f4f4f6;
+  --bp-fg-2: #c8cad3;
+  --bp-fg-3: #8e909c;
+  --bp-fg-4: #5c5e6a;
+
+  // ── Schedule status badge (dark) ───────────────────────────────────────────
+  --bp-status-DRAFT-bg:     rgba(107, 114, 128, 0.20);
+  --bp-status-DRAFT-fg:     #9ca3af;
+  --bp-status-CONFIRMED-bg: rgba(59, 130, 246, 0.18);
+  --bp-status-CONFIRMED-fg: #93c5fd;
+  --bp-status-ON_AIR-bg:    rgba(239, 68, 68, 0.20);
+  --bp-status-ON_AIR-fg:    #fca5a5;
+  --bp-status-COMPLETED-bg: rgba(16, 185, 129, 0.18);
+  --bp-status-COMPLETED-fg: #6ee7b7;
+  --bp-status-CANCELLED-bg: rgba(75, 85, 99, 0.30);
+  --bp-status-CANCELLED-fg: #9ca3af;
+  --bp-status-PENDING-bg:   rgba(245, 158, 11, 0.20);
+  --bp-status-PENDING-fg:   #fbbf24;
+  --bp-status-APPROVED-bg:  rgba(34, 197, 94, 0.18);
+  --bp-status-APPROVED-fg:  #86efac;
+  --bp-status-REJECTED-bg:  rgba(239, 68, 68, 0.20);
+  --bp-status-REJECTED-fg:  #fca5a5;
+
+  // ── Shadow (koyu zeminde derinlik) ─────────────────────────────────────────
+  --bp-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.20);
+  --bp-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.30);
+  --bp-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.40);
+  --bp-shadow-xl: 0 24px 80px rgba(0, 0, 0, 0.50);
+
+  color-scheme: dark;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIGHT THEME
+// ─────────────────────────────────────────────────────────────────────────────
+html[data-theme="light"] {
+  // ── Açık zeminler — Tailwind slate ölçeği ──────────────────────────────────
+  --bp-bg-0: #faf7ff;     // page bg (hafif mor tint)
+  --bp-bg-1: #ffffff;     // app body, header
+  --bp-bg-2: #ffffff;     // card, dialog
+  --bp-bg-3: #f5f0ff;     // hover, alt row (çok hafif mor)
+  --bp-bg-4: #ede4ff;     // emphasized, table header
+  --bp-line:    #5d2e5d;                   // patlıcan moru — strong visible border
+  --bp-line-2:  rgba(93, 46, 93, 0.32);    // patlıcan moru %32 — daha hafif çerçeveler
+
+  // ── Foreground / text — MOR TONLARI (kullanıcı tercihi) ───────────────────
+  --bp-fg-1: #3b0764;     // primary text — purple-950 (deep, near-black with purple)
+  --bp-fg-2: #5b21b6;     // secondary text — purple-700
+  --bp-fg-3: #7c3aed;     // muted/label — purple-500
+  --bp-fg-4: #a78bfa;     // very muted/disabled — purple-300
+
+  // ── Schedule status badge (light) ──────────────────────────────────────────
+  --bp-status-DRAFT-bg:     rgba(107, 114, 128, 0.13);
+  --bp-status-DRAFT-fg:     #4b5563;
+  --bp-status-CONFIRMED-bg: rgba(59, 130, 246, 0.13);
+  --bp-status-CONFIRMED-fg: #1d4ed8;
+  --bp-status-ON_AIR-bg:    rgba(239, 68, 68, 0.13);
+  --bp-status-ON_AIR-fg:    #b91c1c;
+  --bp-status-COMPLETED-bg: rgba(16, 185, 129, 0.14);
+  --bp-status-COMPLETED-fg: #047857;
+  --bp-status-CANCELLED-bg: rgba(75, 85, 99, 0.15);
+  --bp-status-CANCELLED-fg: #4b5563;
+  --bp-status-PENDING-bg:   rgba(245, 158, 11, 0.20);
+  --bp-status-PENDING-fg:   #92400e;     // amber-800, koyu kontrastlı
+  --bp-status-APPROVED-bg:  rgba(34, 197, 94, 0.14);
+  --bp-status-APPROVED-fg:  #15803d;
+  --bp-status-REJECTED-bg:  rgba(239, 68, 68, 0.13);
+  --bp-status-REJECTED-fg:  #b91c1c;
+
+  // ── Shadow (açık zeminde yumuşak gölge) ────────────────────────────────────
+  --bp-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --bp-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --bp-shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.12);
+  --bp-shadow-xl: 0 24px 80px rgba(15, 23, 42, 0.18);
+
+  color-scheme: light;
 }

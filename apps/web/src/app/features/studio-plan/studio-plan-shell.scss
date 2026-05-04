@@ -28,7 +28,7 @@ h1 {
 
 p {
   margin: 4px 0 0;
-  color: #667085;
+  color: var(--bp-fg-3);
 }
 
 app-studio-plan-toolbar {
@@ -41,9 +41,16 @@ app-studio-plan-toolbar {
   height: calc(100vh - 260px);
   min-height: 520px;
   overflow: auto;
-  border: 1px solid #111827;
-  background: #fff;
+  border: 1px solid var(--bp-line-2);
+  background: var(--bp-bg-2);
   position: relative;
+}
+
+@media print {
+  .plan-shell {
+    background: #fff;
+    border-color: #111827;
+  }
 }
 
 .plan-shell:fullscreen {

@@ -163,7 +163,7 @@ function formatHours(minutes: number): string {
     }
     .summary-chip {
       background: #1a1a2e; padding: 6px 14px; border-radius: 20px;
-      font-size: 13px; color: rgba(255,255,255,.8);
+      font-size: 13px; color: var(--bp-line-2);
     }
     .summary-chip strong { color: #90caf9; }
 
@@ -173,13 +173,13 @@ function formatHours(minutes: number): string {
     }
     .usage-table th {
       background: #1a1a2e; padding: 10px 12px; text-align: left;
-      font-weight: 600; color: rgba(255,255,255,.7);
-      border-bottom: 1px solid rgba(255,255,255,.1);
+      font-weight: 600; color: var(--bp-line-2);
+      border-bottom: 1px solid var(--bp-line-2);
       white-space: nowrap;
     }
     .usage-table td {
       padding: 9px 12px;
-      border-bottom: 1px solid rgba(255,255,255,.06);
+      border-bottom: 1px solid var(--bp-line-2);
       vertical-align: middle;
     }
     .usage-table tr:hover td { background: rgba(255,255,255,.03); }
@@ -191,12 +191,12 @@ function formatHours(minutes: number): string {
 
     .color-swatch {
       display: inline-block; width: 20px; height: 20px;
-      border-radius: 4px; border: 1px solid rgba(255,255,255,.2);
+      border-radius: 4px; border: 1px solid var(--bp-line);
     }
 
     .studio-tag {
       display: inline-block; margin: 2px 4px 2px 0;
-      background: rgba(255,255,255,.08); padding: 2px 8px;
+      background: var(--bp-line-2); padding: 2px 8px;
       border-radius: 10px; font-size: 11px; white-space: nowrap;
     }
 

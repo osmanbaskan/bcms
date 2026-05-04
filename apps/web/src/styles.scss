@@ -27,7 +27,7 @@ $bcms-theme: mat.define-theme((
 
 :root {
   @include mat.all-component-themes($bcms-theme);
-  color-scheme: dark;
+  // color-scheme tokens.scss içinde [data-theme="dark|light"] ile uygulanır.
 }
 
 * {
@@ -93,14 +93,46 @@ app-root {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Material dialog/menu — beINport'a uyumlu dark stili
+// Material dialog/menu — beINport'a uyumlu (token-bound, light/dark her ikisi)
 // ─────────────────────────────────────────────────────────────────────────────
+.mat-mdc-dialog-container,
+.mat-mdc-dialog-container .mdc-dialog__container,
 .mat-mdc-dialog-container .mdc-dialog__surface {
+  --mdc-dialog-container-color:        var(--bp-bg-2);
+  --mdc-dialog-subhead-color:          var(--bp-fg-1);
+  --mdc-dialog-supporting-text-color:  var(--bp-fg-2);
+  --mat-dialog-headline-padding:       16px 24px 12px;
+  --mat-dialog-content-padding:        12px 24px;
+  --mat-dialog-actions-padding:        8px 16px 12px;
   background: var(--bp-bg-2) !important;
+  color: var(--bp-fg-1);
+}
+.mat-mdc-dialog-container .mdc-dialog__surface {
   border: 1px solid var(--bp-line-2);
   border-radius: var(--bp-r-2xl) !important;
-  color: var(--bp-fg-1);
   box-shadow: var(--bp-shadow-xl);
+}
+.mat-mdc-dialog-container [mat-dialog-title],
+.mat-mdc-dialog-container .mdc-dialog__title,
+.mat-mdc-dialog-container .mat-mdc-dialog-title {
+  color: var(--bp-fg-1) !important;
+}
+.mat-mdc-dialog-container [mat-dialog-content],
+.mat-mdc-dialog-container .mdc-dialog__content,
+.mat-mdc-dialog-container .mat-mdc-dialog-content {
+  color: var(--bp-fg-1) !important;
+}
+.mat-mdc-dialog-container mat-dialog-actions button,
+.mat-mdc-dialog-container .mat-mdc-dialog-actions button {
+  color: var(--bp-fg-1) !important;
+}
+// mat-raised-button color="primary" — kayıt butonu mor kalsın
+.mat-mdc-dialog-container .mat-mdc-raised-button.mat-primary,
+.mat-mdc-dialog-container .mat-mdc-unelevated-button.mat-primary {
+  --mdc-protected-button-label-text-color: #fff;
+  --mdc-protected-button-container-color:  var(--bp-purple-500);
+  background: var(--bp-purple-500) !important;
+  color: #fff !important;
 }
 
 .mat-mdc-menu-panel.mat-mdc-menu-panel {
@@ -117,3 +149,402 @@ app-root {
 .page-container {
   padding: var(--bp-sp-6);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Material (M3) global token override — light/dark her ikisinde --bp-* takip et.
+// Material'ın compiled dark theme'i bg'leri sabit hex olarak gömüyor, bunlar
+// light mode'da koyu kalıyor. Aşağıdaki override'lar her temada token'ları
+// otomatik takip ettirir.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// MatCard — surface
+.mat-mdc-card {
+  --mdc-elevated-card-container-color: var(--bp-bg-2);
+  --mdc-outlined-card-container-color: var(--bp-bg-2);
+  --mdc-outlined-card-outline-color:    var(--bp-line-2);
+  --mat-card-subtitle-text-color:       var(--bp-fg-3);
+  background: var(--bp-bg-2) !important;
+  color: var(--bp-fg-1);
+}
+.mat-mdc-card-content,
+.mat-mdc-card-title,
+.mat-mdc-card-subtitle { color: inherit; }
+
+// MatTable
+.mat-mdc-table,
+.mat-mdc-paginator {
+  --mat-table-background-color:                    var(--bp-bg-2);
+  --mat-table-header-container-color:              var(--bp-bg-3);
+  --mat-table-header-headline-color:               var(--bp-fg-2);
+  --mat-table-row-item-label-text-color:           var(--bp-fg-1);
+  --mat-table-row-item-outline-color:              var(--bp-line-2);
+  background: var(--bp-bg-2) !important;
+  color: var(--bp-fg-1);
+}
+.mat-mdc-header-row { background: var(--bp-bg-3) !important; }
+.mat-mdc-row { background: var(--bp-bg-2) !important; }
+.mat-mdc-row:hover { background: var(--bp-bg-3) !important; }
+.mat-mdc-header-cell,
+.mat-mdc-cell {
+  color: var(--bp-fg-1);
+  border-bottom-color: var(--bp-line-2) !important;
+}
+.mat-mdc-header-cell { color: var(--bp-fg-2); }
+
+// MatFormField (input/select)
+.mat-mdc-form-field {
+  --mdc-outlined-text-field-outline-color:           var(--bp-line);
+  --mdc-outlined-text-field-hover-outline-color:     var(--bp-fg-3);
+  --mdc-outlined-text-field-focus-outline-color:     var(--bp-purple-500);
+  --mdc-outlined-text-field-input-text-color:        var(--bp-fg-1);
+  --mdc-outlined-text-field-label-text-color:        var(--bp-fg-3);
+  --mdc-outlined-text-field-focus-label-text-color:  var(--bp-purple-500);
+  --mdc-filled-text-field-container-color:           var(--bp-bg-2);
+  --mdc-filled-text-field-input-text-color:          var(--bp-fg-1);
+  --mdc-filled-text-field-label-text-color:          var(--bp-fg-3);
+  --mat-form-field-subscript-text-color:             var(--bp-fg-3);
+}
+
+// MatTabs
+.mat-mdc-tab-group,
+.mat-mdc-tab-nav-bar {
+  --mdc-tab-indicator-active-indicator-color:    var(--bp-purple-500);
+  --mat-tab-header-label-text-color:             var(--bp-fg-2);
+  --mat-tab-header-active-label-text-color:      var(--bp-purple-500);
+  --mat-tab-header-active-focus-label-text-color: var(--bp-purple-600);
+  --mat-tab-header-active-hover-label-text-color: var(--bp-purple-500);
+  --mat-tab-header-inactive-label-text-color:    var(--bp-fg-3);
+  --mat-tab-header-inactive-focus-label-text-color: var(--bp-fg-2);
+  --mat-tab-header-inactive-hover-label-text-color: var(--bp-fg-2);
+  --mat-tab-header-divider-color:                var(--bp-line-2);
+  background: var(--bp-bg-2);
+}
+.mat-mdc-tab .mdc-tab__text-label {
+  color: var(--bp-fg-2) !important;
+}
+.mat-mdc-tab.mdc-tab--active .mdc-tab__text-label {
+  color: var(--bp-purple-500) !important;
+}
+
+// MatSelect / MatOption
+.mat-mdc-select-panel,
+.cdk-overlay-pane .mat-mdc-autocomplete-panel {
+  background: var(--bp-bg-2) !important;
+  color: var(--bp-fg-1);
+  border: 1px solid var(--bp-line-2);
+}
+.mat-mdc-option {
+  color: var(--bp-fg-1) !important;
+  --mat-option-hover-state-layer-color: var(--bp-bg-3);
+  --mat-option-selected-state-layer-color: rgba(124, 58, 237, 0.12);
+  --mat-option-label-text-color: var(--bp-fg-1);
+}
+
+// MatButton (default styling)
+.mat-mdc-button,
+.mat-mdc-outlined-button,
+.mat-mdc-icon-button {
+  --mdc-text-button-label-text-color:     var(--bp-fg-1);
+  --mdc-outlined-button-label-text-color: var(--bp-fg-1);
+  --mdc-outlined-button-outline-color:    var(--bp-line);
+  --mat-icon-button-state-layer-color:    var(--bp-fg-1);
+}
+// Compiled dark theme'in --mdc-* token'ları üst paragrafın etkisini görmezse, label
+// span'ına direkt color ile vur. .mat-primary buttonlar (Yeni Ekle vb.) hariç.
+// Light mode'da !important ile kesin garanti.
+html[data-theme="light"] .mat-mdc-button:not(.mat-primary):not([color="primary"]) .mdc-button__label,
+html[data-theme="light"] .mat-mdc-outlined-button:not(.mat-primary):not([color="primary"]) .mdc-button__label,
+html[data-theme="light"] .mat-mdc-stroked-button:not(.mat-primary):not([color="primary"]) .mdc-button__label {
+  color: var(--bp-fg-1) !important;
+}
+html[data-theme="dark"] .mat-mdc-button:not(.mat-primary):not([color="primary"]) .mdc-button__label,
+html[data-theme="dark"] .mat-mdc-outlined-button:not(.mat-primary):not([color="primary"]) .mdc-button__label,
+html[data-theme="dark"] .mat-mdc-stroked-button:not(.mat-primary):not([color="primary"]) .mdc-button__label {
+  color: var(--bp-fg-1);
+}
+// Primary/raised buttons mor kalsın (Yeni Yayın Kaydı vb.)
+.mat-mdc-raised-button.mat-primary .mdc-button__label,
+.mat-mdc-flat-button.mat-primary .mdc-button__label,
+.mat-mdc-unelevated-button.mat-primary .mdc-button__label {
+  color: #fff;
+}
+
+// MatChip — text label compiled dark'ta beyaz; light mode'da invisible. Token + direct.
+.mat-mdc-chip {
+  --mdc-chip-elevated-container-color:   var(--bp-bg-3);
+  --mdc-chip-elevated-disabled-container-color: var(--bp-bg-3);
+  --mdc-chip-label-text-color:           var(--bp-fg-1);
+  --mdc-chip-with-icon-icon-color:       var(--bp-fg-2);
+  --mdc-chip-with-icon-selected-icon-color: var(--bp-purple-500);
+  --mdc-chip-outline-color:              var(--bp-line-2);
+  --mdc-chip-disabled-label-text-color:  var(--bp-fg-3);
+}
+// Default mat-chip rendering: Angular Material kazara `.mat-primary` ekliyor.
+// Biz "primary" chip'i renkli vurgulu olarak istiyorsak `.mat-mdc-chip-highlighted`
+// ya da explicit `[highlighted]` attribute kullanırız. Default chip = bg-3 + fg-1.
+.mat-mdc-chip,
+.mat-mdc-chip .mdc-evolution-chip__text-label,
+.mat-mdc-chip .mat-mdc-chip-action-label,
+.mat-mdc-chip .mdc-evolution-chip__cell--primary,
+.mat-mdc-standard-chip,
+.mat-mdc-standard-chip .mdc-evolution-chip__text-label {
+  color: var(--bp-fg-1) !important;
+}
+.mat-mdc-chip {
+  --mdc-chip-elevated-container-color: var(--bp-bg-3) !important;
+  --mdc-chip-label-text-color:         var(--bp-fg-1) !important;
+  background-color: var(--bp-bg-3) !important;
+}
+// Vurgulu chip varyantı (selected / highlighted) — mor bg + beyaz text
+.mat-mdc-chip.mat-mdc-chip-highlighted,
+.mat-mdc-chip.mat-mdc-chip-selected {
+  background-color: var(--bp-purple-500) !important;
+  --mdc-chip-elevated-container-color: var(--bp-purple-500) !important;
+}
+.mat-mdc-chip.mat-mdc-chip-highlighted .mdc-evolution-chip__text-label,
+.mat-mdc-chip.mat-mdc-chip-selected .mdc-evolution-chip__text-label,
+.mat-mdc-chip.mat-mdc-chip-highlighted *,
+.mat-mdc-chip.mat-mdc-chip-selected * {
+  color: #fff !important;
+}
+
+// Dashboard link-action ("Tümü →", "Audit log →") — light mode'da purple-700,
+// dark mode'da purple-300.
+html[data-theme="light"] .link-action { color: var(--bp-purple-700) !important; }
+html[data-theme="dark"]  .link-action { color: var(--bp-purple-300); }
+
+// MatTable header — bazı sayfalarda compiled dark token kazanıyor; light mode'da
+// !important ile fg-2 zorla
+html[data-theme="light"] .mat-mdc-header-cell {
+  color: var(--bp-fg-2) !important;
+}
+
+// MatButtonToggle (Liste/Tablo gibi tab benzeri toggle'lar)
+.mat-button-toggle-group {
+  --mat-standard-button-toggle-text-color:                var(--bp-fg-1);
+  --mat-standard-button-toggle-background-color:          var(--bp-bg-2);
+  --mat-standard-button-toggle-state-layer-color:         var(--bp-fg-1);
+  --mat-standard-button-toggle-selected-state-text-color: var(--bp-purple-700);
+  --mat-standard-button-toggle-selected-state-background-color: var(--bp-purple-500);
+  --mat-standard-button-toggle-divider-color:             var(--bp-line-2);
+  border: 1px solid var(--bp-line-2);
+}
+.mat-button-toggle-label-content {
+  color: var(--bp-fg-1) !important;
+}
+.mat-button-toggle-checked .mat-button-toggle-label-content {
+  color: #fff !important;
+}
+.mat-button-toggle-checked {
+  background: var(--bp-purple-500) !important;
+}
+
+// Material RAISED/FLAT primary buttons her temada vivid mor + beyaz metin
+.mat-mdc-raised-button.mat-primary,
+.mat-mdc-flat-button.mat-primary,
+.mat-mdc-unelevated-button.mat-primary {
+  --mdc-protected-button-container-color:    var(--bp-purple-500) !important;
+  --mdc-protected-button-label-text-color:   #fff !important;
+  --mdc-filled-button-container-color:       var(--bp-purple-500) !important;
+  --mdc-filled-button-label-text-color:      #fff !important;
+  background-color: var(--bp-purple-500) !important;
+  color: #fff !important;
+}
+.mat-mdc-raised-button.mat-primary .mdc-button__label,
+.mat-mdc-flat-button.mat-primary .mdc-button__label,
+.mat-mdc-unelevated-button.mat-primary .mdc-button__label {
+  color: #fff !important;
+}
+
+// MatCheckbox / MatRadio
+.mat-mdc-checkbox {
+  --mdc-checkbox-unselected-icon-color:        var(--bp-fg-3);
+  --mdc-checkbox-unselected-hover-icon-color:  var(--bp-fg-1);
+  --mdc-checkbox-selected-icon-color:          var(--bp-purple-500);
+  --mdc-checkbox-selected-hover-icon-color:    var(--bp-purple-600);
+}
+.mat-mdc-radio-button {
+  --mdc-radio-unselected-icon-color:        var(--bp-fg-3);
+  --mdc-radio-selected-icon-color:          var(--bp-purple-500);
+}
+
+// MatTooltip
+.mat-mdc-tooltip {
+  --mdc-plain-tooltip-container-color: var(--bp-bg-3);
+  --mdc-plain-tooltip-supporting-text-color: var(--bp-fg-1);
+}
+
+// MatExpansion
+.mat-expansion-panel {
+  background: var(--bp-bg-2) !important;
+  color: var(--bp-fg-1);
+}
+.mat-expansion-panel-header { color: var(--bp-fg-1) !important; }
+
+// CDK overlay backdrop (light için hafif sis)
+html[data-theme="light"] .cdk-overlay-backdrop.cdk-overlay-dark-backdrop {
+  background: rgba(31, 41, 55, 0.45);   // koyu nötr scrim, dialog'u öne çıkartır
+}
+
+// Dialog surface'in altına bg-2 zorla — bazı durumlarda compiled MDC'nin
+// şeffaflığa düşürmesini engelle.
+html[data-theme="light"] .mat-mdc-dialog-container .mdc-dialog__surface,
+html[data-theme="light"] .mat-mdc-dialog-container .mdc-dialog__container {
+  background-color: var(--bp-bg-2) !important;
+  background-image: none !important;
+  opacity: 1 !important;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Material native compiled-dark token override'ları (light mode için)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Form field compiled dark bg → token-aware
+html[data-theme="light"] .mat-mdc-form-field-flex,
+html[data-theme="light"] .mat-mdc-text-field-wrapper {
+  background: var(--bp-bg-2) !important;
+}
+html[data-theme="light"] .mat-mdc-form-field input,
+html[data-theme="light"] .mat-mdc-form-field textarea,
+html[data-theme="light"] .mat-mdc-form-field-input-control {
+  color: var(--bp-fg-1) !important;
+  color-scheme: light;
+}
+
+// Native time/date/datetime input — html-level color-scheme yetmiyor, root
+// ve direct selector ile force.
+html[data-theme="light"] input[type="date"],
+html[data-theme="light"] input[type="time"],
+html[data-theme="light"] input[type="datetime-local"],
+html[data-theme="light"] input[type="month"],
+html[data-theme="light"] input[type="week"] {
+  color-scheme: light !important;
+  background: var(--bp-bg-2) !important;
+  color: var(--bp-fg-1) !important;
+}
+
+// Filled-input variant için underline (mdc-line-ripple)
+.mat-mdc-form-field .mdc-line-ripple::before {
+  border-bottom-color: var(--bp-line) !important;
+}
+.mat-mdc-form-field .mdc-line-ripple::after {
+  border-bottom-color: var(--bp-purple-500) !important;
+}
+
+// Mat select arrow + trigger
+.mat-mdc-select {
+  --mat-select-enabled-trigger-text-color:    var(--bp-fg-1);
+  --mat-select-disabled-trigger-text-color:   var(--bp-fg-4);
+  --mat-select-placeholder-text-color:        var(--bp-fg-3);
+  --mat-select-enabled-arrow-color:           var(--bp-fg-3);
+  --mat-select-focused-arrow-color:           var(--bp-purple-500);
+  --mat-select-panel-background-color:        var(--bp-bg-2);
+}
+.mat-mdc-select-arrow svg { fill: var(--bp-fg-3) !important; }
+
+// Slide toggle / Switch
+.mat-mdc-slide-toggle {
+  --mdc-switch-unselected-track-color:         var(--bp-bg-3);
+  --mdc-switch-unselected-handle-color:        var(--bp-fg-3);
+  --mdc-switch-selected-track-color:           var(--bp-purple-300);
+  --mdc-switch-selected-handle-color:          var(--bp-purple-500);
+  --mdc-switch-selected-focus-track-color:     var(--bp-purple-400);
+  --mdc-switch-selected-focus-handle-color:    var(--bp-purple-600);
+}
+
+// Datepicker overlay panel
+.mat-datepicker-content,
+.mat-mdc-datepicker-popup {
+  background: var(--bp-bg-2) !important;
+  color: var(--bp-fg-1) !important;
+  border: 1px solid var(--bp-line-2);
+  --mat-datepicker-calendar-container-background-color: var(--bp-bg-2);
+  --mat-datepicker-calendar-date-text-color:            var(--bp-fg-1);
+  --mat-datepicker-calendar-body-label-text-color:      var(--bp-fg-3);
+  --mat-datepicker-calendar-period-button-text-color:   var(--bp-fg-1);
+  --mat-datepicker-calendar-navigation-button-icon-color: var(--bp-fg-2);
+}
+.mat-calendar-table-header th { color: var(--bp-fg-3) !important; }
+.mat-calendar-body-cell-content {
+  color: var(--bp-fg-1) !important;
+  border-color: transparent !important;
+}
+.mat-calendar-body-selected {
+  background: var(--bp-purple-500) !important;
+  color: #fff !important;
+}
+
+// Paginator
+.mat-mdc-paginator {
+  --mat-paginator-container-text-color:     var(--bp-fg-2);
+  --mat-paginator-container-background-color: var(--bp-bg-2);
+  --mat-paginator-enabled-icon-color:       var(--bp-fg-2);
+  --mat-paginator-disabled-icon-color:      var(--bp-fg-4);
+  background: var(--bp-bg-2) !important;
+  color: var(--bp-fg-2);
+}
+.mat-mdc-paginator .mat-mdc-icon-button { color: var(--bp-fg-2) !important; }
+
+// Slider
+.mat-mdc-slider {
+  --mdc-slider-handle-color:               var(--bp-purple-500);
+  --mdc-slider-focus-handle-color:         var(--bp-purple-600);
+  --mdc-slider-active-track-color:         var(--bp-purple-500);
+  --mdc-slider-inactive-track-color:       var(--bp-line);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Light mode — Canlı Yayın Plan, Ingest, Stüdyo Planı sayfalarında metin rengi
+// sol menü gradient bg ile aynı (purple-800 #4c1d95). fg-* token'larını yerel
+// scope'ta override ediyoruz; status badge / button / accent renkler korunur.
+// ─────────────────────────────────────────────────────────────────────────────
+html[data-theme="light"] :is(app-schedule-list, app-ingest-list, app-studio-plan) {
+  --bp-fg-1: #4c1d95;     // primary text → sidebar gradient top
+  --bp-fg-2: #5b21b6;     // secondary text
+  --bp-fg-3: #6d28d9;     // muted/label
+  --bp-fg-4: #8b5cf6;     // very muted
+
+  color: #4c1d95;
+}
+
+html[data-theme="light"] :is(app-schedule-list, app-ingest-list, app-studio-plan) :is(
+  h1, h2, h3, h4, h5, h6,
+  p, span:not([class*="status"]):not([class*="badge"]):not([class*="chip"]),
+  label, .label,
+  td:not([class*="status"]), th,
+  strong, em, small,
+  .text, .title, .subtitle,
+  mat-cell, mat-header-cell
+) {
+  color: inherit;
+}
+
+// Schedule list — lig bg'li satırlarda metin her temada beyaz (vivid bg üstü).
+app-schedule-list tr.has-league-color,
+app-schedule-list tr.has-league-color td,
+app-schedule-list tr.has-league-color th,
+app-schedule-list tr.transmission-finished,
+app-schedule-list tr.transmission-finished td,
+app-schedule-list tr.transmission-finished th {
+  color: #fff !important;
+}
+app-schedule-list tr.has-league-color a,
+app-schedule-list tr.transmission-finished a { color: #fff !important; }
+// Mat icon button içindeki ikonlar da beyaz
+app-schedule-list tr.has-league-color .mat-mdc-icon-button mat-icon,
+app-schedule-list tr.transmission-finished .mat-mdc-icon-button mat-icon {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+// mat-option lig swatch'lı option — global mat-mdc-option override'ını yen
+.mat-mdc-option.league-option,
+.mat-mdc-option.league-option .mdc-list-item__primary-text,
+.mat-mdc-option.league-option * {
+  color: #fff !important;
+}
+// Inline style.background ile renklendirilmiş option'lar genel olarak beyaz metin
+.mat-mdc-option[style*="background"],
+.mat-mdc-option[style*="background"] .mdc-list-item__primary-text {
+  color: #fff !important;
+}
+

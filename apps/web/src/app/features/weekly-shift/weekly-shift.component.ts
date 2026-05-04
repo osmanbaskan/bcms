@@ -248,10 +248,13 @@ const END_TIMES = ['06:15', '13:15', '15:00', '16:45', '20:00', '22:00', '23:45'
       text-transform: uppercase;
       padding: 2px 8px;
       border-radius: var(--bp-r-sm);
-      background: rgba(239, 68, 68, 0.16);
-      color: #fca5a5;
+      background: var(--bp-status-REJECTED-bg);
+      color: var(--bp-status-REJECTED-fg);
     }
-    .mode.editable { background: rgba(16, 185, 129, 0.16); color: #6ee7b7; }
+    .mode.editable {
+      background: var(--bp-status-COMPLETED-bg);
+      color: var(--bp-status-COMPLETED-fg);
+    }
     .empty {
       padding: var(--bp-sp-4);
       color: var(--bp-fg-3);
@@ -272,8 +275,8 @@ const END_TIMES = ['06:15', '13:15', '15:00', '16:45', '20:00', '22:00', '23:45'
       border-right: 1px solid var(--bp-line-2);
     }
     th {
-      background: var(--bp-bg-0);
-      color: var(--bp-purple-300);
+      background: var(--bp-bg-3);
+      color: var(--bp-fg-2);
       padding: 8px;
       text-align: left;
       vertical-align: top;
@@ -291,7 +294,7 @@ const END_TIMES = ['06:15', '13:15', '15:00', '16:45', '20:00', '22:00', '23:45'
       min-width: 135px;
       background: var(--bp-bg-1);
     }
-    th.person-col { z-index: 2; background: var(--bp-bg-0); }
+    th.person-col { z-index: 2; background: var(--bp-bg-3); }
     .person-name {
       font-weight: var(--bp-fw-semibold);
       font-size: 13.5px;

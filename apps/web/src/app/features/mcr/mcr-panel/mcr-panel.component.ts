@@ -273,7 +273,7 @@ const TC_EVENT_TYPES = ['NOTE', 'GO_LIVE', 'END', 'CUT', 'INSERT', 'FAULT', 'REC
     .clock-block { display:flex; flex-direction:column; align-items:center; }
     .clock-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: var(--bp-ls-eyebrow); color: var(--bp-fg-3); font-weight: var(--bp-fw-bold); }
     .clock-value { font-family: var(--bp-font-mono); font-size: 22px; font-weight: var(--bp-fw-bold); letter-spacing: 2px; color: var(--bp-fg-1); }
-    .local .clock-value { color: var(--bp-purple-300); }
+    .local .clock-value { color: var(--bp-fg-2); }
 
     /* Live row */
     .live-row { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:24px; }
@@ -282,8 +282,8 @@ const TC_EVENT_TYPES = ['NOTE', 'GO_LIVE', 'END', 'CUT', 'INSERT', 'FAULT', 'REC
     .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
     .dot.on   { background:#f44336; box-shadow:0 0 6px #f44336; animation:pulse 1s infinite; }
     .dot.next { background:#ff9800; }
-    .on-air-label { color:#f44336; }
-    .next-label   { color:#ff9800; }
+    .on-air-label { color:#dc2626; }    /* red-600 — daha koyu, light mode'da okunur */
+    .next-label   { color:#b45309; }    /* amber-700 — koyu turuncu, kontrastlı */
 
     .live-card { margin-bottom:8px; cursor:pointer; border:1px solid transparent; transition:border-color 0.2s; }
     .live-card.selected { border-color:#90caf9; }
@@ -311,7 +311,7 @@ const TC_EVENT_TYPES = ['NOTE', 'GO_LIVE', 'END', 'CUT', 'INSERT', 'FAULT', 'REC
     .tl-note { flex:1; color:#ccc; }
     .tl-by   { color:#777; font-size:0.72rem; }
     .no-events { color:#555; font-style:italic; }
-    .add-event-form { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08); }
+    .add-event-form { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--bp-line-2); }
     .add-event-form .narrow { flex:0 0 160px; }
     .add-event-form .wide   { flex:1; min-width:200px; }
 
