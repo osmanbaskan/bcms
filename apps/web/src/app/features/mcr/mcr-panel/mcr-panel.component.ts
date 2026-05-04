@@ -255,17 +255,25 @@ const TC_EVENT_TYPES = ['NOTE', 'GO_LIVE', 'END', 'CUT', 'INSERT', 'FAULT', 'REC
     </div>
   `,
   styles: [`
-    .page-container { max-width: 1300px; margin: 0 auto; }
+    /* beINport UI V2 — page header + clock restyle */
+    .page-container { padding: var(--bp-sp-6) var(--bp-sp-8) var(--bp-sp-8); }
 
     /* Header + clock */
-    .mcr-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
-    .mcr-title  { display:flex; align-items:center; gap:8px; }
-    .mcr-title h1 { margin:0; }
-    .clocks { display:flex; gap:24px; }
+    .mcr-header { display:flex; align-items:center; justify-content:space-between; margin-bottom: var(--bp-sp-6); }
+    .mcr-title  { display:flex; align-items:center; gap: var(--bp-sp-2); }
+    .mcr-title h1 {
+      margin: 0;
+      font-family: var(--bp-font-display);
+      font-size: var(--bp-text-3xl);
+      font-weight: var(--bp-fw-semibold);
+      letter-spacing: var(--bp-ls-tight);
+      color: var(--bp-fg-1);
+    }
+    .clocks { display:flex; gap: var(--bp-sp-6); }
     .clock-block { display:flex; flex-direction:column; align-items:center; }
-    .clock-label { font-size:0.65rem; text-transform:uppercase; opacity:0.5; }
-    .clock-value { font-family:monospace; font-size:1.4rem; font-weight:700; letter-spacing:2px; }
-    .local .clock-value { color:#90caf9; }
+    .clock-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: var(--bp-ls-eyebrow); color: var(--bp-fg-3); font-weight: var(--bp-fw-bold); }
+    .clock-value { font-family: var(--bp-font-mono); font-size: 22px; font-weight: var(--bp-fw-bold); letter-spacing: 2px; color: var(--bp-fg-1); }
+    .local .clock-value { color: var(--bp-purple-300); }
 
     /* Live row */
     .live-row { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:24px; }
@@ -318,7 +326,14 @@ const TC_EVENT_TYPES = ['NOTE', 'GO_LIVE', 'END', 'CUT', 'INSERT', 'FAULT', 'REC
     .row-selected { background:rgba(144,202,249,0.06); }
     .no-data { padding:24px; text-align:center; color:#555; }
 
-    .status-badge { padding:2px 8px; border-radius:10px; font-size:0.72rem; font-weight:600; }
+    .status-badge {
+      padding: 3px 8px;
+      border-radius: var(--bp-r-pill);
+      font-size: 9.5px;
+      font-weight: var(--bp-fw-bold);
+      letter-spacing: var(--bp-ls-status);
+      text-transform: uppercase;
+    }
     .status-badge.DRAFT      { background:#37474f; color:#cfd8dc; }
     .status-badge.CONFIRMED  { background:#1565c0; color:#fff; }
     .status-badge.ON_AIR     { background:#b71c1c; color:#fff; }
