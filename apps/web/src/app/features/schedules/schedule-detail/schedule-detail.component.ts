@@ -140,7 +140,15 @@ export class ScheduleDetailComponent implements OnInit {
   ) {}
 
   ngOnInit() {
-    const id = Number(this.route.snapshot.params['id']);
+    // HIGH-FE-009 fix (2026-05-05): NaN guard. URL'de bozuk ID gelirse
+    // ('abc', boş, vs.), Number()=NaN olur ve API'ye `?id=NaN` gider; bunu
+    // erken rapor et.
+    const raw = this.route.snapshot.params['id'];
+    const id = Number(raw);
+    if (!Number.isFinite(id) || id <= 0) {
+      this.schedule.set(null);
+      return;
+    }
     this.scheduleSvc.getSchedule(id).subscribe({
       next: (s) => this.schedule.set(s),
       error: () => this.schedule.set(null),

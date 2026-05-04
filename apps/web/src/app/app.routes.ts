@@ -2,6 +2,12 @@ import { Routes } from '@angular/router';
 import { AuthGuard } from './core/guards/auth.guard';
 import { GROUP } from '@bcms/shared';
 
+/**
+ * HIGH-FE-011 fix (2026-05-05): loadChildren ile gelen feature route'larda
+ * `canActivateChild: [AuthGuard]` blanket protection. Aksi halde child route
+ * dosyalarına yanlışlıkla `canActivate` eklenmezse, sadece parent guard'ı
+ * lazy-load anında çalışır ve sonraki direct child URL ziyaretleri korunmaz.
+ */
 export const routes: Routes = [
   {
     path: '',
@@ -13,6 +19,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/dashboard/dashboard.routes').then((m) => m.dashboardRoutes),
     canActivate: [AuthGuard],
+    canActivateChild: [AuthGuard],
     data: { groups: [] },
   },
   {
@@ -20,6 +27,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/schedules/schedules.routes').then((m) => m.schedulesRoutes),
     canActivate: [AuthGuard],
+    canActivateChild: [AuthGuard],
     data: { groups: [] },
   },
   {
@@ -27,6 +35,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/bookings/bookings.routes').then((m) => m.bookingsRoutes),
     canActivate: [AuthGuard],
+    canActivateChild: [AuthGuard],
     data: { groups: [] },
   },
   {
@@ -55,6 +64,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/channels/channels.routes').then((m) => m.channelsRoutes),
     canActivate: [AuthGuard],
+    canActivateChild: [AuthGuard],
     data: { groups: [GROUP.Admin] },
   },
   {
@@ -62,6 +72,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/ingest/ingest.routes').then((m) => m.ingestRoutes),
     canActivate: [AuthGuard],
+    canActivateChild: [AuthGuard],
     data: { groups: [GROUP.Admin, GROUP.Ingest] },
   },
   {
@@ -69,6 +80,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/monitoring/monitoring.routes').then((m) => m.monitoringRoutes),
     canActivate: [AuthGuard],
+    canActivateChild: [AuthGuard],
     data: { groups: [GROUP.Admin] },
   },
   {
@@ -76,6 +88,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/mcr/mcr.routes').then((m) => m.mcrRoutes),
     canActivate: [AuthGuard],
+    canActivateChild: [AuthGuard],
     data: { groups: [GROUP.Admin, GROUP.MCR] },
   },
   {
@@ -83,6 +96,7 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/users/users.routes').then((m) => m.usersRoutes),
     canActivate: [AuthGuard],
+    canActivateChild: [AuthGuard],
     data: { groups: [GROUP.SystemEng] },
   },
   {

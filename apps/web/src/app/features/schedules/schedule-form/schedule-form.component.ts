@@ -300,22 +300,39 @@ export class ScheduleFormComponent implements OnInit {
   ) {}
 
   ngOnInit() {
-    this.api.get<{ id: number; name: string }[]>('/channels/catalog').subscribe((ch) => this.channels.set(ch));
-    this.api.get<League[]>('/matches/leagues').subscribe((lg) => this.leagues.set(lg));
+    // HIGH-FE-008 fix (2026-05-05): subscribe'lara error handler eklendi.
+    // Aksi halde RxJS unhandled error → console error + bazı durumlarda zone
+    // exception, kullanıcıya feedback yok.
+    this.api.get<{ id: number; name: string }[]>('/channels/catalog').subscribe({
+      next:  (ch)  => this.channels.set(ch),
+      error: (err) => this.snack.open('Kanal listesi yüklenemedi', 'Kapat', { duration: 4000 }),
+    });
+    this.api.get<League[]>('/matches/leagues').subscribe({
+      next:  (lg)  => this.leagues.set(lg),
+      error: (err) => this.snack.open('Lig listesi yüklenemedi', 'Kapat', { duration: 4000 }),
+    });
 
     const id = this.route.snapshot.params['id'];
     if (id) {
+      const numericId = Number(id);
+      if (!Number.isFinite(numericId) || numericId <= 0) {
+        this.snack.open('Geçersiz schedule ID', 'Kapat', { duration: 4000 });
+        return;
+      }
       this.isEdit  = true;
-      this.editId  = Number(id);
-      this.scheduleSvc.getSchedule(this.editId).subscribe((s) => {
-        this.editVersion = s.version;
-        this.form.patchValue({
-          channelId: s.channelId,
-          title:     s.title,
-          startTime: s.startTime.slice(0, 16),
-          endTime:   s.endTime.slice(0, 16),
-          status:    s.status,
-        });
+      this.editId  = numericId;
+      this.scheduleSvc.getSchedule(this.editId).subscribe({
+        next: (s) => {
+          this.editVersion = s.version;
+          this.form.patchValue({
+            channelId: s.channelId,
+            title:     s.title,
+            startTime: s.startTime.slice(0, 16),
+            endTime:   s.endTime.slice(0, 16),
+            status:    s.status,
+          });
+        },
+        error: () => this.snack.open('Yayın kaydı yüklenemedi', 'Kapat', { duration: 4000 }),
       });
     }
   }
@@ -440,18 +457,32 @@ export class ScheduleFormComponent implements OnInit {
         ? { matchId: this.selectedMatchId(), source: 'db' }
         : undefined;
 
+    // HIGH-FE-007 fix (2026-05-05): safeToIso geçersiz tarih için throw eder.
+    // submit() içinde try/catch ile yakalayıp UI'ı reset edilmeli; aksi halde
+    // saving=true kilitli kalır, kullanıcı butona tekrar basamaz.
+    let startISO: string;
+    let endISO: string;
+    try {
+      startISO = this.safeToIso(v.startTime!);
+      endISO   = this.safeToIso(v.endTime!);
+    } catch {
+      this.saving.set(false);
+      this.snack.open('Geçersiz tarih/saat', 'Kapat', { duration: 4000 });
+      return;
+    }
+
     const req$ = this.isEdit
       ? this.scheduleSvc.updateSchedule(this.editId, {
           title:     v.title!,
-          startTime: this.safeToIso(v.startTime!),
-          endTime:   this.safeToIso(v.endTime!),
+          startTime: startISO,
+          endTime:   endISO,
           ...(v.status ? { status: v.status as ScheduleStatus } : {}),
         } satisfies UpdateScheduleDto, this.editVersion)
       : this.scheduleSvc.createSchedule({
           channelId: v.channelId!,
           title:     v.title!,
-          startTime: new Date(v.startTime!).toISOString(),
-          endTime:   new Date(v.endTime!).toISOString(),
+          startTime: startISO,
+          endTime:   endISO,
           ...(optaMeta ? { metadata: optaMeta } : {}),
         } satisfies CreateScheduleDto);
 

@@ -25,6 +25,17 @@ export class AuthGuard extends KeycloakAuthGuard {
     return super.canActivate(route, state);
   }
 
+  /** HIGH-FE-011 fix (2026-05-05): blanket child route protection.
+   *  KeycloakAuthGuard.canActivate'i child route navigation'ında da çalıştır;
+   *  böylece app.routes.ts'de loadChildren parent'ına `canActivateChild` eklemek
+   *  yeterli — child route dosyalarına eklemek gerekmez. */
+  async canActivateChild(
+    route: ActivatedRouteSnapshot,
+    state: RouterStateSnapshot,
+  ): Promise<boolean | UrlTree> {
+    return this.canActivate(route, state);
+  }
+
   async isAccessAllowed(route: ActivatedRouteSnapshot): Promise<boolean | UrlTree> {
     if (!this.authenticated) {
       try {
