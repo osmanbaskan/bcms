@@ -50,15 +50,23 @@ interface NavGroup {
     AlertPopoverComponent,
   ],
   template: `
-    <div class="root">
+    <div class="root" [class.sidebar-collapsed]="sidebarCollapsed()">
       <!-- ─── Sidebar ───────────────────────────────────────────────────── -->
-      <aside class="side">
-        <a class="brand-wrap" routerLink="/">
-          <div class="brand">
-            <span class="brand-be">be</span><span class="brand-in">IN</span><span class="brand-port">port</span>
-          </div>
-          <div class="brand-tag">WORKFLOW</div>
-        </a>
+      <aside class="side" [class.collapsed]="sidebarCollapsed()">
+        <div class="brand-wrap">
+          <a class="brand-link" routerLink="/" [title]="sidebarCollapsed() ? 'beINport' : ''">
+            <div class="brand">
+              <span class="brand-be">be</span><span class="brand-in">IN</span><span class="brand-port">port</span>
+            </div>
+            <div class="brand-tag">WORKFLOW</div>
+          </a>
+          <button class="collapse-btn"
+                  type="button"
+                  (click)="toggleSidebar()"
+                  [title]="sidebarCollapsed() ? 'Menüyü genişlet' : 'Menüyü küçült'">
+            <mat-icon class="material-icons-outlined">{{ sidebarCollapsed() ? 'chevron_right' : 'chevron_left' }}</mat-icon>
+          </button>
+        </div>
 
         @for (group of visibleGroups(); track group.label; let isLast = $last) {
           <div class="section">
@@ -66,7 +74,8 @@ interface NavGroup {
             @for (item of group.items; track item.route) {
               <a class="item"
                  [class.active]="isItemActive(item)"
-                 [routerLink]="item.route">
+                 [routerLink]="item.route"
+                 [title]="sidebarCollapsed() ? item.label : ''">
                 <mat-icon class="material-icons-outlined ico">{{ item.icon }}</mat-icon>
                 <span class="item-label">{{ item.label }}</span>
                 @if (item.alert) { <span class="alert-dot"></span> }
@@ -155,15 +164,64 @@ interface NavGroup {
       height: 100vh;
       overflow-y: auto;
       flex-shrink: 0;
+      transition: width var(--bp-dur-slow) var(--bp-ease);
     }
+    .side.collapsed { width: 64px; }
+
     .brand-wrap {
-      padding: 0 20px 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px 18px 20px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.10);
       margin-bottom: 12px;
+    }
+    .brand-link {
+      flex: 1;
+      min-width: 0;
       text-decoration: none;
       display: block;
       color: #fff;
     }
+    .collapse-btn {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border-radius: var(--bp-r-sm);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      color: rgba(255, 255, 255, 0.75);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background var(--bp-dur-fast), color var(--bp-dur-fast);
+      padding: 0;
+    }
+    .collapse-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+    .collapse-btn mat-icon {
+      font-size: 16px !important;
+      width: 16px !important;
+      height: 16px !important;
+    }
+    .side.collapsed .brand-wrap {
+      flex-direction: column;
+      gap: 12px;
+      padding: 0 8px 14px;
+    }
+    .side.collapsed .brand-link {
+      width: 100%;
+      text-align: center;
+    }
+    .side.collapsed .brand {
+      font-size: 14px;
+      justify-content: center;
+    }
+    .side.collapsed .brand-port { display: none; }
+    .side.collapsed .brand-tag { display: none; }
     .brand {
       font-family: var(--bp-font-display);
       font-size: 26px;
@@ -237,6 +295,38 @@ interface NavGroup {
       background: rgba(255, 255, 255, 0.10);
       margin: 12px 20px;
     }
+
+    /* Collapsed sidebar — only icons visible */
+    .side.collapsed .section { padding: 4px 6px; }
+    .side.collapsed .section-label { display: none; }
+    .side.collapsed .item {
+      justify-content: center;
+      padding: 9px 6px;
+      gap: 0;
+    }
+    .side.collapsed .item-label { display: none; }
+    .side.collapsed .pill { display: none; }
+    .side.collapsed .alert-dot {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+    }
+    .side.collapsed .ico {
+      font-size: 20px !important;
+      width: 20px !important;
+      height: 20px !important;
+      opacity: 1;
+    }
+    .side.collapsed .item { position: relative; }
+    .side.collapsed .divider { margin: 8px 12px; }
+    .side.collapsed .user {
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 6px;
+      align-items: center;
+      margin: auto 6px 6px;
+    }
+    .side.collapsed .user-meta { display: none; }
 
     .user {
       margin: auto 12px 12px;
@@ -417,16 +507,7 @@ interface NavGroup {
     }
 
     /* ─── Responsive ──────────────────────────────────────────────────── */
-    @media (max-width: 900px) {
-      .side { width: 64px; }
-      .brand-wrap { padding: 0 12px 16px; }
-      .brand { font-size: 14px; }
-      .brand-port, .brand-tag { display: none; }
-      .section-label, .item-label, .pill, .user-meta { display: none; }
-      .item { justify-content: center; padding: 9px; }
-      .ico { font-size: 20px !important; width: 20px !important; height: 20px !important; opacity: 1; }
-      .user { padding: 8px; justify-content: center; }
-      .user-btn { display: none; }
+    @media (max-width: 720px) {
       .top { padding: 0 16px; gap: 12px; }
       .search-placeholder { display: none; }
       .date-mono { display: none; }
@@ -446,6 +527,22 @@ export class AppComponent implements OnInit, OnDestroy {
   private clockSub?: Subscription;
 
   alertsOpen = signal(false);
+
+  /** Sidebar collapsed state (kullanıcı tercihi, localStorage'da kalıcı). */
+  private readonly SIDEBAR_KEY = 'bp.sidebar.collapsed';
+  sidebarCollapsed = signal<boolean>(this.readSidebarPref());
+
+  private readSidebarPref(): boolean {
+    try { return localStorage.getItem(this.SIDEBAR_KEY) === '1'; }
+    catch { return false; }
+  }
+
+  toggleSidebar() {
+    const next = !this.sidebarCollapsed();
+    this.sidebarCollapsed.set(next);
+    try { localStorage.setItem(this.SIDEBAR_KEY, next ? '1' : '0'); }
+    catch { /* ignore */ }
+  }
 
   /** Mock alerts — Aşama 1 placeholder. Aşama 2/3'te gerçek API'ye bağlanır. */
   alerts = signal<AlertItem[]>([
