@@ -81,6 +81,16 @@ export async function startBxfWatcher(app: FastifyInstance): Promise<void> {
   });
   watcher.on('error', (err) => app.log.error({ err }, 'BXF watcher hatası'));
 
+  // HIGH-API-018 fix (2026-05-05): graceful close on Fastify shutdown.
+  app.addHook('onClose', async () => {
+    try {
+      await watcher.close();
+      app.log.info('BXF watcher kapandı');
+    } catch (err) {
+      app.log.warn({ err }, 'BXF watcher close hatası');
+    }
+  });
+
   app.log.info({ folder: BXF_WATCH_DIR }, 'BXF klasörü izleniyor (yeni dosyalar bekleniyor)');
 }
 

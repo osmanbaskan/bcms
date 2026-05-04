@@ -19,6 +19,19 @@ const QC_THRESHOLDS = {
   allowedCodecs:  ['h264', 'h265', 'hevc', 'prores', 'dnxhd'],
 };
 
+/** HIGH-API-016 fix (2026-05-05): ffmpeg/ffprobe işlemlerine timeout.
+ *  Bozuk/atılmış container source'larda spawn deadlock olabilir. 5dk hard cap.
+ *  Çağrı `Promise.race` + reject ile sarmaydı; ancak fluent-ffmpeg child process
+ *  kill etme imkanı `command.kill('SIGKILL')` ile mümkün — kontrolü ona bırak. */
+const FFMPEG_TIMEOUT_MS = 5 * 60 * 1000;
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); },
+           (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 const PROXY_OUTPUT_DIR = process.env.PROXY_OUTPUT_DIR ?? './tmp/proxies';
 
 interface IngestMessage {
@@ -131,23 +144,23 @@ export async function startIngestWorker(app: FastifyInstance): Promise<void> {
       // 1. Path güvenlik kontrolü (path traversal engellemek için)
       const safePath = validateIngestSourcePath(sourcePath);
 
-      // 2. Checksum
-      const checksum = await computeChecksum(safePath);
+      // 2. Checksum (HIGH-API-016: 5dk hard timeout)
+      const checksum = await withTimeout(computeChecksum(safePath), FFMPEG_TIMEOUT_MS, 'computeChecksum');
       await app.prisma.ingestJob.update({ where: { id: jobId }, data: { checksum } });
 
-      // 3. ffprobe analizi
-      const mediaInfo = await probeFile(safePath);
+      // 3. ffprobe analizi (HIGH-API-016: 5dk hard timeout)
+      const mediaInfo = await withTimeout(probeFile(safePath), FFMPEG_TIMEOUT_MS, 'ffprobe');
       app.log.info({ jobId, mediaInfo }, 'ffprobe tamamlandı');
 
-      // ── PROXY_GEN ───────────────────────────────────────────────────────
+      // ── PROXY_GEN ─────────────────────────────────────────────────────── (HIGH-API-016)
       await app.prisma.ingestJob.update({ where: { id: jobId }, data: { status: 'PROXY_GEN' } });
-      const proxyPath = await generateProxy(safePath, jobId);
+      const proxyPath = await withTimeout(generateProxy(safePath, jobId), FFMPEG_TIMEOUT_MS, 'generateProxy');
       await app.prisma.ingestJob.update({ where: { id: jobId }, data: { proxyPath } });
       app.log.info({ jobId, proxyPath }, 'Proxy üretildi');
 
-      // ── QC ──────────────────────────────────────────────────────────────
+      // ── QC ────────────────────────────────────────────────────────────── (HIGH-API-016)
       await app.prisma.ingestJob.update({ where: { id: jobId }, data: { status: 'QC' } });
-      const loudness = await measureLoudness(safePath);
+      const loudness = await withTimeout(measureLoudness(safePath), FFMPEG_TIMEOUT_MS, 'measureLoudness');
 
       const errors:   string[] = [];
       const warnings: string[] = [];

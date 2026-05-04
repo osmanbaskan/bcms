@@ -16,6 +16,10 @@ export interface KeycloakUserRepresentation {
 
 let adminToken: string | null = null;
 let tokenExpiry = 0;
+/** HIGH-API-012 fix (2026-05-05): Concurrent refresh race koruması.
+ *  Eski hâlinde N istek aynı anda gelirse her biri ayrı /token çağrısı
+ *  açıyordu. Promise gate ile inflight refresh tek bir resolution paylaşır. */
+let refreshPromise: Promise<string> | null = null;
 
 function envOrDefault(key: string, fallback: string): string {
   const value = process.env[key];
@@ -26,9 +30,7 @@ function envOrDefault(key: string, fallback: string): string {
   return fallback;
 }
 
-export async function getAdminToken(): Promise<string> {
-  if (adminToken && Date.now() < tokenExpiry - 10_000) return adminToken;
-
+async function fetchAdminToken(): Promise<string> {
   const url = envOrDefault('KEYCLOAK_URL', 'http://localhost:8080');
   const username = envOrDefault('KEYCLOAK_ADMIN', 'admin');
   const password = envOrDefault('KEYCLOAK_ADMIN_PASSWORD', 'changeme_kc');
@@ -52,6 +54,15 @@ export async function getAdminToken(): Promise<string> {
   adminToken = data.access_token;
   tokenExpiry = Date.now() + data.expires_in * 1000;
   return adminToken;
+}
+
+export async function getAdminToken(): Promise<string> {
+  // Cache'te geçerli token varsa anında dön
+  if (adminToken && Date.now() < tokenExpiry - 10_000) return adminToken;
+  // Inflight refresh varsa onu paylaş (race önleme)
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = fetchAdminToken().finally(() => { refreshPromise = null; });
+  return refreshPromise;
 }
 
 export async function kcFetch<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {

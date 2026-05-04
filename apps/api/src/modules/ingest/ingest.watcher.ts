@@ -44,5 +44,18 @@ export function startIngestWatcher(app: FastifyInstance): void {
     app.log.error({ err }, 'Watch folder izleyici hatası');
   });
 
+  // HIGH-API-018 fix (2026-05-05): graceful close on Fastify shutdown.
+  // Aksi halde watcher'ın FS handle'ları process exit'e takılır; testlerde
+  // process hang olur, prod'da SIGTERM sırasında 60s grace period boyunca
+  // cleanup yapamaz.
+  app.addHook('onClose', async () => {
+    try {
+      await watcher.close();
+      app.log.info('Ingest watch folder kapandı');
+    } catch (err) {
+      app.log.warn({ err }, 'Ingest watcher close hatası');
+    }
+  });
+
   app.log.info({ folder: WATCH_FOLDER }, 'Watch folder izleniyor');
 }
