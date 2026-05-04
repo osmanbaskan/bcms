@@ -300,27 +300,46 @@ export class BookingTaskDialogComponent implements OnInit {
     </div>
   `,
   styles: [`
-    .page { display:flex; flex-direction:column; gap:16px; }
+    /* beINport UI V2 — token-based restyle, HTML/logic untouched */
+    .page { padding: var(--bp-sp-6) var(--bp-sp-8) var(--bp-sp-8); display:flex; flex-direction:column; gap: var(--bp-sp-4); }
     .toolbar {
-      display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;
-      padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08);
+      display:flex; align-items:flex-start; justify-content:space-between; gap: var(--bp-sp-4); flex-wrap:wrap;
+      padding-bottom: var(--bp-sp-3); border-bottom: 1px solid var(--bp-line-2);
     }
-    h1 { margin:0; font-size:1.35rem; }
-    p { margin:4px 0 0; color:rgba(255,255,255,0.62); }
-    .toolbar-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-    .toolbar-actions mat-form-field { width:180px; }
-    .table-wrapper { overflow-x:auto; }
-    .booking-table { width:100%; border-collapse:collapse; font-size:0.85rem; }
-    .booking-table th { padding:10px 12px; text-align:left; background:#1a1a2e; color:#b8c1cc; font-weight:600; border-bottom:1px solid rgba(255,255,255,0.1); white-space:nowrap; }
-    .booking-table td { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,0.05); color:#d7dee8; }
-    .booking-table tr:hover { background:rgba(255,255,255,0.03); }
-    .status-badge { padding:3px 10px; border-radius:999px; font-size:0.72rem; font-weight:700; }
-    .status-badge.PENDING { background:#3f3415; color:#ffd166; }
-    .status-badge.APPROVED { background:#143b2a; color:#77d49b; }
-    .status-badge.REJECTED { background:#3d1d1d; color:#ff8a80; }
-    .status-badge.CANCELLED { background:#333842; color:#b0bec5; }
+    h1 { margin:0; font-family: var(--bp-font-display); font-size: var(--bp-text-3xl); font-weight: var(--bp-fw-semibold); letter-spacing: var(--bp-ls-tight); color: var(--bp-fg-1); }
+    p { margin: 4px 0 0; color: var(--bp-fg-3); font-size: 12.5px; }
+    .toolbar-actions { display:flex; align-items:center; gap: var(--bp-sp-3); flex-wrap:wrap; }
+    .toolbar-actions mat-form-field { width: 180px; }
+    .table-wrapper { overflow-x:auto; background: var(--bp-bg-2); border: 1px solid var(--bp-line-2); border-radius: var(--bp-r-lg); }
+    .booking-table { width:100%; border-collapse:collapse; font-size: 12.5px; }
+    .booking-table th {
+      padding: 10px 14px; text-align:left;
+      background: var(--bp-bg-0);
+      color: var(--bp-purple-300);
+      font-weight: var(--bp-fw-bold);
+      font-size: 9.5px;
+      text-transform: uppercase;
+      letter-spacing: var(--bp-ls-eyebrow);
+      border-bottom: 1px solid var(--bp-line-2);
+      white-space:nowrap;
+    }
+    .booking-table td { padding: 10px 14px; border-bottom: 1px solid var(--bp-line-2); color: var(--bp-fg-1); }
+    .booking-table tr:last-child td { border-bottom: 0; }
+    .booking-table tbody tr:hover { background: rgba(124, 58, 237, 0.06); }
+    .status-badge {
+      padding: 3px 10px;
+      border-radius: var(--bp-r-pill);
+      font-size: 9.5px;
+      font-weight: var(--bp-fw-bold);
+      letter-spacing: var(--bp-ls-status);
+      text-transform: uppercase;
+    }
+    .status-badge.PENDING   { background: rgba(245,158,11,0.16); color: #fbbf24; }
+    .status-badge.APPROVED  { background: rgba(16,185,129,0.16); color: #6ee7b7; }
+    .status-badge.REJECTED  { background: rgba(239,68,68,0.18); color: #fca5a5; }
+    .status-badge.CANCELLED { background: rgba(107,114,128,0.20); color: var(--bp-fg-3); }
     .actions-cell { white-space:nowrap; text-align:right; }
-    .empty, .spinner { display:flex; justify-content:center; padding:48px; color:#98a2b3; }
+    .empty, .spinner { display:flex; justify-content:center; padding: 48px; color: var(--bp-fg-3); }
   `],
 })
 export class BookingListComponent implements OnInit {
