@@ -1,0 +1,35 @@
+# BCMS Server (nginx) — openssl config
+# Used by: infra/tls/scripts/generate-ca.sh
+# Validity: 2 years
+# Key: ECDSA secp384r1
+# Hash: SHA-384
+# Imzalayan: BCMS Intermediate CA
+#
+# Server cert nginx tarafından kullanılır.
+# SAN listesi: hostname'leri ve IP'leri kapsar.
+# Production'a geçişte Tekyon kurum CA tarafından imzalı yeni cert ile değiştirilir
+# (cert SAN listesi production FQDN'leri ile genişletilir — bkz. REQUIREMENTS-TLS-PRODUCTION-TRANSITION.md).
+
+[req]
+distinguished_name = req_distinguished_name
+prompt             = no
+default_md         = sha384
+
+[req_distinguished_name]
+CN = beinport
+O  = BCMS Internal
+C  = TR
+
+[v3_server]
+basicConstraints       = critical, CA:FALSE
+keyUsage               = critical, digitalSignature, keyEncipherment
+extendedKeyUsage       = serverAuth
+subjectAltName         = @alt_names
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always
+
+[alt_names]
+DNS.1 = beinport
+DNS.2 = localhost
+IP.1  = 127.0.0.1
+IP.2  = 172.28.204.133

@@ -1,0 +1,23 @@
+# BCMS Root CA — openssl config
+# Used by: infra/tls/scripts/generate-ca.sh
+# Validity: 10 years
+# Key: ECDSA secp384r1
+# Hash: SHA-384
+#
+# Bu Root CA sadece intermediate CA imzalar; private key offline saklanır.
+
+[req]
+distinguished_name = req_distinguished_name
+prompt             = no
+default_md         = sha384
+
+[req_distinguished_name]
+CN = BCMS Internal Root CA
+O  = BCMS Internal
+C  = TR
+
+[v3_ca]
+basicConstraints       = critical, CA:TRUE
+keyUsage               = critical, digitalSignature, cRLSign, keyCertSign
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always, issuer:always

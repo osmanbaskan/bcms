@@ -1,0 +1,9 @@
+# Private keys — asla commit edilmez
+**/*.key
+
+# Serial number files (openssl runtime state)
+**/*.srl
+
+# CSR'ler — informational, opsiyonel olarak commit edilebilir; biz ediyoruz
+# (değişiklik tracking için)
+# **/*.csr

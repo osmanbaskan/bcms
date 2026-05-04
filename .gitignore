@@ -26,3 +26,7 @@ apps/api/tmp/
 Thumbs.db
 infra/postgres/backups/*
 !infra/postgres/backups/.gitkeep
+
+# TLS — private keys ASLA commit edilmez
+infra/tls/**/*.key
+infra/tls/**/*.srl

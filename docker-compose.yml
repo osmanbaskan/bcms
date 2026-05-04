@@ -85,15 +85,20 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB}
       KC_DB_USERNAME: ${POSTGRES_USER}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      KC_HOSTNAME_STRICT: "false"
-      KC_HOSTNAME_STRICT_HTTPS: ${KC_HOSTNAME_STRICT_HTTPS:-false}
+      # Reverse proxy (nginx) arkasında çalışıyor; TLS termination edge'de.
+      # Iç Docker network'ünde HTTP (izole), dış erişim sadece nginx üzerinden HTTPS.
+      KC_PROXY: edge
+      KC_HOSTNAME_STRICT: ${KC_HOSTNAME_STRICT:-true}
+      KC_HOSTNAME_STRICT_HTTPS: ${KC_HOSTNAME_STRICT_HTTPS:-true}
       KC_HTTP_ENABLED: "true"
-      KC_HOSTNAME: ${KC_HOSTNAME:-172.28.204.133}
-      KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:-8080}
+      KC_HOSTNAME: ${KC_HOSTNAME:-beinport}
+      # -1 → port issuer URL'ye eklenmez (443 standart HTTPS port'u)
+      KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:--1}
+      KC_HTTP_RELATIVE_PATH: "/"
     volumes:
       - ./infra/keycloak:/opt/keycloak/data/import
-    ports:
-      - "8080:8080"
+    # Ports kaldırıldı (audit CRIT-001): Keycloak dış ağa bind edilmez.
+    # Erişim sadece nginx reverse proxy üzerinden /realms/, /admin/, /resources/ path'leriyle.
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080' || exit 1"]
       interval: 30s
@@ -119,8 +124,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://172.28.204.133:8080/realms/bcms}
-      KEYCLOAK_ALLOWED_ISSUERS: ${KEYCLOAK_ALLOWED_ISSUERS:-http://172.28.204.133:8080/realms/bcms,http://localhost:8080/realms/bcms}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-https://beinport/realms/bcms}
+      KEYCLOAK_ALLOWED_ISSUERS: ${KEYCLOAK_ALLOWED_ISSUERS:-https://beinport/realms/bcms,http://localhost:8080/realms/bcms}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
@@ -221,16 +226,30 @@ services:
     container_name: bcms_web
     restart: unless-stopped
     environment:
-      BCMS_KEYCLOAK_PUBLIC_URL: ${BCMS_KEYCLOAK_PUBLIC_URL:-http://172.28.204.133:8080}
+      BCMS_KEYCLOAK_PUBLIC_URL: ${BCMS_KEYCLOAK_PUBLIC_URL:-https://beinport}
+    # nginx 80 → 443 redirect; 443 TLS termination + reverse proxy (api + keycloak).
+    # Audit CRIT-002: 4200 portu kaldırıldı; edge'de sadece standart 80/443.
     ports:
-      - "4200:80"
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Volume mount yaklaşımı (image rebuild yok):
+      # - nginx config (TLS + reverse proxy + security headers)
+      # - TLS cert chain (BCMS internal CA tarafından imzalı)
+      # - TLS private key (.gitignore ile repo dışı)
+      # Bkz: ops/REQUIREMENTS-TLS-INTERNAL-CA.md
+      - ./infra/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./infra/tls/server/server-fullchain.crt:/etc/nginx/tls/server-fullchain.crt:ro
+      - ./infra/tls/server/server.key:/etc/nginx/tls/server.key:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost/health || exit 1"]
+      # 443 üzerinden self-signed olduğu için -k flag (CA verify atla — sadece liveness check)
+      test: ["CMD-SHELL", "curl -fsSk https://localhost/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
     depends_on:
       - api
+      - keycloak
     networks:
       - bcms_net
 

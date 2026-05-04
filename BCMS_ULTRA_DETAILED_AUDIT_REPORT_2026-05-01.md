@@ -433,6 +433,10 @@
 | CRIT-010 (eski) | Baseline migration yok | 🟡 **PARTIAL FIX** | FS klasör adları/checksum'lar hizalandı (`05829f8`) ama **clean-room replay hâlâ imkansız** (baseline absent) |
 | LOW-API-004 (bu rapor) | Admin auto-augment dead code | ✅ **ÇÖZÜLDÜ** (`feed1d3`, 2026-05-01) | `schedule-list.component.ts:2070-2073` artık sade `this._userGroups.set(groups)` |
 | (audit'te yok) | `/channels` GET Admin-only; non-Admin schedule dropdown'u boş | ✅ **ÇÖZÜLDÜ** (`ba1ab74`, 2026-05-04) | `/api/v1/channels/catalog` endpoint'i eklendi (JWT-only, minimal projection); audit bu functional gap'i yakalamamıştı |
+| CRIT-006 (bu rapor — partial) | Prometheus phantom scrape targets | ✅ **ÇÖZÜLDÜ** (`bc9f87a`, 2026-05-04) | postgres-exporter, node-exporter, rabbitmq:15692 scrape job'ları kaldırıldı; geri eklemek için exporter servisi gerekir (yorum bloğu olarak doc'lı) |
+| CRIT-010 (bu rapor) | Token refresh setInterval cleanup | ✅ **ÇÖZÜLDÜ** (`bc9f87a`, 2026-05-04) | `app.config.ts:41` interval ID saklanıp `pagehide` event'inde `clearInterval` |
+| CRIT-005 (bu rapor) | Worker healthcheck disable kararı belgesiz | ✅ **ÇÖZÜLDÜ** (`bc9f87a`, 2026-05-04) | `docker-compose.yml`'de YAML yorum + `ops/REQUIREMENTS-HEALTHCHECK.md` referansı |
+| CRIT-001 + CRIT-002 + HIGH-INF-003 (bu rapor) | Keycloak/Web external port + plain HTTP | ✅ **ÇÖZÜLDÜ** (TLS Internal CA refactor, 2026-05-04) | Reverse proxy + TLS termination + 2-tier internal CA chain (ECDSA P-384). nginx 80→443 redirect, Keycloak 8080 ve Web 4200 dış ağa bind kaldırıldı, KC_PROXY=edge mode. Detay: `ops/REQUIREMENTS-TLS-INTERNAL-CA.md` |
 
 ---
 
