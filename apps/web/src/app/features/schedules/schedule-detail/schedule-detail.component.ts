@@ -93,15 +93,42 @@ import type { Schedule, Incident } from '@bcms/shared';
     </div>
   `,
   styles: [`
-    .page-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; }
-    .header-actions { display:flex; gap:8px; }
-    .info-card { margin-bottom:16px; }
-    .info-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:16px; }
-    .info-grid div label { display:block; font-size:0.75rem; color:#aaa; margin-bottom:2px; }
-    .tab-content { padding:16px 0; }
-    .incident-item { display:flex; gap:12px; align-items:center; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
-    .tc { font-family:monospace; font-size:0.85rem; color:#aaa; }
-    .empty-state { color:#777; padding:16px 0; }
+    /* beINport UI V2 — Yayın Detay restyle */
+    .page-container { padding: var(--bp-sp-6) var(--bp-sp-8) var(--bp-sp-8); }
+    .page-header {
+      display:flex; justify-content:space-between; align-items:flex-start;
+      margin-bottom: var(--bp-sp-4);
+      padding-bottom: var(--bp-sp-3);
+      border-bottom: 1px solid var(--bp-line-2);
+    }
+    .page-header h1 {
+      margin: 0;
+      font-family: var(--bp-font-display);
+      font-size: var(--bp-text-3xl);
+      font-weight: var(--bp-fw-semibold);
+      letter-spacing: var(--bp-ls-tight);
+      color: var(--bp-fg-1);
+    }
+    .header-actions { display:flex; gap: var(--bp-sp-2); }
+    .info-card { margin-bottom: var(--bp-sp-4); }
+    .info-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap: var(--bp-sp-4); }
+    .info-grid div label {
+      display:block;
+      font-size: 9.5px;
+      color: var(--bp-fg-3);
+      text-transform: uppercase;
+      letter-spacing: var(--bp-ls-eyebrow);
+      font-weight: var(--bp-fw-bold);
+      margin-bottom: 2px;
+    }
+    .tab-content { padding: var(--bp-sp-4) 0; }
+    .incident-item {
+      display:flex; gap: var(--bp-sp-3); align-items:center;
+      padding: var(--bp-sp-2) 0;
+      border-bottom: 1px solid var(--bp-line-2);
+    }
+    .tc { font-family: var(--bp-font-mono); font-size: 11.5px; color: var(--bp-fg-3); }
+    .empty-state { color: var(--bp-fg-3); padding: var(--bp-sp-4) 0; }
   `],
 })
 export class ScheduleDetailComponent implements OnInit {
