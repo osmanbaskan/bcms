@@ -5,8 +5,15 @@ import { GROUP } from '@bcms/shared';
 export const routes: Routes = [
   {
     path: '',
-    redirectTo: '/schedules',
+    redirectTo: '/dashboard',
     pathMatch: 'full',
+  },
+  {
+    path: 'dashboard',
+    loadChildren: () =>
+      import('./features/dashboard/dashboard.routes').then((m) => m.dashboardRoutes),
+    canActivate: [AuthGuard],
+    data: { groups: [] },
   },
   {
     path: 'schedules',

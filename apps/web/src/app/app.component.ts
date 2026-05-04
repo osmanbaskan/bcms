@@ -460,6 +460,7 @@ export class AppComponent implements OnInit, OnDestroy {
     {
       label: 'OPERASYON',
       items: [
+        { label: 'Genel Bakış',       icon: 'dashboard',           route: '/dashboard',          groups: [], exactMatch: true },
         { label: 'Canlı Yayın Plan',  icon: 'play_circle',         route: '/schedules',          groups: [], exactMatch: true },
         { label: 'Stüdyo Planı',      icon: 'view_module',         route: '/studio-plan',        groups: [] },
         { label: 'Ingest',            icon: 'cloud_upload',        route: '/ingest',             groups: [GROUP.Admin, GROUP.Ingest] },
