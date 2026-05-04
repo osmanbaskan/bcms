@@ -38,12 +38,17 @@ function initKeycloak(keycloak: KeycloakService, logger: LoggerService) {
       });
     };
 
-    window.setInterval(() => {
+    const refreshIntervalId = window.setInterval(() => {
       if (!kc.authenticated) return;
       void keycloak.updateToken(TOKEN_REFRESH_MIN_VALIDITY_SECONDS).catch((err) => {
         logger.warn('Keycloak token refresh failed', err);
       });
     }, TOKEN_REFRESH_INTERVAL_MS);
+
+    // SPA bootstrap'ta tek sefer çalışır; pratikte browser sekmesi kapanınca GC.
+    // Yine de HMR / test / micro-frontend bağlamında interval'ın sızmaması için
+    // pagehide ile temizlik. (CRIT-010, audit 2026-05-01)
+    window.addEventListener('pagehide', () => clearInterval(refreshIntervalId), { once: true });
   };
 }
 

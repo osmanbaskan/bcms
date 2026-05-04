@@ -167,6 +167,10 @@ services:
     container_name: bcms_worker
     restart: unless-stopped
     stop_grace_period: 60s
+    # Bilinçli karar: worker arka plan job'ları (notifications, ingest-worker,
+    # bxf-watcher, audit-retention) için HTTP healthcheck endpoint'i yok; pgrep-tabanlı
+    # sahte healthcheck "(healthy)" sinyali aldatıcı olur (deadlock'ta da pass eder).
+    # Gerçek liveness probe tasarımı: ops/REQUIREMENTS-HEALTHCHECK.md (commit 13ae22c)
     healthcheck:
       disable: true
     environment:
