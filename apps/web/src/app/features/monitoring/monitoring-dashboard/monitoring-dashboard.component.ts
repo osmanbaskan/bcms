@@ -198,10 +198,19 @@ interface CreateIncidentForm {
     </div>
   `,
   styles: [`
-    .page-container  { max-width: 1200px; margin: 0 auto; }
-    .dashboard-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
-    .header-right    { display:flex; align-items:center; gap:12px; }
-    .refresh-info    { font-size:0.8rem; color:#888; }
+    /* beINport UI V2 — page header restyle */
+    .page-container  { padding: var(--bp-sp-6) var(--bp-sp-8) var(--bp-sp-8); }
+    .dashboard-header { display:flex; align-items:center; justify-content:space-between; margin-bottom: var(--bp-sp-6); }
+    .dashboard-header h1 {
+      margin: 0;
+      font-family: var(--bp-font-display);
+      font-size: var(--bp-text-3xl);
+      font-weight: var(--bp-fw-semibold);
+      letter-spacing: var(--bp-ls-tight);
+      color: var(--bp-fg-1);
+    }
+    .header-right    { display:flex; align-items:center; gap: var(--bp-sp-3); }
+    .refresh-info    { font-size: 11.5px; color: var(--bp-fg-3); font-family: var(--bp-font-mono); }
 
     .section-title   { display:flex; align-items:center; gap:8px; margin:24px 0 12px; font-size:1.1rem; }
     .badge-count     { background:#f44336; color:#fff; border-radius:50%; width:22px; height:22px;
