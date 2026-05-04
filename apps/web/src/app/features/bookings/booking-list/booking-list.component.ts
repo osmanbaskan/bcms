@@ -300,7 +300,7 @@ export class BookingTaskDialogComponent implements OnInit {
     </div>
   `,
   styles: [`
-    /* beINport UI V2 — token-based restyle, HTML/logic untouched */
+    /* beINport UI V2 — Material Table aware deep restyle, HTML/logic untouched */
     .page { padding: var(--bp-sp-6) var(--bp-sp-8) var(--bp-sp-8); display:flex; flex-direction:column; gap: var(--bp-sp-4); }
     .toolbar {
       display:flex; align-items:flex-start; justify-content:space-between; gap: var(--bp-sp-4); flex-wrap:wrap;
@@ -310,10 +310,26 @@ export class BookingTaskDialogComponent implements OnInit {
     p { margin: 4px 0 0; color: var(--bp-fg-3); font-size: 12.5px; }
     .toolbar-actions { display:flex; align-items:center; gap: var(--bp-sp-3); flex-wrap:wrap; }
     .toolbar-actions mat-form-field { width: 180px; }
-    .table-wrapper { overflow-x:auto; background: var(--bp-bg-2); border: 1px solid var(--bp-line-2); border-radius: var(--bp-r-lg); }
-    .booking-table { width:100%; border-collapse:collapse; font-size: 12.5px; }
-    .booking-table th {
-      padding: 10px 14px; text-align:left;
+
+    .table-wrapper {
+      overflow-x: auto;
+      background: var(--bp-bg-2);
+      border: 1px solid var(--bp-line-2);
+      border-radius: var(--bp-r-lg);
+    }
+
+    /* Material MatTable token override — beINport */
+    .booking-table.mat-mdc-table {
+      background: transparent;
+      width: 100%;
+      --mat-table-background-color: transparent;
+      --mat-table-header-container-color: var(--bp-bg-0);
+      --mat-table-row-item-container-color: transparent;
+      --mat-table-header-headline-color: var(--bp-purple-300);
+      --mat-table-row-item-label-text-color: var(--bp-fg-1);
+      --mat-table-row-item-outline-color: var(--bp-line-2);
+    }
+    .booking-table .mat-mdc-header-cell {
       background: var(--bp-bg-0);
       color: var(--bp-purple-300);
       font-weight: var(--bp-fw-bold);
@@ -321,12 +337,24 @@ export class BookingTaskDialogComponent implements OnInit {
       text-transform: uppercase;
       letter-spacing: var(--bp-ls-eyebrow);
       border-bottom: 1px solid var(--bp-line-2);
-      white-space:nowrap;
+      padding: 10px 14px;
+      white-space: nowrap;
     }
-    .booking-table td { padding: 10px 14px; border-bottom: 1px solid var(--bp-line-2); color: var(--bp-fg-1); }
-    .booking-table tr:last-child td { border-bottom: 0; }
-    .booking-table tbody tr:hover { background: rgba(124, 58, 237, 0.06); }
+    .booking-table .mat-mdc-cell {
+      color: var(--bp-fg-1);
+      font-size: 12.5px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--bp-line-2);
+    }
+    .booking-table .mat-mdc-row:last-child .mat-mdc-cell {
+      border-bottom: 0;
+    }
+    .booking-table .mat-mdc-row:hover .mat-mdc-cell {
+      background: rgba(124, 58, 237, 0.06);
+    }
+
     .status-badge {
+      display: inline-block;
       padding: 3px 10px;
       border-radius: var(--bp-r-pill);
       font-size: 9.5px;
@@ -338,8 +366,17 @@ export class BookingTaskDialogComponent implements OnInit {
     .status-badge.APPROVED  { background: rgba(16,185,129,0.16); color: #6ee7b7; }
     .status-badge.REJECTED  { background: rgba(239,68,68,0.18); color: #fca5a5; }
     .status-badge.CANCELLED { background: rgba(107,114,128,0.20); color: var(--bp-fg-3); }
-    .actions-cell { white-space:nowrap; text-align:right; }
-    .empty, .spinner { display:flex; justify-content:center; padding: 48px; color: var(--bp-fg-3); }
+
+    .actions-cell { white-space: nowrap; text-align: right; }
+    .empty, .spinner {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 48px;
+      color: var(--bp-fg-3);
+      font-size: 13px;
+      text-align: center;
+    }
   `],
 })
 export class BookingListComponent implements OnInit {
