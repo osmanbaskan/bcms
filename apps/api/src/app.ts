@@ -8,6 +8,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
+import { GROUP } from '@bcms/shared';
 
 import { prismaPlugin } from './plugins/prisma.js';
 import { authPlugin } from './plugins/auth.js';
@@ -218,6 +219,28 @@ export async function buildApp() {
   // ── Plugins ───────────────────────────────────────────────────────────────────
   await app.register(prismaPlugin);
   await app.register(authPlugin);
+
+  // HIGH-API-010 fix (2026-05-05) — Swagger UI prod gate.
+  // Prod'da /docs ve /docs/json sadece SystemEng/Admin grubu erişebilir.
+  // Dev'de (NODE_ENV !== 'production') koşulsuz açık. Public expose engellenir.
+  if (process.env.NODE_ENV === 'production') {
+    app.addHook('onRequest', async (request, reply) => {
+      const url = request.url.split('?')[0];
+      if (!url.startsWith('/docs')) return;
+      try {
+        await app.requireGroup(GROUP.SystemEng)(request);
+      } catch (err) {
+        const status = (err as { statusCode?: number })?.statusCode ?? 401;
+        return reply.code(status).send({
+          statusCode: status,
+          error: status === 401 ? 'Unauthorized' : 'Forbidden',
+          message: status === 401
+            ? 'Swagger /docs prod\'da auth gerektirir'
+            : 'Swagger /docs sadece SystemEng/Admin için',
+        });
+      }
+    });
+  }
   await app.register(auditPlugin);
   await app.register(rabbitmqPlugin);
   await app.register(metricsPlugin);

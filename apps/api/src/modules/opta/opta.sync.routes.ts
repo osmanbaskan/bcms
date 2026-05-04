@@ -17,8 +17,16 @@ const matchItemSchema = z.object({
   venue:      z.string().nullable().optional(),
 });
 
+/** HIGH-API-007 fix (2026-05-05) — DoS payload koruması.
+ *  Ölçüm (2026-05-05): total 34811 maç, 67 lig, max single league=4180,
+ *  avg league=520, last 30d daily bulk max=266 row. 5000 sınırı tek bir
+ *  ligin maksimumunu (~4180) +20% buffer ile karşılar; çok ligli batch'lerde
+ *  watcher kendi içinde lig başına chunk'a bölmek zorunda kalır. */
+const OPTA_SYNC_MAX_MATCHES = 5000;
 const syncBodySchema = z.object({
-  matches: z.array(matchItemSchema),
+  matches: z.array(matchItemSchema).max(OPTA_SYNC_MAX_MATCHES, {
+    message: `matches dizisi en fazla ${OPTA_SYNC_MAX_MATCHES} öğe içerebilir`,
+  }),
 });
 
 /** Cascade'in dokunmayacağı schedule durumları.
