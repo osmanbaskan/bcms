@@ -36,7 +36,9 @@ app-studio-plan-toolbar {
 }
 
 .plan-shell {
-  height: calc(125vh - 260px);
+  // Eski layout (app-root transform: scale(0.8) + 125vh) kalktı (2026-05-04 UI V2);
+  // yeni Shell topbar 60px + page-header (~120px) + filter (~80px) → 260px düşülür.
+  height: calc(100vh - 260px);
   min-height: 520px;
   overflow: auto;
   border: 1px solid #111827;

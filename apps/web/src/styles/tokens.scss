@@ -1,0 +1,136 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// beINport Design Tokens — UI V2 (2026-05-04)
+// Kaynak: /home/ubuntu/website/beINport/tokens.css
+// Dark theme + mor accent. Inter / Inter Tight / JetBrains Mono.
+// ─────────────────────────────────────────────────────────────────────────────
+
+:root {
+  // ── Antrasit ölçeği (#2d2f36 base) ─────────────────────────────────────────
+  --bp-bg-0: #1a1b20;     // search input, in-card deepest
+  --bp-bg-1: #22232a;     // app body, header
+  --bp-bg-2: #2d2f36;     // card, dialog (raised)
+  --bp-bg-3: #383a42;     // hover, table header
+  --bp-bg-4: #44464f;     // emphasized
+  --bp-line:    #4a4c55;
+  --bp-line-2:  rgba(255, 255, 255, 0.08);
+
+  // ── Mor ölçeği (#7c3aed primary) ───────────────────────────────────────────
+  --bp-purple-50:  #f3e8ff;
+  --bp-purple-200: #c4b5fd;
+  --bp-purple-300: #a78bfa;     // accent, link, eyebrow
+  --bp-purple-400: #8b5cf6;
+  --bp-purple-500: #7c3aed;     // primary action
+  --bp-purple-600: #6d28d9;
+  --bp-purple-700: #5b21b6;
+  --bp-purple-800: #4c1d95;     // sidebar gradient top
+  --bp-purple-900: #2e1065;     // sidebar gradient bottom
+
+  // Sidebar gradient (computed)
+  --bp-sidebar-gradient: linear-gradient(180deg, #4c1d95 0%, #2e1065 100%);
+
+  // ── Foreground / text ──────────────────────────────────────────────────────
+  --bp-fg-1: #f4f4f6;     // default body
+  --bp-fg-2: #c8cad3;     // secondary
+  --bp-fg-3: #8e909c;     // muted, label
+  --bp-fg-4: #5c5e6a;     // disabled, very muted
+
+  // ── Status (yayın state) ───────────────────────────────────────────────────
+  --bp-status-live:    #ef4444;
+  --bp-status-onair:   #ef4444;
+  --bp-status-queued:  #f59e0b;
+  --bp-status-done:    #10b981;
+  --bp-status-draft:   #6b7280;
+
+  // ── Severity (alarm) ───────────────────────────────────────────────────────
+  --bp-sev-critical: #ef4444;
+  --bp-sev-warning:  #f59e0b;
+  --bp-sev-info:     #3b82f6;
+
+  // ── BCMS legacy schedule status (KORUMA — schedule list başlıkları) ────────
+  // Mevcut status badge'leri korunur, yeni dark tema renkleriyle harmonize edildi
+  --bp-status-DRAFT-bg:     rgba(107, 114, 128, 0.20);
+  --bp-status-DRAFT-fg:     #9ca3af;
+  --bp-status-CONFIRMED-bg: rgba(59, 130, 246, 0.18);
+  --bp-status-CONFIRMED-fg: #93c5fd;
+  --bp-status-ON_AIR-bg:    rgba(239, 68, 68, 0.20);
+  --bp-status-ON_AIR-fg:    #fca5a5;
+  --bp-status-COMPLETED-bg: rgba(16, 185, 129, 0.18);
+  --bp-status-COMPLETED-fg: #6ee7b7;
+  --bp-status-CANCELLED-bg: rgba(75, 85, 99, 0.30);
+  --bp-status-CANCELLED-fg: #9ca3af;
+  --bp-status-PENDING-bg:   rgba(245, 158, 11, 0.20);
+  --bp-status-PENDING-fg:   #fbbf24;
+  --bp-status-APPROVED-bg:  rgba(34, 197, 94, 0.18);
+  --bp-status-APPROVED-fg:  #86efac;
+  --bp-status-REJECTED-bg:  rgba(239, 68, 68, 0.20);
+  --bp-status-REJECTED-fg:  #fca5a5;
+
+  // ── Type families ──────────────────────────────────────────────────────────
+  --bp-font-sans:    'Inter', 'Roboto', system-ui, -apple-system, sans-serif;
+  --bp-font-display: 'Inter Tight', 'Inter', system-ui, sans-serif;
+  --bp-font-mono:    'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  // ── Type scale ─────────────────────────────────────────────────────────────
+  --bp-text-xs:   11px;     // eyebrow, kbd, badge counter
+  --bp-text-sm:   12.5px;   // small label
+  --bp-text-base: 13.5px;   // body sm (sidebar item, table cell)
+  --bp-text-md:   14px;     // default body
+  --bp-text-lg:   16px;
+  --bp-text-xl:   18.5px;   // card title
+  --bp-text-2xl:  22px;     // dialog title
+  --bp-text-3xl:  28px;     // page h1
+
+  // ── Weights ────────────────────────────────────────────────────────────────
+  --bp-fw-regular:  400;
+  --bp-fw-medium:   500;
+  --bp-fw-semibold: 600;
+  --bp-fw-bold:     700;
+
+  // ── Letter spacing ─────────────────────────────────────────────────────────
+  --bp-ls-tight: -0.02em;     // h1, h2, brand
+  --bp-ls-eyebrow: 0.10em;    // page eyebrow uppercase
+  --bp-ls-label:   0.08em;    // section label
+  --bp-ls-status:  0.06em;    // status tag
+
+  // ── Radius ─────────────────────────────────────────────────────────────────
+  --bp-r-sm:    3px;
+  --bp-r-md:    6px;
+  --bp-r-lg:    9px;
+  --bp-r-xl:    12px;
+  --bp-r-2xl:   14px;
+  --bp-r-pill:  999px;
+
+  // ── Spacing ────────────────────────────────────────────────────────────────
+  --bp-sp-1:  4px;
+  --bp-sp-2:  8px;
+  --bp-sp-3:  12px;
+  --bp-sp-4:  16px;
+  --bp-sp-5:  20px;
+  --bp-sp-6:  24px;
+  --bp-sp-8:  32px;
+  --bp-sp-10: 40px;
+
+  // ── Layout dimensions ──────────────────────────────────────────────────────
+  --bp-sidebar-width:  248px;
+  --bp-toolbar-height: 60px;
+
+  // ── Motion ─────────────────────────────────────────────────────────────────
+  --bp-ease:        cubic-bezier(0.4, 0, 0.2, 1);
+  --bp-dur-fast:    100ms;
+  --bp-dur-base:    150ms;
+  --bp-dur-slow:    250ms;
+  --bp-dur-pulse:   1.5s;
+
+  // ── Shadow ─────────────────────────────────────────────────────────────────
+  --bp-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.20);
+  --bp-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.30);
+  --bp-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.40);
+  --bp-shadow-xl: 0 24px 80px rgba(0, 0, 0, 0.50);
+
+  // ── Z-index scale ──────────────────────────────────────────────────────────
+  --bp-z-sidebar:  10;
+  --bp-z-toolbar:  20;
+  --bp-z-dropdown: 30;
+  --bp-z-modal:    100;
+  --bp-z-toast:    150;
+}

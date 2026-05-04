@@ -1,21 +1,28 @@
 @use '@angular/material' as mat;
+@use './styles/tokens';
 
 @include mat.core();
 
-// Angular Material 21 — M3 tema tanımı
+// ─────────────────────────────────────────────────────────────────────────────
+// beINport UI V2 — global styles (2026-05-04)
+// Tokens: styles/tokens.scss
+// Hibrit: Material module'ları kullan (MatDialog, MatMenu, vb.) — custom dark theme
+// Material'ın M3 default temasını apply ediyoruz (dark) ama yoğun custom override.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Material M3 dark teması — palette'ler beINport mor ile uyumlu
+// (full apply yerine sadece structural tokens; renkler tokens.scss'ten gelir)
 $bcms-theme: mat.define-theme((
   color: (
     theme-type: dark,
-    primary:   mat.$azure-palette,
-    tertiary:  mat.$cyan-palette,
+    primary:   mat.$violet-palette,
+    tertiary:  mat.$azure-palette,
   ),
   typography: (
-    plain-family: Roboto,
-    brand-family: Roboto,
+    plain-family: 'Inter, system-ui, sans-serif',
+    brand-family: 'Inter Tight, Inter, system-ui, sans-serif',
   ),
-  density: (
-    scale: 0,
-  ),
+  density: (scale: 0),
 ));
 
 :root {
@@ -31,9 +38,12 @@ $bcms-theme: mat.define-theme((
 
 html, body {
   height: 100%;
-  background-color: #121212;
-  color: #e0e0e0;
-  font-family: 'Roboto', sans-serif;
+  background: var(--bp-bg-1);
+  color: var(--bp-fg-1);
+  font-family: var(--bp-font-sans);
+  font-size: var(--bp-text-md);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
@@ -42,42 +52,68 @@ body {
 
 app-root {
   display: block;
-  width: 125vw;
-  height: 125vh;
-  min-height: 125vh;
-  transform: scale(0.8);
-  transform-origin: top left;
+  width: 100%;
+  min-height: 100vh;
 }
 
-.page-container {
-  padding: 24px;
-}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bp-bg-0); }
+::-webkit-scrollbar-thumb { background: var(--bp-bg-3); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--bp-bg-4); }
 
-.mat-card-title {
-  font-size: 1.1rem;
-  font-weight: 500;
-}
-
-// Status badge colors
+// ─────────────────────────────────────────────────────────────────────────────
+// Status badge — KORUMA: schedule list/booking için aynı kalıyor (renkler dark theme'e adapte)
+// ─────────────────────────────────────────────────────────────────────────────
 .status-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: var(--bp-text-xs);
+  font-weight: var(--bp-fw-bold);
   text-transform: uppercase;
+  letter-spacing: var(--bp-ls-status);
+  font-family: var(--bp-font-sans);
 
-  &.DRAFT      { background: #424242; color: #bdbdbd; }
-  &.CONFIRMED  { background: #1565c0; color: #fff; }
-  &.ON_AIR     { background: #b71c1c; color: #fff; animation: pulse 1.5s infinite; }
-  &.COMPLETED  { background: #2e7d32; color: #fff; }
-  &.CANCELLED  { background: #616161; color: #bdbdbd; }
-  &.PENDING    { background: #e65100; color: #fff; }
-  &.APPROVED   { background: #1b5e20; color: #fff; }
-  &.REJECTED   { background: #b71c1c; color: #fff; }
+  &.DRAFT     { background: var(--bp-status-DRAFT-bg);     color: var(--bp-status-DRAFT-fg); }
+  &.CONFIRMED { background: var(--bp-status-CONFIRMED-bg); color: var(--bp-status-CONFIRMED-fg); }
+  &.ON_AIR    { background: var(--bp-status-ON_AIR-bg);    color: var(--bp-status-ON_AIR-fg);
+                animation: bp-pulse var(--bp-dur-pulse) infinite; }
+  &.COMPLETED { background: var(--bp-status-COMPLETED-bg); color: var(--bp-status-COMPLETED-fg); }
+  &.CANCELLED { background: var(--bp-status-CANCELLED-bg); color: var(--bp-status-CANCELLED-fg); }
+  &.PENDING   { background: var(--bp-status-PENDING-bg);   color: var(--bp-status-PENDING-fg); }
+  &.APPROVED  { background: var(--bp-status-APPROVED-bg);  color: var(--bp-status-APPROVED-fg); }
+  &.REJECTED  { background: var(--bp-status-REJECTED-bg);  color: var(--bp-status-REJECTED-fg); }
 }
 
-@keyframes pulse {
+@keyframes bp-pulse {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.6; }
+  50%      { opacity: 0.6; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Material dialog/menu — beINport'a uyumlu dark stili
+// ─────────────────────────────────────────────────────────────────────────────
+.mat-mdc-dialog-container .mdc-dialog__surface {
+  background: var(--bp-bg-2) !important;
+  border: 1px solid var(--bp-line-2);
+  border-radius: var(--bp-r-2xl) !important;
+  color: var(--bp-fg-1);
+  box-shadow: var(--bp-shadow-xl);
+}
+
+.mat-mdc-menu-panel.mat-mdc-menu-panel {
+  background: var(--bp-bg-2) !important;
+  border: 1px solid var(--bp-line-2);
+  border-radius: var(--bp-r-xl) !important;
+  box-shadow: var(--bp-shadow-md) !important;
+  --mat-menu-item-label-text-color: var(--bp-fg-1);
+  --mat-menu-item-icon-color: var(--bp-fg-3);
+  --mat-menu-item-hover-state-layer-color: rgba(255, 255, 255, 0.06);
+}
+
+// page-container kaldırıldı (artık Shell'in body'si kullanılır)
+.page-container {
+  padding: var(--bp-sp-6);
 }
