@@ -1,6 +1,7 @@
 import { PassThrough } from 'node:stream';
 import ExcelJS from 'exceljs';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { BCMS_GROUPS, PERMISSIONS, type BcmsGroup, type JwtPayload } from '@bcms/shared';
 import { kcFetch } from '../../core/keycloak-admin.client.js';
 
@@ -33,6 +34,27 @@ interface ShiftInput {
   endTime?: string | null;
   type: string;
 }
+
+/** HIGH-API-011 fix (2026-05-05): PUT /:group body Zod parse — Fastify
+ *  schema'yı destekliyoruz ama runtime garanti için Zod ekstra. type alanı
+ *  SHIFT_TYPES.code enum'u + boş string'e izin verilir; dayIndex 0..6 zorunlu;
+ *  weekStart ISO date. */
+const HH_MM_REGEX = /^\d{2}:\d{2}$/;
+const shiftInputSchema = z.object({
+  userId:    z.string().trim().min(1).max(64),
+  userName:  z.string().trim().min(1).max(128),
+  dayIndex:  z.number().int().min(0).max(6),
+  startTime: z.string().regex(HH_MM_REGEX).nullable().optional(),
+  endTime:   z.string().regex(HH_MM_REGEX).nullable().optional(),
+  type:      z.string().refine(
+    (s) => s === '' || SHIFT_TYPES.some((t) => t.code === s),
+    'Geçersiz shift type'),
+});
+
+const shiftUpdateSchema = z.object({
+  weekStart:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD bekleniyor'),
+  assignments: z.array(shiftInputSchema).max(500),
+});
 
 function normalizeUserType(value: unknown): UserType {
   return value === 'supervisor' ? 'supervisor' : 'staff';
@@ -393,19 +415,19 @@ export async function weeklyShiftRoutes(app: FastifyInstance) {
     const group = decodeURIComponent(request.params.group);
     if (!isKnownGroup(group)) throw Object.assign(new Error('Bilinmeyen grup'), { statusCode: 400 });
     if (!await canEditGroup(request, group)) throw Object.assign(new Error('Bu grubu düzenleme yetkiniz yok'), { statusCode: 403 });
-    if (!request.body.weekStart.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      throw Object.assign(new Error('Geçersiz hafta başlangıcı'), { statusCode: 400 });
-    }
+
+    // HIGH-API-011 fix: Zod parse — assignments tipi/sınırları runtime garanti.
+    const body = shiftUpdateSchema.parse(request.body);
 
     const users = await fetchShiftUsers();
     const members = new Map(users.filter((user) => user.groups.includes(group)).map((user) => [user.id, user]));
-    const rows = request.body.assignments
-      .filter((item) => members.has(item.userId) && item.dayIndex >= 0 && item.dayIndex <= 6)
+    const rows = body.assignments
+      .filter((item) => members.has(item.userId))
       .map((item) => ({
         userId: item.userId,
         userName: members.get(item.userId)?.displayName ?? item.userName,
         userGroup: group,
-        weekStart: request.body.weekStart,
+        weekStart: body.weekStart,
         dayIndex: item.dayIndex,
         startTime: item.type ? null : item.startTime || null,
         endTime: item.type ? null : item.endTime || null,
@@ -413,7 +435,7 @@ export async function weeklyShiftRoutes(app: FastifyInstance) {
       }));
 
     await app.prisma.$transaction([
-      app.prisma.shiftAssignment.deleteMany({ where: { weekStart: request.body.weekStart, userGroup: group } }),
+      app.prisma.shiftAssignment.deleteMany({ where: { weekStart: body.weekStart, userGroup: group } }),
       ...(rows.length ? [app.prisma.shiftAssignment.createMany({ data: rows })] : []),
     ]);
 

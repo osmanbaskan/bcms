@@ -56,7 +56,14 @@ function parseTurkishDateTime(dateCell: unknown, timeCell: unknown): Date | null
     const hour   = parseInt(timeParts[0] ?? '0');
     const minute = parseInt(timeParts[1] ?? '0');
 
-    return new Date(year, month, day, hour, minute, 0);
+    // HIGH-API-001 fix (2026-05-05): `new Date(year, month, ...)` server local
+    // timezone kullanıyor; Türkiye dışındaki sunucuda kayar. Excel kaynaklı
+    // tarih + saat hep İstanbul saatiyle (UTC+3, year-round, no DST since 2016).
+    // ISO string ile +03:00 explicit fix → konum-bağımsız kayıt.
+    const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+              + `T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+03:00`;
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
   } catch {
     return null;
   }

@@ -139,12 +139,21 @@ function errorResponse(error: Error & { statusCode?: number; code?: string }) {
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     const statusCode = error.code === 'P2025' ? 404 : ['P2002', 'P2003', 'P2004'].includes(error.code) ? 409 : 500;
+    // HIGH-API-009 fix (2026-05-05): Prisma error.message client'a schema detayı
+    // (kolon adları, constraint adları, query parçaları) sızdırıyor. Sadece kod
+    // bazlı generic mesaj dön; tam detay server log'unda.
+    const message =
+      statusCode === 404 ? 'Kayıt bulunamadı' :
+      statusCode === 409 && error.code === 'P2002' ? 'Benzersiz kısıtlama ihlali' :
+      statusCode === 409 && error.code === 'P2003' ? 'Foreign key kısıtlaması ihlali' :
+      statusCode === 409 ? 'Veritabanı kısıtlama ihlali' :
+      'Internal Server Error';
     return {
       statusCode,
       body: {
         statusCode,
         error: statusCode >= 500 ? 'Internal Server Error' : error.code,
-        message: statusCode >= 500 ? 'Internal Server Error' : error.message,
+        message,
       },
     };
   }
@@ -163,7 +172,13 @@ function errorResponse(error: Error & { statusCode?: number; code?: string }) {
 export async function buildApp() {
   validateRuntimeEnv();
 
+  // HIGH-API-019 fix (2026-05-05): trustProxy aktif — nginx reverse proxy
+  // arkasında çalışıyoruz; X-Forwarded-For + X-Real-IP header'larını gerçek
+  // istemci IP'si olarak değerlendir. Aksi halde request.ip = nginx container
+  // IP'si (172.18.x.x) olur, rate-limit tek IP'ye uygulanır, audit IP yanlış
+  // kayıt edilir. Güvenli CIDR: docker bridge (172.18.0.0/16) + loopback.
   const app = Fastify({
+    trustProxy: ['127.0.0.1', '::1', '172.18.0.0/16'],
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
       transport:

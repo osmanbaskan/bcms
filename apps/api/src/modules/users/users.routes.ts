@@ -1,9 +1,39 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { BCMS_GROUPS, PERMISSIONS, type BcmsGroup } from '@bcms/shared';
 import { getAdminToken, kcFetch, type KeycloakUserRepresentation } from '../../core/keycloak-admin.client.js';
 
 const USER_TYPES = ['staff', 'supervisor', 'admin'] as const;
 type UserType = typeof USER_TYPES[number];
+
+/** HIGH-API-008 fix (2026-05-05): user create/update için zod validasyonu.
+ *  - email: RFC 5322 email format
+ *  - password: min 12 karakter (NIST SP 800-63B önerisi); UI tarafında temporary
+ *    flag set edildiği için ilk girişte zaten değişmesi zorlanıyor.
+ *  - groups: BCMS_GROUPS subset
+ *  - userType: USER_TYPES enum */
+const userCommonInputSchema = z.object({
+  username:  z.string().trim().min(3).max(64),
+  email:     z.string().trim().email('Geçersiz e-mail formatı'),
+  firstName: z.string().trim().max(64).optional(),
+  lastName:  z.string().trim().max(64).optional(),
+  userType:  z.enum(USER_TYPES).optional(),
+  groups:    z.array(z.enum(BCMS_GROUPS)),
+});
+
+const userPasswordSchema = z.string()
+  .min(12, 'Şifre en az 12 karakter olmalı')
+  .max(256);
+
+const userCreateSchema = userCommonInputSchema.extend({
+  password: userPasswordSchema,
+});
+
+const userUpdateSchema = userCommonInputSchema.extend({
+  enabled: z.boolean(),
+  // PUT'ta password opsiyonel — boş bırakılırsa değiştirme.
+  password: userPasswordSchema.optional().or(z.literal('').transform(() => undefined)),
+});
 
 // User-group membership cache (60 s TTL)
 const groupMembershipCache = new Map<string, { groups: string[]; expiresAt: number }>();
@@ -195,7 +225,9 @@ export async function usersRoutes(app: FastifyInstance) {
     },
   }, async (request) => {
     const { id } = request.params;
-    const { username, email, firstName, lastName, enabled, userType, groups, password } = request.body;
+    // HIGH-API-008 fix: Zod parse — email format + password min 12 + groups enum.
+    const { username, email, firstName, lastName, enabled, userType, groups, password } =
+      userUpdateSchema.parse(request.body);
 
     const existing = await kcFetch<KeycloakUserRepresentation>(`/users/${id}`);
     const isAdmin = groups.includes('Admin');
@@ -263,7 +295,9 @@ export async function usersRoutes(app: FastifyInstance) {
       },
     },
   }, async (request) => {
-    const { username, email, firstName, lastName, password, groups } = request.body;
+    // HIGH-API-008 fix: Zod parse + password min 12.
+    const { username, email, firstName, lastName, password, groups } =
+      userCreateSchema.parse(request.body);
     const userType = normalizeUserType(request.body.userType);
 
     const url   = process.env.KEYCLOAK_URL   ?? 'http://localhost:8080';
