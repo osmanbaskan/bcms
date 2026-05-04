@@ -1911,14 +1911,17 @@ export class ReportIssueDialogComponent {
   styles: [`
     :host { display:block; }
 
-    .page-container { padding:0; }
+    /* ─── beINport UI V2 (2026-05-04) — sadece style'lar yeni tokens'a map'lendi.
+       HTML structure ve kolon başlıkları AYNEN korundu (KORUMA). ─── */
+    .page-container { padding: var(--bp-sp-6) var(--bp-sp-8) var(--bp-sp-8); }
     #live-plan-fullscreen:fullscreen {
       display:flex;
       flex-direction:column;
       height:100vh;
-      background:#121212;
+      background: var(--bp-bg-1);
       overflow:hidden;
       zoom:100%;
+      padding: 0;
     }
     #live-plan-fullscreen:fullscreen .top-bar,
     #live-plan-fullscreen:fullscreen .table-footer {
@@ -1934,103 +1937,164 @@ export class ReportIssueDialogComponent {
       position:sticky;
       top:0;
       z-index:5;
-      background:#8b0000;
     }
 
-    /* ── Üst bar ── */
+    /* ── Üst bar (filter / actions) — beINport "filters" pattern ── */
     .top-bar {
-      display:flex; align-items:center; gap:16px; flex-wrap:wrap;
-      padding:12px 16px;
-      background:#1a1a2e;
-      border-bottom:1px solid rgba(255,255,255,0.08);
-      margin-bottom:0;
+      display:flex; align-items:center; gap: var(--bp-sp-3); flex-wrap:wrap;
+      padding: var(--bp-sp-3) var(--bp-sp-4);
+      background: var(--bp-bg-2);
+      border: 1px solid var(--bp-line-2);
+      border-radius: var(--bp-r-lg);
+      margin-bottom: var(--bp-sp-3);
     }
     .date-nav {
-      display:flex; align-items:center; gap:4px;
+      display:flex; align-items:center; gap: 4px;
     }
     .date-input {
-      background:#2d2d44; color:#fff; border:1px solid rgba(255,255,255,0.2);
-      border-radius:4px; padding:6px 10px; font-size:0.9rem;
-      outline:none; cursor:pointer;
+      background: var(--bp-bg-0);
+      color: var(--bp-fg-1);
+      border: 1px solid var(--bp-line-2);
+      border-radius: var(--bp-r-sm);
+      padding: 6px 10px;
+      font-size: 12.5px;
+      font-family: var(--bp-font-mono);
+      outline: none;
+      cursor: pointer;
     }
-    .date-input::-webkit-calendar-picker-indicator { filter:invert(1); cursor:pointer; }
-    .today-btn { margin-left:4px; font-size:0.8rem; min-width:60px; }
-    .top-actions { margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .date-input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
+    .today-btn { margin-left: 4px; font-size: 12px; min-width: 60px; }
+    .top-actions { margin-left: auto; display: flex; align-items: center; gap: var(--bp-sp-2); flex-wrap: wrap; }
 
-    /* ── Tablo ── */
+    /* ── Tablo container ── */
     .table-wrapper {
-      overflow-x:auto;
+      overflow-x: auto;
+      background: var(--bp-bg-2);
+      border: 1px solid var(--bp-line-2);
+      border-radius: var(--bp-r-lg);
     }
     .broadcast-table {
-      width:max-content; min-width:100%; border-collapse:collapse;
-      font-size:0.82rem;
+      width: max-content; min-width: 100%; border-collapse: collapse;
+      font-size: 12.5px;
     }
+    /* Tablo header — eski koyu kırmızı (#8b0000) yeni dark accent + mor text */
     .broadcast-table thead tr {
-      background:#8b0000;
-      color:#fff;
+      background: var(--bp-bg-0);
     }
     .broadcast-table thead th {
-      padding:4px 6px; text-align:center;
-      border:1px solid #000;
-      white-space:normal; font-weight:700;
-      font-size:0.95rem;
-      line-height:1.15;
-      letter-spacing:0.01em;
+      padding: 8px 10px; text-align: center;
+      border-bottom: 1px solid var(--bp-line-2);
+      border-right: 1px solid var(--bp-line-2);
+      white-space: normal;
+      font-weight: var(--bp-fw-bold);
+      font-size: 10.5px;
+      line-height: 1.2;
+      letter-spacing: var(--bp-ls-eyebrow);
+      color: var(--bp-purple-300);
+      text-transform: uppercase;
     }
+    .broadcast-table thead th:last-child { border-right: 0; }
     .broadcast-table tbody tr {
-      border-bottom:1px solid rgba(255,255,255,0.06);
-      transition:background 0.15s;
+      border-bottom: 1px solid var(--bp-line-2);
+      transition: background var(--bp-dur-fast);
     }
-    .broadcast-table tbody tr:hover { filter:brightness(1.12); }
-    .broadcast-table tbody tr.has-league-color:hover { filter:brightness(1.15); }
-    .broadcast-table tbody tr.transmission-finished:hover { filter:brightness(1.08); }
-    .row-even { background:#1e1e2e; }
-    .row-odd  { background:#242436; }
+    .broadcast-table tbody tr:last-child { border-bottom: 0; }
+    .broadcast-table tbody tr:hover { background: rgba(124, 58, 237, 0.08); }
+    .broadcast-table tbody tr.has-league-color:hover { filter: brightness(1.10); }
+    .broadcast-table tbody tr.transmission-finished:hover { filter: brightness(1.06); }
+    .row-even { background: var(--bp-bg-2); }
+    .row-odd  { background: var(--bp-bg-3); }
 
-	    .broadcast-table td {
-	      padding:4px 6px; border:1px solid #000;
-	      vertical-align:middle; color:rgba(255,255,255,0.87);
-	    }
-	    .broadcast-table tbody td:not(.td-actions) {
-	      font-size:1rem;
-	      font-weight:600;
-	      line-height:1.2;
-	      text-align:center;
-	    }
-	    .no-data { text-align:center; padding:32px; color:#666; }
+    .broadcast-table td {
+      padding: 6px 8px;
+      border-right: 1px solid var(--bp-line-2);
+      vertical-align: middle;
+      color: var(--bp-fg-1);
+    }
+    .broadcast-table td:last-child { border-right: 0; }
+    .broadcast-table tbody td:not(.td-actions) {
+      font-size: 13px;
+      font-weight: var(--bp-fw-medium);
+      line-height: 1.25;
+      text-align: center;
+    }
+    .no-data { text-align: center; padding: 32px; color: var(--bp-fg-3); font-size: 13px; }
 
     /* ── Özel hücreler ── */
-    .td-time    { font-weight:700; color:#fff; white-space:nowrap; min-width:52px; }
-    .td-title   { min-width:180px; max-width:240px; }
-	    .content-main { font-weight:700; display:block; }
-	    .td-trans   { white-space:nowrap; color:#aaa; min-width:48px; text-align:center; }
-	    .td-mono    { font-family:monospace; color:#90a4ae; text-align:center; }
-	    .td-mod     { font-family:monospace; color:#90a4ae; text-align:center; line-height:1.15; }
-	    .td-mod-sub { color:#78909c; font-size:0.85em; }
-	    .td-stack   { line-height:1.18; }
-	    .td-stack > div { white-space:nowrap; }
-	    .td-stack > div + div { margin-top:1px; color:#78909c; }
-	    .td-lang    { text-align:center; color:#bdbdbd; white-space:nowrap; }
-	    .td-channel { color:#ffd600; font-weight:600; white-space:nowrap; min-width:110px; }
-	    .td-league  {
-	      color:#aaa; white-space:normal;
-	      font-size:0.82rem !important;
-	      font-weight:500 !important;
-	      line-height:1.15;
-	      max-width:110px; min-width:80px;
-	    }
-	    .week-badge { display:inline-block; margin-left:4px; padding:0 4px; border-radius:3px; background:#1976d2; color:#fff; font-size:0.72rem; vertical-align:middle; }
-	    .td-notes   { min-width:320px; max-width:480px; color:#bdbdbd; white-space:normal; }
-    .td-actions { width:160px; padding:2px 4px; text-align:center; white-space:nowrap; }
+    .td-time    {
+      font-weight: var(--bp-fw-bold);
+      color: var(--bp-purple-300);
+      font-family: var(--bp-font-mono);
+      white-space: nowrap;
+      min-width: 56px;
+    }
+    .td-title   { min-width: 200px; max-width: 280px; }
+    .content-main { font-weight: var(--bp-fw-semibold); display: block; color: var(--bp-fg-1); }
+    .td-trans   {
+      white-space: nowrap;
+      color: var(--bp-fg-3);
+      font-family: var(--bp-font-mono);
+      min-width: 50px;
+      text-align: center;
+    }
+    .td-mono    { font-family: var(--bp-font-mono); color: var(--bp-fg-2); text-align: center; }
+    .td-mod     { font-family: var(--bp-font-mono); color: var(--bp-fg-2); text-align: center; line-height: 1.18; }
+    .td-mod-sub { color: var(--bp-fg-3); font-size: 0.85em; }
+    .td-stack   { line-height: 1.20; }
+    .td-stack > div { white-space: nowrap; }
+    .td-stack > div + div { margin-top: 1px; color: var(--bp-fg-3); }
+    .td-lang    { text-align: center; color: var(--bp-fg-2); white-space: nowrap; }
+    .td-channel {
+      color: var(--bp-purple-300);
+      font-weight: var(--bp-fw-semibold);
+      white-space: nowrap;
+      min-width: 110px;
+    }
+    .td-league  {
+      color: var(--bp-fg-3);
+      white-space: normal;
+      font-size: 11px !important;
+      font-weight: var(--bp-fw-medium) !important;
+      line-height: 1.18;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      max-width: 120px;
+      min-width: 80px;
+    }
+    .week-badge {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 1px 6px;
+      border-radius: var(--bp-r-pill);
+      background: rgba(124, 58, 237, 0.20);
+      color: var(--bp-purple-300);
+      font-size: 10px;
+      font-weight: var(--bp-fw-semibold);
+      vertical-align: middle;
+    }
+    .td-notes   {
+      min-width: 320px;
+      max-width: 480px;
+      color: var(--bp-fg-2);
+      white-space: normal;
+      text-align: left !important;
+    }
+    .td-record-location { color: var(--bp-fg-2); }
+    .td-actions { width: 180px; padding: 2px 4px; text-align: center; white-space: nowrap; }
 
     /* ── Footer ── */
     .table-footer {
-      display:flex; align-items:center; justify-content:space-between;
-      padding:4px 16px;
-      border-top:1px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--bp-sp-2) var(--bp-sp-4);
+      margin-top: var(--bp-sp-3);
+      background: var(--bp-bg-2);
+      border: 1px solid var(--bp-line-2);
+      border-radius: var(--bp-r-lg);
     }
-    .record-count { font-size:0.82rem; color:#777; }
-    .spinner-container { display:flex; justify-content:center; padding:64px; }
+    .record-count { font-size: 12px; color: var(--bp-fg-3); }
+    .spinner-container { display: flex; justify-content: center; padding: 64px; }
   `],
 })
 export class ScheduleListComponent implements OnInit, OnDestroy {
