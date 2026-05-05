@@ -31,16 +31,16 @@
 | 13 | `bd10c20` | API catalog cache + booking date consistency + HttpError class |
 
 **Mimari onay bekleyen 10 madde** (skip listesi sabit):
-1. AuditLog partition (DB migration + retention strateji)
+1. AuditLog partition (DB migration + retention strateji) — design doc bekliyor [next]
 2. DLQ topology (RabbitMQ — interim retry policy uygulandı)
-3. `metadata.optaMatchId` kolon promote (migration)
-4. `usageScope` → enum/CHECK (migration)
+3. `metadata.optaMatchId` kolon promote — **PR-3A done** (`fdf319b`); transition active (dual-read/write); PR-3B deferred (metadata yazımı kaldır + opsiyonel NOT NULL).
+4. ~~`usageScope` → enum/CHECK~~ → **kapalı** (CHECK var; integration test `87d5dde`; schema.prisma /// yorum + audit doc finding 3.1.4 düzeltildi `95fe2fb`). PG enum migration **rejected/deferred unless new requirement** (CHECK yeterli kabul edildi).
 5. Schedule `channel_id NULL` live-plan (mimari karar — ayrı tablo mı?)
 6. Schedule-list 2385 satır component refactor
 7. Outbox pattern (transactional event publish)
-8. Backend integration test coverage
+8. Backend integration test coverage — **lokal 20/20 ✅** (booking + schedule + db-constraints + optaMatchId); **CI billing blocked, not CI-validated**; audit plugin spec sonraki PR.
 9. ~~IDOR ID enumeration (UUID PK migration)~~ → **IDOR mitigation: UUID migration rejected; RBAC authorization audit/test plan required** (2026-05-04 karar — bkz aşağıda)
-10. Production secrets rotate (Prometheus, Grafana — operasyonel)
+10. Production secrets rotate — **current-tree mitigated** (`fa932dc` GitGuardian fix + `ops/RUNBOOK-SECRETS-ROTATION.md`); prod rotation operasyonel pending.
 
 `apps/api` lint + `apps/web` build her commit öncesi doğrulandı.
 
