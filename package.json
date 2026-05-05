@@ -21,7 +21,6 @@
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "concurrently": "^8.2.2",
-    "typescript": "^5.4.5",
-    "webpack": "^5.105.2"
+    "typescript": "^5.4.5"
   }
 }

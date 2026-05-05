@@ -9,6 +9,39 @@
 
 ---
 
+## 0a. Çözüm State Tracker (2026-05-04 sonrası overnight pass)
+
+10 commit batch ile **~120 bulgu** kapatıldı (`git log --grep="audit-batch" --since="2026-05-04 22:00"`).
+
+| Batch | Commit | Kapsam |
+| ----- | ------ | ------ |
+| 1 | `0c7a8af` | Quick Wins (10 madde) |
+| 2 | `0238771` | Backend ÖNEMLİ — auth 503, helmet, multipart, audit cap, rabbitmq retry/multi-consumer, ingest diff |
+| 3 | `3008601` | Frontend ÖNEMLİ — login-error route, public-origin, token validity |
+| 4 | `084f925` | Backend ORTA — schedule/signal/playout/users/booking/opta/bxf/weekly-shift |
+| 5 | `3f4c724` | DÜŞÜK + Infra — CSP unsafe-eval, mailhog profile, prom retention, prisma defansif |
+| 6 | `b1b8eb8` | DEV_USER override, ingest dedup/redact, notif _meta, opta TR collation, mock alerts prod gizli |
+| 7 | `03cba69` | Schema metadata caps (Booking/Schedule/Channel) + infra defansif env |
+| 8 | `5c9a81a` | Frontend API GET retry + dashboard NG8113 + Angular budget tweak |
+| 9 | `4cb2db5` | BXF atomic write, signal channel ref, studio catalog cross-ref, booking transitions |
+| 10 | `aa6d459` | Schedule-list `?new=1` query param + monitoring/MCR lifecycle verify |
+
+**Mimari onay bekleyen 10 madde** (skip listesi sabit):
+1. AuditLog partition (DB migration + retention strateji)
+2. DLQ topology (RabbitMQ — interim retry policy uygulandı)
+3. `metadata.optaMatchId` kolon promote (migration)
+4. `usageScope` → enum/CHECK (migration)
+5. Schedule `channel_id NULL` live-plan (mimari karar — ayrı tablo mı?)
+6. Schedule-list 2385 satır component refactor
+7. Outbox pattern (transactional event publish)
+8. Backend integration test coverage
+9. IDOR ID enumeration (UUID PK migration)
+10. Production secrets rotate (Prometheus, Grafana — operasyonel)
+
+`apps/api` lint + `apps/web` build her commit öncesi doğrulandı.
+
+---
+
 ## 0. Yönetici Özeti
 
 Toplam **211 bulgu** kayıt edildi. Dağılım:
