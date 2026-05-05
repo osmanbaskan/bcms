@@ -412,31 +412,10 @@ model ShiftAssignment {
   @@map("shift_assignments")
 }
 
-model content_entry_categories {
-  entry_id    String @db.Uuid
-  category_id String @db.Uuid
-
-  @@id([entry_id, category_id])
-}
-
-model content_entry_tags {
-  entry_id String @db.Uuid
-  tag_id   String @db.Uuid
-
-  @@id([entry_id, tag_id])
-}
-
-model workspaces {
-  id          String    @id @db.Uuid
-  name        String    @db.VarChar(255)
-  slug        String    @unique @db.VarChar(255)
-  created_at  DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at  DateTime  @default(now()) @db.Timestamptz(6)
-  deleted_at  DateTime? @db.Timestamptz(6)
-  description String?   @db.VarChar(1000)
-
-  @@index([slug], map: "ix_workspaces_slug")
-}
+// HIGH-INF-010 fix (2026-05-05): unused models drop edildi.
+// content_entry_categories, content_entry_tags, workspaces — hiçbir relation
+// yok, kod tabanında referans yok, DB'de production data yok ("Ana Workspace"
+// tek seed row). Migration: 20260505000000_drop_redundant_gist_partial_unique
 
 enum ChannelType {
   HD

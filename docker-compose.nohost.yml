@@ -1,6 +1,26 @@
+# HIGH-INF-015 fix (2026-05-05): tüm servislerin host portlarını sıfırla.
+# Önceki hâlinde sadece postgres + rabbitmq override edilmişti; keycloak/web/
+# prometheus/grafana hâlâ host ağına bind ediliyordu. Bu compose overlay'in
+# amacı "container'lar dış ağa expose edilmesin" — tüm portların sıfırlanması
+# gerekiyordu.
+#
+# Kullanım: docker compose -f docker-compose.yml -f docker-compose.nohost.yml up -d
+# Sonuç: hiçbir servis host'a port bind etmez. Dış erişim isteniyorsa ayrı bir
+# reverse proxy kullanılmalı.
 services:
   postgres:
     ports: !override []
-
   rabbitmq:
+    ports: !override []
+  keycloak:
+    ports: !override []
+  api:
+    ports: !override []
+  web:
+    ports: !override []
+  prometheus:
+    ports: !override []
+  grafana:
+    ports: !override []
+  mailhog:
     ports: !override []
