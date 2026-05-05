@@ -105,6 +105,10 @@ services:
       # Reverse proxy (nginx) arkasında çalışıyor; TLS termination edge'de.
       # Iç Docker network'ünde HTTP (izole), dış erişim sadece nginx üzerinden HTTPS.
       KC_PROXY: edge
+      # ORTA-INF-4.1.7 (2026-05-04): production'da bu iki env hard-coded
+      # `true` olmalı. Default'ları true yapsalar da operatörün yanlışlıkla
+      # `KC_HOSTNAME_STRICT_HTTPS=false` set etmesi insecure cookie üretir;
+      # security review checklist'ine ekle.
       KC_HOSTNAME_STRICT: ${KC_HOSTNAME_STRICT:-true}
       KC_HOSTNAME_STRICT_HTTPS: ${KC_HOSTNAME_STRICT_HTTPS:-true}
       KC_HTTP_ENABLED: "true"
@@ -376,7 +380,12 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      # ORTA-INF-4.1.11 (2026-05-04): GRAFANA_PASSWORD env'i strong default
+      # yok; .env'de zayıfsa açık. Production deployment checklist:
+      #   1. openssl rand -base64 24 → GRAFANA_PASSWORD
+      #   2. Grafana ilk login sonrası API key/service account ile dashboard'lar
+      # Empty/missing → Grafana boot fail (env zorunlu reference).
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD env zorunlu}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana_data:/var/lib/grafana

@@ -3,11 +3,17 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { PERMISSIONS } from '@bcms/shared';
 
+// DÜŞÜK-API-1.4.3 fix (2026-05-04): muxInfo size cap (8KB) + frequency
+// karakter set kontrolü. Tip-spesifik (RADIO için MHz format, OTT için URL)
+// schema'da zorlamak prematür; UI doğruluyor + DB log'da görünür kalıyor.
+const channelMuxInfoSchema = z.record(z.unknown())
+  .refine((m) => JSON.stringify(m).length <= 8 * 1024, 'muxInfo 8KB sınırını aşıyor');
+
 const createChannelSchema = z.object({
   name:      z.string().min(1).max(100),
   type:      z.enum(['HD', 'SD', 'OTT', 'RADIO']),
-  frequency: z.string().optional(),
-  muxInfo:   z.record(z.unknown()).optional(),
+  frequency: z.string().max(100).optional(),
+  muxInfo:   channelMuxInfoSchema.optional(),
 });
 
 // LOW-API-019 fix (2026-05-05): explicit update schema; createChannelSchema

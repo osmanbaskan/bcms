@@ -3,6 +3,12 @@ import { z } from 'zod';
 const ScheduleStatusEnum = z.enum(['DRAFT', 'CONFIRMED', 'ON_AIR', 'COMPLETED', 'CANCELLED']);
 const ScheduleUsageScopeEnum = z.enum(['broadcast', 'live-plan']);
 
+// ORTA-API-1.2.8 fix (2026-05-04): metadata application-side size cap.
+// DB Json kolonu unbounded; uygulama 16KB üst sınır koyuyor (DB jsonb için
+// makul, UI'da gösterilmiyor).
+const scheduleMetadataSchema = z.record(z.unknown())
+  .refine((m) => JSON.stringify(m).length <= 16_384, 'metadata 16KB sınırını aşıyor');
+
 export const createScheduleSchema = z.object({
   channelId:       z.number().int().positive().nullable().optional(),
   startTime:       z.string().datetime({ offset: true }),
@@ -11,7 +17,7 @@ export const createScheduleSchema = z.object({
   contentId:       z.number().int().positive().optional(),
   broadcastTypeId: z.number().int().positive().optional(),
   usageScope:      ScheduleUsageScopeEnum.default('broadcast'),
-  metadata:        z.record(z.unknown()).optional(),
+  metadata:        scheduleMetadataSchema.optional(),
 }).refine((d) => new Date(d.endTime) > new Date(d.startTime), {
   message: 'endTime must be after startTime',
   path: ['endTime'],
@@ -26,7 +32,7 @@ export const updateScheduleSchema = z.object({
   contentId:       z.number().int().positive().optional(),
   broadcastTypeId: z.number().int().positive().optional(),
   usageScope:      ScheduleUsageScopeEnum.optional(),
-  metadata:        z.record(z.unknown()).optional(),
+  metadata:        scheduleMetadataSchema.optional(),
 }).refine(
   // MED-API-005 fix (2026-05-05): startTime ve endTime ikisi de PATCH'te
   // verilirse end > start olmalı. Sadece biri verilirse refine atlanır

@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+// ORTA-DB-3.1.5 fix (2026-05-04): metadata application-side size cap.
+// DB seviyesinde TEXT/JSONB unbounded ama uygulama reddediyor (16KB makul).
+const bookingMetadataSchema = z.record(z.unknown())
+  .refine((m) => JSON.stringify(m).length <= 16_384, 'metadata 16KB sınırını aşıyor');
+
 export const createBookingSchema = z.object({
   scheduleId: z.number().int().positive().optional(),
   teamId:     z.number().int().positive().optional(),
@@ -15,7 +20,7 @@ export const createBookingSchema = z.object({
   dueDate:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   completedAt: z.string().datetime().nullable().optional(),
   notes:      z.string().max(5000).optional(),
-  metadata:   z.record(z.unknown()).optional(),
+  metadata:   bookingMetadataSchema.optional(),
 }).refine((value) => Boolean(value.scheduleId || value.taskTitle), {
   message: 'scheduleId veya taskTitle zorunludur',
 });
@@ -31,7 +36,7 @@ export const updateBookingSchema = z.object({
   dueDate:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   completedAt: z.string().datetime().nullable().optional(),
   notes:    z.string().max(5000).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: bookingMetadataSchema.optional(),
 }).refine(
   // MED-API-006 fix (2026-05-05): UpdateBooking en az bir field değiştirmeli;
   // boş PATCH kabul edilirse audit log boşa yazılır.
