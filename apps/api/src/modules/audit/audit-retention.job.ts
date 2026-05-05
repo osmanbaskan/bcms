@@ -1,8 +1,13 @@
 import type { FastifyInstance } from 'fastify';
+import { dropPartition, findExpiredPartitions, isTablePartitioned } from './audit-retention.helpers.js';
 
 const BATCH_SIZE = 10_000;
 const DEFAULT_RETENTION_DAYS = 90;
 const TR_TIMEZONE = 'Europe/Istanbul';
+
+function isDryRun(): boolean {
+  return process.env.AUDIT_RETENTION_DRY_RUN === 'true';
+}
 
 // ORTA-API-1.10.6 fix (2026-05-04): retention job'unun "günün sonu"
 // hesaplamaları Istanbul saatine göre yapılmalı (yayıncılık standardı).
@@ -36,9 +41,64 @@ export async function startAuditRetentionJob(app: FastifyInstance): Promise<void
     ist.setDate(ist.getDate() - retentionDays);
     ist.setHours(0, 0, 0, 0);
     const cutoff = ist;
+    const dryRun = isDryRun();
 
+    // Madde 1 PR-1B (audit doc): feature-detect partitioned vs regular.
+    // Partitioned ise DROP TABLE expired partitions (instant, zero row lock).
+    // Regular ise mevcut deleteMany fallback (regression korunur — chunking yok,
+    // scope creep önlenir).
+    let partitioned = false;
+    try {
+      partitioned = await isTablePartitioned(app.prisma);
+    } catch (err) {
+      app.log.warn({ err }, 'isTablePartitioned check başarısız; fallback deleteMany path');
+    }
+
+    if (partitioned) {
+      await runOncePartitioned(cutoff, dryRun);
+      return;
+    }
+    await runOnceFallback(cutoff, dryRun);
+  };
+
+  const runOncePartitioned = async (cutoff: Date, dryRun: boolean): Promise<void> => {
+    let dropped = 0;
+    try {
+      const expired = await findExpiredPartitions(app.prisma, cutoff);
+      for (const p of expired) {
+        try {
+          await dropPartition(app.prisma, p.name, { dryRun });
+          dropped += 1;
+          app.log.info({ strategy: 'drop_partition', partition: p.name, dryRun }, 'Audit partition processed');
+        } catch (err) {
+          app.log.error({ err, partition: p.name }, 'Audit partition drop başarısız');
+        }
+      }
+      app.log.info(
+        { strategy: 'drop_partition', cutoff: cutoff.toISOString(), retentionDays, dropped, dryRun },
+        'Audit retention complete (partitioned path)',
+      );
+    } catch (err) {
+      app.log.error({ err, cutoff: cutoff.toISOString() }, 'Audit retention partitioned path failed');
+    }
+  };
+
+  const runOnceFallback = async (cutoff: Date, dryRun: boolean): Promise<void> => {
     let totalDeleted = 0;
     let consecutiveErrors = 0;
+
+    if (dryRun) {
+      try {
+        const wouldDelete = await app.prisma.auditLog.count({ where: { timestamp: { lt: cutoff } } });
+        app.log.info(
+          { strategy: 'delete_many', cutoff: cutoff.toISOString(), retentionDays, wouldDelete, dryRun },
+          'Audit retention dry-run (fallback path)',
+        );
+      } catch (err) {
+        app.log.error({ err }, 'Audit retention dry-run count başarısız');
+      }
+      return;
+    }
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
@@ -68,7 +128,10 @@ export async function startAuditRetentionJob(app: FastifyInstance): Promise<void
     }
 
     if (totalDeleted > 0) {
-      app.log.info({ totalDeleted, retentionDays }, 'Audit retention purge complete');
+      app.log.info(
+        { strategy: 'delete_many', cutoff: cutoff.toISOString(), retentionDays, totalDeleted },
+        'Audit retention complete (fallback path)',
+      );
     }
   };
 
