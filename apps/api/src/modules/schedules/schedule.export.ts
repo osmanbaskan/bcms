@@ -17,12 +17,25 @@ function sanitizeCell(value: string): string {
   return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
 }
 
+// LOW-API-014 fix (2026-05-05): yerel zaman yerine Istanbul zaman dilimi
+// (TR yayıncılık standardı). Sunucu saat dilimi farklı olsa bile doğru tarih
+// gösterir.
+const TR_TIMEZONE = 'Europe/Istanbul';
+
 function formatTurkishDate(d: Date): string {
-  return `${d.getDate()} ${TR_MONTHS[d.getMonth()]} ${d.getFullYear()} ${TR_DAYS[d.getDay()]}`;
+  const parts = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: TR_TIMEZONE, day: 'numeric', month: 'numeric',
+    year: 'numeric', weekday: 'long',
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const month = parseInt(get('month'), 10);
+  return `${get('day')} ${TR_MONTHS[month - 1]} ${get('year')} ${get('weekday')}`;
 }
 
 function formatTime(d: Date): string {
-  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  return new Intl.DateTimeFormat('tr-TR', {
+    timeZone: TR_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(d);
 }
 
 export interface ExportOptions {

@@ -67,11 +67,16 @@ export async function matchRoutes(app: FastifyInstance) {
   });
 }
 
+// LOW-API-016 fix (2026-05-05): timezone-aware Istanbul format.
+const MATCH_TR_MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
 function buildLabel(home: string, away: string, date: Date, week: number | null): string {
-  const d = new Date(date);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const months = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
-  const dateStr = `${pad(d.getDate())} ${months[d.getMonth()]} ${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const parts = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul', day: '2-digit', month: 'numeric',
+    year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(date);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const month = parseInt(get('month'), 10);
+  const dateStr = `${get('day')} ${MATCH_TR_MONTHS[month - 1]} ${get('year')} ${get('hour')}:${get('minute')}`;
   const weekStr = week ? ` | H${week}` : '';
   return `${home} - ${away} (${dateStr}${weekStr})`;
 }

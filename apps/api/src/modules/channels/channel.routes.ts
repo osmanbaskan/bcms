@@ -10,6 +10,13 @@ const createChannelSchema = z.object({
   muxInfo:   z.record(z.unknown()).optional(),
 });
 
+// LOW-API-019 fix (2026-05-05): explicit update schema; createChannelSchema
+// .partial() cast'i türlü corner case'lerde (örn. ileride zorunlu yeni field
+// eklenirse) update'ten kaçar.
+const updateChannelSchema = createChannelSchema.partial().extend({
+  active: z.boolean().optional(),   // PATCH'te kanalı pasifleştir
+});
+
 export async function channelRoutes(app: FastifyInstance) {
   app.get('/', {
     preHandler: app.requireGroup(...PERMISSIONS.channels.read),
@@ -57,7 +64,7 @@ export async function channelRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.channels.write),
     schema: { tags: ['Channels'] },
   }, async (request) => {
-    const dto = createChannelSchema.partial().parse(request.body);
+    const dto = updateChannelSchema.parse(request.body);
     return app.prisma.channel.update({ where: { id: z.coerce.number().int().positive().parse(request.params.id) }, data: dto as Parameters<typeof app.prisma.channel.update>[0]['data'] });
   });
 
