@@ -120,5 +120,15 @@ export const routes: Routes = [
     canActivate: [AuthGuard],
     data: { groups: [GROUP.SystemEng] },
   },
+  // ORTA-FE-2.6.1 fix (2026-05-04): /login-error route eklendi.
+  // auth.guard.ts hata path'inde parseUrl('/login-error') döndürüyordu;
+  // route tanımlı değildi → ** wildcard ile /schedules'a düşüyor ve kullanıcı
+  // hatayı göremeden anasayfaya atıyordu. Artık ayrı bir login-error
+  // ekranı kullanıcıya net mesaj gösterir.
+  {
+    path: 'login-error',
+    loadComponent: () =>
+      import('./features/login-error/login-error.component').then((m) => m.LoginErrorComponent),
+  },
   { path: '**', redirectTo: '/schedules' },
 ];

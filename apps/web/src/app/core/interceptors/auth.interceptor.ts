@@ -7,7 +7,10 @@ import { isSkipAuthAllowed } from '../auth/skip-auth';
 import { getPublicAppOrigin } from '../auth/public-origin';
 import { LoggerService } from '../services/logger.service';
 
-const TOKEN_MIN_VALIDITY_SECONDS = 60;
+// DÜŞÜK-FE-2.1.6 fix (2026-05-04): app.config.ts ile aynı 120sn threshold.
+// Eski 60sn token expiration penceresinde "geçerli ama 30sn sonra ölü" token
+// ile request başlayıp ortada fail edebiliyordu.
+const TOKEN_MIN_VALIDITY_SECONDS = 120;
 const REDIRECT_THROTTLE_MS = 30_000;
 const REDIRECT_THROTTLE_KEY = 'bcms_auth_last_redirect';
 
