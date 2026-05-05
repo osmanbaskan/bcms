@@ -64,6 +64,12 @@ export const PERMISSIONS = {
     delete:        ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],               // silme
     write:         ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],               // API PATCH/POST
   },
+  /** MED-SHARED-005 (2026-05-05): bookings boş array = `requireGroup(...[])`
+   *  her authenticated kullanıcıya açık. Bu kasıtlı: ekip iş takip sistemi
+   *  tüm gruplar için ortak çalışır; backend'de `BookingService.visibleGroups`
+   *  + `canEditGroup` ile kullanıcının kendi grubu üzerinden filtre yapılır.
+   *  Yani PERMISSIONS empty = "auth only" GENEL erişim, fine-grained kontrol
+   *  service katmanında. */
   bookings: {
     read:   [] as BcmsGroup[],
     write:  [] as BcmsGroup[],

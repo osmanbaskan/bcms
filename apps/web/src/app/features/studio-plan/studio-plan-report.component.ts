@@ -1,4 +1,4 @@
-import { Component, signal, inject } from '@angular/core';
+import { Component, signal, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -218,7 +218,9 @@ export class StudioPlanReportComponent {
 
   readonly formatHours = formatHours;
 
-  totalMinutes = () => this.rows().reduce((s, r) => s + r.totalMinutes, 0);
+  // MED-FE-001 fix (2026-05-05): plain method her CD cycle'da recalc; computed
+  // sadece rows() değişiminde recompute eder (Angular signals memoize).
+  totalMinutes = computed(() => this.rows().reduce((s, r) => s + r.totalMinutes, 0));
 
   setRange(months: number) {
     this.from = monthsAgoStr(months);

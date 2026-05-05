@@ -71,3 +71,7 @@ CREATE INDEX IF NOT EXISTS studio_plan_slots_deleted_at_idx ON studio_plan_slots
 CREATE INDEX IF NOT EXISTS studio_plans_deleted_at_idx ON studio_plans (deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS teams_deleted_at_idx ON teams (deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS timeline_events_deleted_at_idx ON timeline_events (deleted_at) WHERE deleted_at IS NOT NULL;
+
+-- ── 5. MED-INF-001: QcReport.updated_at eklendi (audit trail tutarlılığı) ─
+ALTER TABLE qc_reports
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

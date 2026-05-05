@@ -3,11 +3,17 @@ export interface League {
   code: string;
   name: string;
   country: string;
+  /** MED-SHARED-003 fix (2026-05-05): DB'de var, type'ta yoktu. */
+  metadata?: Record<string, unknown> | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Match {
   id: number;
   leagueId: number;
+  /** MED-SHARED-002 fix (2026-05-05): OPTA UID — DB'de UNIQUE, type'a eklendi. */
+  optaUid?: string | null;
   homeTeamName: string;
   awayTeamName: string;
   matchDate: string; // ISO 8601

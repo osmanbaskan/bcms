@@ -257,6 +257,8 @@ model QcReport {
   warnings   Json?
   passed     Boolean   @default(false)
   createdAt  DateTime  @default(now()) @map("created_at")
+  // MED-INF-001 fix (2026-05-05): updatedAt eklendi (audit trail tutarlılığı).
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at")
   deleted_at DateTime?
   job        IngestJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
