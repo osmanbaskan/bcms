@@ -12,9 +12,13 @@ function buildTransport() {
   const host = process.env.SMTP_HOST;
   if (!host) return null;
 
+  // DÜŞÜK-API hijyen: SMTP_PORT NaN/negatif kontrolü; default 587 (TLS).
+  const portRaw = parseInt(process.env.SMTP_PORT ?? '587', 10);
+  const port = Number.isFinite(portRaw) && portRaw > 0 && portRaw <= 65535 ? portRaw : 587;
+
   return nodemailer.createTransport({
     host,
-    port: parseInt(process.env.SMTP_PORT ?? '587', 10),
+    port,
     secure: process.env.SMTP_SECURE === 'true',
     auth: process.env.SMTP_USER
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
@@ -24,8 +28,11 @@ function buildTransport() {
 
 const MAX_EMAIL_RETRIES = 3;
 
+// DÜŞÜK-API-1.6.2 fix (2026-05-04): _retries payload'da değil, ayrı meta
+// field'da. Mesaj queue'da görünürken _retries içerik gibi görünüyordu;
+// artık `_meta` namespace'inde — payload pure email content kalıyor.
 interface EmailPayloadWithMeta extends EmailPayload {
-  _retries?: number;
+  _meta?: { retries?: number };
 }
 
 export async function startNotificationConsumer(app: FastifyInstance): Promise<void> {
@@ -53,7 +60,7 @@ export async function startNotificationConsumer(app: FastifyInstance): Promise<v
       return;
     }
 
-    const attempt = (payload._retries ?? 0) + 1;
+    const attempt = (payload._meta?.retries ?? 0) + 1;
     try {
       await transport.sendMail({ from, to: payload.to, subject: payload.subject, text: payload.body });
       app.log.info({ to: payload.to, subject: payload.subject }, 'Email sent');
@@ -61,7 +68,11 @@ export async function startNotificationConsumer(app: FastifyInstance): Promise<v
       if (attempt < MAX_EMAIL_RETRIES) {
         app.log.warn({ to: payload.to, attempt, err }, 'Email gönderilemedi, yeniden denenecek');
         // Retry by re-publishing with incremented counter
-        await app.rabbitmq.publish(QUEUES.NOTIFICATIONS_EMAIL, { ...payload, _retries: attempt });
+        const { _meta, ...rest } = payload;
+        await app.rabbitmq.publish(QUEUES.NOTIFICATIONS_EMAIL, {
+          ...rest,
+          _meta: { ...(_meta ?? {}), retries: attempt },
+        });
       } else {
         app.log.error({ to: payload.to, subject: payload.subject, attempt, err }, 'Email max deneme aşıldı, mesaj silindi');
       }

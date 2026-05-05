@@ -27,11 +27,16 @@ function buildDatabaseUrl(): string {
   const bgValue = bgRaw === '' ? 'all' : bgRaw;
   const isApi = bgValue === 'none';
 
-  url.searchParams.set('connection_limit', isApi ? '10' : '5');
+  // DÜŞÜK-API-1.1.14 fix (2026-05-04): connection pool tunable.
+  // High-load deployment'da 10/5 default değiştirilebilir; explicit override yoksa
+  // mevcut hard-coded değerler korunur.
+  const apiLimit    = process.env.PRISMA_CONNECTION_LIMIT_API ?? '10';
+  const workerLimit = process.env.PRISMA_CONNECTION_LIMIT_WORKER ?? '5';
+  url.searchParams.set('connection_limit', isApi ? apiLimit : workerLimit);
   // MED-API-024 fix (2026-05-05): pool_timeout 20s çok uzundu — HTTP isteği
   // 20sn DB bağlantısı bekleyebilirdi (rate-limit etmek mümkün ama UX kötü).
   // 5sn'de fail-fast → request 503 alır, kullanıcı tekrar dener.
-  url.searchParams.set('pool_timeout', '5');
+  url.searchParams.set('pool_timeout', process.env.PRISMA_POOL_TIMEOUT ?? '5');
 
   return url.toString();
 }

@@ -128,6 +128,18 @@ function generateProxy(sourcePath: string, jobId: number): Promise<string> {
   });
 }
 
+// ORTA-API-1.5.6 helper (2026-05-04): file path redaction.
+// /opta/.../file.mp4 → /opta/<file>; /tmp/proxies/x.mp4 → /tmp/proxies/<file>.
+// Sadece uzun absolute path'leri kısaltır; informasyon tutar (klasör), sızdırmaz (full path).
+function redactPaths(msg: string): string {
+  return msg.replace(/(\/[A-Za-z0-9._-]+){3,}/g, (m) => {
+    const parts = m.split('/').filter(Boolean);
+    const top = parts.slice(0, 1).join('/');
+    const last = parts[parts.length - 1];
+    return `/${top}/.../${last}`;
+  });
+}
+
 // ── Ana worker ────────────────────────────────────────────────────────────────
 export async function startIngestWorker(app: FastifyInstance): Promise<void> {
   await app.rabbitmq.consume<IngestMessage>(QUEUES.INGEST_NEW, async (msg) => {
@@ -213,7 +225,11 @@ export async function startIngestWorker(app: FastifyInstance): Promise<void> {
       app.log.info({ jobId, passed }, 'Ingest tamamlandı');
 
     } catch (err) {
-      const errorMsg = (err as Error).message;
+      // ORTA-API-1.5.6 fix (2026-05-04): errorMsg'de dosya yolu sızıntısını
+      // kapat. Worker INGEST_ALLOWED_ROOTS path'lerini disclose etmemeli;
+      // UI'da tek satır mesaj gösteriliyor. Tam stack server log'unda kalır.
+      const fullMsg = (err as Error).message;
+      const errorMsg = redactPaths(fullMsg);
       app.log.error({ jobId, err }, 'Ingest başarısız');
 
       await app.prisma.ingestJob.update({

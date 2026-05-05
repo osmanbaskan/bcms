@@ -32,12 +32,15 @@ export async function optaRoutes(app: FastifyInstance) {
       summary: 'DB\'deki competition listesi',
     },
   }, async (): Promise<{ id: string; name: string; seasons: string[] }[]> => {
+    // ORTA-API-1.8.1 fix (2026-05-04): Türkçe collation ile sıralama.
+    // Default `C` collation'da "İstanbul" "Galatasaray"'dan önce geliyor;
+    // tr_TR ile doğru alfabetik sıra.
     const rows = await app.prisma.$queryRaw<{ comp_id: string; name: string; season: string }[]>`
       SELECT l.code AS comp_id, l.name, m.season
       FROM leagues l
       JOIN matches m ON m.league_id = l.id
       GROUP BY l.code, l.name, m.season
-      ORDER BY l.name, m.season
+      ORDER BY l.name COLLATE "tr-TR-x-icu", m.season
     `;
 
     const map = new Map<string, { id: string; name: string; seasons: string[] }>();
@@ -122,6 +125,7 @@ export async function optaRoutes(app: FastifyInstance) {
       WHERE l.code = ANY(${FEATURED}::text[])
       ORDER BY l.code, m.season DESC
     `;
+    // ORTA-API-1.8.1: featured order zaten map'leniyor; ek sıralama yok.
 
     // Maçsız featured ligler (F1, Basketbol, Tenis gibi — manuel giriş için)
     const withMatches = new Set(rows.map((r) => r.comp_id));

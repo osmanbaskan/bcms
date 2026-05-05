@@ -17,15 +17,26 @@ declare module 'fastify' {
   }
 }
 
-// LOW-API-010 fix (2026-05-05): hardcoded 'SystemEng' string yerine GROUP const.
-const DEV_USER: JwtPayload = {
-  sub:                'dev-admin',
-  preferred_username: 'dev-admin',
-  email:              'dev@bcms.local',
-  groups:             [GROUP.SystemEng],
-  iat: 0,
-  exp: 9999999999,
-};
+// ORTA-API-1.1.10 fix (2026-05-04): DEV_USER groups env override.
+// Eski hâl: hardcoded [SystemEng] → "SystemEng dışı bir grup" senaryosunu
+// simulate edemiyordu (smoke testte yetki testi yapan biri için handicap).
+// DEV_USER_GROUPS env'i CSV (örn. "Admin,Tekyon") ile override edilebilir;
+// set edilmemişse default [SystemEng].
+function buildDevUser(): JwtPayload {
+  const raw = process.env.DEV_USER_GROUPS?.trim();
+  const groups = raw
+    ? raw.split(',').map((g) => g.trim()).filter(Boolean)
+    : [GROUP.SystemEng];
+  return {
+    sub:                process.env.DEV_USER_SUB ?? 'dev-admin',
+    preferred_username: process.env.DEV_USER_NAME ?? 'dev-admin',
+    email:              process.env.DEV_USER_EMAIL ?? 'dev@bcms.local',
+    groups,
+    iat: 0,
+    exp: 9999999999,
+  };
+}
+const DEV_USER: JwtPayload = buildDevUser();
 
 type TokenClaims = JwtPayload & {
   iss?: string;

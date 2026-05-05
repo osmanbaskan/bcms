@@ -14,6 +14,9 @@ import { getPublicAppOrigin } from './core/auth/public-origin';
 import { GROUP } from '@bcms/shared';
 import { AlertPopoverComponent, AlertItem } from './core/ui/alert-popover.component';
 import type { BcmsTokenParsed } from './core/types/auth';
+import { environment } from '../environments/environment';
+
+function isProductionBuild(): boolean { return environment.production; }
 // ORTA-FE-2.1.3 (2026-05-04): lokal BcmsTokenParsed silindi; tek kaynak
 // core/types/auth.ts. Drift önlemi.
 
@@ -521,11 +524,17 @@ export class AppComponent implements OnInit, OnDestroy {
     catch { /* ignore */ }
   }
 
-  /** Mock alerts — Aşama 1 placeholder. Aşama 2/3'te gerçek API'ye bağlanır. */
-  alerts = signal<AlertItem[]>([
-    { sev: 'warning',  msg: 'IRD-08 sinyal kaybı (3sn)', time: '19:38', port: 'IRD-08', src: 'monitor.live', ack: false },
-    { sev: 'critical', msg: 'FIB-3 yedek port arızalı', time: '19:32', port: 'FIB-3', src: 'monitor.port', ack: false },
-  ]);
+  /** Mock alerts — Aşama 1 placeholder. Aşama 2/3'te gerçek API'ye bağlanır.
+   *  DÜŞÜK-FE-2.8.3 fix (2026-05-04): production build'de mock data kullanıcıya
+   *  görünmesin; environment.production true ise boş array. Backend bağlantısı
+   *  geldiğinde bu blok gerçek API'ye dönüşecek.
+   */
+  alerts = signal<AlertItem[]>(
+    isProductionBuild() ? [] : [
+      { sev: 'warning',  msg: 'IRD-08 sinyal kaybı (3sn)', time: '19:38', port: 'IRD-08', src: 'monitor.live', ack: false },
+      { sev: 'critical', msg: 'FIB-3 yedek port arızalı', time: '19:32', port: 'FIB-3', src: 'monitor.port', ack: false },
+    ],
+  );
 
   unackAlerts = computed(() => this.alerts().filter((a) => !a.ack));
 
@@ -653,11 +662,13 @@ export class AppComponent implements OnInit, OnDestroy {
     this.alertsOpen.update((v) => !v);
   }
 
-  /** Yeni Yayın Kaydı — Aşama 2'de modal componenti yazılır; Aşama 1'de placeholder. */
+  /** Yeni Yayın Kaydı — Aşama 2'de modal componenti yazılır; Aşama 1'de placeholder.
+   *  DÜŞÜK-FE-2.8.4 (2026-05-04): kullanıcıyı "yanlışlıkla yönlendirme" yerine
+   *  schedule listesine + create dialog'unu tetikleyecek query param ile gönder.
+   *  Schedule-list bu param'ı görünce Yeni Plan dialog'unu otomatik açıyor.
+   */
   openNewBroadcast() {
-    // TODO Aşama 2: NewBroadcastDialog open
-    // Şimdilik schedule list'e yönlendir (en yakın iş)
-    this.router.navigateByUrl('/schedules');
+    this.router.navigate(['/schedules'], { queryParams: { new: '1' } });
   }
 
   logout() {

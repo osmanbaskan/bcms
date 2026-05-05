@@ -24,10 +24,18 @@ function initKeycloak(keycloak: KeycloakService, logger: LoggerService) {
         clientId: environment.keycloak.clientId,
       },
       initOptions: {
+        // ORTA-FE-2.2.2 (2026-05-04): silent-check-sso entegrasyonu opsiyonel.
+        // Şu anki davranış: login-required → her ziyarette Keycloak'a redirect.
+        // Alternatif (UX akıcı): onLoad='check-sso' + silentCheckSsoRedirectUri
+        // ile session iframe ile sessiz kontrol; oturum yoksa kullanıcı
+        // explicit login butonu ile gönderir. UI kararı bekliyor — şu an
+        // login-required kalıyor (mevcut akışın değiştirilmesi tüm sekmeleri
+        // etkiler).
         onLoad: 'login-required',
         checkLoginIframe: false,
         redirectUri: `${getPublicAppOrigin()}/`,
         scope: 'openid profile email',
+        // silentCheckSsoRedirectUri: `${getPublicAppOrigin()}/assets/silent-check-sso.html`,
       },
       loadUserProfileAtStartUp: false,
     });
@@ -48,8 +56,11 @@ function initKeycloak(keycloak: KeycloakService, logger: LoggerService) {
 
     // SPA bootstrap'ta tek sefer çalışır; pratikte browser sekmesi kapanınca GC.
     // Yine de HMR / test / micro-frontend bağlamında interval'ın sızmaması için
-    // pagehide ile temizlik. (CRIT-010, audit 2026-05-01)
-    window.addEventListener('pagehide', () => clearInterval(refreshIntervalId), { once: true });
+    // pagehide + beforeunload combo ile temizlik (DÜŞÜK-FE-2.8.5: mobile Safari
+    // bazı durumlarda pagehide'ı atlayabiliyor — beforeunload defansif).
+    const cleanup = () => clearInterval(refreshIntervalId);
+    window.addEventListener('pagehide', cleanup, { once: true });
+    window.addEventListener('beforeunload', cleanup, { once: true });
   };
 }
 

@@ -43,8 +43,13 @@ const userUpdateSchema = userCommonInputSchema.extend({
 });
 
 // User-group membership cache (60 s TTL)
+// ORTA-API-1.10.3 fix (2026-05-04): unbounded growth riskini kapatmak için
+// TTL + max-size + reaper. Sadece read path'inde lazy temizlik vardı; idle
+// kullanıcılar (logout sonrası entry'ler) birikiyordu. Periyodik reaper +
+// hard cap ile bounded.
 const groupMembershipCache = new Map<string, { groups: string[]; expiresAt: number }>();
 const GROUP_CACHE_TTL_MS = 60_000;
+const GROUP_CACHE_MAX = 5_000;
 
 function getCachedGroups(userId: string): string[] | null {
   const entry = groupMembershipCache.get(userId);
@@ -54,8 +59,23 @@ function getCachedGroups(userId: string): string[] | null {
 }
 
 function setCachedGroups(userId: string, groups: string[]): void {
+  // Hard cap: en eski entry'i kaldır (insertion-order via Map.keys()).
+  if (groupMembershipCache.size >= GROUP_CACHE_MAX) {
+    const firstKey = groupMembershipCache.keys().next().value;
+    if (firstKey !== undefined) groupMembershipCache.delete(firstKey);
+  }
   groupMembershipCache.set(userId, { groups, expiresAt: Date.now() + GROUP_CACHE_TTL_MS });
 }
+
+// Periyodik reaper — 5 dakikada bir expired entry'leri temizler.
+// .unref() ile event loop bloklamaz; SIGTERM sonrası process tertemiz çıkar.
+const groupCacheReaper = setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of groupMembershipCache.entries()) {
+    if (now >= v.expiresAt) groupMembershipCache.delete(k);
+  }
+}, 5 * 60_000);
+groupCacheReaper.unref();
 
 // Group name → ID map cache (5 min TTL — group names rarely change)
 let groupIdMapCache: Map<string, string> | null = null;

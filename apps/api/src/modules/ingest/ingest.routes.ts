@@ -3,7 +3,7 @@ import ExcelJS from 'exceljs';
 import type { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
+import { Prisma, IngestStatus } from '@prisma/client';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { PERMISSIONS, type SaveIngestPlanItemDto, type SaveRecordingPortsDto } from '@bcms/shared';
 import { validateIngestSourcePath } from './ingest.paths.js';
@@ -227,7 +227,11 @@ export async function ingestRoutes(app: FastifyInstance) {
     const { page, pageSize } = q;
     const skip = (page - 1) * pageSize;
 
-    const where = q.status ? { status: q.status as never } : {};
+    // DÜŞÜK-API-1.5.3 fix (2026-05-04): `as never` type-erasure yerine
+    // typed enum cast — IngestStatus'un Prisma generic'iyle uyum.
+    const where: Prisma.IngestJobWhereInput = q.status
+      ? { status: q.status as IngestStatus }
+      : {};
     const [data, total] = await Promise.all([
       app.prisma.ingestJob.findMany({ where, skip, take: pageSize, include: { qcReport: true }, orderBy: { createdAt: 'desc' } }),
       app.prisma.ingestJob.count({ where }),
@@ -314,6 +318,10 @@ export async function ingestRoutes(app: FastifyInstance) {
     // HIGH-API-006 fix (2026-05-05): satır cap. 366 günlük sınır + 10K satır cap
     // → 1 yıllık ortak yoğun planda bile RAM güvenli. Cap aşılırsa
     // X-Truncated header ile UI uyarsın.
+    // ORTA-API-1.5.2 fix (2026-05-04): false positive X-Truncated.
+    // Eski: items.length === CAP ise truncated=true → tam 10K satırlık geçerli
+    // sonuç da truncated raporlanıyordu. Çözüm: take=CAP+1 al, length>CAP ise
+    // truncated; aksi halde gerçek limit aşılmamış.
     const REPORT_ROW_CAP = 10000;
     const items = await app.prisma.ingestPlanItem.findMany({
       where: {
@@ -324,9 +332,11 @@ export async function ingestRoutes(app: FastifyInstance) {
       },
       include: PLAN_ITEM_INCLUDE,
       orderBy: [{ dayDate: 'asc' }, { plannedStartMinute: 'asc' }, { sourceKey: 'asc' }],
-      take: REPORT_ROW_CAP,
+      take: REPORT_ROW_CAP + 1,
     });
-    if (items.length === REPORT_ROW_CAP) {
+    const truncated = items.length > REPORT_ROW_CAP;
+    if (truncated) {
+      items.length = REPORT_ROW_CAP;
       reply.header('X-Truncated', `true; cap=${REPORT_ROW_CAP}`);
     }
     return items.map(mapPlanItem);

@@ -42,6 +42,10 @@ jobs:
       DATABASE_URL: postgresql://bcms_user:changeme@localhost:5432/bcms
       RABBITMQ_URL: amqp://bcms:changeme_mq@localhost:5672
       NODE_ENV: development
+      # ORTA-CFG-5.1.1 (2026-05-04): SKIP_AUTH=true smoke test için zorunlu.
+      # validateRuntimeEnv() prod'da blok ediyor (NODE_ENV=production iken
+      # boot abort); CI NODE_ENV=development olduğu için bu env kabul edilir.
+      # Asla production deployment env'ine kopyalanmamalı.
       SKIP_AUTH: "true"
       KEYCLOAK_URL: http://localhost:8080
       KEYCLOAK_REALM: bcms
