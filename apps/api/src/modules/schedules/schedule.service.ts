@@ -190,6 +190,24 @@ export class ScheduleService {
         }
       }
 
+      // Madde 3 PR-3A: dual-write — optaMatchId hem kolon hem metadata.optaMatchId.
+      // Kaynak: dto.optaMatchId (yeni param) öncelik; eski caller'lar metadata.optaMatchId
+      // gönderiyorsa onu da kabul (transition).
+      const incomingOpta =
+        dto.optaMatchId
+        ?? (typeof dto.metadata === 'object' && dto.metadata !== null
+            ? ((dto.metadata as Record<string, unknown>).optaMatchId as string | undefined)
+            : undefined);
+      const mergedMetadata = (() => {
+        if (incomingOpta && (!dto.metadata || typeof dto.metadata !== 'object')) {
+          return { optaMatchId: incomingOpta };
+        }
+        if (incomingOpta && dto.metadata) {
+          return { ...(dto.metadata as Record<string, unknown>), optaMatchId: incomingOpta };
+        }
+        return dto.metadata;
+      })();
+
       return tx.schedule.create({
         data: {
           channelId:       dto.channelId,
@@ -199,8 +217,9 @@ export class ScheduleService {
           contentId:       dto.contentId,
           broadcastTypeId: dto.broadcastTypeId,
           usageScope:      dto.usageScope,
-          ...reportDimensions(dto.metadata),
-          metadata:        dto.metadata as Prisma.InputJsonValue,
+          optaMatchId:     incomingOpta ?? null,
+          ...reportDimensions(mergedMetadata),
+          metadata:        mergedMetadata as Prisma.InputJsonValue,
           createdBy:       user,
         },
         include: { channel: true },
@@ -229,6 +248,43 @@ export class ScheduleService {
       throw err;
     }
 
+    // Madde 3 PR-3A: 3-state optaMatchId semantik (undefined/null/string).
+    // Aynı zamanda metadata.optaMatchId paralel maintain — dual-write transition.
+    //   undefined → kolon dokunulmaz; metadata da değiştirilmez (eğer dto.metadata yoksa).
+    //   null      → kolon NULL; metadata.optaMatchId key kaldırılır.
+    //   string    → kolon set; metadata.optaMatchId paralel set.
+    const optaTouched = dto.optaMatchId !== undefined;
+    const optaValue = dto.optaMatchId; // null | string | undefined
+
+    // Existing metadata (mevcut kayıttan) ile DTO metadata merge edilir; sonra
+    // optaMatchId 3-state'e göre üzerine yazılır/silinir.
+    const baseMetadata =
+      dto.metadata !== undefined
+        ? (dto.metadata as Record<string, unknown>)
+        : (typeof existing.metadata === 'object' && existing.metadata !== null
+            ? { ...(existing.metadata as Record<string, unknown>) }
+            : undefined);
+
+    let writeMetadata: Record<string, unknown> | undefined = baseMetadata
+      ? { ...baseMetadata }
+      : undefined;
+
+    if (optaTouched) {
+      writeMetadata = writeMetadata ?? {};
+      if (optaValue === null) {
+        delete writeMetadata.optaMatchId;
+      } else {
+        writeMetadata.optaMatchId = optaValue;
+      }
+      // Tutarlılık: eğer metadata sadece optaMatchId silinmesi sonucu boş kalıyorsa
+      // null bırakmak yerine boş objeye izin ver — caller'ın isteğini bozma.
+    }
+
+    const metadataPayload =
+      dto.metadata !== undefined || optaTouched
+        ? (writeMetadata as Prisma.InputJsonValue)
+        : undefined;
+
     const data: Prisma.ScheduleUpdateManyMutationInput = {
       ...(dto.channelId !== undefined && { channelId: dto.channelId }),
       ...(dto.startTime && { startTime: new Date(dto.startTime) }),
@@ -237,8 +293,9 @@ export class ScheduleService {
       ...(dto.status    && { status:    dto.status }),
       ...(dto.contentId !== undefined && { contentId: dto.contentId }),
       ...(dto.usageScope !== undefined && { usageScope: dto.usageScope }),
-      ...(dto.metadata && { ...reportDimensions(dto.metadata) }),
-      ...(dto.metadata  && { metadata: dto.metadata as Prisma.InputJsonValue }),
+      ...(metadataPayload !== undefined && { ...reportDimensions(metadataPayload) }),
+      ...(metadataPayload !== undefined && { metadata: metadataPayload }),
+      ...(optaTouched && { optaMatchId: optaValue ?? null }),
       version: { increment: 1 },
     };
 

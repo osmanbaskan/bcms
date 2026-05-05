@@ -108,6 +108,13 @@ model Schedule {
   reportLeague     String?         @map("report_league") @db.VarChar(200)
   reportSeason     String?         @map("report_season") @db.VarChar(30)
   reportWeekNumber Int?            @map("report_week_number")
+  /// Madde 3 PR-3A (audit doc): metadata->>'optaMatchId' yerine type-safe kolon.
+  /// Non-unique index — aynı OPTA match için birden fazla schedule/live-plan
+  /// entry mümkün (farklı kanal, broadcast vs live-plan, vb.).
+  /// Backfill: migration 20260505000001_schedule_opta_match_id_promote.
+  /// Transition: dual-write ile metadata.optaMatchId paralel yazılır;
+  /// PR-3B'de metadata yazımı kaldırılacak.
+  optaMatchId      String?         @map("opta_match_id") @db.VarChar(50)
   finishedAt       DateTime?       @map("finished_at") @db.Timestamptz(6)
   createdBy        String          @map("created_by") @db.VarChar(100)
   version          Int             @default(1)
@@ -128,6 +135,7 @@ model Schedule {
   @@index([usageScope, reportLeague, reportSeason, reportWeekNumber])
   @@index([broadcastTypeId])
   @@index([matchId])
+  @@index([optaMatchId])
   @@map("schedules")
 }
 

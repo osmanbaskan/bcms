@@ -101,12 +101,21 @@ export async function optaRoutes(app: FastifyInstance) {
 
     if (unscheduled === 'false') return matches;
 
+    // Madde 3 PR-3A (2026-05-05): kolon-first read + metadata fallback (transition).
+    // PR-3B'de metadata fallback kaldırılır.
     const scheduled = await app.prisma.schedule.findMany({
-      where: { metadata: { path: ['optaMatchId'], not: Prisma.JsonNull } },
-      select: { metadata: true },
+      where: {
+        OR: [
+          { optaMatchId: { not: null } },
+          { metadata: { path: ['optaMatchId'], not: Prisma.JsonNull } },
+        ],
+      },
+      select: { optaMatchId: true, metadata: true },
     });
-    const scheduledIds = new Set(
-      scheduled.map((s) => (s.metadata as Record<string, unknown>)?.optaMatchId).filter(Boolean),
+    const scheduledIds = new Set<string>(
+      scheduled
+        .map((s) => s.optaMatchId ?? (s.metadata as Record<string, unknown> | null)?.optaMatchId as string | undefined)
+        .filter((v): v is string => typeof v === 'string' && v.length > 0),
     );
 
     return matches.filter((m) => !scheduledIds.has(m.matchId));

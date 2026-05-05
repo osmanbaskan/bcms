@@ -283,13 +283,19 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
           const deltaMs = u.newMatchDate.getTime() - u.oldMatchDate.getTime();
           if (deltaMs === 0) continue;
 
+          // Madde 3 PR-3A (2026-05-05): kolon-first lookup + metadata fallback.
+          // Non-unique olduğu için findMany; aynı OPTA match'in birden fazla
+          // schedule entry'si olabilir (kullanıcı kararı 2026-05-04).
           const dependents = await fastify.prisma.schedule.findMany({
             where: {
               usageScope: 'live-plan',
               status: { notIn: [...FROZEN_STATUSES] },
-              metadata: { path: ['optaMatchId'], equals: u.matchUid },
+              OR: [
+                { optaMatchId: u.matchUid },
+                { metadata: { path: ['optaMatchId'], equals: u.matchUid } },
+              ],
             },
-            select: { id: true, startTime: true, endTime: true, version: true, metadata: true },
+            select: { id: true, startTime: true, endTime: true, version: true, metadata: true, optaMatchId: true },
           });
 
           for (const dep of dependents) {

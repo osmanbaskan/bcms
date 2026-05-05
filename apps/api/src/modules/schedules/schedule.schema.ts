@@ -17,6 +17,9 @@ export const createScheduleSchema = z.object({
   contentId:       z.number().int().positive().optional(),
   broadcastTypeId: z.number().int().positive().optional(),
   usageScope:      ScheduleUsageScopeEnum.default('broadcast'),
+  // Madde 3 PR-3A (2026-05-05): optaMatchId opsiyonel kolon yazımı.
+  // Backward compat: metadata.optaMatchId hâlâ destekleniyor (dual-write).
+  optaMatchId:     z.string().trim().min(1).max(50).optional(),
   metadata:        scheduleMetadataSchema.optional(),
 }).refine((d) => new Date(d.endTime) > new Date(d.startTime), {
   message: 'endTime must be after startTime',
@@ -32,6 +35,11 @@ export const updateScheduleSchema = z.object({
   contentId:       z.number().int().positive().optional(),
   broadcastTypeId: z.number().int().positive().optional(),
   usageScope:      ScheduleUsageScopeEnum.optional(),
+  // Madde 3 PR-3A (2026-05-05): 3-state nullable semantik.
+  //   undefined → kolona dokunma; metadata da değişmez (eğer aynı update'te metadata yoksa).
+  //   null      → kolonu temizle + metadata.optaMatchId key'ini kaldır.
+  //   string    → kolon set + metadata.optaMatchId paralel set.
+  optaMatchId:     z.string().trim().min(1).max(50).nullable().optional(),
   metadata:        scheduleMetadataSchema.optional(),
 }).refine(
   // MED-API-005 fix (2026-05-05): startTime ve endTime ikisi de PATCH'te

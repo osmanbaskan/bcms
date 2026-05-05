@@ -451,6 +451,9 @@ export class ScheduleFormComponent implements OnInit {
 
     const v = this.form.value;
 
+    // Madde 3 PR-3A: dual-write — UI metadata.optaMatchId yazmaya devam, ama
+    // request body'sine de top-level optaMatchId eklenir (backend kolona yazar).
+    const optaMatchIdValue = this.selectedOptaMatch()?.matchId;
     const optaMeta = this.selectedOptaMatch()
       ? { optaMatchId: this.selectedOptaMatch()!.matchId, source: 'opta' }
       : this.selectedMatchId()
@@ -483,6 +486,7 @@ export class ScheduleFormComponent implements OnInit {
           title:     v.title!,
           startTime: startISO,
           endTime:   endISO,
+          ...(optaMatchIdValue ? { optaMatchId: optaMatchIdValue } : {}),
           ...(optaMeta ? { metadata: optaMeta } : {}),
         } satisfies CreateScheduleDto);
 

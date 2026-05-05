@@ -1048,12 +1048,15 @@ export class ScheduleAddDialogComponent {
       const f  = this.getForm(m.matchId);
       const dt = new Date(m.matchDate);
       const title = `${f.homeTeamName || m.homeTeamName} - ${f.awayTeamName || m.awayTeamName}`;
+      // Madde 3 PR-3A (2026-05-05): dual-write — top-level optaMatchId paralel.
+      // metadata.optaMatchId backward-compat olarak kalır (PR-3B'de kaldırılır).
       return this.api.post<Schedule>('/schedules', {
         channelId: f.channelId,
         startTime: dt.toISOString(),
         endTime:   new Date(dt.getTime() + 2 * 60 * 60 * 1000).toISOString(),
         title,
         usageScope: 'live-plan',
+        optaMatchId: m.matchId,
         metadata: {
           ...LIVE_PLAN_METADATA,
           contentName:  title,

@@ -84,13 +84,22 @@ CHECK ("usage_scope" IN ('broadcast', 'live-plan'));
 ```prisma
 model Schedule {
   ...
-  optaMatchId  String?  @unique @map("opta_match_id") @db.VarChar(50)
+  optaMatchId  String?  @map("opta_match_id") @db.VarChar(50)
   ...
   @@index([optaMatchId])
 }
 ```
 
-> Not: `@unique` zaten implicit index oluşturur; ek `@@index` redundant ama pattern olarak diğer kolonlarla uyumlu (kontrol).
+> **Karar (2026-05-05, PR-3A onay):** `@unique` **kullanılmayacak**. Aynı OPTA match için
+> birden fazla schedule entry mümkün:
+> - Aynı maç farklı kanallarda yayın (örn. beIN Sports 1 + 4K).
+> - Live-plan + broadcast aynı match için iki ayrı entry.
+> - Re-play / archived broadcast.
+>
+> Non-unique B-tree index lookup performansı için yeterli; uniqueness invariant
+> uygulama katmanında zorlamak isteniyorsa partial unique (örn.
+> `WHERE channel_id IS NOT NULL AND status != 'CANCELLED'`) daha sonra
+> ele alınabilir.
 
 ### 2.2 Migration Adımları
 
