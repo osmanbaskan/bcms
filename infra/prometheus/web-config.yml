@@ -1,9 +1,24 @@
-# HIGH-INF-012 fix (2026-05-05): Prometheus basic auth.
-# Container-to-container erişim ve host loopback erişimi de auth ister; metric
-# leak (audit IP, schedule status detayları, runtime config) engellenir.
+# ─────────────────────────────────────────────────────────────────────────────
+# PROMETHEUS WEB CONFIG — Basic Auth
 #
-# Kullanıcı: admin
-# Şifre: production'da `htpasswd -nbBC 10 admin <strong-pw>` ile gerçek hash üret.
-# Bu placeholder hash şifreyi 'changeme_prom' yapar — env'le override edilebilir.
+# UYARI (GitGuardian fix 2026-05-04):
+#   Aşağıdaki bcrypt hash placeholder olarak işaretliydi (plaintext: 'changeme_prom').
+#   Repo'da güvenli kabul edilemez — production deployment'tan ÖNCE rotate edilmeli.
+#
+# ROTATION (her production deploy + 90 günde bir):
+#   1. openssl rand -base64 24 → yeni plaintext password
+#   2. htpasswd -nbBC 10 admin "<plaintext>" | cut -d: -f2 → yeni bcrypt hash
+#   3. Bu dosyadaki `admin: ...` satırına yapıştır
+#   4. .env'deki PROMETHEUS_HEALTHCHECK_AUTH_B64 = `echo -n "admin:<plaintext>" | base64`
+#   5. .env'deki PROMETHEUS_BASIC_AUTH_HASH = aynı hash (kayıt için)
+#   6. docker compose up -d prometheus
+#   7. Prometheus UI/API'de yeni password ile login dene; eski password'le 401 al.
+#
+# Detaylı runbook: ops/RUNBOOK-SECRETS-ROTATION.md
+#
+# Not: Prometheus web-config.yml env substitution desteklemediği için bu dosya
+# template-driven değil — operatör elle düzenler veya init script ile generate eder.
+# ─────────────────────────────────────────────────────────────────────────────
 basic_auth_users:
+  # ⚠️  PLACEHOLDER — production'da DEĞİŞTİR (yukarıdaki ROTATION adımları)
   admin: $2b$10$M.NYCJI4209bcEX8OxqXNOMWIhgDcR7IctAbGi5PqlT3RPtan6xeC

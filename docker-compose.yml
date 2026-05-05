@@ -345,6 +345,15 @@ services:
     container_name: bcms_prometheus
     restart: unless-stopped
     logging: *default-logging
+    # GitGuardian fix (2026-05-04): healthcheck base64 token .env'den geliyor.
+    # Eski hâlinde docker-compose.yml içinde literal base64 ('admin:changeme_prom')
+    # bulunuyordu; GitGuardian "Base64 Basic Authentication exposed" alarmı verdi.
+    # Artık `${PROMETHEUS_HEALTHCHECK_AUTH_B64}` env'den compose-substitute edilir
+    # ve container environment'a aktarılır; healthcheck shell'de expand edilir.
+    # web-config.yml'deki bcrypt hash de aynı plaintext'i hash'lemeli.
+    # Rotation: ops/RUNBOOK-SECRETS-ROTATION.md
+    environment:
+      PROMETHEUS_HEALTHCHECK_AUTH_B64: ${PROMETHEUS_HEALTHCHECK_AUTH_B64:?PROMETHEUS_HEALTHCHECK_AUTH_B64 env zorunlu — bkz ops/RUNBOOK-SECRETS-ROTATION.md}
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -360,10 +369,9 @@ services:
       # disk dolma riski. Hard upper bound 5GB.
       - '--storage.tsdb.retention.size=5GB'
     healthcheck:
-      # HIGH-INF-012: Prometheus basic auth aktif; busybox wget --password
-      # desteklemiyor. Authorization header ile basic auth gönder.
-      # echo -n 'admin:changeme_prom' | base64 → 'YWRtaW46Y2hhbmdlbWVfcHJvbQ=='
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider --header='Authorization: Basic YWRtaW46Y2hhbmdlbWVfcHJvbQ==' http://127.0.0.1:9090/-/ready || exit 1"]
+      # GitGuardian fix (2026-05-04): hardcoded base64 yerine env reference.
+      # `$${VAR}` compose escape; literal `${VAR}` container'a gider, shell expand.
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider --header=\"Authorization: Basic $${PROMETHEUS_HEALTHCHECK_AUTH_B64}\" http://127.0.0.1:9090/-/ready || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
