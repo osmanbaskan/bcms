@@ -1,9 +1,19 @@
+# HIGH-INF-002 fix (2026-05-05): Docker log rotation — disk dolma koruması.
+# Tüm servisler json-file driver + 100MB × 3 file = max 300MB log/container.
+# Container ekleyince `logging: *default-logging` ekle.
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
 services:
   # ── PostgreSQL 16 ────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: bcms_postgres
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -30,6 +40,7 @@ services:
     image: prodrigestivill/postgres-backup-local:16
     container_name: bcms_postgres_backup
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_DB: ${POSTGRES_DB},${KEYCLOAK_DB}
@@ -55,6 +66,7 @@ services:
     image: rabbitmq:3.12-management
     container_name: bcms_rabbitmq
     restart: unless-stopped
+    logging: *default-logging
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
@@ -77,6 +89,7 @@ services:
     image: quay.io/keycloak/keycloak:23.0
     container_name: bcms_keycloak
     restart: unless-stopped
+    logging: *default-logging
     command: start --import-realm
     environment:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
@@ -126,6 +139,7 @@ services:
       target: production
     container_name: bcms_api
     restart: unless-stopped
+    logging: *default-logging
     stop_grace_period: 30s
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -178,6 +192,7 @@ services:
       target: production
     container_name: bcms_worker
     restart: unless-stopped
+    logging: *default-logging
     stop_grace_period: 60s
     # Bilinçli karar: worker arka plan job'ları (notifications, ingest-worker,
     # bxf-watcher, audit-retention) için HTTP healthcheck endpoint'i yok; pgrep-tabanlı
@@ -234,6 +249,7 @@ services:
       target: production
     container_name: bcms_web
     restart: unless-stopped
+    logging: *default-logging
     environment:
       BCMS_KEYCLOAK_PUBLIC_URL: ${BCMS_KEYCLOAK_PUBLIC_URL:-https://beinport}
     # nginx 80 → 443 redirect; 443 TLS termination + reverse proxy (api + keycloak).
@@ -269,6 +285,7 @@ services:
       dockerfile: infra/docker/opta-watcher.Dockerfile
     container_name: bcms_opta_watcher
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - bcms_net
     environment:
@@ -284,7 +301,13 @@ services:
     volumes:
       - opta_watcher_state:/data
     healthcheck:
+      # HIGH-INF-013 fix (2026-05-05): explicit interval/timeout/retries.
+      # Default 30s/30s/3 = bir failure 90s'ye yayılır; opta-watcher uzun
+      # SMB sync sırasında pgrep yine pass eder (sürec varlığı kontrol).
       test: ["CMD-SHELL", "pgrep -f opta_smb_watcher.py || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
       start_period: 30s
     depends_on:
       - api
@@ -294,6 +317,7 @@ services:
     image: mailhog/mailhog:v1.0.1
     container_name: bcms_mailhog
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "127.0.0.1:1025:1025"
       - "127.0.0.1:8025:8025"
@@ -305,6 +329,7 @@ services:
     image: prom/prometheus:v2.53.1
     container_name: bcms_prometheus
     restart: unless-stopped
+    logging: *default-logging
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml
@@ -328,6 +353,7 @@ services:
     image: grafana/grafana:11.1.0
     container_name: bcms_grafana
     restart: unless-stopped
+    logging: *default-logging
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: "false"
