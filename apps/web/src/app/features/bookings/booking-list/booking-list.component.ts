@@ -249,7 +249,7 @@ export class BookingTaskDialogComponent implements OnInit {
         <div class="spinner"><mat-spinner diameter="40"></mat-spinner></div>
       } @else {
         <div class="table-wrapper">
-          <table mat-table [dataSource]="bookings()" class="booking-table">
+          <table mat-table [dataSource]="sortedBookings()" class="booking-table">
             <ng-container matColumnDef="taskTitle">
               <th mat-header-cell *matHeaderCellDef>İş Başlığı</th>
               <td mat-cell *matCellDef="let task">{{ task.taskTitle || task.schedule?.title || 'İş Kaydı' }}</td>
@@ -292,7 +292,7 @@ export class BookingTaskDialogComponent implements OnInit {
             <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
             <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
           </table>
-          @if (bookings().length === 0) {
+          @if (sortedBookings().length === 0) {
             <div class="empty">Bu grup için iş kaydı yok.</div>
           }
         </div>
@@ -386,6 +386,18 @@ export class BookingListComponent implements OnInit {
   private keycloak = inject(KeycloakService);
 
   bookings = signal<Booking[]>([]);
+  /** HIGH-FE-005 fix (2026-05-05): client-side sort her API response'da
+   *  yeniden hesaplanıyordu. computed() ile sadece bookings() değişiminde
+   *  recompute; pencerelenmiş re-render avantajı. */
+  sortedBookings = computed(() => {
+    const list = this.bookings();
+    return [...list].sort((a, b) => {
+      const aOpen = a.status === 'PENDING' ? 1 : 0;
+      const bOpen = b.status === 'PENDING' ? 1 : 0;
+      if (aOpen !== bOpen) return bOpen - aOpen;
+      return String(a.startDate || '').localeCompare(String(b.startDate || ''));
+    });
+  });
   groups = signal<string[]>([]);
   canAssignGroups = signal<string[]>([]);
   username = signal('');
@@ -407,14 +419,8 @@ export class BookingListComponent implements OnInit {
     const params = this.selectedGroup ? { group: this.selectedGroup } : undefined;
     this.api.get<BookingListResponse>('/bookings', params).subscribe({
       next: (res) => {
-        const sorted = [...res.data].sort((a, b) => {
-          const aOpen = a.status === 'PENDING' ? 1 : 0;
-          const bOpen = b.status === 'PENDING' ? 1 : 0;
-          if (aOpen !== bOpen) return bOpen - aOpen;
-          const ad = String(a.startDate || '').localeCompare(String(b.startDate || ''));
-          return ad;
-        });
-        this.bookings.set(sorted);
+        // HIGH-FE-005: sort artık sortedBookings computed'unda; raw data set.
+        this.bookings.set(res.data);
         this.groups.set(res.groups ?? []);
         this.canAssignGroups.set(res.canAssignGroups ?? []);
         this.loading.set(false);

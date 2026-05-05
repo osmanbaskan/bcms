@@ -8,6 +8,7 @@ import { importProvidersFrom } from '@angular/core';
 import { routes } from './app.routes';
 import { environment } from '../environments/environment';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
+import { errorInterceptor } from './core/interceptors/error.interceptor';
 import { getPublicAppOrigin } from './core/auth/public-origin';
 import { LoggerService } from './core/services/logger.service';
 
@@ -56,7 +57,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
     provideAnimations(),
-    provideHttpClient(withInterceptors([authInterceptor])),
+    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
     importProvidersFrom(KeycloakAngularModule),
     KeycloakService,
     {
