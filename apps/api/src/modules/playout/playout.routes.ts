@@ -65,9 +65,11 @@ export async function playoutRoutes(app: FastifyInstance) {
   }, async (request) => {
     const q = rundownQuerySchema.parse(request.query);
 
-    const base  = q.date ? new Date(q.date) : new Date();
-    const start = new Date(base); start.setHours(0, 0, 0, 0);
-    const end   = new Date(base); end.setHours(23, 59, 59, 999);
+    // ORTA-API-1.9.1 fix (2026-05-04): rundown date Istanbul gün sınırına göre.
+    // Eski: q.date'i UTC parse edip local setHours(0,0,0,0) — sunucu UTC ise
+    // Türkiye'nin günü 21:00 UTC'den başlar, drift; "bugün rundown" yanlış
+    // güne kaydı.
+    const { start, end } = istanbulDayBounds(q.date);
 
     return app.prisma.schedule.findMany({
       where: {
@@ -114,9 +116,11 @@ export async function playoutRoutes(app: FastifyInstance) {
         }
       }
 
+      // ORTA-API-1.9.2 fix (2026-05-04): version increment — go-live de
+      // optimistic lock'a dahil; başka kullanıcı concurrent edit görsün.
       const live = await tx.schedule.update({
         where: { id },
-        data:  { status: 'ON_AIR' },
+        data:  { status: 'ON_AIR', version: { increment: 1 } },
         include: { channel: true },
       });
 
@@ -153,9 +157,10 @@ export async function playoutRoutes(app: FastifyInstance) {
         throw Object.assign(new Error('Sadece ON_AIR durumundaki program bitirilebilir'), { statusCode: 409 });
       }
 
+      // ORTA-API-1.9.2 fix: version increment.
       const completed = await tx.schedule.update({
         where: { id },
-        data:  { status: 'COMPLETED', finishedAt: new Date() },
+        data:  { status: 'COMPLETED', finishedAt: new Date(), version: { increment: 1 } },
         include: { channel: true },
       });
 
@@ -216,11 +221,32 @@ export async function playoutRoutes(app: FastifyInstance) {
 // yayıncılık standardı). NTSC çoğunluk pazarlarda 29.97 (drop-frame).
 const TC_FPS = Number(process.env.PLAYOUT_FPS ?? 25);
 const FRAME_DIVISOR = 1000 / TC_FPS;   // örn. 25fps → 40ms; 30fps → 33.33ms
+const TR_TIMEZONE = 'Europe/Istanbul';
+
+// ORTA-API-1.9.3 fix (2026-05-04): tcNow() Istanbul saatine göre.
+// Container UTC ise HH:MM:SS local'de UTC'ydi — Türkiye 03 saat geride.
 function tcNow(): string {
-  const now = new Date();
-  const h   = String(now.getHours()).padStart(2, '0');
-  const m   = String(now.getMinutes()).padStart(2, '0');
-  const s   = String(now.getSeconds()).padStart(2, '0');
-  const f   = String(Math.floor(now.getMilliseconds() / FRAME_DIVISOR)).padStart(2, '0');
-  return `${h}:${m}:${s}:${f}`;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: TR_TIMEZONE, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '00';
+  const ms = new Date().getMilliseconds();
+  const f  = String(Math.floor(ms / FRAME_DIVISOR)).padStart(2, '0');
+  return `${get('hour')}:${get('minute')}:${get('second')}:${f}`;
+}
+
+// ORTA-API-1.9.1 helper: Istanbul gün sınırı (00:00 - 23:59:59 IST → UTC).
+// q.date 'YYYY-MM-DD' formatında Istanbul tarihini ifade eder.
+function istanbulDayBounds(dateStr?: string): { start: Date; end: Date } {
+  // Şu anın IST date'i veya verilen date.
+  const istNow = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TR_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+  const target = dateStr ?? istNow;
+  // Istanbul saatiyle 00:00 ve 23:59:59 → UTC dönüşüm.
+  // IST = UTC + 03:00 (sabit, DST yok 2016'dan beri).
+  const [y, m, d] = target.split('-').map(Number);
+  const startUtcMs = Date.UTC(y, m - 1, d, 0, 0, 0) - 3 * 60 * 60 * 1000;
+  const endUtcMs   = Date.UTC(y, m - 1, d, 23, 59, 59, 999) - 3 * 60 * 60 * 1000;
+  return { start: new Date(startUtcMs), end: new Date(endUtcMs) };
 }

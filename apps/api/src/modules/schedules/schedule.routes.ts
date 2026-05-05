@@ -1,6 +1,25 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ScheduleService } from './schedule.service.js';
+
+const TR_TIMEZONE = 'Europe/Istanbul';
+
+// ORTA-API-1.2.4 fix (2026-05-04): export filename Istanbul saatine göre.
+// Eski hâl: new Date().toISOString().slice(0,10) UTC; Türkiye akşam 22:00
+// = UTC 19:00, ama 02:00'da UTC 23:00 → tarih 1 gün geride.
+function istanbulDateOnly(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TR_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+}
+
+// ORTA-API-1.2.2 fix (2026-05-04): xlsx magic byte check.
+// .xlsx zip-based; ilk 4 byte 'PK\x03\x04' (ZIP local file header).
+// Saldırgan .xlsx uzantılı zip bomb veya başka format yollarsa exceljs içeride patlar.
+const XLSX_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+function isValidXlsxBuffer(buf: Buffer): boolean {
+  return buf.length >= 4 && buf.subarray(0, 4).equals(XLSX_MAGIC);
+}
 import {
   createScheduleSchema,
   updateScheduleSchema,
@@ -55,7 +74,14 @@ export async function scheduleRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
     schema: { tags: ['Schedules'], summary: 'Excel dosyasından program yükle (TARİH/SAAT/MAÇ/KANAL)' },
   }, async (request, reply) => {
-    const data = await request.file();
+    // ORTA-API-1.2.1 fix (2026-05-04): birden fazla file gelirse açıkça reddet.
+    // Önceki davranış: sadece ilk file işleniyordu, ek file'lar sessiz drop.
+    let data;
+    try {
+      data = await request.file();
+    } catch (err) {
+      throw Object.assign(new Error('Multipart parse hatası'), { statusCode: 400, cause: err });
+    }
     if (!data) throw Object.assign(new Error('Dosya bulunamadı'), { statusCode: 400 });
 
     const ext = data.filename.split('.').pop()?.toLowerCase();
@@ -66,6 +92,18 @@ export async function scheduleRoutes(app: FastifyInstance) {
     const chunks: Buffer[] = [];
     for await (const chunk of data.file) chunks.push(chunk as Buffer);
     const buffer = Buffer.concat(chunks);
+
+    // ORTA-API-1.2.2 fix (2026-05-04): magic byte kontrolü.
+    if (!isValidXlsxBuffer(buffer)) {
+      throw Object.assign(new Error('Dosya geçerli .xlsx formatında değil (magic byte mismatch)'), { statusCode: 400 });
+    }
+
+    // İkinci file kontrolü: stream tüketildikten sonra ek file varsa hata at.
+    // Fastify multipart MultipartFile.fields tüm field'ları tutar; basit kontrol:
+    const additionalFile = await request.file().catch(() => null);
+    if (additionalFile) {
+      throw Object.assign(new Error('Tek seferde sadece bir dosya yükleyebilirsiniz'), { statusCode: 400 });
+    }
 
     const user   = (request.user as { preferred_username?: string })?.preferred_username ?? 'import';
     const q      = importQuerySchema.parse(request.query);
@@ -89,7 +127,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
       title:     q.title,
     });
 
-    const filename = `plan_${new Date().toISOString().slice(0,10)}.xlsx`;
+    const filename = `plan_${istanbulDateOnly()}.xlsx`;
     reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="${filename}"`)
@@ -231,7 +269,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
       title:     q.title,
     });
 
-    const filename = `canli-yayin-plan-raporu_${new Date().toISOString().slice(0,10)}.xlsx`;
+    const filename = `canli-yayin-plan-raporu_${istanbulDateOnly()}.xlsx`;
     reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="${filename}"`)
@@ -262,8 +300,12 @@ export async function scheduleRoutes(app: FastifyInstance) {
     schema: { tags: ['Schedules'], summary: 'Update schedule (optimistic locking via If-Match)' },
   }, async (request) => {
     const dto = updateScheduleSchema.parse(request.body);
-    const ifMatch = request.headers['if-match'];
-    const version = ifMatch ? parseInt(ifMatch, 10) : undefined;
+    // DÜŞÜK-API-1.2.5 fix (2026-05-04): if-match header array gelirse ilk
+    // değeri al; NaN durumunda undefined dön — `version` hiç gönderilmemiş gibi.
+    const rawIfMatch = request.headers['if-match'];
+    const ifMatchStr = Array.isArray(rawIfMatch) ? rawIfMatch[0] : rawIfMatch;
+    const versionRaw = ifMatchStr ? parseInt(ifMatchStr, 10) : NaN;
+    const version = Number.isFinite(versionRaw) && versionRaw >= 0 ? versionRaw : undefined;
     return svc.update(z.coerce.number().int().positive().parse(request.params.id), dto, version, request);
   });
 

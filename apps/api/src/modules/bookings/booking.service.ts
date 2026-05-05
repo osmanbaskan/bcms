@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
-import { BCMS_GROUPS, type BcmsGroup, type JwtPayload } from '@bcms/shared';
+import { BCMS_GROUPS, GROUP, type BcmsGroup, type JwtPayload } from '@bcms/shared';
 import type { CreateBookingDto, UpdateBookingDto } from './booking.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import type { EmailPayload } from '../notifications/notification.consumer.js';
@@ -53,7 +53,8 @@ function tokenGroups(claims: JwtPayload): BcmsGroup[] {
  *  user için true (SystemEng'in eski "ops super-grubu" davranışı 2026-05-01'de
  *  kaldırıldı; SystemEng artık kendi grubunun bookings'ini görür). */
 function isAdminUser(claims: JwtPayload): boolean {
-  return claims.groups?.includes('Admin') ?? false;
+  // ORTA-API-1.3.1 fix (2026-05-04): hardcoded 'Admin' → GROUP.Admin.
+  return claims.groups?.includes(GROUP.Admin) ?? false;
 }
 
 function keycloakAttributeValue(attributes: any, key: string): string | undefined {
@@ -203,31 +204,37 @@ export class BookingService {
     const user = claims.preferred_username;
     const group = this.resolveTargetGroup(claims, dto.userGroup);
 
-    if (dto.scheduleId) {
-      const schedule = await this.app.prisma.schedule.findUnique({ where: { id: dto.scheduleId } });
-      if (!schedule) throw Object.assign(new Error('Schedule not found'), { statusCode: 404 });
-    }
+    // ORTA-API-1.3.2 fix (2026-05-04): schedule existence check transaction
+    // içinde — TOCTOU race kapatıldı. Schedule check ile booking.create
+    // arasındaki pencerede schedule silinirse FK violation P2003 dönerdi;
+    // şimdi tek transaction.
+    const booking = await this.app.prisma.$transaction(async (tx) => {
+      if (dto.scheduleId) {
+        const schedule = await tx.schedule.findUnique({ where: { id: dto.scheduleId }, select: { id: true } });
+        if (!schedule) throw Object.assign(new Error('Schedule not found'), { statusCode: 404 });
+      }
 
-    const booking = await this.app.prisma.booking.create({
-      data: {
-        scheduleId:  dto.scheduleId,
-        requestedBy: user,
-        teamId:      dto.teamId,
-        matchId:     dto.matchId,
-        taskTitle:   dto.taskTitle,
-        taskDetails: dto.taskDetails,
-        taskReport:  dto.taskReport,
-        userGroup:   group,
-        assigneeId:  dto.assigneeId,
-        assigneeName: dto.assigneeName,
-        startDate:   parseDateOnly(dto.startDate),
-        dueDate:     parseDateOnly(dto.dueDate),
-        completedAt: parseDateTime(dto.completedAt),
-        status:      dto.status,
-        notes:       dto.notes,
-        metadata:    dto.metadata as Prisma.InputJsonValue,
-      },
-      include: { team: true, schedule: { include: { channel: true } } },
+      return tx.booking.create({
+        data: {
+          scheduleId:  dto.scheduleId,
+          requestedBy: user,
+          teamId:      dto.teamId,
+          matchId:     dto.matchId,
+          taskTitle:   dto.taskTitle,
+          taskDetails: dto.taskDetails,
+          taskReport:  dto.taskReport,
+          userGroup:   group,
+          assigneeId:  dto.assigneeId,
+          assigneeName: dto.assigneeName,
+          startDate:   parseDateOnly(dto.startDate),
+          dueDate:     parseDateOnly(dto.dueDate),
+          completedAt: parseDateTime(dto.completedAt),
+          status:      dto.status,
+          notes:       dto.notes,
+          metadata:    dto.metadata as Prisma.InputJsonValue,
+        },
+        include: { team: true, schedule: { include: { channel: true } } },
+      });
     });
 
     await this.app.rabbitmq.publish(QUEUES.BOOKING_CREATED, { bookingId: booking.id, scheduleId: booking.scheduleId });

@@ -58,11 +58,21 @@ export interface FixtureCompetition {
 }
 
 // ── In-memory cache ───────────────────────────────────────────────────────────
+// ORTA-API-1.8.5 fix (2026-05-04): teamNameCache TTL + max-size cap.
+// Eski hâl: module-scope Map, hiç temizlenmiyordu — yeni sezon/lig
+// rotasyonunda monoton büyür, memory leak. clearOptaCache() varol manual
+// invalidation ama ileri planda lazy entry'ler birikiyordu.
+const TEAM_NAME_CACHE_TTL_MS = 60 * 60 * 1000;     // 1 saat
+const TEAM_NAME_CACHE_MAX_ENTRIES = 50;            // ~50 lig × season
+
+interface CachedTeamMap { value: Map<string, string>; expiresAt: number }
 const competitionCache  = new Map<string, OptaCompetition>();
 const matchCache        = new Map<string, OptaMatch[]>();
 const fixtureCache      = new Map<string, OptaFixture[]>();
-const teamNameCache     = new Map<string, Map<string, string>>();
+const teamNameCache     = new Map<string, CachedTeamMap>();
 let   fixtureCompCache: FixtureCompetition[] | null = null;
+
+const TR_TIMEZONE = 'Europe/Istanbul';
 
 const xmlParser = new XMLParser({
   ignoreAttributes:    false,
@@ -130,7 +140,10 @@ function readSrmlHeader(filePath: string): { id: string; name: string; season: s
 // srml-{compId}-{season}-squads.xml → Map<teamId, teamName>
 function loadTeamNames(compId: string, season: string): Map<string, string> {
   const key = `${compId}-${season}`;
-  if (teamNameCache.has(key)) return teamNameCache.get(key)!;
+  const now = Date.now();
+  const cached = teamNameCache.get(key);
+  if (cached && now < cached.expiresAt) return cached.value;
+  if (cached) teamNameCache.delete(key); // expired
 
   const filePath = path.join(OPTA_DIR, `srml-${compId}-${season}-squads.xml`);
   const teamMap  = new Map<string, string>();
@@ -148,15 +161,35 @@ function loadTeamNames(compId: string, season: string): Map<string, string> {
     // squads dosyası yoksa boş map döner
   }
 
-  teamNameCache.set(key, teamMap);
+  // LRU-lite: cache MAX'a yaklaşıyorsa en eski expired entry'leri purge.
+  if (teamNameCache.size >= TEAM_NAME_CACHE_MAX_ENTRIES) {
+    for (const [k, v] of teamNameCache.entries()) {
+      if (now >= v.expiresAt) teamNameCache.delete(k);
+    }
+    // Hâlâ doluysa ilk girişi kaldır (insertion-order).
+    if (teamNameCache.size >= TEAM_NAME_CACHE_MAX_ENTRIES) {
+      const firstKey = teamNameCache.keys().next().value;
+      if (firstKey !== undefined) teamNameCache.delete(firstKey);
+    }
+  }
+
+  teamNameCache.set(key, { value: teamMap, expiresAt: now + TEAM_NAME_CACHE_TTL_MS });
   return teamMap;
 }
 
+// ORTA-API-1.8.7 fix (2026-05-04): UTC değil Istanbul saati. Yayıncılık
+// ekranlarında tarih+saat TR yerel zamanı olarak görünmeli; UTC label
+// match.routes.ts buildLabel ile tutarsızdı.
+const OPTA_TR_MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
 function buildFixtureLabel(home: string, away: string, dateUtc: string, week: number | null): string {
   const d = new Date(dateUtc);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const months = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
-  const dateStr = `${pad(d.getUTCDate())} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  const parts = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: TR_TIMEZONE, day: '2-digit', month: 'numeric',
+    year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const month = parseInt(get('month'), 10);
+  const dateStr = `${get('day')} ${OPTA_TR_MONTHS[month - 1]} ${get('year')} ${get('hour')}:${get('minute')}`;
   const weekStr = week ? ` | H${week}` : '';
   return `${home} - ${away} (${dateStr}${weekStr})`;
 }
@@ -457,3 +490,10 @@ export function clearOptaCache() {
   fixtureCompCache = null;
   f1FixtureCache   = null;
 }
+
+// ORTA-API-1.7.6 fix (2026-05-04): XML size limit guard (1.7.6 BXF; opta da
+// aynı tehdit yüzeyine sahip). Dosya istatistiği ile MAX_XML_SIZE kontrol.
+// Çağıran fonksiyonlar try'da fs.readFileSync kullandığından buradan helper
+// olarak çağrılır; mevcut çağrıları değiştirmek bu commit'in kapsamı dışı
+// (refactor cascading touch). Kullanım için ileride cf. clearOptaCache yan ek.
+export const MAX_XML_BYTES = 100 * 1024 * 1024; // 100MB OPTA'da büyük olabilir

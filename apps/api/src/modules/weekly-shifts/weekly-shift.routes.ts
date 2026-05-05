@@ -428,7 +428,20 @@ export async function weeklyShiftRoutes(app: FastifyInstance) {
       },
     },
   }, async (request) => {
-    const group = decodeURIComponent(request.params.group);
+    // ORTA-API-1.10.11 fix (2026-05-04): decodeURIComponent edge case'leri.
+    // %00 (null byte) decode sonrası string-internal null byte downstream
+    // string ops'larında undefined behavior; isKnownGroup zaten BCMS_GROUPS
+    // listesinde olmadığı için 400 döner ama defansif olarak null/control
+    // chars'ı önceden reddet.
+    let group: string;
+    try {
+      group = decodeURIComponent(request.params.group);
+    } catch {
+      throw Object.assign(new Error('Geçersiz URL encoding'), { statusCode: 400 });
+    }
+    if (/[ -]/.test(group)) {
+      throw Object.assign(new Error('Grup adı geçersiz karakter içeriyor'), { statusCode: 400 });
+    }
     if (!isKnownGroup(group)) throw Object.assign(new Error('Bilinmeyen grup'), { statusCode: 400 });
     if (!await canEditGroup(request, group)) throw Object.assign(new Error('Bu grubu düzenleme yetkiniz yok'), { statusCode: 403 });
 

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { BCMS_GROUPS, PERMISSIONS, type BcmsGroup } from '@bcms/shared';
+import { BCMS_GROUPS, GROUP, PERMISSIONS, type BcmsGroup } from '@bcms/shared';
 import { getAdminToken, kcFetch, type KeycloakUserRepresentation } from '../../core/keycloak-admin.client.js';
 
 const USER_TYPES = ['staff', 'supervisor', 'admin'] as const;
@@ -11,14 +11,21 @@ type UserType = typeof USER_TYPES[number];
  *  - password: min 12 karakter (NIST SP 800-63B önerisi); UI tarafında temporary
  *    flag set edildiği için ilk girişte zaten değişmesi zorlanıyor.
  *  - groups: BCMS_GROUPS subset
- *  - userType: USER_TYPES enum */
+ *  - userType: USER_TYPES enum
+ *
+ *  ORTA-API-1.10.1/2 fix (2026-05-04): username regex char-set kısıtlandı
+ *  (ASCII alphanumeric + _ + . + -); groups .min(1) ve unique kontrolleri
+ *  eklendi. Boş veya tekrarlı entry kabul edilmez.
+ */
 const userCommonInputSchema = z.object({
-  username:  z.string().trim().min(3).max(64),
+  username:  z.string().trim().min(3).max(64).regex(/^[a-zA-Z0-9._-]+$/, 'Username sadece harf, rakam, ., _, - içerebilir'),
   email:     z.string().trim().email('Geçersiz e-mail formatı'),
   firstName: z.string().trim().max(64).optional(),
   lastName:  z.string().trim().max(64).optional(),
   userType:  z.enum(USER_TYPES).optional(),
-  groups:    z.array(z.enum(BCMS_GROUPS)),
+  groups:    z.array(z.enum(BCMS_GROUPS))
+    .min(1, 'En az bir grup seçilmeli')
+    .refine((arr) => new Set(arr).size === arr.length, 'Tekrar eden grup adı olamaz'),
 });
 
 const userPasswordSchema = z.string()
@@ -73,8 +80,9 @@ function normalizeUserType(value: unknown): UserType {
   return USER_TYPES.includes(value as UserType) ? value as UserType : 'staff';
 }
 
+// ORTA-API-1.10.4 fix (2026-05-04): hardcoded 'Admin' literal yerine GROUP.Admin.
 function hasAdminGroup(groups: string[]): boolean {
-  return groups.includes('Admin');
+  return groups.includes(GROUP.Admin);
 }
 
 function userTypeFor(user: any, groups: string[]): UserType {
@@ -85,6 +93,13 @@ function isBcmsGroup(value: string): value is BcmsGroup {
   return (BCMS_GROUPS as readonly string[]).includes(value);
 }
 
+// ORTA-API-1.10.5 fix (2026-05-04): non-atomic delete-loop + add-loop yerine
+// best-effort + rollback pattern. Keycloak Admin REST'i bulk endpoint sunmuyor
+// (per-user/per-group); bu yüzden gerçek transaction yok. İki katmanlı koruma:
+//   1. Önce add'leri yap (yeni gruplar). Hatalı olanlar varsa: hiç değişiklik yapma.
+//   2. Sonra delete'leri yap. Bu fail ederse: az önce eklenen yenilerini geri al.
+// Yine de race condition (başka bir admin paralelde değiştirirse) %100 atomic
+// değil ama partial-state pencerelerini kapatıyor.
 async function setUserGroups(id: string, newGroups: string[]): Promise<void> {
   const groupIdMap = await getGroupIdMap();
 
@@ -94,18 +109,47 @@ async function setUserGroups(id: string, newGroups: string[]): Promise<void> {
   );
   const newSet = new Set(newGroups.filter(isBcmsGroup));
 
-  for (const name of currentSet) {
-    if (!newSet.has(name)) {
+  const toAdd = [...newSet].filter((n) => !currentSet.has(n));
+  const toRemove = [...currentSet].filter((n) => !newSet.has(n));
+
+  // 1. Add işlemleri — fail ise eklenenleri geri al, değişiklik yapma.
+  const addedSuccessfully: string[] = [];
+  try {
+    for (const name of toAdd) {
       const gid = groupIdMap.get(name);
-      if (gid) await kcFetch(`/users/${id}/groups/${gid}`, { method: 'DELETE' });
+      if (!gid) continue;
+      await kcFetch(`/users/${id}/groups/${gid}`, { method: 'PUT' });
+      addedSuccessfully.push(name);
     }
+  } catch (err) {
+    // Rollback: az önce eklenenleri sil.
+    for (const name of addedSuccessfully) {
+      const gid = groupIdMap.get(name);
+      if (gid) await kcFetch(`/users/${id}/groups/${gid}`, { method: 'DELETE' }).catch(() => { /* best-effort */ });
+    }
+    throw err;
   }
 
-  for (const name of newSet) {
-    if (!currentSet.has(name)) {
+  // 2. Remove işlemleri — fail ise az önce eklenenleri geri al.
+  const removedSuccessfully: string[] = [];
+  try {
+    for (const name of toRemove) {
       const gid = groupIdMap.get(name);
-      if (gid) await kcFetch(`/users/${id}/groups/${gid}`, { method: 'PUT' });
+      if (!gid) continue;
+      await kcFetch(`/users/${id}/groups/${gid}`, { method: 'DELETE' });
+      removedSuccessfully.push(name);
     }
+  } catch (err) {
+    // Rollback: silinmişleri geri ekle, az önce add edilenleri kaldır.
+    for (const name of removedSuccessfully) {
+      const gid = groupIdMap.get(name);
+      if (gid) await kcFetch(`/users/${id}/groups/${gid}`, { method: 'PUT' }).catch(() => { /* best-effort */ });
+    }
+    for (const name of addedSuccessfully) {
+      const gid = groupIdMap.get(name);
+      if (gid) await kcFetch(`/users/${id}/groups/${gid}`, { method: 'DELETE' }).catch(() => { /* best-effort */ });
+    }
+    throw err;
   }
 
   groupMembershipCache.delete(id);
@@ -249,7 +293,7 @@ export async function usersRoutes(app: FastifyInstance) {
       userUpdateSchema.parse(request.body);
 
     const existing = await kcFetch<KeycloakUserRepresentation>(`/users/${id}`);
-    const isAdmin = groups.includes('Admin');
+    const isAdmin = groups.includes(GROUP.Admin);
     await kcFetch(`/users/${id}`, {
       method: 'PUT',
       body: JSON.stringify({

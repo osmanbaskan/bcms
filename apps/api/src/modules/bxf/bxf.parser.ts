@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import { XMLParser } from 'fast-xml-parser';
 
+// ORTA-API-1.7.5/6 fix (2026-05-04): BXF dosya boyut limiti.
+// Tipik BXF 100KB-5MB; 50MB üstü saldırı veya bozuk dosya. Streaming parse
+// fast-xml-parser'da yok; cap koymak DoS'u kapatıyor.
+const MAX_BXF_BYTES = 50 * 1024 * 1024;
+
 export interface BxfEvent {
   eventId:     string;
   title:       string;
@@ -44,6 +49,11 @@ function addSmpte(base: Date, smpteCode: string, frameRate = 25): Date {
 export function parseBxf(filePath: string): BxfSchedule | null {
   let content: string;
   try {
+    const stat = fs.statSync(filePath);
+    if (stat.size > MAX_BXF_BYTES) {
+      // Boyut limiti aşıldı → null dön; caller log'lar.
+      return null;
+    }
     content = fs.readFileSync(filePath, 'utf-8');
   } catch {
     return null;

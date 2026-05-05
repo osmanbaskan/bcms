@@ -3,15 +3,44 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { PERMISSIONS } from '@bcms/shared';
 
+// ORTA-API-1.9.4 fix (2026-05-04): finite + makul aralık zorunluluğu.
+// Eski hâl: z.number() Infinity ve NaN'ı kabul ediyordu. Yayıncılık
+// pratiğindeki saha sınırlarına yakın aralıklar:
+//   - signalDb: 0–120 dBm (tipik 50–65)
+//   - snr: -10 .. +60 dB (tipik 20–30)
+//   - ber: 0 .. 1 (oran)
+//   - audioLufs: -100 .. +10 LUFS (EBU R128: -23 ideal)
 const submitSchema = z.object({
   channelId: z.number().int().positive(),
-  signalDb:  z.number().optional(),
-  snr:       z.number().optional(),
-  ber:       z.number().min(0).optional(),
-  audioLufs: z.number().optional(),
+  signalDb:  z.number().finite().min(0).max(120).optional(),
+  snr:       z.number().finite().min(-10).max(60).optional(),
+  ber:       z.number().finite().min(0).max(1).optional(),
+  audioLufs: z.number().finite().min(-100).max(10).optional(),
   status:    z.enum(['OK', 'DEGRADED', 'LOST']).default('OK'),
   source:    z.string().max(50).optional(),
 });
+
+// ORTA-API-1.9.5 fix (2026-05-04): auto-incident dedup.
+// Flapping signal'de saniyede 10+ incident yaratmasın diye in-memory
+// rate-limit. Aynı (channelId, status) için 60sn'de bir incident.
+// Kapsam: bu API instance'ı; restart'ta sıfırlanır (kabul edilebilir,
+// gerçek dedup üst katmanda Prisma uniq index ile incident_dedup_key olur).
+const incidentDedupCache = new Map<string, number>();
+const INCIDENT_DEDUP_WINDOW_MS = 60_000;
+function shouldCreateIncident(channelId: number, status: string): boolean {
+  const key = `${channelId}:${status}`;
+  const now = Date.now();
+  const last = incidentDedupCache.get(key) ?? 0;
+  if (now - last < INCIDENT_DEDUP_WINDOW_MS) return false;
+  incidentDedupCache.set(key, now);
+  // Cache 1000+ entry olursa eski entry'leri temizle (TTL bazlı).
+  if (incidentDedupCache.size > 1000) {
+    for (const [k, ts] of incidentDedupCache.entries()) {
+      if (now - ts > INCIDENT_DEDUP_WINDOW_MS) incidentDedupCache.delete(k);
+    }
+  }
+  return true;
+}
 
 function isDuplicateSignalIncident(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2004'].includes(error.code);
@@ -73,8 +102,8 @@ export async function signalRoutes(app: FastifyInstance) {
 
     const record = await app.prisma.signalTelemetry.create({ data: dto });
 
-    // DEGRADED veya LOST ise otomatik incident oluştur
-    if (dto.status !== 'OK') {
+    // DEGRADED veya LOST ise otomatik incident oluştur (ORTA-API-1.9.5: dedup'lu)
+    if (dto.status !== 'OK' && shouldCreateIncident(dto.channelId, dto.status)) {
       const severity = dto.status === 'LOST' ? 'CRITICAL' : 'WARNING';
       const desc = dto.status === 'LOST'
         ? `Kanal sinyali kayboldu (${dto.source ?? 'bilinmiyor'})`
@@ -90,7 +119,9 @@ export async function signalRoutes(app: FastifyInstance) {
           },
         });
       } catch (error) {
+        // DÜŞÜK-API-1.9.6: P2002/P2004 sessiz catch yerine metric/log.
         if (!isDuplicateSignalIncident(error)) throw error;
+        app.log.warn({ channelId: dto.channelId, status: dto.status }, 'Auto-incident duplicate (DB unique) — silindi');
       }
     }
 

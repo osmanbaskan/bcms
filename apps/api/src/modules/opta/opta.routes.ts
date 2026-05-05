@@ -68,6 +68,8 @@ export async function optaRoutes(app: FastifyInstance) {
   }, async (request) => {
     const { competitionId, season, unscheduled } = matchesQuerySchema.parse(request.query);
 
+    // ORTA-API-1.8.4 fix (2026-05-04): take limit. Tek lig+sezon için
+    // tipik 380 maç (Premier Lig); 5K cap güvenli üst sınır.
     const rows = await app.prisma.match.findMany({
       where: {
         league: { code: `opta-${competitionId}` },
@@ -75,6 +77,7 @@ export async function optaRoutes(app: FastifyInstance) {
       },
       include: { league: true },
       orderBy: { matchDate: 'asc' },
+      take: 5_000,
     });
 
     let matches = rows.map((m) => ({
@@ -165,6 +168,7 @@ export async function optaRoutes(app: FastifyInstance) {
       },
       include: { league: true },
       orderBy: { matchDate: 'asc' },
+      take: 5_000,
     });
 
     return rows.map((m) => ({

@@ -37,11 +37,24 @@ function saveProcessed(map: Record<string, number>): void {
 export async function startBxfWatcher(app: FastifyInstance): Promise<void> {
   // Kanal önbelleği
   const channelCache = new Map<string, number>();
-  const channels = await app.prisma.channel.findMany({ select: { id: true, name: true } });
-  for (const ch of channels) {
-    channelCache.set(normalizeChannelName(ch.name), ch.id);
-  }
-  app.log.info({ count: channels.length }, 'BXF watcher: kanal önbelleği yüklendi');
+  const reloadChannelCache = async (): Promise<void> => {
+    const channels = await app.prisma.channel.findMany({ select: { id: true, name: true } });
+    channelCache.clear();
+    for (const ch of channels) {
+      channelCache.set(normalizeChannelName(ch.name), ch.id);
+    }
+    app.log.info({ count: channels.length }, 'BXF watcher: kanal önbelleği yenilendi');
+  };
+  await reloadChannelCache();
+
+  // ORTA-API-1.7.2 fix (2026-05-04): kanal cache 5 dk'da bir refresh.
+  // Eski hâlinde boot anında bir kez doluyordu, runtime'da yeni kanal
+  // eklenirse BXF eşleşmiyordu — restart gerekiyordu. Periyodik reload
+  // yan etki olmadan dinamik kalır.
+  const channelReloadInterval = setInterval(() => {
+    reloadChannelCache().catch((err) => app.log.warn({ err }, 'BXF channel cache reload başarısız'));
+  }, 5 * 60_000);
+  channelReloadInterval.unref();
 
   const processed = loadProcessed();
 
@@ -83,6 +96,7 @@ export async function startBxfWatcher(app: FastifyInstance): Promise<void> {
 
   // HIGH-API-018 fix (2026-05-05): graceful close on Fastify shutdown.
   app.addHook('onClose', async () => {
+    clearInterval(channelReloadInterval);
     try {
       await watcher.close();
       app.log.info('BXF watcher kapandı');
@@ -127,14 +141,11 @@ async function handleFile(
   const normBxf = normalizeChannelName(schedule.channelFullName || schedule.channelShortName);
   let channelId = channelCache.get(normBxf);
 
-  if (!channelId) {
-    for (const [normDb, id] of channelCache) {
-      if (normDb.includes(normBxf) || normBxf.includes(normDb)) {
-        channelId = id;
-        break;
-      }
-    }
-  }
+  // ORTA-API-1.7.4 fix (2026-05-04): bidirectional includes() pattern eski
+  // hâlinde "bein sports" "bein sports 5" ile match edebiliyordu (2 kanalın
+  // birbirini içermesi durumunda yanlış kanala yazma). Fuzzy fallback
+  // tamamen kaldırıldı — channelCache.get() exact match yapıyor; eşleşmiyorsa
+  // skip + warning log (kanal adı normalize sonrası tam eşleşmeli).
 
   if (!channelId) {
     app.log.warn(
