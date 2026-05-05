@@ -28,6 +28,7 @@ const TRANSACTIONAL_TABLES = [
   'studio_plans',
   'matches',
   'teams',
+  'outbox_events',
 ];
 
 let prismaSingleton: PrismaClient | null = null;
@@ -86,6 +87,28 @@ export async function applyTestConstraints(): Promise<void> {
     ALTER TABLE "schedules"
     ADD CONSTRAINT "schedules_usage_scope_check"
     CHECK ("usage_scope" IN ('broadcast', 'live-plan'))
+  `);
+}
+
+/**
+ * Madde 2+7 PR-A interim helper (2026-05-06):
+ * outbox_events.status CHECK constraint manuel reapply (Madde 4 ile aynı pattern;
+ * Prisma 5 native CHECK desteklemiyor + db push migration tüketmiyor).
+ *
+ * Idempotent: DROP IF EXISTS + ADD.
+ *
+ * Madde 1 (migration baseline) sonrası kaldırılır.
+ */
+export async function applyOutboxConstraints(): Promise<void> {
+  const prisma = getRawPrisma();
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "outbox_events"
+    DROP CONSTRAINT IF EXISTS "outbox_events_status_check"
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "outbox_events"
+    ADD CONSTRAINT "outbox_events_status_check"
+    CHECK ("status" IN ('pending','published','failed','dead'))
   `);
 }
 

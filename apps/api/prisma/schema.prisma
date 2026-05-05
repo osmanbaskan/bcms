@@ -422,6 +422,45 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+/// Madde 2+7 PR-A (audit doc): Outbox + DLQ V1 — schema foundation.
+/// Tasarım: ops/REQUIREMENTS-OUTBOX-DLQ-V1.md
+/// Migration: 20260506000000_outbox_events
+///
+/// DB seviyesinde CHECK constraint: status IN ('pending','published','failed','dead').
+/// Prisma 5 native CHECK desteklemediği için bu yorum drift uyarısı görevi yapar
+/// (Madde 4 usageScope ile aynı pattern).
+///
+/// Payload object convention: envelope helper (outbox.types.ts) object yazar;
+/// DB sadece JSONB type-check eder; non-object (örn. string) yazımı bloklamaz.
+/// Ek koruma katmanı: caller `createEnvelope()` helper'ı kullanmalı.
+///
+/// PR-A scope: sadece schema foundation. Poller, service refactor, admin endpoint,
+/// metric → PR-B/C/D.
+model OutboxEvent {
+  id              Int       @id @default(autoincrement())
+  /// UUID v4 (crypto.randomUUID() = 36 char); idempotency anchor.
+  eventId         String    @unique @map("event_id") @db.VarChar(36)
+  eventType       String    @map("event_type") @db.VarChar(100)
+  aggregateType   String    @map("aggregate_type") @db.VarChar(50)
+  aggregateId     String    @map("aggregate_id") @db.VarChar(50)
+  schemaVersion   Int       @default(1) @map("schema_version")
+  payload         Json
+  /// CHECK enum: pending | published | failed | dead. Bkz schema header yorumu.
+  status          String    @default("pending") @db.VarChar(20)
+  attempts        Int       @default(0)
+  lastError       String?   @map("last_error")
+  occurredAt      DateTime  @map("occurred_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(6)
+  /// Poller bu zaman geçince tekrar dener (backoff schedule).
+  nextAttemptAt   DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+
+  @@index([status, nextAttemptAt], map: "outbox_events_status_next_attempt_idx") // poller hot-path
+  @@index([aggregateType, aggregateId], map: "outbox_events_aggregate_idx")      // lookup/replay
+  @@index([eventType], map: "outbox_events_event_type_idx")
+  @@map("outbox_events")
+}
+
 model ShiftAssignment {
   id        Int       @id @default(autoincrement())
   userId    String    @map("user_id") @db.VarChar(100)
