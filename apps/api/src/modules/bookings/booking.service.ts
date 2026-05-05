@@ -359,10 +359,48 @@ export class BookingService {
         throw Object.assign(new Error('Booking version conflict'), { statusCode: ifMatchVersion !== undefined ? 412 : 404 });
       }
 
-      return tx.booking.findUniqueOrThrow({
+      const refreshed = await tx.booking.findUniqueOrThrow({
         where: { id },
         include: { team: true, schedule: { include: { channel: true } } },
       });
+
+      // Madde 2+7 PR-B3a (audit doc): notification email shadow outbox write.
+      // Aynı koşul (mevcut direct publish ile parity): dto.status &&
+      // STATUS_LABELS[dto.status] (APPROVED/REJECTED). Subject/body template'i
+      // direct publish ile bire bir aynı.
+      // Strict shadow: payload sadece { to, subject, body } — aggregate
+      // traceability outbox row metadata'da (aggregateType='Booking',
+      // aggregateId, eventType='notification.email_requested').
+      // notification.consumer.ts'teki retry self-republish dahil edilmez
+      // (consumer-internal mekanik, domain üretici değil).
+      if (dto.status && STATUS_LABELS[dto.status]) {
+        const label = STATUS_LABELS[dto.status];
+        const env = createEnvelope({
+          eventType: 'notification.email_requested',
+          aggregateType: 'Booking',
+          aggregateId: refreshed.id,
+          payload: {
+            to:      existing.requestedBy,
+            subject: `İş kaydınız ${label}`,
+            body:    `Merhaba ${existing.requestedBy},\n\n${id} numaralı iş kaydınız ${label}.\n\nBCMS`,
+          },
+        });
+        await tx.outboxEvent.create({
+          data: {
+            eventId:       env.eventId,
+            eventType:     env.eventType,
+            aggregateType: env.aggregateType,
+            aggregateId:   env.aggregateId,
+            schemaVersion: env.schemaVersion,
+            payload:       env.payload as Prisma.InputJsonValue,
+            occurredAt:    new Date(env.occurredAt),
+            status:        'published',
+            publishedAt:   new Date(),
+          },
+        });
+      }
+
+      return refreshed;
     });
 
     if (dto.status && STATUS_LABELS[dto.status]) {

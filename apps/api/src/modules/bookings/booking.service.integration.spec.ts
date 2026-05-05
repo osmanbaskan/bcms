@@ -205,11 +205,12 @@ describe('BookingService — integration', () => {
     expect(updated.dueDate?.toISOString().slice(0, 10)).toBe('2026-07-15');
   });
 
-  // ── Madde 2+7 PR-B2: outbox shadow boundary guard ────────────────────────
-  // PR-B2 sadece BOOKING_CREATED → outbox shadow yazar.
-  // update()'teki NOTIFICATIONS_EMAIL publish notification domain (PR-B3 scope);
-  // bu PR'da update() outbox row YAZMAZ. Aşağıdaki test bu boundary'i sabitler.
-  test('update: outbox row YAZMAZ (notification domain PR-B3 scope)', async () => {
+  // ── Madde 2+7 PR-B3a: Notification domain Phase 2 shadow ────────────────
+  // PR-B2'deki "update outbox YAZMAZ" testi PR-B3a sonrası geçersiz oldu;
+  // bu iki test aynı boundary'i daha doğru ifade eder: status change → outbox
+  // var; status değişmediğinde → outbox yok.
+
+  test('update + status APPROVED → notification.email_requested outbox + direct NOTIFICATIONS_EMAIL', async () => {
     const sch = await createTestSchedule({ channelId: 1 });
     const user = makeUser({ username: 'tester', groups: ['Booking'] });
     const req = makeRequest(user);
@@ -218,21 +219,70 @@ describe('BookingService — integration', () => {
       { scheduleId: sch.id, taskTitle: 'Initial', userGroup: 'Booking' },
       req,
     );
-    // create sonrası 1 outbox row var (booking.created)
-    const prisma = getRawPrisma();
-    const beforeUpdate = await prisma.outboxEvent.count({
-      where: { aggregateType: 'Booking', aggregateId: String(booking.id) },
-    });
-    expect(beforeUpdate).toBe(1);
 
-    // update status APPROVED — direct NOTIFICATIONS_EMAIL publish çalışır,
-    // ama outbox row eklenmez (boundary).
+    // create sonrası: 1 outbox row (booking.created), 1 direct publish (BOOKING_CREATED)
+    const prisma = getRawPrisma();
+    expect(await prisma.outboxEvent.count({
+      where: { aggregateType: 'Booking', aggregateId: String(booking.id) },
+    })).toBe(1);
+
+    // update APPROVED → +1 outbox (notification.email_requested) + 1 direct
+    // (queue.notifications.email)
     await svc.update(booking.id, { status: 'APPROVED' }, undefined, req);
 
-    const afterUpdate = await prisma.outboxEvent.count({
+    // Direct publish: queue name match (kullanıcı guard 3 — sadece length yetmez,
+    // booking create publish'i de var)
+    const notificationPublishes = harness.publishedEvents.filter(
+      (e) => e.queue === 'queue.notifications.email',
+    );
+    expect(notificationPublishes).toHaveLength(1);
+
+    // Outbox: booking.created + notification.email_requested
+    const allRows = await prisma.outboxEvent.findMany({
+      where: { aggregateType: 'Booking', aggregateId: String(booking.id) },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(allRows).toHaveLength(2);
+    expect(allRows[0].eventType).toBe('booking.created');
+    expect(allRows[1].eventType).toBe('notification.email_requested');
+    expect(allRows[1].status).toBe('published');
+    expect(allRows[1].publishedAt).not.toBeNull();
+
+    // Strict payload: { to, subject, body } — aggregate fields outbox metadata'da
+    const payload = allRows[1].payload as Record<string, unknown>;
+    expect(Object.keys(payload).sort()).toEqual(['body', 'subject', 'to']);
+    expect(payload.to).toBe('tester');
+    expect(typeof payload.subject).toBe('string');
+    expect(payload.subject).toMatch(/tamamlandı|reddedildi/);
+    expect(typeof payload.body).toBe('string');
+  });
+
+  test('update without status change → no notification outbox (boundary)', async () => {
+    const sch = await createTestSchedule({ channelId: 1 });
+    const user = makeUser({ username: 'tester', groups: ['Booking'] });
+    const req = makeRequest(user);
+
+    const booking = await svc.create(
+      { scheduleId: sch.id, taskTitle: 'Initial', userGroup: 'Booking' },
+      req,
+    );
+
+    // taskTitle update (status değişmiyor) — notification trigger yok
+    await svc.update(booking.id, { taskTitle: 'Updated title' }, undefined, req);
+
+    const prisma = getRawPrisma();
+    const allRows = await prisma.outboxEvent.findMany({
       where: { aggregateType: 'Booking', aggregateId: String(booking.id) },
     });
-    expect(afterUpdate).toBe(1); // hâlâ sadece create'in outbox row'u
+    // Hâlâ sadece create'in outbox row'u; notification yok
+    expect(allRows).toHaveLength(1);
+    expect(allRows[0].eventType).toBe('booking.created');
+
+    // Direct publish: notification queue'ya hiç publish yok
+    const notificationPublishes = harness.publishedEvents.filter(
+      (e) => e.queue === 'queue.notifications.email',
+    );
+    expect(notificationPublishes).toHaveLength(0);
   });
 });
 
