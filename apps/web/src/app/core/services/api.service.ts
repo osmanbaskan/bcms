@@ -1,7 +1,28 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http';
+import { type MonoTypeOperatorFunction, Observable, retry, throwError, timer } from 'rxjs';
 import { environment } from '../../../environments/environment';
+
+// ORTA-FE-2.4.1 fix (2026-05-04): GET istekleri için transient retry.
+// Network hiccup veya 503 (Service Unavailable / JWKS down) sonrası
+// kullanıcının manuel reload yapması yerine sessiz retry. POST/PATCH/DELETE
+// retry edilmez (idempotent değiller — duplicate side-effect riski).
+const RETRY_COUNT = 2;
+const RETRY_DELAY_MS = 600;
+function retryConfig<T>(): MonoTypeOperatorFunction<T> {
+  return retry<T>({
+    count: RETRY_COUNT,
+    delay: (err, attempt) => {
+      // 0 (network err), 502, 503, 504 → retry; 4xx → fail-fast (caller handle).
+      if (err instanceof HttpErrorResponse) {
+        if (err.status === 0 || err.status === 502 || err.status === 503 || err.status === 504) {
+          return timer(RETRY_DELAY_MS * attempt);
+        }
+      }
+      return throwError(() => err);
+    },
+  });
+}
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -16,7 +37,7 @@ export class ApiService {
         if (v !== undefined && v !== null) httpParams = httpParams.set(k, String(v));
       });
     }
-    return this.http.get<T>(`${this.base}${path}`, { params: httpParams });
+    return this.http.get<T>(`${this.base}${path}`, { params: httpParams }).pipe(retryConfig<T>());
   }
 
   post<T>(path: string, body: unknown): Observable<T> {
@@ -49,6 +70,7 @@ export class ApiService {
         if (v !== undefined && v !== null) httpParams = httpParams.set(k, String(v));
       });
     }
-    return this.http.get(`${this.base}${path}`, { params: httpParams, responseType: 'blob' });
+    // GET — retry uygulanır
+    return this.http.get(`${this.base}${path}`, { params: httpParams, responseType: 'blob' }).pipe(retryConfig<Blob>());
   }
 }

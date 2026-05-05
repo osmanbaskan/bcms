@@ -6,7 +6,8 @@ import { interval, Subscription } from 'rxjs';
 import { KpiComponent } from '../../core/ui/kpi.component';
 import { CardComponent } from '../../core/ui/card.component';
 import { StatusTagComponent } from '../../core/ui/status-tag.component';
-import { SevTagComponent } from '../../core/ui/sev-tag.component';
+// DÜŞÜK-FE hijyen (2026-05-04): SevTagComponent template'de kullanılmıyor
+// (NG8113 warning); ileride uyarı/incident bölümü dashboard'a gelirse eklenecek.
 import { PageHeaderComponent } from '../../core/ui/page-header.component';
 import { ScheduleService } from '../../core/services/schedule.service';
 import { ApiService } from '../../core/services/api.service';
@@ -55,7 +56,6 @@ interface StudioSlot {
     KpiComponent,
     CardComponent,
     StatusTagComponent,
-    SevTagComponent,
     PageHeaderComponent,
   ],
   template: `
