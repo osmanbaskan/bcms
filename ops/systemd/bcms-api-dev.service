@@ -11,6 +11,9 @@ WorkingDirectory=/home/ubuntu/Desktop/bcms
 EnvironmentFile=/home/ubuntu/Desktop/bcms/.env
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=NODE_ENV=development
+# LOW-INF-004 fix (2026-05-05): SKIP_AUTH dev için zorunlu; .env'den de
+# yüklenebilir ama bu service "dev local-only" anlamı taşıyor.
+# Production deploy bu file'ı kullanmaz; docker compose api servisi kullanır.
 Environment=SKIP_AUTH=true
 Environment=PORT=3000
 ExecStartPre=/bin/sh -c '/usr/bin/fuser -k 3000/tcp || true'

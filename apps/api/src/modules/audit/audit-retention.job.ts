@@ -61,14 +61,23 @@ export async function startAuditRetentionJob(app: FastifyInstance): Promise<void
     }
   };
 
-  // Initial run shortly after startup (staggered to avoid competing with other init work)
+  // Initial run shortly after startup (staggered to avoid competing with other init work).
+  // LOW-API-017 fix (2026-05-05): .unref() ile bu timer event loop'u
+  // bloklamaz; SIGTERM sonrası process tertemiz çıkar. onClose hook ile de
+  // temizleniyor (defansif).
   const initialDelay = Math.min(msUntilNextMidnight() + 30_000, 60_000);
-  setTimeout(() => {
+  const startupTimer = setTimeout(() => {
     runOnce().catch((err) => app.log.error({ err }, 'Audit retention initial run failed'));
   }, initialDelay);
+  startupTimer.unref();
 
-  // Then every 24 hours
-  setInterval(() => {
+  const intervalTimer = setInterval(() => {
     runOnce().catch((err) => app.log.error({ err }, 'Audit retention scheduled run failed'));
   }, 86_400_000);
+  intervalTimer.unref();
+
+  app.addHook('onClose', async () => {
+    clearTimeout(startupTimer);
+    clearInterval(intervalTimer);
+  });
 }

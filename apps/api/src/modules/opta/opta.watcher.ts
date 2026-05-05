@@ -23,7 +23,9 @@ async function checkDir(): Promise<boolean> {
 }
 
 function startTimers(app: FastifyInstance) {
-  setInterval(() => {
+  // LOW-API-018 fix (2026-05-05): handle'leri sakla, .unref() event loop'u
+  // bloklamasın; onClose'da clearInterval ile temizle.
+  const cacheTimer = setInterval(() => {
     checkDir().then((ok) => {
       if (!ok) {
         app.log.warn({ dir: OPTA_DIR }, 'OPTA dizinine erişilemiyor');
@@ -34,8 +36,9 @@ function startTimers(app: FastifyInstance) {
       app.log.info({ dir: OPTA_DIR }, 'OPTA cache periyodik olarak temizlendi');
     }).catch(() => { isConnected = false; });
   }, CACHE_REFRESH_MS);
+  cacheTimer.unref();
 
-  setInterval(() => {
+  const healthTimer = setInterval(() => {
     checkDir().then((ok) => {
       if (ok !== isConnected) {
         isConnected = ok;
@@ -44,6 +47,12 @@ function startTimers(app: FastifyInstance) {
       }
     }).catch(() => { isConnected = false; });
   }, HEALTH_CHECK_MS);
+  healthTimer.unref();
+
+  app.addHook('onClose', async () => {
+    clearInterval(cacheTimer);
+    clearInterval(healthTimer);
+  });
 }
 
 export async function startOptaWatcher(app: FastifyInstance): Promise<void> {

@@ -543,18 +543,8 @@ export class WeeklyShiftComponent implements OnInit {
     return `${d}.${m}.${y}`;
   }
 
-  private shiftCellDisplay(cell: ShiftCell): string {
-    const type = cell.type ?? '';
-    if (!type || type === 'WORK') {
-      const start = cell.startTime ?? '';
-      const end = cell.endTime ?? '';
-      if (start && end) return `${start} - ${end}`;
-      if (start) return start;
-      if (end) return end;
-      return '';
-    }
-    return this.shiftTypeLabel(type);
-  }
+  // LOW-FE-004 fix (2026-05-05): unused method silindi. Template artık
+  // doğrudan startTime/endTime/type'a bakıyor.
 
   private downloadBlob(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob);
