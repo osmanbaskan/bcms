@@ -122,3 +122,48 @@ jobs:
           if [ -f /tmp/bcms-api.pid ]; then
             kill "$(cat /tmp/bcms-api.pid)" || true
           fi
+
+  # Madde 8 (audit doc) — backend integration test foundation.
+  # Hybrid CI strateji: GH Actions service postgres kullanır (Testcontainers
+  # yerine). Lokal geliştirici Testcontainers ile çalışır.
+  # Bkz: ops/REQUIREMENTS-BACKEND-INTEGRATION-TESTS.md
+  api-integration-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: bcms_test
+          POSTGRES_USER: bcms_test
+          POSTGRES_PASSWORD: bcms_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U bcms_test -d bcms_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_DATABASE_URL: postgresql://bcms_test:bcms_test@localhost:5433/bcms_test
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
+
+      - name: Run integration tests
+        run: npm run test:integration -w apps/api
