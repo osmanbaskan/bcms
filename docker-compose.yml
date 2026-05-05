@@ -53,6 +53,10 @@ services:
       BACKUP_KEEP_MONTHS: 6
       HEALTHCHECK_PORT: 8080
       TZ: Europe/Istanbul
+      # MED-INF-002 fix (2026-05-05): image v0.0.11 plain SQL üretiyor ama
+      # default suffix .sql.gz; sahte gzip uzantı RESTORE.md'yi yanıltıyordu.
+      # Suffix'i gerçek format ile eşleştir (.sql plain).
+      BACKUP_SUFFIX: ".sql"
     volumes:
       - ./infra/postgres/backups:/backups
     depends_on:

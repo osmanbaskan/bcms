@@ -149,32 +149,50 @@ async function handleFile(
   let inserted = 0;
   let skipped  = 0;
 
+  // MED-API-004 fix (2026-05-05): findFirst + create transaction'sızdı —
+  // concurrent BXF watch event'inde duplicate yaratabilirdi. Her event'i tek
+  // transaction'da yap; aynı startTime için race olursa GiST exclusion ikinciyi
+  // reddeder ve graceful skip yapılır.
   for (const ev of schedule.events) {
-    const exists = await app.prisma.schedule.findFirst({
-      where: { channelId, startTime: ev.startTime },
-      select: { id: true },
-    });
-    if (exists) { skipped++; continue; }
-
-    await app.prisma.schedule.create({
-      data: {
-        channelId,
-        startTime: ev.startTime,
-        endTime:   ev.endTime,
-        title:     ev.title,
-        status:    'DRAFT',
-        createdBy: 'bxf-importer',
-        metadata: {
-          bxfEventId:  ev.eventId,
-          houseNumber: ev.houseNumber,
-          contentName: ev.contentName,
-          description: ev.description,
-          sourceFile:  key,
-          importedAt:  new Date().toISOString(),
-        },
-      },
-    });
-    inserted++;
+    try {
+      await app.prisma.$transaction(async (tx) => {
+        const exists = await tx.schedule.findFirst({
+          where: { channelId, startTime: ev.startTime },
+          select: { id: true },
+        });
+        if (exists) {
+          skipped++;
+          return;
+        }
+        await tx.schedule.create({
+          data: {
+            channelId,
+            startTime: ev.startTime,
+            endTime:   ev.endTime,
+            title:     ev.title,
+            status:    'DRAFT',
+            createdBy: 'bxf-importer',
+            metadata: {
+              bxfEventId:  ev.eventId,
+              houseNumber: ev.houseNumber,
+              contentName: ev.contentName,
+              description: ev.description,
+              sourceFile:  key,
+              importedAt:  new Date().toISOString(),
+            },
+          },
+        });
+        inserted++;
+      });
+    } catch (err) {
+      // GiST exclusion (P2002/P2004) — concurrent başka event aynı slot'u almış.
+      const e = err as { code?: string };
+      if (e.code === 'P2002' || e.code === 'P2004') {
+        skipped++;
+      } else {
+        throw err;
+      }
+    }
   }
 
   app.log.info(

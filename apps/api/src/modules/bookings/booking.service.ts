@@ -142,11 +142,13 @@ export class BookingService {
     const skip = (page - 1) * pageSize;
     const where: Prisma.BookingWhereInput = {
       ...(scheduleId && { scheduleId }),
+      // MED-API-009 fix (2026-05-05): non-admin filter de userGroup null
+      // olanları (eski/legacy bookings) görsün — aksi halde import edilen
+      // yetimkayıtlar arayüzde görünmez. Admin OR pattern'i non-admin'e de
+      // uygulandı.
       ...(selectedGroup
         ? { userGroup: selectedGroup }
-        : isAdminUser(claims)
-          ? { OR: [{ userGroup: { in: visibleGroups } }, { userGroup: null }] }
-          : { userGroup: { in: visibleGroups } }),
+        : { OR: [{ userGroup: { in: visibleGroups } }, { userGroup: null }] }),
     };
     const [data, total, displayNames] = await Promise.all([
       this.app.prisma.booking.findMany({
