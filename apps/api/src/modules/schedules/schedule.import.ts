@@ -166,32 +166,50 @@ export async function importSchedulesFromBuffer(
       continue;
     }
 
-    // Çakışma kontrolü
-    const conflict = await app.prisma.schedule.findFirst({
-      where: {
-        channelId,
-        status: { notIn: ['CANCELLED'] },
-        AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startTime } }],
-      },
-    });
-    if (conflict) {
-      errors.push({ row: excelRow, reason: `Çakışma: ${conflict.title} (${conflict.startTime.toISOString()})` });
+    // HIGH-API-003 fix (2026-05-05): findFirst + create atomik değildi —
+    // concurrent import iki request'i conflict check'i atlayıp ikisi de create
+    // ederse, DB GiST exclusion ikinciyi reddederdi (P2002), ama import
+    // kullanıcıya yanlış "başarılı" rapor edebilirdi. Şimdi:
+    //   1) Pre-check (UI dostu mesaj),
+    //   2) Create — exclusion violation'ı gracefully yakalanıp errors'a yazılır.
+    //      DB constraint hâlâ ana garanti.
+    try {
+      await app.prisma.$transaction(async (tx) => {
+        const conflict = await tx.schedule.findFirst({
+          where: {
+            channelId,
+            status: { notIn: ['CANCELLED'] },
+            AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startTime } }],
+          },
+        });
+        if (conflict) {
+          throw Object.assign(new Error(
+            `Çakışma: ${conflict.title} (${conflict.startTime.toISOString()})`
+          ), { code: 'EXCEL_IMPORT_CONFLICT' });
+        }
+
+        await tx.schedule.create({
+          data: {
+            channelId,
+            startTime,
+            endTime,
+            title:     matchTitle,
+            status:    'CONFIRMED',
+            createdBy: user,
+            metadata:  { importTitle: headerTitle } as never,
+          },
+        });
+      });
+      created++;
+    } catch (err) {
+      const e = err as { code?: string; message?: string };
+      if (e.code === 'P2002' || e.code === 'P2004' || e.code === 'EXCEL_IMPORT_CONFLICT') {
+        errors.push({ row: excelRow, reason: e.message ?? 'Çakışma' });
+      } else {
+        throw err;
+      }
       continue;
     }
-
-    await app.prisma.schedule.create({
-      data: {
-        channelId,
-        startTime,
-        endTime,
-        title:     matchTitle,
-        status:    'CONFIRMED',
-        createdBy: user,
-        metadata:  { importTitle: headerTitle } as never,
-      },
-    });
-
-    created++;
   }
 
   return { title: headerTitle, created, skipped, errors };

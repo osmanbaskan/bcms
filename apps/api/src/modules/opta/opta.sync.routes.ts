@@ -237,9 +237,13 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         // ── 4. Lig ve maç yazımlarını tek transaction içinde yap ──
-        await Promise.all([
-          ...toInsert.map((m) => tx.match.create({
-            data: {
+        // HIGH-API-005 fix (2026-05-05): unbounded Promise.all yerine:
+        //   - createMany ile insert'leri tek SQL'de batch et
+        //   - update'leri 10'arlı paralel chunk'larla işle (connection pool
+        //     tükenmesini ve lock thrashing'i engelle)
+        if (toInsert.length > 0) {
+          await tx.match.createMany({
+            data: toInsert.map((m) => ({
               leagueId:     leagueMap.get(m.compId)!,
               optaUid:      m.matchUid,
               homeTeamName: m.homeTeam || '?',
@@ -248,13 +252,18 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
               weekNumber:   m.weekNumber || null,
               season:       m.season ?? '',
               venue:        m.venue || null,
-            },
-          })),
-          ...toUpdate.map((u) => tx.match.update({
+            })),
+            skipDuplicates: true,
+          });
+        }
+        const UPDATE_CONCURRENCY = 10;
+        for (let i = 0; i < toUpdate.length; i += UPDATE_CONCURRENCY) {
+          const chunk = toUpdate.slice(i, i + UPDATE_CONCURRENCY);
+          await Promise.all(chunk.map((u) => tx.match.update({
             where: { id: u.id },
             data:  { matchDate: u.newMatchDate },
-          })),
-        ]);
+          })));
+        }
 
         return { inserted: toInsert.length, updated: toUpdate.length, unchanged, toUpdate };
       }),

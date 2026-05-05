@@ -271,8 +271,12 @@ export async function ingestRoutes(app: FastifyInstance) {
   app.get('/plan/report', {
     preHandler: app.requireGroup(...PERMISSIONS.ingest.read),
     schema: { tags: ['Ingest'], summary: 'Ingest plan raporu (tarih aralığı)', querystring: reportQuerySchema },
-  }, async (request) => {
+  }, async (request, reply) => {
     const { from, to } = reportZodSchema.parse(request.query);
+    // HIGH-API-006 fix (2026-05-05): satır cap. 366 günlük sınır + 10K satır cap
+    // → 1 yıllık ortak yoğun planda bile RAM güvenli. Cap aşılırsa
+    // X-Truncated header ile UI uyarsın.
+    const REPORT_ROW_CAP = 10000;
     const items = await app.prisma.ingestPlanItem.findMany({
       where: {
         dayDate: {
@@ -282,7 +286,11 @@ export async function ingestRoutes(app: FastifyInstance) {
       },
       include: PLAN_ITEM_INCLUDE,
       orderBy: [{ dayDate: 'asc' }, { plannedStartMinute: 'asc' }, { sourceKey: 'asc' }],
+      take: REPORT_ROW_CAP,
     });
+    if (items.length === REPORT_ROW_CAP) {
+      reply.header('X-Truncated', `true; cap=${REPORT_ROW_CAP}`);
+    }
     return items.map(mapPlanItem);
   });
 
@@ -292,6 +300,8 @@ export async function ingestRoutes(app: FastifyInstance) {
     schema: { tags: ['Ingest'], summary: 'Ingest plan raporunu Excel olarak dışa aktar', querystring: reportQuerySchema },
   }, async (request, reply) => {
     const { from, to } = reportZodSchema.parse(request.query);
+    // HIGH-API-006: export endpoint de 50K cap (Excel uygulamaları satır
+    // yükünden bağımsız RAM güvenliği için).
     const items = await app.prisma.ingestPlanItem.findMany({
       where: {
         dayDate: {
@@ -301,6 +311,7 @@ export async function ingestRoutes(app: FastifyInstance) {
       },
       include: PLAN_ITEM_INCLUDE,
       orderBy: [{ dayDate: 'asc' }, { plannedStartMinute: 'asc' }, { sourceKey: 'asc' }],
+      take: 50000,
     });
 
     const workbook = new ExcelJS.Workbook();
@@ -406,43 +417,44 @@ export async function ingestRoutes(app: FastifyInstance) {
       }
     }
 
-    // 2) Pre-check overlap (defense-in-depth — DB GiST exclusion ana garanti).
-    // Hem ana hem yedek port için ayrı kontrol; rol farkı önemli değil çünkü
-    // "port meşgul mü" sorusu rol-bağımsız (cross-overlap dahil).
-    const checkConflict = async (portName: string) => {
-      if (plannedStartMinute === null || plannedEndMinute === null) return;
-      const conflict = await app.prisma.ingestPlanItemPort.findFirst({
-        where: {
-          portName,
-          dayDate: parseDate(dto.day),
-          plannedStartMinute: { lt: plannedEndMinute },
-          plannedEndMinute: { gt: plannedStartMinute },
-          planItem: { sourceKey: { not: sourceKey } },
-        },
-        select: {
-          portName: true,
-          plannedStartMinute: true,
-          plannedEndMinute: true,
-          role: true,
-          planItem: { select: { sourceKey: true } },
-        },
-      });
-      if (conflict) {
-        const conflictRange = `${minuteToTime(conflict.plannedStartMinute)} - ${minuteToTime(conflict.plannedEndMinute)}`;
-        const roleLabel = conflict.role === 'backup' ? ' (yedek)' : '';
-        throw Object.assign(
-          new Error(`${portName} ${conflictRange} aralığında "${describeSourceKey(conflict.planItem.sourceKey)}"${roleLabel} için atanmış`),
-          { statusCode: 409 },
-        );
-      }
-    };
-    if (recordingPort)        await checkConflict(recordingPort);
-    if (backupRecordingPort)  await checkConflict(backupRecordingPort);
-
-    // 3) Atomic transaction: parent item + ports replace
+    // 2) Atomic transaction (HIGH-API-002 fix 2026-05-05): conflict check
+    //    artık transaction içinde, TOCTOU race penceresi yok. DB GiST exclusion
+    //    ikincil garanti — UI dostu mesaj için pre-check tutuldu ama RACE'i
+    //    transaction kontrol ediyor.
     let item;
     try {
       item = await app.prisma.$transaction(async (tx) => {
+        // ── Pre-check overlap (transaction içinde — TOCTOU yok) ──
+        const checkConflict = async (portName: string) => {
+          if (plannedStartMinute === null || plannedEndMinute === null) return;
+          const conflict = await tx.ingestPlanItemPort.findFirst({
+            where: {
+              portName,
+              dayDate: parseDate(dto.day),
+              plannedStartMinute: { lt: plannedEndMinute },
+              plannedEndMinute: { gt: plannedStartMinute },
+              planItem: { sourceKey: { not: sourceKey } },
+            },
+            select: {
+              portName: true,
+              plannedStartMinute: true,
+              plannedEndMinute: true,
+              role: true,
+              planItem: { select: { sourceKey: true } },
+            },
+          });
+          if (conflict) {
+            const conflictRange = `${minuteToTime(conflict.plannedStartMinute)} - ${minuteToTime(conflict.plannedEndMinute)}`;
+            const roleLabel = conflict.role === 'backup' ? ' (yedek)' : '';
+            throw Object.assign(
+              new Error(`${portName} ${conflictRange} aralığında "${describeSourceKey(conflict.planItem.sourceKey)}"${roleLabel} için atanmış`),
+              { statusCode: 409 },
+            );
+          }
+        };
+        if (recordingPort)        await checkConflict(recordingPort);
+        if (backupRecordingPort)  await checkConflict(backupRecordingPort);
+
         const planItem = await tx.ingestPlanItem.upsert({
           where: { sourceKey },
           update: {
