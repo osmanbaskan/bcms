@@ -169,16 +169,38 @@ Vitest `c8` provider ile coverage. Hedef:
 ```
 Suite başında:
   1. testcontainers postgres up (lokal) || env DATABASE_URL (CI)
-  2. npx prisma migrate reset --force --skip-seed --skip-generate
+  2. ⚠️  INTERIM: `npx prisma db push --skip-generate --accept-data-loss --force-reset`
+     (hedef: `npx prisma migrate reset --force --skip-seed --skip-generate`)
   3. seed minimal fixtures (channels, leagues, broadcast types)
 
-Test başına:
-  - Yeni transaction; afterEach'te ROLLBACK (data izolasyonu)
-  - Suite içi tx-bound izolasyon mümkünse (Vitest's per-test isolation)
+Test sonrası (afterEach):
+  - cleanupTransactional(): TRUNCATE 15 transactional tablo; seed tablolar korunur
+  - Per-test transaction rollback DEĞİL — Fastify-decorated app.prisma client'ı
+    test wrapper transaction context'ine zorla bağlanamaz; "rollback oldu sandık
+    ama olmadı" riski (audit $extends side-effect ile ayrıca kötüleşir)
 
 Suite sonunda:
+  - disconnectPrisma() (singleton pool drain)
   - Container teardown (lokal); CI'da no-op
 ```
+
+> **⚠️ INTERIM — Migration baseline bağımlılığı (2026-05-04)**
+>
+> İlk implementation'da (`a45ee74`) `prisma migrate reset` yerine `db push --force-reset`
+> kullanıldı. Sebep: BCMS migration directory'si yalnızca incremental migration'lar
+> içeriyor; baseline tablolar (`schedules`, `bookings`, `leagues` vb.) ilk migration'da
+> yok varsayılıyor — fresh DB'de `migrate reset` "schedules tablosu yok" hatası verir.
+>
+> Bu **bilinçli interim**. `db push` schema.prisma'dan direkt schema oluşturduğu
+> için test scope'unda doğru çalışır; ancak migration yolculuğunu valide etmez
+> (production deploy davranışından farklı).
+>
+> **Geri dönüş planı**: Audit doc skip listesi **Madde 1** (AuditLog partition + migration
+> baseline yeniden temellendirme) PR'ı sonrası, `setup.ts` satırı tekrar
+> `prisma migrate reset --force --skip-seed --skip-generate`'e çevrilir. O zaman
+> test foundation production migration'larını da tüketmiş olur.
+>
+> Bkz: `ops/REQUIREMENTS-MIGRATION-BASELINE.md`
 
 ### Prisma client
 

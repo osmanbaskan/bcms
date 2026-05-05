@@ -34,10 +34,19 @@ beforeAll(async () => {
   process.env.NODE_ENV = 'test';
 
   // Schema sync — clean slate.
-  // Not: `migrate reset` BCMS migration baseline sorunundan dolayı (eski tablolar
-  // baseline'da yok, sadece increment migration'lar var) fresh DB'de çalışmaz.
-  // Bkz: ops/REQUIREMENTS-MIGRATION-BASELINE.md.
-  // `db push` schema.prisma'dan direkt schema oluşturur — test için doğru.
+  //
+  // ⚠️  INTERIM (2026-05-04): `prisma migrate reset` yerine `db push --force-reset`.
+  //     Bunun sebebi BCMS migration baseline sorunu — eski tablolar (schedules,
+  //     bookings, leagues vb.) baseline'da YOK, sadece incremental migration'lar var.
+  //     Fresh DB'de migrate reset, ilk increment'i çalıştırırken "schedules
+  //     tablosu yok" hatası verir.
+  //
+  //     Plan: Madde 1 (audit doc skip listesi) — AuditLog partition + migration
+  //     baseline yeniden temellendirme PR'ı sonrası, bu satır geri
+  //     `prisma migrate reset --force --skip-seed --skip-generate`'e döner.
+  //
+  //     Bkz: ops/REQUIREMENTS-MIGRATION-BASELINE.md
+  //          ops/REQUIREMENTS-BACKEND-INTEGRATION-TESTS.md §5
   execSync('npx prisma db push --skip-generate --accept-data-loss --force-reset', {
     env: { ...process.env, DATABASE_URL: databaseUrl },
     stdio: 'inherit',
