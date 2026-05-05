@@ -24,9 +24,17 @@ export const updateScheduleSchema = z.object({
   title:           z.string().min(1).max(500).optional(),
   status:          ScheduleStatusEnum.optional(),
   contentId:       z.number().int().positive().optional(),
+  broadcastTypeId: z.number().int().positive().optional(),
   usageScope:      ScheduleUsageScopeEnum.optional(),
   metadata:        z.record(z.unknown()).optional(),
-});
+}).refine(
+  // MED-API-005 fix (2026-05-05): startTime ve endTime ikisi de PATCH'te
+  // verilirse end > start olmalı. Sadece biri verilirse refine atlanır
+  // (other-side DB'deki mevcut değer ile karşılaştırılması route handler'da
+  // yapılır — burada sadece hem-hem güncelleme tutarlılığı zorlanıyor).
+  (d) => !d.startTime || !d.endTime || new Date(d.endTime) > new Date(d.startTime),
+  { message: 'endTime must be after startTime', path: ['endTime'] },
+);
 
 export const scheduleQuerySchema = z.object({
   channel:  z.coerce.number().int().positive().optional(),

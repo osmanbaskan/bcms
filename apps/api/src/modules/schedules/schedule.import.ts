@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { readFirstWorksheetRows } from '../../lib/excel.js';
 
 // ── Türkçe ay adları ──────────────────────────────────────────────────────────
@@ -196,7 +197,9 @@ export async function importSchedulesFromBuffer(
             title:     matchTitle,
             status:    'CONFIRMED',
             createdBy: user,
-            metadata:  { importTitle: headerTitle } as never,
+            // MED-API-010 fix (2026-05-05): `as never` tehlikeli; Prisma'nın
+            // doğru JSON tipini kullan.
+            metadata:  { importTitle: headerTitle } as Prisma.InputJsonValue,
           },
         });
       });

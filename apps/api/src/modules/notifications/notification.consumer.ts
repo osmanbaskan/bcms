@@ -32,6 +32,18 @@ export async function startNotificationConsumer(app: FastifyInstance): Promise<v
   const transport = buildTransport();
   const from = process.env.SMTP_FROM ?? 'noreply@bcms.local';
 
+  // MED-API-022 fix (2026-05-05): startup'ta transport.verify() ile SMTP
+  // erişilebilirliğini doğrula; configuration sorunu varsa runtime'da değil
+  // boot'ta görür.
+  if (transport) {
+    try {
+      await transport.verify();
+      app.log.info({ host: process.env.SMTP_HOST }, 'SMTP transport doğrulandı');
+    } catch (err) {
+      app.log.warn({ err, host: process.env.SMTP_HOST }, 'SMTP transport verify başarısız — email simülasyon moduna geçilecek');
+    }
+  }
+
   await app.rabbitmq.consume<EmailPayloadWithMeta>(QUEUES.NOTIFICATIONS_EMAIL, async (payload) => {
     if (!transport) {
       app.log.info(

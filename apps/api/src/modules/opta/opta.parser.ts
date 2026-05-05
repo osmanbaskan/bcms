@@ -84,11 +84,13 @@ function parseFilename(filename: string): { comp: string; season: string; matchI
 }
 
 function readGameAttrs(filePath: string): Record<string, string> | null {
+  // MED-API-020 fix (2026-05-05): readSync throw ederse fd leak'i; try/finally
+  // ile garantili close.
+  let fd: number | null = null;
   try {
-    const fd  = fs.openSync(filePath, 'r');
+    fd = fs.openSync(filePath, 'r');
     const buf = Buffer.alloc(1024);
     const read = fs.readSync(fd, buf, 0, 1024, 0);
-    fs.closeSync(fd);
     const chunk = buf.toString('utf-8', 0, read);
     const gameMatch = chunk.match(/<Game\s([^>]+)>/s);
     if (!gameMatch) return null;
@@ -99,6 +101,8 @@ function readGameAttrs(filePath: string): Record<string, string> | null {
     return attrs;
   } catch {
     return null;
+  } finally {
+    if (fd !== null) try { fs.closeSync(fd); } catch { /* best-effort */ }
   }
 }
 
@@ -106,17 +110,20 @@ function readGameAttrs(filePath: string): Record<string, string> | null {
 
 // srml dosyasının ilk 1 KB'ından competition_id ve competition_name oku
 function readSrmlHeader(filePath: string): { id: string; name: string; season: string } | null {
+  // MED-API-020 fix (2026-05-05): try/finally ile fd close garanti.
+  let fd: number | null = null;
   try {
-    const fd  = fs.openSync(filePath, 'r');
+    fd = fs.openSync(filePath, 'r');
     const buf = Buffer.alloc(2048);
     const read = fs.readSync(fd, buf, 0, 2048, 0);
-    fs.closeSync(fd);
     const chunk = buf.toString('utf-8', 0, read);
     const m = chunk.match(/competition_id="(\d+)"[^>]*competition_name="([^"]+)"[^>]*season_id="(\d+)"/);
     if (!m) return null;
     return { id: m[1], name: m[2], season: m[3] };
   } catch {
     return null;
+  } finally {
+    if (fd !== null) try { fs.closeSync(fd); } catch { /* best-effort */ }
   }
 }
 

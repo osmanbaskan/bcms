@@ -32,7 +32,12 @@ export const updateBookingSchema = z.object({
   completedAt: z.string().datetime().nullable().optional(),
   notes:    z.string().max(5000).optional(),
   metadata: z.record(z.unknown()).optional(),
-});
+}).refine(
+  // MED-API-006 fix (2026-05-05): UpdateBooking en az bir field değiştirmeli;
+  // boş PATCH kabul edilirse audit log boşa yazılır.
+  (value) => Object.values(value).some((v) => v !== undefined),
+  { message: 'En az bir alan güncellenmeli' },
+);
 
 export type CreateBookingDto = z.infer<typeof createBookingSchema>;
 export type UpdateBookingDto = z.infer<typeof updateBookingSchema>;

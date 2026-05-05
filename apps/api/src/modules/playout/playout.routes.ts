@@ -212,11 +212,15 @@ export async function playoutRoutes(app: FastifyInstance) {
 }
 
 // ── Yardımcı: şu anki zamanı HH:MM:SS:FF formatına çevir ─────────────────
+// MED-API-011 fix (2026-05-05): Frame rate env'den; default PAL 25fps (TR
+// yayıncılık standardı). NTSC çoğunluk pazarlarda 29.97 (drop-frame).
+const TC_FPS = Number(process.env.PLAYOUT_FPS ?? 25);
+const FRAME_DIVISOR = 1000 / TC_FPS;   // örn. 25fps → 40ms; 30fps → 33.33ms
 function tcNow(): string {
   const now = new Date();
   const h   = String(now.getHours()).padStart(2, '0');
   const m   = String(now.getMinutes()).padStart(2, '0');
   const s   = String(now.getSeconds()).padStart(2, '0');
-  const f   = String(Math.floor(now.getMilliseconds() / 40)).padStart(2, '0'); // 25fps
+  const f   = String(Math.floor(now.getMilliseconds() / FRAME_DIVISOR)).padStart(2, '0');
   return `${h}:${m}:${s}:${f}`;
 }

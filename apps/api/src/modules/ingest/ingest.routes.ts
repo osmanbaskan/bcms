@@ -28,7 +28,10 @@ const createIngestSchema = z.object({
 });
 
 const callbackSchema = z.object({
-  jobId:     z.number().int(),
+  // MED-API-007 fix (2026-05-05): jobId pozitif olmalı; 0/negatif geçerse
+  // Prisma'da `where: { id: 0 }` "not found" hatası verir ama erken validate
+  // daha doğru.
+  jobId:     z.number().int().positive(),
   status:    z.enum(['PENDING', 'PROCESSING', 'PROXY_GEN', 'QC', 'COMPLETED', 'FAILED']),
   proxyPath: z.string().optional(),
   checksum:  z.string().optional(),
@@ -394,7 +397,10 @@ export async function ingestRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.ingest.write),
     schema: { tags: ['Ingest'], summary: 'Upsert one ingest planning item state' },
   }, async (request) => {
-    const sourceKey = decodeURIComponent(request.params.sourceKey);
+    // MED-API-014 fix (2026-05-05): bozuk URI encoding'de URIError throw edilirdi → 500.
+    let sourceKey: string;
+    try { sourceKey = decodeURIComponent(request.params.sourceKey); }
+    catch { throw Object.assign(new Error('Geçersiz sourceKey kodlaması'), { statusCode: 400 }); }
     const dto = savePlanItemSchema.parse(request.body) satisfies SaveIngestPlanItemDto;
     const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'unknown';
 
@@ -531,7 +537,10 @@ export async function ingestRoutes(app: FastifyInstance) {
     preHandler: app.requireGroup(...PERMISSIONS.ingest.write),
     schema: { tags: ['Ingest'], summary: 'Delete an ingest plan item (ingest-plan source only)' },
   }, async (request, reply) => {
-    const sourceKey = decodeURIComponent(request.params.sourceKey);
+    // MED-API-014 fix (2026-05-05): bozuk URI encoding'de URIError throw edilirdi → 500.
+    let sourceKey: string;
+    try { sourceKey = decodeURIComponent(request.params.sourceKey); }
+    catch { throw Object.assign(new Error('Geçersiz sourceKey kodlaması'), { statusCode: 400 }); }
     const item = await app.prisma.ingestPlanItem.findUnique({ where: { sourceKey }, select: { sourceType: true } });
     if (!item) {
       throw Object.assign(new Error('Kayıt bulunamadı'), { statusCode: 404 });

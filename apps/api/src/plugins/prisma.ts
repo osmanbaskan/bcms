@@ -18,7 +18,10 @@ function buildDatabaseUrl(): string {
     'none';
 
   url.searchParams.set('connection_limit', isApi ? '10' : '5');
-  url.searchParams.set('pool_timeout', '20');
+  // MED-API-024 fix (2026-05-05): pool_timeout 20s çok uzundu — HTTP isteği
+  // 20sn DB bağlantısı bekleyebilirdi (rate-limit etmek mümkün ama UX kötü).
+  // 5sn'de fail-fast → request 503 alır, kullanıcı tekrar dener.
+  url.searchParams.set('pool_timeout', '5');
 
   return url.toString();
 }

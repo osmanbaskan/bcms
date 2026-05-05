@@ -116,7 +116,7 @@ export async function optaRoutes(app: FastifyInstance) {
       SELECT DISTINCT ON (l.code) l.code AS comp_id, l.name, m.season
       FROM leagues l
       JOIN matches m ON m.league_id = l.id
-      WHERE l.code = ANY(${FEATURED})
+      WHERE l.code = ANY(${FEATURED}::text[])
       ORDER BY l.code, m.season DESC
     `;
 

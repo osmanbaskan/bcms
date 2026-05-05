@@ -57,6 +57,8 @@ function validateRuntimeEnv(): void {
     throw new Error('SKIP_AUTH cannot be enabled in production');
   }
 
+  // MED-API-023 fix (2026-05-05): SMTP_HOST/PORT/FROM prod'da zorunlu
+  // (notification consumer için).
   const required = [
     'DATABASE_URL',
     'RABBITMQ_URL',
@@ -69,6 +71,9 @@ function validateRuntimeEnv(): void {
     'INGEST_CALLBACK_SECRET',
     'INGEST_ALLOWED_ROOTS',
     'OPTA_SYNC_SECRET',
+    'SMTP_HOST',
+    'SMTP_PORT',
+    'SMTP_FROM',
   ];
 
   const missing = required.filter((name) => !process.env[name]);

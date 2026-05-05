@@ -339,15 +339,26 @@ export async function usersRoutes(app: FastifyInstance) {
       throw Object.assign(new Error(`Kullanıcı oluşturulamadı: ${text}`), { statusCode: createRes.status });
     }
 
+    // MED-API-018 fix (2026-05-05): Location header validate; bozuk/eksik
+    // ise 502 ile dönü — silent split('/').pop()!  bug'ı yer ediyor.
     const location = createRes.headers.get('Location') ?? '';
-    const newId = location.split('/').pop()!;
+    const newId = location.split('/').pop() ?? '';
+    if (!newId) {
+      throw Object.assign(new Error('Keycloak Location header eksik/bozuk'), { statusCode: 502 });
+    }
 
-    // Gruplara ekle
+    // MED-API-019 fix (2026-05-05): grup ataması fail ederse compensating
+    // delete; aksi halde "yarım" kullanıcı (gruplar eksik) prod'da kalır.
     if (groups.length > 0) {
-      const groupIdMap = await getGroupIdMap();
-      for (const name of groups.filter(isBcmsGroup)) {
-        const gid = groupIdMap.get(name);
-        if (gid) await kcFetch(`/users/${newId}/groups/${gid}`, { method: 'PUT' });
+      try {
+        const groupIdMap = await getGroupIdMap();
+        for (const name of groups.filter(isBcmsGroup)) {
+          const gid = groupIdMap.get(name);
+          if (gid) await kcFetch(`/users/${newId}/groups/${gid}`, { method: 'PUT' });
+        }
+      } catch (err) {
+        await kcFetch(`/users/${newId}`, { method: 'DELETE' }).catch(() => { /* best-effort */ });
+        throw err;
       }
     }
 
