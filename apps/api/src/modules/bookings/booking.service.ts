@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { BCMS_GROUPS, GROUP, type BcmsGroup, type JwtPayload } from '@bcms/shared';
 import type { CreateBookingDto, UpdateBookingDto } from './booking.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
+import { createEnvelope } from '../outbox/outbox.types.js';
 import type { EmailPayload } from '../notifications/notification.consumer.js';
 import { readFirstWorksheetRows, rowsToObjects } from '../../lib/excel.js';
 import { kcFetch } from '../../core/keycloak-admin.client.js';
@@ -214,7 +215,7 @@ export class BookingService {
         if (!schedule) throw Object.assign(new Error('Schedule not found'), { statusCode: 404 });
       }
 
-      return tx.booking.create({
+      const created = await tx.booking.create({
         data: {
           scheduleId:  dto.scheduleId,
           requestedBy: user,
@@ -235,6 +236,39 @@ export class BookingService {
         },
         include: { team: true, schedule: { include: { channel: true } } },
       });
+
+      // Madde 2+7 PR-B2 (audit doc): Phase 2 SHADOW outbox write.
+      // Strict shadow: 1:1 BOOKING_CREATED direct publish ile. Status='published' +
+      // publishedAt → poller pick yapmaz; direct publish (tx dışında) consumer'a iletir.
+      // Phase 3'te status default 'pending', direct publish kaldırılır.
+      // "Shadow write failure is fatal inside tx" — outbox.create fail = booking yazılmaz.
+      const env = createEnvelope({
+        eventType: 'booking.created',
+        aggregateType: 'Booking',
+        aggregateId: created.id,
+        payload: {
+          bookingId:   created.id,
+          scheduleId:  created.scheduleId,
+          requestedBy: created.requestedBy,
+          userGroup:   created.userGroup,
+          status:      created.status,
+        },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          eventId:       env.eventId,
+          eventType:     env.eventType,
+          aggregateType: env.aggregateType,
+          aggregateId:   env.aggregateId,
+          schemaVersion: env.schemaVersion,
+          payload:       env.payload as Prisma.InputJsonValue,
+          occurredAt:    new Date(env.occurredAt),
+          status:        'published',
+          publishedAt:   new Date(),
+        },
+      });
+
+      return created;
     });
 
     await this.app.rabbitmq.publish(QUEUES.BOOKING_CREATED, { bookingId: booking.id, scheduleId: booking.scheduleId });
@@ -400,19 +434,61 @@ export class BookingService {
     const validRows = parsed.filter((p) => existingIds.has(p.scheduleId));
 
     // Booking create'ler tek transaction'da; her birinin ID'si lazım (RabbitMQ
-    // publish için), bu yüzden createMany yerine tx içinde ardışık create.
+    // publish için), bu yüzden createMany yerine ardışık create.
+    //
+    // Madde 2+7 PR-B2 (audit doc): array-form $transaction → interactive form
+    // refactor. Sebep: outbox shadow write her booking'in id'sine ihtiyaç duyar;
+    // array form'da create dönüşü ile sonraki promise arasında dependency
+    // kurmak mümkün değil. Interactive form sequential await ile create+outbox
+    // pair'leri tek tx'te birleştirir. Wall time hafif artar (paralel→sequential)
+    // — Phase 2'de kabul edilebilir.
     try {
-      const created = await this.app.prisma.$transaction(
-        validRows.map(({ row, scheduleId }) => this.app.prisma.booking.create({
-          data: {
-            scheduleId,
-            requestedBy: user,
-            teamId:  row['teamId']  ? Number(row['teamId'])  : undefined,
-            matchId: row['matchId'] ? Number(row['matchId']) : undefined,
-            notes:   row['notes']   ? String(row['notes'])   : undefined,
-          },
-        }))
-      );
+      const created = await this.app.prisma.$transaction(async (tx) => {
+        const rows: Array<{ id: number; scheduleId: number | null }> = [];
+        for (const { row, scheduleId } of validRows) {
+          const booking = await tx.booking.create({
+            data: {
+              scheduleId,
+              requestedBy: user,
+              teamId:  row['teamId']  ? Number(row['teamId'])  : undefined,
+              matchId: row['matchId'] ? Number(row['matchId']) : undefined,
+              notes:   row['notes']   ? String(row['notes'])   : undefined,
+            },
+          });
+
+          // Phase 2 shadow per-row outbox write (booking.created).
+          const env = createEnvelope({
+            eventType: 'booking.created',
+            aggregateType: 'Booking',
+            aggregateId: booking.id,
+            payload: {
+              bookingId:   booking.id,
+              scheduleId:  booking.scheduleId,
+              requestedBy: booking.requestedBy,
+              userGroup:   booking.userGroup,
+              status:      booking.status,
+            },
+          });
+          await tx.outboxEvent.create({
+            data: {
+              eventId:       env.eventId,
+              eventType:     env.eventType,
+              aggregateType: env.aggregateType,
+              aggregateId:   env.aggregateId,
+              schemaVersion: env.schemaVersion,
+              payload:       env.payload as Prisma.InputJsonValue,
+              occurredAt:    new Date(env.occurredAt),
+              status:        'published',
+              publishedAt:   new Date(),
+            },
+          });
+
+          rows.push({ id: booking.id, scheduleId: booking.scheduleId });
+        }
+        return rows;
+      });
+
+      // Direct publish — tx dışı, mevcut payload formatı 1:1 (Phase 2 invariant).
       for (let i = 0; i < created.length; i++) {
         await this.app.rabbitmq.publish(QUEUES.BOOKING_CREATED, {
           bookingId: created[i].id,

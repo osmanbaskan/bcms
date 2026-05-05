@@ -21,6 +21,7 @@ import { BookingService } from './booking.service.js';
 import {
   cleanupTransactional,
   createTestSchedule,
+  getRawPrisma,
   makeAppHarness,
   makeRequest,
   makeUser,
@@ -77,6 +78,21 @@ describe('BookingService — integration', () => {
     expect(created.status).toBe('PENDING');
     expect(harness.publishedEvents).toHaveLength(1);
     expect(harness.publishedEvents[0].queue).toMatch(/booking/i);
+
+    // Madde 2+7 PR-B2: Phase 2 shadow outbox row var (status='published')
+    const prisma = getRawPrisma();
+    const outboxRows = await prisma.outboxEvent.findMany({
+      where: { aggregateType: 'Booking', aggregateId: String(created.id) },
+    });
+    expect(outboxRows).toHaveLength(1);
+    const row = outboxRows[0];
+    expect(row.eventType).toBe('booking.created');
+    expect(row.status).toBe('published');
+    expect(row.publishedAt).not.toBeNull();
+    const payload = row.payload as Record<string, unknown>;
+    expect(payload.bookingId).toBe(created.id);
+    expect(payload.scheduleId).toBe(sch.id);
+    expect(payload.userGroup).toBe('Booking');
   });
 
   test('create: scheduleId mevcut değilse 404', async () => {
@@ -187,6 +203,36 @@ describe('BookingService — integration', () => {
     );
 
     expect(updated.dueDate?.toISOString().slice(0, 10)).toBe('2026-07-15');
+  });
+
+  // ── Madde 2+7 PR-B2: outbox shadow boundary guard ────────────────────────
+  // PR-B2 sadece BOOKING_CREATED → outbox shadow yazar.
+  // update()'teki NOTIFICATIONS_EMAIL publish notification domain (PR-B3 scope);
+  // bu PR'da update() outbox row YAZMAZ. Aşağıdaki test bu boundary'i sabitler.
+  test('update: outbox row YAZMAZ (notification domain PR-B3 scope)', async () => {
+    const sch = await createTestSchedule({ channelId: 1 });
+    const user = makeUser({ username: 'tester', groups: ['Booking'] });
+    const req = makeRequest(user);
+
+    const booking = await svc.create(
+      { scheduleId: sch.id, taskTitle: 'Initial', userGroup: 'Booking' },
+      req,
+    );
+    // create sonrası 1 outbox row var (booking.created)
+    const prisma = getRawPrisma();
+    const beforeUpdate = await prisma.outboxEvent.count({
+      where: { aggregateType: 'Booking', aggregateId: String(booking.id) },
+    });
+    expect(beforeUpdate).toBe(1);
+
+    // update status APPROVED — direct NOTIFICATIONS_EMAIL publish çalışır,
+    // ama outbox row eklenmez (boundary).
+    await svc.update(booking.id, { status: 'APPROVED' }, undefined, req);
+
+    const afterUpdate = await prisma.outboxEvent.count({
+      where: { aggregateType: 'Booking', aggregateId: String(booking.id) },
+    });
+    expect(afterUpdate).toBe(1); // hâlâ sadece create'in outbox row'u
   });
 });
 
