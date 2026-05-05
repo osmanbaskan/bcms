@@ -32,12 +32,12 @@
 
 **Mimari onay bekleyen 10 madde** (skip listesi sabit):
 1. AuditLog partition — **PR-1A done** (`2a8014b`); **PR-1B done** (`5811a67`); **PR-1C done** (`edd37ce`); **PR-1D monitoring next**; PR-1E (legacy cleanup) pending.
-2. DLQ topology — **Outbox/DLQ V1 scope doc done** (`c6b1c86`); **PR-A schema foundation done** (`74aff94`); PR-B/C/D pending. (Madde 7 ile birleşik program.)
+2. DLQ topology — **PR-A schema done** (`74aff94`); **PR-B1 Schedule shadow done** (`de468b5`); PR-B2 (Booking) + PR-B3 (Ingest/Notification) + PR-C (poller) + PR-D (replay) pending. (Madde 7 ile birleşik program; scope doc `c6b1c86`.)
 3. `metadata.optaMatchId` kolon promote — **PR-3A done** (`fdf319b`); transition active (dual-read/write); PR-3B deferred (metadata yazımı kaldır + opsiyonel NOT NULL).
 4. ~~`usageScope` → enum/CHECK~~ → **kapalı** (CHECK var; integration test `87d5dde`; schema.prisma /// yorum + audit doc finding 3.1.4 düzeltildi `95fe2fb`). PG enum migration **rejected/deferred unless new requirement** (CHECK yeterli kabul edildi).
 5. Schedule `channel_id NULL` live-plan (mimari karar — ayrı tablo mı?)
 6. Schedule-list 2385 satır component refactor
-7. Outbox pattern — same V1 program; **PR-A done** (`74aff94`); shadow write (PR-B) + poller (PR-C) + replay (PR-D) pending.
+7. Outbox pattern — same V1 program; **PR-B1 Schedule shadow done** (`de468b5`); PR-B2/B3 (other domains) + poller (PR-C) + replay (PR-D) pending.
 8. Backend integration test coverage — **lokal 20/20 ✅** (booking + schedule + db-constraints + optaMatchId); **CI billing blocked, not CI-validated**; audit plugin spec sonraki PR.
 9. ~~IDOR ID enumeration (UUID PK migration)~~ → **IDOR mitigation: UUID migration rejected; RBAC authorization audit/test plan required** (2026-05-04 karar — bkz aşağıda)
 10. Production secrets rotate — **current-tree mitigated** (`fa932dc` GitGuardian fix + `ops/RUNBOOK-SECRETS-ROTATION.md`); prod rotation operasyonel pending.
