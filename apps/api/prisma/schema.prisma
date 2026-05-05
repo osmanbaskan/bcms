@@ -389,8 +389,22 @@ model SignalTelemetry {
   @@map("signal_telemetry")
 }
 
+/// Madde 1 PR-1A (audit doc): declarative range partitioning by `timestamp` (monthly).
+/// Migration: 20260505000002_audit_log_partition_v1.
+/// PG kuralı: partition key tüm PK/UNIQUE constraint'lerinde olmalı → composite
+/// `(id, timestamp)` PK. Field-level `@id` KALDIRILDI; `@@id([id, timestamp])`
+/// model-level kullanıldı. Pre-flight (2026-05-05): kodda id-tek-kolon lookup
+/// yok (auditLog.findUnique by id, update, delete by id grep boş) → blast
+/// radius zero.
+///
+/// Etki: Prisma `findUnique` selector artık composite (`{ id_timestamp: { id, timestamp } }`).
+/// Mevcut kullanım: `findFirst`, `findMany`, `count`, `createMany`, `deleteMany` —
+/// hepsi composite-PK uyumlu (id-only selector yok).
+///
+/// Retention job (`audit-retention.job.ts`) PR-1B feature-detect refactor'da
+/// DROP PARTITION pattern'ine geçer; PR-1A retention'a dokunmaz.
 model AuditLog {
-  id            Int            @id @default(autoincrement())
+  id            Int            @default(autoincrement())
   entityType    String         @map("entity_type") @db.VarChar(50)
   entityId      Int            @map("entity_id")
   action        AuditLogAction
@@ -401,6 +415,7 @@ model AuditLog {
   timestamp     DateTime       @default(now()) @db.Timestamptz(6)
   deleted_at    DateTime?
 
+  @@id([id, timestamp])
   @@index([entityType, entityId])
   @@index([user])
   @@index([timestamp])
