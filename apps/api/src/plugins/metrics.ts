@@ -1,7 +1,12 @@
 import fp from 'fastify-plugin';
 import type { FastifyInstance } from 'fastify';
-import { Counter, Histogram, Registry } from 'prom-client';
+import { Counter, Gauge, Histogram, Registry } from 'prom-client';
 import { timingSafeEqual } from 'node:crypto';
+import {
+  getDefaultPartitionRows,
+  getMonthlyPartitionCount,
+  getOldestMonthlyPartitionAgeDays,
+} from '../modules/audit/audit-partition-metrics.helpers.js';
 
 /**
  * Prometheus metrics plugin (prom-client v15+).
@@ -74,6 +79,73 @@ optaLeagueSyncTotal.inc({ action: 'create' }, 0);
 optaLeagueSyncTotal.inc({ action: 'update' }, 0);
 optaLeagueSyncTotal.inc({ action: 'skip' }, 0);
 
+// Madde 1 PR-1D (audit doc): audit partition gözlemi.
+// Async collector pattern — her Prometheus scrape'te helper çalışır;
+// non-partitioned (dev/test) ortamda helper null döner → -1 sentinel set.
+// Alert ifadeleri "x >= 0 AND x < N" guard'ı ile non-prod scrape'leri skip eder.
+//
+// Log spam koruması: collect() içinde hata olursa debug log + gauge -1.
+// Kontrollü staleness yok — scrape'te taze değer.
+
+let auditPartitionPrismaProvider: (() => unknown) | null = null;
+let auditPartitionLogger: { debug: (...a: unknown[]) => void } | null = null;
+
+function setAuditPartitionContext(prismaProvider: () => unknown, logger: { debug: (...a: unknown[]) => void }): void {
+  auditPartitionPrismaProvider = prismaProvider;
+  auditPartitionLogger = logger;
+}
+
+const auditDefaultPartitionRows = new Gauge({
+  name: 'bcms_audit_default_partition_rows',
+  help: 'audit_logs_default partition row count (-1 if not partitioned)',
+  registers: [registry],
+  async collect() {
+    const provider = auditPartitionPrismaProvider;
+    if (!provider) { this.set(-1); return; }
+    try {
+      const value = await getDefaultPartitionRows(provider() as never);
+      this.set(value === null ? -1 : value);
+    } catch (err) {
+      auditPartitionLogger?.debug({ err }, 'bcms_audit_default_partition_rows collect failed');
+      this.set(-1);
+    }
+  },
+});
+
+const auditPartitionCount = new Gauge({
+  name: 'bcms_audit_partition_count',
+  help: 'audit_logs monthly partition count (-1 if not partitioned)',
+  registers: [registry],
+  async collect() {
+    const provider = auditPartitionPrismaProvider;
+    if (!provider) { this.set(-1); return; }
+    try {
+      const value = await getMonthlyPartitionCount(provider() as never);
+      this.set(value === null ? -1 : value);
+    } catch (err) {
+      auditPartitionLogger?.debug({ err }, 'bcms_audit_partition_count collect failed');
+      this.set(-1);
+    }
+  },
+});
+
+const auditOldestPartitionAgeDays = new Gauge({
+  name: 'bcms_audit_oldest_partition_age_days',
+  help: 'Oldest audit_logs monthly partition age (days from rangeStart; -1 if not partitioned). No alert (informational).',
+  registers: [registry],
+  async collect() {
+    const provider = auditPartitionPrismaProvider;
+    if (!provider) { this.set(-1); return; }
+    try {
+      const value = await getOldestMonthlyPartitionAgeDays(provider() as never);
+      this.set(value === null ? -1 : value);
+    } catch (err) {
+      auditPartitionLogger?.debug({ err }, 'bcms_audit_oldest_partition_age_days collect failed');
+      this.set(-1);
+    }
+  },
+});
+
 // ÖNEMLİ-API-1.1.20 (2026-05-04): /metrics application-layer auth.
 // nginx `deny all` external'e karşı koruyor; defense-in-depth için Docker
 // network içi compromise senaryosunu da kapatıyoruz. METRICS_TOKEN env'i
@@ -97,6 +169,11 @@ export const metricsPlugin = fp(async (app: FastifyInstance) => {
   if (!process.env.METRICS_TOKEN) {
     app.log.warn('METRICS_TOKEN env set edilmemiş; /metrics application-katmanı koruması KAPALI (nginx deny tek savunma katmanı).');
   }
+
+  // Audit partition gauge'ları için prisma erişimi sağlayan provider.
+  // Plugin scope'unda app.prisma var; collect() registry-level (module-scope)
+  // çağrılır → closure üzerinden değil, set ile inject.
+  setAuditPartitionContext(() => app.prisma, app.log);
 
   app.addHook('onRequest', (request, _reply, done) => {
     (request as unknown as { _startTime: bigint })._startTime = process.hrtime.bigint();

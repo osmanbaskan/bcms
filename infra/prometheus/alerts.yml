@@ -30,3 +30,34 @@ groups:
           summary: "OPTA league actual write rate anormal yüksek (data anomali)"
           description: "Son 1 saat içinde {{ $value }} gerçek League DB write (create+update). Normal beklenti < 200/h; üst sınır audit_logs şişmesine de neden olur."
           runbook: "BCMS_AUDIT_REPORT_2026-05-01.md HIGH-003"
+
+  # Madde 1 PR-1D (audit doc): audit partition gözlemi.
+  # Gauge -1 sentinel = non-partitioned (dev/test); alert ifadeleri "x >= 0 AND x < N"
+  # guard'ı ile non-prod scrape'leri skip eder.
+  - name: bcms_audit_partition
+    interval: 1m
+    rules:
+      - alert: BCMSAuditDefaultPartitionNonEmpty
+        # > 0 zaten -1 için tetiklenmez (defensive yorum).
+        expr: bcms_audit_default_partition_rows > 0
+        for: 2h
+        labels:
+          severity: warning
+          area: audit
+        annotations:
+          summary: "audit_logs_default partition'ında satır birikiyor (pre-create cron failure göstergesi)"
+          description: "{{ $value }} satır 2 saatten uzun süredir default partition'da. PR-1C cron çalışmıyor olabilir veya ileri partitions yetmiyor — kontrol et."
+          runbook: "ops/RUNBOOK-AUDITLOG-PARTITION-DEPLOY.md §6"
+
+      - alert: BCMSAuditPartitionPreCreateFailing
+        # -1 (non-partitioned) tetiklemesin: >= 0 guard'ı.
+        # < 4: current + 3 ileri ay window beklenir (PR-1C monthsAhead=4).
+        expr: bcms_audit_partition_count >= 0 and bcms_audit_partition_count < 4
+        for: 1h
+        labels:
+          severity: warning
+          area: audit
+        annotations:
+          summary: "Monthly partition sayısı 4'ten az (pre-create cron sorunu)"
+          description: "{{ $value }} partition. PR-1C audit-partition job'u kontrol et: container çalışıyor mu, log'lar ne diyor?"
+          runbook: "ops/REQUIREMENTS-AUDITLOG-PARTITION-V1.md PR-1C"
