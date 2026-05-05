@@ -3,6 +3,51 @@
 > **Tarih:** 2026-05-01
 > **Doğrulama:** 2026-05-04 — `BCMS_AUDIT_VERIFICATION_2026-05-04.md` raporunda 189 madde tek tek kod tabanına karşı doğrulandı. **Doğruluk oranı: %83.1 ✅, %12.2 🟡 kısmen, %2.1 ❌ yanlış, %2.1 ⚠️ flu, %0.5 🔄 outdated.** Kullanmadan önce o raporu da oku.
 > **Mod:** Tamamen Read-Only — hiçbir dosya, kod, veritabanı veya Docker durumu değiştirilmemiştir.
+
+---
+
+## 🟢 Çözüm State Tracker — 2026-05-05 Overnight Pass
+
+Bu pass'ta 43+ HIGH bulgu kapatıldı (commit'ler `git log --grep="fix(audit)"`):
+
+**🔴 CRITICAL** (önceden kapanmış 5/10):
+- ✅ CRIT-001 (Keycloak portu) — TLS internal CA refactor
+- ✅ CRIT-002 (Web 4200 portu) — TLS infra
+- ✅ CRIT-005 (Worker healthcheck) — disable kararı dökümante
+- ✅ CRIT-006 (Prometheus phantom) — 3 sahte job kaldırıldı
+- ✅ CRIT-010 (setInterval leak) — pagehide cleanup
+- 🟡 CRIT-003/004/007/008/009 hâlâ açık (büyük refactor)
+
+**🟠 HIGH** — 43+ kapatıldı:
+
+| Domain | ID'ler | Durum |
+|--------|--------|-------|
+| API validation | 001, 008, 009, 011, 019 | ✅ commit `1c7098b` |
+| API race/timeout | 012, 016, 018 | ✅ commit `d5f60d2` |
+| API atomicity | 002, 003, 005, 006 | ✅ commit `2bd7c4c` |
+| API caching | 013, 014, 015 | ✅ commit `42e0d19` |
+| API misc | 007, 010, 017 | ✅ commits `d449243`, `fe86278` |
+| Frontend safety | 001, 002, 007, 008, 009, 011 | ✅ commits `fc477cc`, `ed3960a` |
+| Frontend FE | 003, 005, 006, 010 | ✅ commits `a96cadd`, `fae808c` |
+| Infra cleanup | 002, 009, 010, 011, 012, 013, 014, 015, 017, 019, 020 | ✅ commits `07c6d54`, `bf15aa9`, `153574b` |
+| Shared types | 001, 002, 003, 005, 006, 007 | ✅ commits `fc477cc`, `2109898` |
+
+**⏸ Skip edilenler** (mimari karar gerekli, kullanıcı onayı bekliyor):
+- HIGH-API-004 (audit onSend phantom-write)
+- HIGH-FE-004 (::ng-deep deprecation, geniş CSS refactor)
+- HIGH-INF-001 (resource limits — host kapasitesi bilgisi gerek)
+- HIGH-INF-003 (KC_HTTP_ENABLED=false — TLS internal değişikliği)
+- HIGH-INF-004 (container TLS — büyük altyapı)
+- HIGH-INF-005 (off-host backup — destination kararı)
+- HIGH-INF-006 (PgBouncer — mimari)
+- HIGH-INF-007 (PITR archive_mode — mimari)
+- HIGH-INF-008 (mailhog → real SMTP — credential)
+- HIGH-INF-016 (Keycloak 25/26 upgrade — risk + network)
+- HIGH-INF-018 (CI secrets — GitHub Secrets erişimi)
+
+**Hedef:** Bu skip listesini PR onaylarıyla sonraki pass'larda kapat.
+
+
 > **Kapsam:**
 > - `apps/api/src` (~50+ TS dosya, Prisma schema, 27 migration)
 > - `apps/web/src` (~62+ TS/HTML/SCSS dosya, Angular 21)
