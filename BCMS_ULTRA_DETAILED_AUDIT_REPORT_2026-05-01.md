@@ -8,7 +8,8 @@
 
 ## 🟢 Çözüm State Tracker — 2026-05-05 Overnight Pass
 
-Bu pass'ta 43+ HIGH bulgu kapatıldı (commit'ler `git log --grep="fix(audit)"`):
+**Toplam:** ~75 audit ID kapatıldı (HIGH 45+ + MEDIUM 20+ + LOW 12+).
+`git log --grep="fix(audit)"` ile commit'lerin tam listesi.
 
 **🔴 CRITICAL** (önceden kapanmış 5/10):
 - ✅ CRIT-001 (Keycloak portu) — TLS internal CA refactor
@@ -32,20 +33,32 @@ Bu pass'ta 43+ HIGH bulgu kapatıldı (commit'ler `git log --grep="fix(audit)"`)
 | Infra cleanup | 002, 009, 010, 011, 012, 013, 014, 015, 017, 019, 020 | ✅ commits `07c6d54`, `bf15aa9`, `153574b` |
 | Shared types | 001, 002, 003, 005, 006, 007 | ✅ commits `fc477cc`, `2109898` |
 
-**⏸ Skip edilenler** (mimari karar gerekli, kullanıcı onayı bekliyor):
-- HIGH-API-004 (audit onSend phantom-write)
-- HIGH-FE-004 (::ng-deep deprecation, geniş CSS refactor)
-- HIGH-INF-001 (resource limits — host kapasitesi bilgisi gerek)
-- HIGH-INF-003 (KC_HTTP_ENABLED=false — TLS internal değişikliği)
-- HIGH-INF-004 (container TLS — büyük altyapı)
-- HIGH-INF-005 (off-host backup — destination kararı)
-- HIGH-INF-006 (PgBouncer — mimari)
-- HIGH-INF-007 (PITR archive_mode — mimari)
-- HIGH-INF-008 (mailhog → real SMTP — credential)
-- HIGH-INF-016 (Keycloak 25/26 upgrade — risk + network)
-- HIGH-INF-018 (CI secrets — GitHub Secrets erişimi)
+**🟡 MEDIUM kapatılanlar (20+):**
 
-**Hedef:** Bu skip listesini PR onaylarıyla sonraki pass'larda kapat.
+| Domain | ID'ler |
+|--------|--------|
+| API | 004, 005, 006, 007, 008, 009, 010, 011, 014, 015, 016, 018, 019, 020, 021, 022, 023, 024, 025 |
+| FE | 001, 005, 010, 011 |
+| INF | 001, 002, 004, 008 |
+| SHARED | 002, 003, 004, 005 (006/007 HIGH ile çözüldü) |
+
+**🟢 LOW kapatılanlar (12+):**
+
+| Domain | ID'ler |
+|--------|--------|
+| API | 006, 007, 008, 009, 010, 011, 014, 016, 017, 018, 019, 020, 022 |
+| FE | 003, 004, 005 |
+| INF | 004, 005, 006 |
+
+**⏸ Skip edilenler** (mimari/onay gerekli):
+- HIGH-API-004, HIGH-FE-004, HIGH-INF-001/003/004/005/006/007/008/016/018
+- MED-API-001/002/012/013/017, MED-FE-002/003/006/007/008/009/012/017,
+  MED-INF-003/005/006/007, MED-SHARED-001/007
+- LOW false-positives (FE-008, API-021, FE-015) raporda işaretli
+- LOW kalan: çoğu kasıtlı veya defer (FE-001/002 CSS refactor, FE-007 stub
+  component, FE-009/010 minor, INF-002/003/007 dev-only, API-013/015/023-026)
+
+**Hedef:** Skip listesi sonraki PR onaylarıyla kapanır.
 
 
 > **Kapsam:**
