@@ -1,0 +1,9 @@
+# HIGH-INF-012 fix (2026-05-05): Prometheus basic auth.
+# Container-to-container erişim ve host loopback erişimi de auth ister; metric
+# leak (audit IP, schedule status detayları, runtime config) engellenir.
+#
+# Kullanıcı: admin
+# Şifre: production'da `htpasswd -nbBC 10 admin <strong-pw>` ile gerçek hash üret.
+# Bu placeholder hash şifreyi 'changeme_prom' yapar — env'le override edilebilir.
+basic_auth_users:
+  admin: $2b$10$M.NYCJI4209bcEX8OxqXNOMWIhgDcR7IctAbGi5PqlT3RPtan6xeC

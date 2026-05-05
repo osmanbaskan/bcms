@@ -5,3 +5,11 @@ datasources:
     access: proxy
     url: http://prometheus:9090
     isDefault: true
+    # HIGH-INF-012 fix (2026-05-05): Prometheus artık basic auth ister.
+    # Production'da admin şifresini `htpasswd -nbBC 10 admin <pw>` ile güncel
+    # tut ve hem prometheus/web-config.yml'e hem buradaki basicAuthPassword'a
+    # aynı şifreyi yansıt.
+    basicAuth: true
+    basicAuthUser: admin
+    secureJsonData:
+      basicAuthPassword: changeme_prom

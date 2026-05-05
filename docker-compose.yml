@@ -333,12 +333,18 @@ services:
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml
+      # HIGH-INF-012 fix (2026-05-05): basic auth web config
+      - ./infra/prometheus/web-config.yml:/etc/prometheus/web-config.yml
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.config.file=/etc/prometheus/web-config.yml'
       - '--storage.tsdb.retention.time=30d'
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:9090/-/ready || exit 1"]
+      # HIGH-INF-012: Prometheus basic auth aktif; busybox wget --password
+      # desteklemiyor. Authorization header ile basic auth gönder.
+      # echo -n 'admin:changeme_prom' | base64 → 'YWRtaW46Y2hhbmdlbWVfcHJvbQ=='
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider --header='Authorization: Basic YWRtaW46Y2hhbmdlbWVfcHJvbQ==' http://127.0.0.1:9090/-/ready || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
