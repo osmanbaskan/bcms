@@ -32,7 +32,16 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
+// ORTA-API-1.5.7 fix (2026-05-04): proxy dir absolute path warning.
+// Relative path './tmp/proxies' worker container restart sonrası volume mount
+// yoksa proxy file'lar kayıp olur. Absolute path zorunlu (production'da
+// PROXY_OUTPUT_DIR env'i bind-mount edilmiş volume'a yönelmeli).
 const PROXY_OUTPUT_DIR = process.env.PROXY_OUTPUT_DIR ?? './tmp/proxies';
+if (!path.isAbsolute(PROXY_OUTPUT_DIR)) {
+  // Boot anında uyar; throw etmiyoruz çünkü dev/test'te relative kullanılabilir.
+  // eslint-disable-next-line no-console
+  console.warn(`[ingest.worker] PROXY_OUTPUT_DIR relative path ('${PROXY_OUTPUT_DIR}'); production'da absolute + persistent volume kullanın.`);
+}
 
 interface IngestMessage {
   jobId:      number;

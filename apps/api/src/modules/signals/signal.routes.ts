@@ -100,6 +100,15 @@ export async function signalRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const dto = submitSchema.parse(request.body);
 
+    // ORTA-API hijyen (2026-05-04): channel existence pre-check.
+    // Foreign key violation P2003 yerine açık 404 — UI hata mesajı net.
+    const ch = await app.prisma.channel.findUnique({
+      where: { id: dto.channelId },
+      select: { id: true, active: true },
+    });
+    if (!ch) throw Object.assign(new Error('Channel bulunamadı'), { statusCode: 404 });
+    if (!ch.active) throw Object.assign(new Error('Channel pasif — telemetri kabul edilmiyor'), { statusCode: 409 });
+
     const record = await app.prisma.signalTelemetry.create({ data: dto });
 
     // DEGRADED veya LOST ise otomatik incident oluştur (ORTA-API-1.9.5: dedup'lu)

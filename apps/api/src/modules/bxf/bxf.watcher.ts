@@ -27,10 +27,19 @@ function loadProcessed(): Record<string, number> {
   }
 }
 
+// ORTA-API-1.7.1 fix (2026-05-04): atomic write — write tmp file + rename.
+// Eski hâl: writeFileSync direkt PROCESSED_FILE'a yazıyordu; concurrent BXF
+// event'i veya crash anında dosya yarı yazılı kalabilirdi (corrupt JSON).
+// rename() POSIX'te atomic; partial write durumunda eski dosya korunur.
 function saveProcessed(map: Record<string, number>): void {
+  const tmp = `${PROCESSED_FILE}.${process.pid}.tmp`;
   try {
-    fs.writeFileSync(PROCESSED_FILE, JSON.stringify(map));
-  } catch { /* sessiz hata */ }
+    fs.writeFileSync(tmp, JSON.stringify(map));
+    fs.renameSync(tmp, PROCESSED_FILE);
+  } catch {
+    // Fail durumunda tmp'i temizle — corrupt artefact bırakma.
+    try { fs.unlinkSync(tmp); } catch { /* yok say */ }
+  }
 }
 
 // ── Ana watcher ───────────────────────────────────────────────────────────────

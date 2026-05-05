@@ -34,10 +34,14 @@ export function readSmbConfig(): SmbConfig {
 
 export function writeSmbConfig(cfg: SmbConfig): void {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+  // ORTA-API-1.8.9 fix (2026-05-04): writeFileSync mode option dosya zaten
+  // varsa override etmiyor — defansif chmodSync ile eski mode'u sıkıştır.
+  try { fs.chmodSync(CONFIG_PATH, 0o600); } catch { /* best-effort */ }
   writeCredFile(cfg);
 }
 
 function writeCredFile(cfg: SmbConfig): void {
   const content = `username=${cfg.username}\npassword=${cfg.password}\ndomain=${cfg.domain}\n`;
   fs.writeFileSync(CRED_PATH, content, { mode: 0o600 });
+  try { fs.chmodSync(CRED_PATH, 0o600); } catch { /* best-effort */ }
 }

@@ -258,6 +258,26 @@ export class BookingService {
       throw Object.assign(new Error('Sorumlu kullanıcı seçme yetkiniz yok'), { statusCode: 403 });
     }
 
+    // ORTA-API hijyen (2026-05-04): status transition validation.
+    // Geçerli geçişler: PENDING → APPROVED|REJECTED|CANCELLED, geri dönüşler
+    // engellenir (audit trail bütünlüğü için). APPROVED/REJECTED terminal
+    // sayılır; sadece Admin ya da CANCELLED'e yeniden geçişle değiştirilebilir.
+    if (dto.status && dto.status !== existing.status) {
+      const VALID_TRANSITIONS: Record<string, string[]> = {
+        PENDING:   ['APPROVED', 'REJECTED', 'CANCELLED'],
+        APPROVED:  ['CANCELLED'],
+        REJECTED:  ['PENDING'],   // Geri açma izni
+        CANCELLED: ['PENDING'],   // Reaktive
+      };
+      const allowed = VALID_TRANSITIONS[existing.status] ?? [];
+      if (!allowed.includes(dto.status)) {
+        throw Object.assign(
+          new Error(`Geçersiz durum geçişi: ${existing.status} → ${dto.status}`),
+          { statusCode: 409 },
+        );
+      }
+    }
+
     const data: Prisma.BookingUpdateManyMutationInput = {
       ...(dto.status   && { status: dto.status }),
       ...(dto.taskTitle !== undefined && { taskTitle: dto.taskTitle }),

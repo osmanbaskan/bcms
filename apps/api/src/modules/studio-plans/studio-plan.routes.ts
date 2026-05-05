@@ -326,6 +326,35 @@ export async function studioPlanRoutes(app: FastifyInstance) {
 
     const weekStartDate = parseDate(weekStart);
     const saved = await app.prisma.$transaction(async (tx) => {
+      // ORTA-API (2026-05-04): catalog cross-ref. Slot'ların program/color
+      // değerleri studio_plan_programs/colors kataloğunda olmalı; aksi halde
+      // UI'da "tanınmayan renk" → grayscale fallback. Boot'ta tx içinde
+      // catalog'u tek seferde alıp set ile O(1) kontrol.
+      if (dto.slots.length > 0) {
+        const [programs, colors] = await Promise.all([
+          tx.studioPlanProgram.findMany({ where: { active: true }, select: { name: true } }),
+          tx.studioPlanColor.findMany({ where: { active: true }, select: { value: true } }),
+        ]);
+        const programSet = new Set(programs.map((p) => p.name));
+        const colorSet = new Set(colors.map((c) => c.value));
+        const unknownPrograms: string[] = [];
+        const unknownColors: string[] = [];
+        for (const slot of dto.slots) {
+          if (!programSet.has(slot.program)) unknownPrograms.push(slot.program);
+          if (!colorSet.has(slot.color)) unknownColors.push(slot.color);
+        }
+        if (unknownPrograms.length > 0 || unknownColors.length > 0) {
+          throw Object.assign(
+            new Error('Slot katalog dışı program veya renk içeriyor'),
+            {
+              statusCode: 400,
+              unknownPrograms: [...new Set(unknownPrograms)],
+              unknownColors: [...new Set(unknownColors)],
+            },
+          );
+        }
+      }
+
       const plan = await tx.studioPlan.upsert({
         where: { weekStart: weekStartDate },
         update: {

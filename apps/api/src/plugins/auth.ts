@@ -141,6 +141,11 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
     }
   });
 
+  // DÜŞÜK-API-1.1.11 (2026-05-04): naming subtle.
+  // requireGroup() (no args) → "any authenticated user" (sadece auth zorunlu).
+  // requireGroup(...groups) → grup üyeliği zorunlu + Admin bypass.
+  // İsim eski + CLAUDE.md'de bu şekilde dokümante; yeniden adlandırma çağrı
+  // yerlerini etkiler (ileri refactor PR'ı). Yorum ile semantiği netleştir.
   app.decorate('requireGroup', (...groups: BcmsGroup[]) => async (request: FastifyRequest) => {
     await app.authenticate(request);
     if (groups.length === 0) return; // no group restriction — any authenticated user
