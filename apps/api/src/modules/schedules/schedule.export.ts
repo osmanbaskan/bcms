@@ -39,7 +39,7 @@ export interface ExportOptions {
 export async function exportSchedulesToStream(
   app: FastifyInstance,
   opts: ExportOptions,
-): Promise<PassThrough> {
+): Promise<Buffer> {
   const { from, to, channelId, league, season, week, title, usage = 'broadcast' } = opts;
 
   const schedules = await app.prisma.schedule.findMany({
@@ -90,9 +90,9 @@ export async function exportSchedulesToStream(
   sheet.getRow(1).font = { bold: true, size: 14 };
   sheet.getRow(2).font = { bold: true };
 
-  const stream = new PassThrough();
-  workbook.xlsx.write(stream).then(() => stream.end()).catch((err) => stream.destroy(err));
-  return stream;
+  // HIGH-API-017 fix (2026-05-05): buffer-based; write hatası caller'da 500'e döner.
+  const arr = await workbook.xlsx.writeBuffer();
+  return Buffer.from(arr);
 }
 
 function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' | 'league' | 'season' | 'week' | 'usage'>): Prisma.ScheduleWhereInput {

@@ -364,12 +364,14 @@ export async function ingestRoutes(app: FastifyInstance) {
       totalRow.font = { bold: true };
     }
 
-    const stream = new PassThrough();
-    workbook.xlsx.write(stream).then(() => stream.end()).catch((err) => stream.destroy(err));
+    // HIGH-API-017 fix (2026-05-05): xlsx.write awaitlenmiyordu; eğer
+    // serileştirme sırasında throw olursa client yarım dosya alır ve hatayı
+    // göremezdiк. Buffer'a yaz, errors handler-level try/catch'te yakalar.
+    const buffer = await workbook.xlsx.writeBuffer();
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="ingest-report_${from}_${to}.xlsx"`)
-      .send(stream);
+      .send(Buffer.from(buffer));
   });
 
   // GET /api/v1/ingest/plan?date=YYYY-MM-DD — Ingest departmanı plan satırı durumları

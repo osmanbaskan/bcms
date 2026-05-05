@@ -265,7 +265,8 @@ function shiftCellExcel(cell: { startTime?: string | null; endTime?: string | nu
 
 }
 
-async function exportWeeklyShiftToStream(plan: Awaited<ReturnType<typeof buildWeeklyShiftPlan>>) {
+// HIGH-API-017 fix (2026-05-05): isim aslında Buffer dönüyor; rename + buffer çıktı.
+async function exportWeeklyShiftToBuffer(plan: Awaited<ReturnType<typeof buildWeeklyShiftPlan>>): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'BCMS';
   workbook.created = new Date();
@@ -368,9 +369,8 @@ async function exportWeeklyShiftToStream(plan: Awaited<ReturnType<typeof buildWe
     sheet.views = [{ state: 'frozen', xSplit: 1, ySplit: 3 }];
   }
 
-  const stream = new PassThrough();
-  void workbook.xlsx.write(stream).then(() => stream.end()).catch((err) => stream.destroy(err));
-  return stream;
+  const arr = await workbook.xlsx.writeBuffer();
+  return Buffer.from(arr);
 }
 
 export async function weeklyShiftRoutes(app: FastifyInstance) {
@@ -391,11 +391,11 @@ export async function weeklyShiftRoutes(app: FastifyInstance) {
     const q = request.query as { weekStart?: string };
     const weekStart = q.weekStart?.match(/^\d{4}-\d{2}-\d{2}$/) ? q.weekStart : mondayOf();
     const plan = await buildWeeklyShiftPlan(app, request, weekStart);
-    const stream = await exportWeeklyShiftToStream(plan);
+    const buffer = await exportWeeklyShiftToBuffer(plan);
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="weekly-shift_${weekStart}.xlsx"`)
-      .send(stream);
+      .send(buffer);
   });
 
   app.put<{ Params: { group: string }; Body: { weekStart: string; assignments: ShiftInput[] } }>('/:group', {

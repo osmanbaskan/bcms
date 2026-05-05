@@ -258,12 +258,12 @@ export async function studioPlanRoutes(app: FastifyInstance) {
     const totalRow = sheet.addRow(['', 'TOPLAM', '', totalSlots, totalMins, fmtHours(totalMins), '', '']);
     totalRow.font = { bold: true };
 
-    const stream = new PassThrough();
-    workbook.xlsx.write(stream).then(() => stream.end()).catch((err) => stream.destroy(err));
+    // HIGH-API-017 fix (2026-05-05): buffer-based output → write hatası 500'de.
+    const buffer = await workbook.xlsx.writeBuffer();
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="studio-usage_${from}_${to}.xlsx"`)
-      .send(stream);
+      .send(Buffer.from(buffer));
   });
 
   app.get('/catalog', {
