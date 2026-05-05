@@ -15,6 +15,7 @@ import { MatTableModule } from '@angular/material/table';
 import { inject } from '@angular/core';
 import { KeycloakService } from 'keycloak-angular';
 import { environment } from '../../../../environments/environment';
+import { isSkipAuthAllowed } from '../../../core/auth/skip-auth';
 
 import { ApiService } from '../../../core/services/api.service';
 import { GROUP } from '@bcms/shared';
@@ -476,7 +477,7 @@ export class BookingListComponent implements OnInit {
   }
 
   private loadIdentity(): void {
-    if (environment.skipAuth) {
+    if (isSkipAuthAllowed()) {
       this.username.set('dev-admin');
       this.isAdmin.set(true);
       return;

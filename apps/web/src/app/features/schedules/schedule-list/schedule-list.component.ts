@@ -3,6 +3,7 @@ import {
 } from '@angular/core';
 import { KeycloakService } from 'keycloak-angular';
 import { environment } from '../../../../environments/environment';
+import { isSkipAuthAllowed } from '../../../core/auth/skip-auth';
 import { forkJoin } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -2140,7 +2141,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.clockTimer = setInterval(() => this.currentTime.set(Date.now()), 60_000);
-    if (environment.skipAuth) {
+    if (isSkipAuthAllowed()) {
       this._userGroups.set([GROUP.SystemEng]);
     } else {
       const parsed = this.keycloak.getKeycloakInstance().tokenParsed as BcmsTokenParsed | undefined;

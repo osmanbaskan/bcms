@@ -10,7 +10,7 @@ import { filter } from 'rxjs/operators';
 
 import { KeycloakService } from 'keycloak-angular';
 import type { KeycloakTokenParsed } from 'keycloak-js';
-import { environment } from '../environments/environment';
+import { isSkipAuthAllowed } from './core/auth/skip-auth';
 import { getPublicAppOrigin } from './core/auth/public-origin';
 import { GROUP } from '@bcms/shared';
 import { AlertPopoverComponent, AlertItem } from './core/ui/alert-popover.component';
@@ -629,7 +629,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.alertsOpen.set(false);
       });
 
-    if (environment.skipAuth) {
+    if (isSkipAuthAllowed()) {
       this.username = 'dev-admin';
       this.userGroups.set([GROUP.SystemEng]);
       return;
@@ -662,7 +662,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   logout() {
-    if (environment.skipAuth) return;
+    if (isSkipAuthAllowed()) return;
     this.keycloak.logout(getPublicAppOrigin());
   }
 }

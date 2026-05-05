@@ -270,9 +270,10 @@ export async function buildApp() {
   app.get('/health', { schema: { hide: true }, config: { rateLimit: false } }, async (_req, reply) => {
     const checks: Record<string, 'ok' | 'degraded'> = {};
 
-    // Database
+    // Database — MED-INF-004 fix (2026-05-05): findFirst typed query; sadece
+    // bir row LIMIT 1, count(*) full scan'i tetiklemez. Healthcheck ucuz.
     try {
-      await app.prisma.$queryRaw`SELECT 1`;
+      await app.prisma.auditLog.findFirst({ select: { id: true } });
       checks.database = 'ok';
     } catch {
       checks.database = 'degraded';
