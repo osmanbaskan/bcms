@@ -31,7 +31,7 @@
 | 13 | `bd10c20` | API catalog cache + booking date consistency + HttpError class |
 
 **Mimari onay bekleyen 10 madde** (skip listesi sabit):
-1. AuditLog partition (DB migration + retention strateji) — design doc bekliyor [next]
+1. AuditLog partition — **PR-1A done** (`2a8014b`); **PR-1B retention feature-detect next**; PR-1C (cron) + PR-1D (monitoring) + PR-1E (legacy cleanup) pending.
 2. DLQ topology (RabbitMQ — interim retry policy uygulandı)
 3. `metadata.optaMatchId` kolon promote — **PR-3A done** (`fdf319b`); transition active (dual-read/write); PR-3B deferred (metadata yazımı kaldır + opsiyonel NOT NULL).
 4. ~~`usageScope` → enum/CHECK~~ → **kapalı** (CHECK var; integration test `87d5dde`; schema.prisma /// yorum + audit doc finding 3.1.4 düzeltildi `95fe2fb`). PG enum migration **rejected/deferred unless new requirement** (CHECK yeterli kabul edildi).
