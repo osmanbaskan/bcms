@@ -39,10 +39,25 @@
 6. Schedule-list 2385 satır component refactor
 7. Outbox pattern (transactional event publish)
 8. Backend integration test coverage
-9. IDOR ID enumeration (UUID PK migration)
+9. ~~IDOR ID enumeration (UUID PK migration)~~ → **IDOR mitigation: UUID migration rejected; RBAC authorization audit/test plan required** (2026-05-04 karar — bkz aşağıda)
 10. Production secrets rotate (Prometheus, Grafana — operasyonel)
 
 `apps/api` lint + `apps/web` build her commit öncesi doğrulandı.
+
+### Madde 9 Karar Notu (2026-05-04)
+
+**Karar**: UUID PK migration **yapılmayacak**. Madde 9 "closed" değil — *scope değişti*.
+
+**Yeni iş kalemi**: IDOR mitigation = RBAC authorization audit + endpoint authz tests.
+
+**Rationale** (kısa):
+- BCMS internal app (~10-50 kullanıcı, on-prem); external-facing API yok.
+- Int → UUID migration tüm FK'leri etkiler, index size 4×, URL ergonomics bozulur, test/regression yüzeyi büyük → **yüksek risk / düşük ROI** bu context'te.
+- Asıl IDOR riski PK predictability'den çok her endpoint'in **authz davranışı** (Tekyon kullanıcısı YayınPlanlama'nın schedule'larını görebilir mi, vb.) → RBAC endpoint audit + cross-tenant leak fuzz test çok daha **yüksek ROI**.
+
+**Sonraki PR şekli** (defer): `ops/REQUIREMENTS-RBAC-AUTHORIZATION-AUDIT.md` — her endpoint için authz matrix, integration test'lerle enforcement, fuzz test plan. UUID migration tartışması bu doc'ta gömülü kalır (red kararı + gerekçe).
+
+> **Skip listesi etkisi**: Madde 9 listede kalır, **wording değişti** ("migration rejected, converted to RBAC audit"). "Risk bitti" değil, "çözüm yolu değişti".
 
 ---
 
