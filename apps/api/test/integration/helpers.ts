@@ -63,6 +63,33 @@ export async function cleanupTransactional(): Promise<void> {
 }
 
 /**
+ * Madde 4 interim helper (2026-05-04):
+ * Schema.prisma'da CHECK constraint yok (Prisma 5 native desteği yok); production
+ * migration `20260422000002_schedule_usage_scope_constraint` ile uygulanır.
+ *
+ * Test DB'si `db push --force-reset` ile sync edildiği için migration'lar
+ * tüketilmiyor — CHECK constraint manuel reapply edilir.
+ *
+ * Idempotent: DROP IF EXISTS + ADD; ikinci çalıştırmada hata vermez (CI re-run,
+ * lokal watch mode, vb. senaryolar).
+ *
+ * Madde 1 (migration baseline) sonrası bu helper kaldırılır — migrate reset
+ * production migration'ları doğal olarak uygular.
+ */
+export async function applyTestConstraints(): Promise<void> {
+  const prisma = getRawPrisma();
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "schedules"
+    DROP CONSTRAINT IF EXISTS "schedules_usage_scope_check"
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "schedules"
+    ADD CONSTRAINT "schedules_usage_scope_check"
+    CHECK ("usage_scope" IN ('broadcast', 'live-plan'))
+  `);
+}
+
+/**
  * Minimal seed — channels, broadcast_types, leagues. Booking spec için yeterli.
  * Idempotent: zaten varsa skip eder (CI'da migrate reset sonrası çalışır).
  */

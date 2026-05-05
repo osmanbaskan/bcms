@@ -99,6 +99,11 @@ model Schedule {
   broadcastTypeId  Int?            @map("broadcast_type_id")
   matchId          Int?            @map("match_id")
   status           ScheduleStatus  @default(DRAFT)
+  /// DB seviyesinde CHECK constraint: usage_scope IN ('broadcast', 'live-plan').
+  /// Migration: 20260422000002_schedule_usage_scope_constraint.
+  /// Prisma 5 native CHECK desteklemediği için bu yorum drift uyarısı görevi yapar.
+  /// Yeni değer eklemek için: önce ALTER TABLE migration, sonra bu yorumu güncelle.
+  /// Ek koruma katmanı: zod ScheduleUsageScopeEnum (`schedule.schema.ts`).
   usageScope       String          @default("broadcast") @map("usage_scope") @db.VarChar(30)
   reportLeague     String?         @map("report_league") @db.VarChar(200)
   reportSeason     String?         @map("report_season") @db.VarChar(30)

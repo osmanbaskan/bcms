@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll } from 'vitest';
-import { disconnectPrisma, seedTestFixtures } from './helpers.js';
+import { applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
 
 /**
  * Hybrid setup:
@@ -51,6 +51,10 @@ beforeAll(async () => {
     env: { ...process.env, DATABASE_URL: databaseUrl },
     stdio: 'inherit',
   });
+
+  // Madde 4 interim: production CHECK constraint'i manuel reapply.
+  // (db push schema.prisma'dan oluşturuyor; CHECK schema'da yok.)
+  await applyTestConstraints();
 
   // Minimal seed
   await seedTestFixtures();
