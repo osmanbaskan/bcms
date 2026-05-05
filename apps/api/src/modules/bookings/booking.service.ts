@@ -318,24 +318,46 @@ export class BookingService {
 
     const result: ImportResult = { created: 0, skipped: 0, errors: [] };
 
+    // MED-API-021 fix (2026-05-05): N satır × 1 findUnique + 1 create = 2N
+    // round-trip. Önce tüm valid scheduleId'leri tek query ile validate et,
+    // sonra geçerli row'ları toplu işle.
+    type Parsed = { rowNum: number; scheduleId: number; row: Record<string, unknown> };
+    const parsed: Parsed[] = [];
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const rowNum = i + 2;
-
       const scheduleId = Number(row['scheduleId'] ?? row['schedule_id']);
       if (!scheduleId || isNaN(scheduleId)) {
         result.errors.push({ row: rowNum, reason: 'scheduleId eksik veya geçersiz' });
         continue;
       }
+      parsed.push({ rowNum, scheduleId, row });
+    }
 
-      const schedule = await this.app.prisma.schedule.findUnique({ where: { id: scheduleId } });
-      if (!schedule) {
-        result.errors.push({ row: rowNum, reason: `scheduleId=${scheduleId} bulunamadı` });
-        continue;
+    if (parsed.length === 0) return result;
+
+    // Schedule existence: tek IN query
+    const ids = Array.from(new Set(parsed.map((p) => p.scheduleId)));
+    const existing = await this.app.prisma.schedule.findMany({
+      where: { id: { in: ids } },
+      select: { id: true },
+    });
+    const existingIds = new Set(existing.map((s) => s.id));
+
+    // Eksik schedule'ları errors'a yaz
+    for (const p of parsed) {
+      if (!existingIds.has(p.scheduleId)) {
+        result.errors.push({ row: p.rowNum, reason: `scheduleId=${p.scheduleId} bulunamadı` });
       }
+    }
 
-      try {
-        const booking = await this.app.prisma.booking.create({
+    const validRows = parsed.filter((p) => existingIds.has(p.scheduleId));
+
+    // Booking create'ler tek transaction'da; her birinin ID'si lazım (RabbitMQ
+    // publish için), bu yüzden createMany yerine tx içinde ardışık create.
+    try {
+      const created = await this.app.prisma.$transaction(
+        validRows.map(({ row, scheduleId }) => this.app.prisma.booking.create({
           data: {
             scheduleId,
             requestedBy: user,
@@ -343,12 +365,17 @@ export class BookingService {
             matchId: row['matchId'] ? Number(row['matchId']) : undefined,
             notes:   row['notes']   ? String(row['notes'])   : undefined,
           },
+        }))
+      );
+      for (let i = 0; i < created.length; i++) {
+        await this.app.rabbitmq.publish(QUEUES.BOOKING_CREATED, {
+          bookingId: created[i].id,
+          scheduleId: validRows[i].scheduleId,
         });
-        await this.app.rabbitmq.publish(QUEUES.BOOKING_CREATED, { bookingId: booking.id, scheduleId });
         result.created++;
-      } catch (err) {
-        result.errors.push({ row: rowNum, reason: (err as Error).message });
       }
+    } catch (err) {
+      result.errors.push({ row: 0, reason: `Toplu işlem başarısız: ${(err as Error).message}` });
     }
 
     return result;

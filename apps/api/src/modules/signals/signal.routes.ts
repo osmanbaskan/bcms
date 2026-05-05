@@ -53,10 +53,14 @@ export async function signalRoutes(app: FastifyInstance) {
     const channelId = z.coerce.number().int().positive().parse(request.params.channelId);
     const since = new Date(Date.now() - 60 * 60 * 1000);
 
+    // MED-API-008 fix (2026-05-05): take cap dinamik. Default 1 okuma/10sn,
+    // ama daha hızlı sample rate'te overflow ediyor. Hard upper bound 1500
+    // (1 saat × 25 saniyede bir = 144, 5sn = 720, 2.5sn = 1440 — pratikteki
+    // tüm rates için yeterli). DB cost: 1500 row × ~200 byte = ~300KB/req.
     return app.prisma.signalTelemetry.findMany({
       where: { channelId, measuredAt: { gte: since } },
       orderBy: { measuredAt: 'asc' },
-      take: 360, // max 1 okuma/10 sn → 360 kayıt
+      take: 1500,
     });
   });
 

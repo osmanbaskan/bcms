@@ -545,6 +545,14 @@ export async function ingestRoutes(app: FastifyInstance) {
     if (!item) {
       throw Object.assign(new Error('Kayıt bulunamadı'), { statusCode: 404 });
     }
+    // MED-API-015 fix (2026-05-05): yorumda "ingest-plan source only" yazıyordu
+    // ama kontrol yoktu. studio/live source'larını delete'ten koru.
+    if (item.sourceType !== 'ingest-plan' && item.sourceType !== 'manual') {
+      throw Object.assign(
+        new Error(`'${item.sourceType}' kaynak tipindeki kayıt manuel silinemez (cascade ile yönetilir)`),
+        { statusCode: 409 },
+      );
+    }
     await app.prisma.ingestPlanItem.delete({ where: { sourceKey } });
     reply.code(204).send();
   });

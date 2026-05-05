@@ -142,7 +142,15 @@ async function createRabbitMQClient(url: string, logger: FastifyInstance['log'])
 
 export const rabbitmqPlugin = fp(async (app: FastifyInstance) => {
   const url = process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672';
-  const optional = process.env.RABBITMQ_OPTIONAL === 'true' || process.env.NODE_ENV !== 'production';
+  // MED-API-025 fix (2026-05-05): production'da `RABBITMQ_OPTIONAL=true` env'i
+  // tanınır ama default false; non-production sadece dev/test'te otomatik
+  // optional. Eski kod prod'da bile NODE_ENV!=='production' kontrolü ile
+  // optional olabilirdi (NODE_ENV unset ise) — şimdi explicit.
+  const isProduction = process.env.NODE_ENV === 'production';
+  const optional =
+    isProduction
+      ? process.env.RABBITMQ_OPTIONAL === 'true'
+      : true;   // dev/test'te varsayılan optional (entegrasyon için)
 
   try {
     const client = await createRabbitMQClient(url, app.log);
@@ -150,11 +158,12 @@ export const rabbitmqPlugin = fp(async (app: FastifyInstance) => {
     app.addHook('onClose', async () => { await client.close(); });
   } catch (err) {
     if (!optional) {
-      app.log.error({ err }, 'Failed to connect to RabbitMQ');
+      // FATAL: prod'da RabbitMQ optional değilse hard fail.
+      app.log.fatal({ err }, 'RabbitMQ bağlantısı başarısız (production, RABBITMQ_OPTIONAL!=true) — boot abort');
       throw err;
     }
 
-    app.log.error({ err }, 'Failed to connect to RabbitMQ — messages will be lost');
+    app.log.error({ err }, 'RabbitMQ bağlantısı başarısız — messages drop ediliyor (optional mode)');
     app.decorate('rabbitmq', {
       isConnected: () => false,
       publish:  async () => { app.log.warn('RabbitMQ unavailable, message dropped'); },
