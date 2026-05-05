@@ -283,8 +283,8 @@ export async function ingestRoutes(app: FastifyInstance) {
     const items = await app.prisma.ingestPlanItem.findMany({
       where: {
         dayDate: {
-          gte: parseDate(dateSchema.parse(from)),
-          lte: parseDate(dateSchema.parse(to)),
+          gte: parseDate(from),
+          lte: parseDate(to),
         },
       },
       include: PLAN_ITEM_INCLUDE,
@@ -308,8 +308,8 @@ export async function ingestRoutes(app: FastifyInstance) {
     const items = await app.prisma.ingestPlanItem.findMany({
       where: {
         dayDate: {
-          gte: parseDate(dateSchema.parse(from)),
-          lte: parseDate(dateSchema.parse(to)),
+          gte: parseDate(from),
+          lte: parseDate(to),
         },
       },
       include: PLAN_ITEM_INCLUDE,

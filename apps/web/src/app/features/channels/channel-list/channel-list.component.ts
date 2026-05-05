@@ -4,6 +4,7 @@ import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { ApiService } from '../../../core/services/api.service';
 import type { Channel } from '@bcms/shared';
@@ -11,7 +12,7 @@ import type { Channel } from '@bcms/shared';
 @Component({
   selector: 'app-channel-list',
   standalone: true,
-  imports: [CommonModule, MatTableModule, MatButtonModule, MatIconModule, MatChipsModule],
+  imports: [CommonModule, MatTableModule, MatButtonModule, MatIconModule, MatChipsModule, MatSnackBarModule],
   template: `
     <div class="page-container">
       <h1>Kanallar</h1>
@@ -36,11 +37,15 @@ import type { Channel } from '@bcms/shared';
 })
 export class ChannelListComponent implements OnInit {
   channels = signal<Channel[]>([]);
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, private snack: MatSnackBar) {}
   ngOnInit() {
     this.api.get<Channel[]>('/channels').subscribe({
       next: (ch) => this.channels.set(ch),
-      error: () => this.channels.set([]),
+      // LOW-FE-005 fix (2026-05-05): hata sessizce yutulmasın; kullanıcı bildirsin.
+      error: () => {
+        this.channels.set([]);
+        this.snack.open('Kanal listesi yüklenemedi', 'Kapat', { duration: 4000 });
+      },
     });
   }
 }

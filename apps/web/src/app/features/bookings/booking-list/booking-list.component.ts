@@ -408,7 +408,8 @@ export class BookingListComponent implements OnInit {
   selectedGroup = '';
   displayedColumns = ['taskTitle', 'userGroup', 'requestedBy', 'status', 'dates', 'assignee', 'actions'];
 
-  readonly visibleGroups = computed(() => this.groups());
+  // LOW-FE-003 fix (2026-05-05): visibleGroups gereksizdi — groups() doğrudan
+  // kullanılıyor.
 
   ngOnInit(): void {
     this.loadIdentity();

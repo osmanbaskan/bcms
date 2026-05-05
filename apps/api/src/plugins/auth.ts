@@ -2,7 +2,7 @@ import fp from 'fastify-plugin';
 import jwt from '@fastify/jwt';
 import jwksRsa from 'jwks-rsa';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { JwtPayload, BcmsGroup } from '@bcms/shared';
+import { GROUP, type JwtPayload, type BcmsGroup } from '@bcms/shared';
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
@@ -17,11 +17,12 @@ declare module 'fastify' {
   }
 }
 
+// LOW-API-010 fix (2026-05-05): hardcoded 'SystemEng' string yerine GROUP const.
 const DEV_USER: JwtPayload = {
   sub:                'dev-admin',
   preferred_username: 'dev-admin',
   email:              'dev@bcms.local',
-  groups:             ['SystemEng'],
+  groups:             [GROUP.SystemEng],
   iat: 0,
   exp: 9999999999,
 };
@@ -32,8 +33,10 @@ type TokenClaims = JwtPayload & {
   azp?: string;
 };
 
+// LOW-API-009 fix (2026-05-05): 'Admin' literal yerine GROUP.Admin (CLAUDE.md
+// "no hardcoded group strings").
 function isAdminPrincipal(claims: Pick<JwtPayload, 'groups'>): boolean {
-  return claims.groups?.includes('Admin') ?? false;
+  return claims.groups?.includes(GROUP.Admin) ?? false;
 }
 
 function hasAudience(claims: TokenClaims, clientIds: string[]): boolean {

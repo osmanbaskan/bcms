@@ -206,7 +206,13 @@ export async function buildApp() {
     max: 300,
     timeWindow: '1 minute',
     skipOnError: false,
-    keyGenerator: (req) => req.headers['x-real-ip'] as string ?? req.ip,
+    // LOW-API-011 fix (2026-05-05): x-real-ip header bazı proxy'lerde array
+    // olarak gelebilir; ilk değeri al.
+    keyGenerator: (req) => {
+      const realIp = req.headers['x-real-ip'];
+      if (Array.isArray(realIp)) return realIp[0] ?? req.ip;
+      return realIp ?? req.ip;
+    },
     errorResponseBuilder: (_req, context) => ({
       statusCode: 429,
       error: 'Too Many Requests',

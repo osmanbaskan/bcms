@@ -111,7 +111,9 @@ export async function signalRoutes(app: FastifyInstance) {
     const records = await Promise.all(channels.map(async (ch) => {
       const signalDb  = +(Math.random() * 10 + 55).toFixed(1);   // 55–65 dBm
       const snr       = +(Math.random() * 8 + 22).toFixed(1);    // 22–30 dB
-      const ber       = +(Math.random() * 1e-6).toExponential(2) as unknown as number;
+      // LOW-API-022 fix (2026-05-05): cast'lere gerek yok; +(toExponential(2))
+      // zaten number döner.
+      const ber       = +(Math.random() * 1e-6).toExponential(2);
       const audioLufs = +(Math.random() * 6 - 23).toFixed(1);    // -23 ± 3 LUFS
       const status    = signalDb < 57 ? 'DEGRADED' : 'OK';
 

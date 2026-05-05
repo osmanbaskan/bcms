@@ -296,10 +296,8 @@ export class BookingService {
     return updated;
   }
 
-  async remove(id: number) {
-    await this.findById(id);
-    await this.app.prisma.booking.delete({ where: { id } });
-  }
+  // LOW-API-008 fix (2026-05-05): unused method silindi (remove(id)). Tüm
+  // delete çağrıları removeForRequest üzerinden yetki kontrolüyle yapılır.
 
   async removeForRequest(id: number, request: FastifyRequest) {
     const claims = request.user as JwtPayload;

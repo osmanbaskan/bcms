@@ -114,7 +114,7 @@ services:
       KC_SPI_THEME_CACHE_THEMES: ${KC_SPI_THEME_CACHE_THEMES:-false}
       KC_SPI_THEME_CACHE_TEMPLATES: ${KC_SPI_THEME_CACHE_TEMPLATES:-false}
     volumes:
-      - ./infra/keycloak:/opt/keycloak/data/import
+      - ./infra/keycloak:/opt/keycloak/data/import:ro
       # Custom theme — sadece beinport subdir mount edilir (built-in themes overshadow olmasın).
       - ./infra/keycloak/themes/beinport:/opt/keycloak/themes/beinport:ro
     # Ports kaldırıldı (audit CRIT-001): Keycloak dış ağa bind edilmez.
@@ -331,10 +331,10 @@ services:
     restart: unless-stopped
     logging: *default-logging
     volumes:
-      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       # HIGH-INF-012 fix (2026-05-05): basic auth web config
-      - ./infra/prometheus/web-config.yml:/etc/prometheus/web-config.yml
+      - ./infra/prometheus/web-config.yml:/etc/prometheus/web-config.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
