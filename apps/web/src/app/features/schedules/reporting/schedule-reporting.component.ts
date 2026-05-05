@@ -1,4 +1,5 @@
 import { CommonModule, DatePipe } from '@angular/common';
+import { environment } from '../../../../environments/environment';
 import { Component, Injectable, Inject, Optional, OnInit, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -832,8 +833,8 @@ export class ScheduleReportingComponent implements OnInit {
     const [fromDate, toDate] = range;
     return {
       ...base,
-      from: new Date(`${fromDate}T00:00:00+03:00`).toISOString(),
-      to:   new Date(`${toDate}T23:59:59+03:00`).toISOString(),
+      from: new Date(`${fromDate}T00:00:00${environment.utcOffset}`).toISOString(),
+      to:   new Date(`${toDate}T23:59:59${environment.utcOffset}`).toISOString(),
       ...(this.selectedLeague ? { league: this.selectedLeague } : {}),
     };
   }

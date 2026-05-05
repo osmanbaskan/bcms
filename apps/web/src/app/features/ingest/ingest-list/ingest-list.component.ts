@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
+import { environment } from '../../../../environments/environment';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
@@ -1074,8 +1075,8 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   loadPortBoardData(dateValue: string) {
     this.portBoardLoadError.set(null);
-    const from = new Date(`${dateValue}T00:00:00+03:00`).toISOString();
-    const to = new Date(`${dateValue}T23:59:59+03:00`).toISOString();
+    const from = new Date(`${dateValue}T00:00:00${environment.utcOffset}`).toISOString();
+    const to = new Date(`${dateValue}T23:59:59${environment.utcOffset}`).toISOString();
     this.api.get<PaginatedResponse<Schedule>>('/schedules/ingest-candidates', { from, to, page: 1, pageSize: 200 }).subscribe({
       next: (res) => this.portBoardLivePlan.set(res.data ?? []),
       error: () => this.portBoardLoadError.set('Canlı yayın planı yüklenemedi'),
@@ -1217,8 +1218,8 @@ export class IngestListComponent implements OnInit, OnDestroy {
   }
 
   loadLivePlanCandidates() {
-    const from = new Date(`${this.livePlanDate}T00:00:00+03:00`).toISOString();
-    const to = new Date(`${this.livePlanDate}T23:59:59+03:00`).toISOString();
+    const from = new Date(`${this.livePlanDate}T00:00:00${environment.utcOffset}`).toISOString();
+    const to = new Date(`${this.livePlanDate}T23:59:59${environment.utcOffset}`).toISOString();
     const params: Record<string, string | number> = {
       from,
       to,

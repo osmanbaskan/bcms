@@ -2236,8 +2236,8 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
 
   load() {
     this.loading.set(true);
-    const from = new Date(`${this.selectedDate}T00:00:00+03:00`).toISOString();
-    const to   = new Date(`${this.selectedDate}T23:59:59+03:00`).toISOString();
+    const from = new Date(`${this.selectedDate}T00:00:00${environment.utcOffset}`).toISOString();
+    const to   = new Date(`${this.selectedDate}T23:59:59${environment.utcOffset}`).toISOString();
 
     const params: ScheduleFilter = { from, to, page: this.page, pageSize: this.pageSize, usage: 'live-plan' };
 

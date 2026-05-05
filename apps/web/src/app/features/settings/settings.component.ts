@@ -76,9 +76,11 @@ interface SmbConfig {
 
               <mat-form-field>
                 <mat-label>Şifre</mat-label>
-                <input matInput [(ngModel)]="cfg.password"
+                <!-- HIGH-FE-006: cfg.password yerine ephemeral newPassword'a bağlı -->
+                <input matInput [(ngModel)]="newPassword" [ngModelOptions]="{standalone:true}"
                        [type]="showPass ? 'text' : 'password'"
-                       autocomplete="new-password">
+                       autocomplete="new-password"
+                       [placeholder]="cfg.password === '********' ? 'Mevcut şifre değişmesin' : ''">
                 <button matSuffix mat-icon-button type="button"
                         (click)="showPass = !showPass">
                   <mat-icon>{{ showPass ? 'visibility_off' : 'visibility' }}</mat-icon>
@@ -176,6 +178,12 @@ interface SmbConfig {
 })
 export class SettingsComponent implements OnInit {
   cfg: SmbConfig = { share: '', mountPoint: '', subdir: '', username: '', password: '', domain: '' };
+  /** HIGH-FE-006 fix (2026-05-05): SMB password component state'te plaintext
+   *  durmasın — ayrı `newPassword` ephemeral input. cfg.password ekrana
+   *  '********' placeholder olarak yansır, gerçek değer asla state'te bulunmaz.
+   *  Kullanıcı şifre değiştirmek için newPassword'e girer; submit sonrası alan
+   *  temizlenir, Angular DevTools'ta artakalan plaintext yok. */
+  newPassword = '';
   loading = signal(true);
   saving  = signal(false);
   portsLoading = signal(true);
@@ -187,7 +195,12 @@ export class SettingsComponent implements OnInit {
 
   ngOnInit() {
     this.api.get<SmbConfig>('/opta/smb-config').subscribe({
-      next:  (c) => { this.cfg = c; this.loading.set(false); },
+      next:  (c) => {
+        // Backend zaten password alanını '********' veya boş döner; defansif
+        // olarak biz de mask ile state'e koy.
+        this.cfg = { ...c, password: c.password ? '********' : '' };
+        this.loading.set(false);
+      },
       error: ()  => { this.loading.set(false); },
     });
     this.loadPorts();
@@ -195,21 +208,23 @@ export class SettingsComponent implements OnInit {
 
   save() {
     this.saving.set(true);
-    const payload = { ...this.cfg };
-    if (payload.password === '********') {
-      delete (payload as Partial<typeof payload>).password;
+    const payload: Partial<SmbConfig> = { ...this.cfg };
+    delete payload.password;   // mask değer asla gönderilmez
+    if (this.newPassword.trim()) {
+      payload.password = this.newPassword;   // sadece kullanıcı yeni girdiyse
     }
     this.api.post('/opta/smb-config', payload).subscribe({
       next: () => {
         this.saving.set(false);
         this.snack.open('Ayarlar kaydedildi', 'Tamam', { duration: 3000 });
-        // Şifreyi tekrar maskele
-        if (this.cfg.password && this.cfg.password !== '********') {
+        if (this.newPassword) {
           this.cfg.password = '********';
+          this.newPassword = '';     // ephemeral alan temizlenir
         }
       },
       error: () => {
         this.saving.set(false);
+        this.newPassword = '';       // hata da olsa plaintext'i temizle
         this.snack.open('Kayıt başarısız', 'Kapat', { duration: 4000 });
       },
     });
