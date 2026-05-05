@@ -23,7 +23,12 @@ export const createBookingSchema = z.object({
   metadata:   bookingMetadataSchema.optional(),
 }).refine((value) => Boolean(value.scheduleId || value.taskTitle), {
   message: 'scheduleId veya taskTitle zorunludur',
-});
+}).refine(
+  // ORTA-API hijyen (2026-05-04): startDate ≤ dueDate consistency.
+  // İkisi de verilmiş ise startDate dueDate'ten sonra olamaz.
+  (v) => !v.startDate || !v.dueDate || v.startDate <= v.dueDate,
+  { message: 'startDate dueDate\'den sonra olamaz', path: ['dueDate'] },
+);
 
 export const updateBookingSchema = z.object({
   status:   z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(),
@@ -42,6 +47,10 @@ export const updateBookingSchema = z.object({
   // boş PATCH kabul edilirse audit log boşa yazılır.
   (value) => Object.values(value).some((v) => v !== undefined),
   { message: 'En az bir alan güncellenmeli' },
+).refine(
+  // ORTA-API hijyen: startDate ≤ dueDate consistency (update'te de).
+  (v) => !v.startDate || !v.dueDate || v.startDate <= v.dueDate,
+  { message: 'startDate dueDate\'den sonra olamaz', path: ['dueDate'] },
 );
 
 export type CreateBookingDto = z.infer<typeof createBookingSchema>;
