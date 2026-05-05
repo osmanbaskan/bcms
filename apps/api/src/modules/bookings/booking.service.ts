@@ -258,6 +258,25 @@ export class BookingService {
       throw Object.assign(new Error('Sorumlu kullanıcı seçme yetkiniz yok'), { statusCode: 403 });
     }
 
+    // ORTA-API hijyen (2026-05-04): merge-aware date consistency.
+    // Schema-level .refine() yalnızca dto'da iki alan da varsa kontrol ediyor;
+    // sadece dueDate gönderilirse existing.startDate ile çakışma kaçabilir.
+    // Burada DB'deki existing değerleriyle merge edip etkili tarihleri kontrol et.
+    const effectiveStart =
+      dto.startDate === undefined ? existing.startDate
+      : dto.startDate === null    ? null
+      : parseDateOnly(dto.startDate) ?? null;
+    const effectiveDue =
+      dto.dueDate === undefined ? existing.dueDate
+      : dto.dueDate === null    ? null
+      : parseDateOnly(dto.dueDate) ?? null;
+    if (effectiveStart && effectiveDue && effectiveStart > effectiveDue) {
+      throw Object.assign(
+        new Error('startDate dueDate\'den sonra olamaz'),
+        { statusCode: 400 },
+      );
+    }
+
     // ORTA-API hijyen (2026-05-04): status transition validation.
     // Geçerli geçişler: PENDING → APPROVED|REJECTED|CANCELLED, geri dönüşler
     // engellenir (audit trail bütünlüğü için). APPROVED/REJECTED terminal
