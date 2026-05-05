@@ -14,14 +14,14 @@ const updateSchema = z.object({
 
 export async function broadcastTypeRoutes(app: FastifyInstance) {
   app.get('/', {
-    preHandler: app.requireGroup(...PERMISSIONS.channels.read),
+    preHandler: app.requireGroup(...PERMISSIONS.broadcastTypes.read),
     schema: { tags: ['BroadcastTypes'], summary: 'Tüm yayın tiplerini listele' },
   }, async () => {
     return app.prisma.broadcastType.findMany({ orderBy: { code: 'asc' } });
   });
 
   app.get<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireGroup(...PERMISSIONS.channels.read),
+    preHandler: app.requireGroup(...PERMISSIONS.broadcastTypes.read),
     schema: { tags: ['BroadcastTypes'], summary: 'Yayın tipi detayı' },
   }, async (request) => {
     const bt = await app.prisma.broadcastType.findUnique({ where: { id: z.coerce.number().int().positive().parse(request.params.id) } });
@@ -30,7 +30,7 @@ export async function broadcastTypeRoutes(app: FastifyInstance) {
   });
 
   app.post('/', {
-    preHandler: app.requireGroup(...PERMISSIONS.channels.write),
+    preHandler: app.requireGroup(...PERMISSIONS.broadcastTypes.write),
     schema: { tags: ['BroadcastTypes'], summary: 'Yeni yayın tipi oluştur' },
   }, async (request, reply) => {
     const dto = createSchema.parse(request.body);
@@ -39,7 +39,7 @@ export async function broadcastTypeRoutes(app: FastifyInstance) {
   });
 
   app.patch<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireGroup(...PERMISSIONS.channels.write),
+    preHandler: app.requireGroup(...PERMISSIONS.broadcastTypes.write),
     schema: { tags: ['BroadcastTypes'], summary: 'Yayın tipini güncelle' },
   }, async (request) => {
     const id  = z.coerce.number().int().positive().parse(request.params.id);
@@ -52,7 +52,7 @@ export async function broadcastTypeRoutes(app: FastifyInstance) {
   });
 
   app.delete<{ Params: { id: string } }>('/:id', {
-    preHandler: app.requireGroup(...PERMISSIONS.channels.delete),
+    preHandler: app.requireGroup(...PERMISSIONS.broadcastTypes.delete),
     schema: { tags: ['BroadcastTypes'], summary: 'Yayın tipini sil' },
   }, async (request, reply) => {
     const id = z.coerce.number().int().positive().parse(request.params.id);

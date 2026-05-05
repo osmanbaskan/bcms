@@ -107,4 +107,23 @@ export const PERMISSIONS = {
     write: [] as BcmsGroup[],
     admin: ['Admin'] as BcmsGroup[],                       // "tüm grupları gör" yetkisi sadece Admin'de
   },
+  /** HIGH-SHARED-006 fix (2026-05-05): Önceden eksik domain'ler. Route'larda
+   *  `PERMISSIONS.auditLogs.read` ve `PERMISSIONS.channels.*` borç alınıyordu
+   *  — yanlış semantik. Artık her domain kendi permission'larıyla. */
+  users: {
+    /** Admin panel'in kullanıcı listesini görme + grup üyeliği değiştirme */
+    read:   ['SystemEng'] as BcmsGroup[],                  // Admin auto-bypass
+    write:  ['SystemEng'] as BcmsGroup[],
+    delete: ['SystemEng'] as BcmsGroup[],
+  },
+  broadcastTypes: {
+    /** Yayın tipi katalog yönetimi (kanal yapılandırma seviyesinde) */
+    read:   [] as BcmsGroup[],                              // tüm authenticated görür (form select için)
+    write:  ['Admin'] as BcmsGroup[],                       // sadece Admin düzenler
+    delete: ['Admin'] as BcmsGroup[],
+  },
+  opta: {
+    /** OPTA fixture/lig listesi okuma (schedule form'da kullanılır) */
+    read: [] as BcmsGroup[],
+  },
 } as const;

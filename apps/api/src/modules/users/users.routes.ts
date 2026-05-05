@@ -153,7 +153,7 @@ export async function usersRoutes(app: FastifyInstance) {
 
   // GET /api/v1/users
   app.get('/', {
-    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
+    preHandler: app.requireGroup(...PERMISSIONS.users.read),
     schema: { tags: ['Users'], summary: 'Keycloak kullanıcı listesi' },
   }, async () => {
     const users = await kcFetch<any[]>('/users?max=200');
@@ -188,13 +188,13 @@ export async function usersRoutes(app: FastifyInstance) {
 
   // GET /api/v1/users/groups  — atanabilir grup listesi
   app.get('/groups', {
-    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
+    preHandler: app.requireGroup(...PERMISSIONS.users.read),
     schema: { tags: ['Users'], summary: 'Atanabilir grup listesi' },
   }, async () => BCMS_GROUPS);
 
   // PUT /api/v1/users/:id/groups  — grupları güncelle
   app.put<{ Params: { id: string }; Body: { groups: string[] } }>('/:id/groups', {
-    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
+    preHandler: app.requireGroup(...PERMISSIONS.users.write),
     schema: {
       tags: ['Users'],
       summary: 'Kullanıcı gruplarını güncelle',
@@ -222,7 +222,7 @@ export async function usersRoutes(app: FastifyInstance) {
       password?: string;
     };
   }>('/:id', {
-    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
+    preHandler: app.requireGroup(...PERMISSIONS.users.write),
     schema: {
       tags: ['Users'],
       summary: 'Kullanıcı bilgilerini güncelle',
@@ -279,7 +279,7 @@ export async function usersRoutes(app: FastifyInstance) {
 
   // PATCH /api/v1/users/:id/enabled  — aktif/pasif
   app.patch<{ Params: { id: string }; Body: { enabled: boolean } }>('/:id/enabled', {
-    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
+    preHandler: app.requireGroup(...PERMISSIONS.users.write),
     schema: {
       tags: ['Users'],
       params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
@@ -295,7 +295,7 @@ export async function usersRoutes(app: FastifyInstance) {
   app.post<{
     Body: { username: string; email: string; firstName?: string; lastName?: string; password: string; userType?: UserType; groups: string[] };
   }>('/', {
-    preHandler: app.requireGroup(...PERMISSIONS.auditLogs.read),
+    preHandler: app.requireGroup(...PERMISSIONS.users.write),
     schema: {
       tags: ['Users'],
       summary: 'Yeni kullanıcı oluştur',
