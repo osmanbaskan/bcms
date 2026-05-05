@@ -245,7 +245,76 @@ describe('ScheduleService — integration', () => {
     expect(broadcastResult.total).toBe(2);
     expect(broadcastResult.data.every((s) => s.usageScope === 'broadcast')).toBe(true);
   });
-});
 
-// suppress unused import lint if any
-void getRawPrisma;
+  // ── Madde 2+7 PR-B: Phase 2 shadow outbox write ──────────────────────────
+  // Invariant: outbox row status='published' + publishedAt; direct publish
+  // (harness.publishedEvents) AYNEN devam ediyor. Phase 3'te direct publish
+  // kaldırılır + status default 'pending'e döner.
+  // Bilinen kör nokta: DB commit OK + direct publish fail → outbox 'published'
+  // kalır ama event consumer'a ulaşmaz. Phase 3 (poller) bu kör noktayı kapatır.
+  // "Shadow write failure is fatal inside tx" — outbox.create fail = transaction
+  // rollback = schedule de yazılmaz; PR-B'de kabul edilen davranış.
+
+  test('create: outbox shadow row yazılır (status=published, eventType=schedule.created)', async () => {
+    const user = makeUser({ username: 'tester', groups: ['Booking'] });
+    const req = makeRequest(user);
+    const created = await svc.create(
+      { channelId: 1, startTime: isoStart, endTime: isoEnd, title: 'Outbox shadow test', usageScope: 'broadcast' },
+      req,
+    );
+
+    // Direct publish hâlâ çalışıyor (Phase 2 invariant)
+    expect(harness.publishedEvents.length).toBe(1);
+    expect(harness.publishedEvents[0].queue).toMatch(/schedule.*created/i);
+
+    // Outbox shadow row var
+    const prisma = getRawPrisma();
+    const outboxRows = await prisma.outboxEvent.findMany({
+      where: { aggregateType: 'Schedule', aggregateId: String(created.id) },
+    });
+    expect(outboxRows).toHaveLength(1);
+    const row = outboxRows[0];
+    expect(row.eventType).toBe('schedule.created');
+    expect(row.status).toBe('published');
+    expect(row.publishedAt).not.toBeNull();
+    expect(row.attempts).toBe(0);
+    const payload = row.payload as Record<string, unknown>;
+    expect(payload.scheduleId).toBe(created.id);
+    expect(payload.title).toBe('Outbox shadow test');
+    expect(payload.version).toBe(created.version);
+  });
+
+  test('update: outbox shadow row yazılır (eventType=schedule.updated, payload.operation=update)', async () => {
+    const user = makeUser({ username: 'tester', groups: ['Booking'] });
+    const req = makeRequest(user);
+    const created = await svc.create(
+      { channelId: 1, startTime: isoStart, endTime: isoEnd, title: 'Initial', usageScope: 'broadcast' },
+      req,
+    );
+    // create direct publish + create outbox row var (Phase 2 invariant)
+    const prisma = getRawPrisma();
+    const beforeUpdate = await prisma.outboxEvent.count({
+      where: { aggregateType: 'Schedule', aggregateId: String(created.id) },
+    });
+    expect(beforeUpdate).toBe(1);
+
+    const updated = await svc.update(created.id, { title: 'Updated' }, created.version, req);
+
+    // Direct update publish çalıştı
+    expect(harness.publishedEvents.some((e) => /schedule.*updated/i.test(e.queue))).toBe(true);
+
+    // Outbox row eklendi (toplam 2: create + update)
+    const afterUpdate = await prisma.outboxEvent.findMany({
+      where: { aggregateType: 'Schedule', aggregateId: String(created.id) },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(afterUpdate).toHaveLength(2);
+    const updateRow = afterUpdate[1];
+    expect(updateRow.eventType).toBe('schedule.updated');
+    expect(updateRow.status).toBe('published');
+    const payload = updateRow.payload as Record<string, unknown>;
+    expect(payload.operation).toBe('update');
+    expect(payload.scheduleId).toBe(created.id);
+    expect(payload.version).toBe(updated.version);
+  });
+});

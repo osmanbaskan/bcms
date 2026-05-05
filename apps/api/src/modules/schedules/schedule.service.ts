@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { Prisma } from '@prisma/client';
 import type { CreateScheduleDto, UpdateScheduleDto, ScheduleQuery } from './schedule.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
+import { createEnvelope } from '../outbox/outbox.types.js';
 
 export const LIVE_PLAN_SOURCE = 'live-plan';
 const SERIALIZABLE_RETRIES = 3;
@@ -208,7 +209,7 @@ export class ScheduleService {
         return dto.metadata;
       })();
 
-      return tx.schedule.create({
+      const created = await tx.schedule.create({
         data: {
           channelId:       dto.channelId,
           startTime:       new Date(dto.startTime),
@@ -224,6 +225,44 @@ export class ScheduleService {
         },
         include: { channel: true },
       });
+
+      // Madde 2+7 PR-B (audit doc): Phase 2 SHADOW outbox write.
+      // Status='published' + publishedAt=now: poller pick yapmaz; direct
+      // publish (transaction dışında, aşağıda) consumer'a teslim eder.
+      // Phase 3 cut-over'da status='pending' default + direct publish kaldır.
+      //
+      // Transaction içinde: DB commit fail → ne schedule ne outbox yazılır.
+      // Bilinen kör nokta: DB commit OK + direct publish fail → outbox 'published'
+      // kalır ama event consumer'a ulaşmaz. Phase 3 (poller) bu kör noktayı kapatır.
+      // Outbox write failure transaction'ı fail eder ("shadow write failure
+      // is fatal inside tx"); Phase 2'de API davranışı farkı: kabul edilebilir.
+      const createEnv = createEnvelope({
+        eventType: 'schedule.created',
+        aggregateType: 'Schedule',
+        aggregateId: created.id,
+        payload: {
+          scheduleId: created.id,
+          channelId: created.channelId,
+          startTime: created.startTime.toISOString(),
+          title: created.title,
+          version: created.version,
+        },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          eventId:       createEnv.eventId,
+          eventType:     createEnv.eventType,
+          aggregateType: createEnv.aggregateType,
+          aggregateId:   createEnv.aggregateId,
+          schemaVersion: createEnv.schemaVersion,
+          payload:       createEnv.payload as Prisma.InputJsonValue,
+          occurredAt:    new Date(createEnv.occurredAt),
+          status:        'published',
+          publishedAt:   new Date(),
+        },
+      });
+
+      return created;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
 
     await this.app.rabbitmq.publish(QUEUES.SCHEDULE_CREATED, {
@@ -335,10 +374,44 @@ export class ScheduleService {
         throw Object.assign(new Error('Schedule version conflict'), { statusCode: ifMatchVersion !== undefined ? 412 : 404 });
       }
 
-      return tx.schedule.findUniqueOrThrow({
+      const refreshed = await tx.schedule.findUniqueOrThrow({
         where: { id },
         include: { channel: true },
       });
+
+      // Madde 2+7 PR-B (audit doc): Phase 2 SHADOW outbox write (update path).
+      // Aynı kural: status='published' + publishedAt=now → poller pick yapmaz.
+      // Payload minimal but sufficient (kullanıcı guard 2): operation='update' +
+      // sık değişen kritik alanlar (changedFields hesabı scope creep — defer).
+      const updateEnv = createEnvelope({
+        eventType: 'schedule.updated',
+        aggregateType: 'Schedule',
+        aggregateId: refreshed.id,
+        payload: {
+          scheduleId: refreshed.id,
+          version:    refreshed.version,
+          operation:  'update' as const,
+          channelId:  refreshed.channelId,
+          startTime:  refreshed.startTime.toISOString(),
+          endTime:    refreshed.endTime.toISOString(),
+          status:     refreshed.status,
+        },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          eventId:       updateEnv.eventId,
+          eventType:     updateEnv.eventType,
+          aggregateType: updateEnv.aggregateType,
+          aggregateId:   updateEnv.aggregateId,
+          schemaVersion: updateEnv.schemaVersion,
+          payload:       updateEnv.payload as Prisma.InputJsonValue,
+          occurredAt:    new Date(updateEnv.occurredAt),
+          status:        'published',
+          publishedAt:   new Date(),
+        },
+      });
+
+      return refreshed;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
 
     await this.app.rabbitmq.publish(QUEUES.SCHEDULE_UPDATED, {
