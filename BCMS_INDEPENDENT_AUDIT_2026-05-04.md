@@ -11,7 +11,7 @@
 
 ## 0a. Çözüm State Tracker (2026-05-04 sonrası overnight pass)
 
-14 commit batch ile **~135 bulgu** kapatıldı (`git log --grep="audit-batch\|secrets" --since="2026-05-04 22:00"`).
+12 numbered audit batch + GitGuardian secrets fix + follow-up state-sync commit'leri ile **~135 bulgu** (audit doc tracker bazlı) kapatıldı. Kanıt için: `git log --grep="audit-batch\|secrets" --since="2026-05-04 22:00"`.
 
 | Batch | Commit | Kapsam |
 | ----- | ------ | ------ |
