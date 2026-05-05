@@ -2,6 +2,7 @@ import {
   Component, HostListener, OnDestroy, OnInit, signal, computed, inject,
 } from '@angular/core';
 import { KeycloakService } from 'keycloak-angular';
+import { ActivatedRoute, Router } from '@angular/router';
 import { environment } from '../../../../environments/environment';
 import { isSkipAuthAllowed } from '../../../core/auth/skip-auth';
 import { forkJoin } from 'rxjs';
@@ -2138,6 +2139,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   pageSize = 100;
   page     = 1;
   private clockTimer?: ReturnType<typeof setInterval>;
+  private routeSub?: { unsubscribe: () => void };
 
   ngOnInit() {
     this.clockTimer = setInterval(() => this.currentTime.set(Date.now()), 60_000);
@@ -2155,10 +2157,28 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
       next: (res) => this.channels.set(Array.isArray(res) ? res : []),
     });
     this.load();
+
+    // DÜŞÜK-FE-2.8.4 fix (2026-05-04): app.component openNewBroadcast()
+    // /schedules?new=1 ile yönlendiriyor; param görünürse Add dialog'u
+    // otomatik aç (kullanıcı için tek-tık yeni plan akışı).
+    const route = inject(ActivatedRoute);
+    const router = inject(Router);
+    const sub = route.queryParamMap.subscribe((params) => {
+      if (params.get('new') === '1' && this.canAdd()) {
+        // Param'ı temizle (refresh'te tekrar açmasın), sonra dialog aç.
+        router.navigate([], { queryParams: { new: null }, queryParamsHandling: 'merge', replaceUrl: true });
+        setTimeout(() => this.openAddDialog(), 0);
+      }
+    });
+    // Subscription'ı destroy'da unsubscribe etmeye gerek yok — queryParamMap
+    // ActivatedRoute'a bağlı, route destroy'da otomatik tamamlanır. Yine de
+    // defansif tut.
+    this.routeSub = sub;
   }
 
   ngOnDestroy() {
     if (this.clockTimer) clearInterval(this.clockTimer);
+    this.routeSub?.unsubscribe();
   }
 
   @HostListener('document:fullscreenchange')
