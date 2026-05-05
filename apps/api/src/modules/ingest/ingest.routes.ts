@@ -21,10 +21,14 @@ const planQuerySchema = z.object({
   date: dateSchema.optional(),
 });
 
+// ORTA-DB-3.1.6 fix (2026-05-04): IngestJob path/metadata application-side cap.
+// DB unbounded TEXT; uygulama gerçekçi 4KB sınırı koyar. Linux PATH_MAX 4096.
 const createIngestSchema = z.object({
-  sourcePath: z.string().min(1),
+  sourcePath: z.string().min(1).max(4096),
   targetId:   z.number().int().positive().optional(),
-  metadata:   z.record(z.unknown()).optional(),
+  metadata:   z.record(z.unknown())
+    .refine((m) => JSON.stringify(m).length <= 8 * 1024, 'metadata 8KB sınırını aşıyor')
+    .optional(),
 });
 
 const callbackSchema = z.object({

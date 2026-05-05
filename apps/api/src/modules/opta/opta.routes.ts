@@ -45,7 +45,12 @@ export async function optaRoutes(app: FastifyInstance) {
 
     const map = new Map<string, { id: string; name: string; seasons: string[] }>();
     for (const row of rows) {
-      const compId = row.comp_id.replace('opta-', '');
+      // DÜŞÜK-API hijyen (2026-05-04): row.comp_id null/undefined safety.
+      // opta- veya custom- prefix ikisini de strip et; aksi halde id 'opta-115'
+      // gibi prefixli kalır, frontend'in '/opta/matches?competitionId=115'
+      // çağrısıyla tutarsız.
+      const code = row.comp_id ?? '';
+      const compId = code.replace(/^(opta|custom)-/, '');
       if (!map.has(compId)) map.set(compId, { id: compId, name: row.name, seasons: [] });
       map.get(compId)!.seasons.push(row.season);
     }
