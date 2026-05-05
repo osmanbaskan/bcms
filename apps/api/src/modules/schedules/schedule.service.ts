@@ -42,6 +42,25 @@ async function withSerializableRetry<T>(operation: () => Promise<T>): Promise<T>
   throw new Error('Serializable transaction failed');
 }
 
+/**
+ * ÖNEMLİ-API-1.2.7 fix (2026-05-04): conflict response info disclosure.
+ * Eski hâlinde caller'a `{ id, channelId, startTime, endTime, title, status }`
+ * dönülüyordu — başka kullanıcının schedule başlığı sızabiliyordu. Artık
+ * minimum bilgi dönüyor: kaç çakışma, zaman aralığı, çakışan ID listesi.
+ * Title ve status iç bilgi olarak kalıyor.
+ */
+type RawConflict = { id: number; channelId: number | null; startTime: Date; endTime: Date; title: string; status: string };
+function sanitizeConflicts(conflicts: RawConflict[]) {
+  return {
+    count: conflicts.length,
+    conflictIds: conflicts.map((c) => c.id),
+    timeWindow: conflicts.length > 0 ? {
+      earliestStart: conflicts.reduce((acc, c) => (c.startTime < acc ? c.startTime : acc), conflicts[0].startTime).toISOString(),
+      latestEnd:     conflicts.reduce((acc, c) => (c.endTime   > acc ? c.endTime   : acc), conflicts[0].endTime).toISOString(),
+    } : null,
+  };
+}
+
 export class ScheduleService {
   constructor(private readonly app: FastifyInstance) {}
 
@@ -165,7 +184,7 @@ export class ScheduleService {
         if (conflicts.length > 0) {
           const err = Object.assign(
             new Error('Schedule conflict detected'),
-            { statusCode: 409, conflicts },
+            { statusCode: 409, conflicts: sanitizeConflicts(conflicts) },
           );
           throw err;
         }
@@ -242,7 +261,7 @@ export class ScheduleService {
           select: { id: true, channelId: true, startTime: true, endTime: true, title: true, status: true },
         });
         if (conflicts.length > 0) {
-          const err = Object.assign(new Error('Schedule conflict detected'), { statusCode: 409, conflicts });
+          const err = Object.assign(new Error('Schedule conflict detected'), { statusCode: 409, conflicts: sanitizeConflicts(conflicts) });
           throw err;
         }
       }

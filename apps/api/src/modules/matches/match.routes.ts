@@ -7,6 +7,9 @@ const matchListQuerySchema = z.object({
   from:     z.string().datetime({ offset: true }).optional(),
   to:       z.string().datetime({ offset: true }).optional(),
   season:   z.string().optional(),
+  // ORTA-API-1.4.6 fix (2026-05-04): take limit eklendi — boş filter ile
+  // tüm fixture döndürmek response bombası. Default 200, üst sınır 1000.
+  take:     z.coerce.number().int().min(1).max(1000).optional().default(200),
 });
 
 export async function matchRoutes(app: FastifyInstance) {
@@ -56,6 +59,7 @@ export async function matchRoutes(app: FastifyInstance) {
         league: { select: { id: true, code: true, name: true, country: true } },
       },
       orderBy: [{ matchDate: 'asc' }, { id: 'asc' }],
+      take: q.take,
     });
 
     return matches.map((m) => ({

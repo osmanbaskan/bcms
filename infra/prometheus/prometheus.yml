@@ -15,6 +15,13 @@ scrape_configs:
     static_configs:
       - targets: ['api:3000']
     metrics_path: /metrics
+    # ÖNEMLİ-API-1.1.20 (2026-05-04): application-katmanı Bearer token.
+    # Token api container env'inden geliyor (METRICS_TOKEN); aynı değeri
+    # prometheus container'a da `bcms_metrics_token` dosyası olarak verin
+    # veya yorumu kaldırıp `authorization` ile inline kullanın.
+    # bearer_token_file: /etc/prometheus/bcms_metrics_token
+    # Şu an yorumda: METRICS_TOKEN env'i set edilmediyse api allow ediyor
+    # (legacy davranış). Production'da set edip yorumu açın.
 
 # Removed 2026-05-04 (audit CRIT-006): postgres-exporter, node-exporter,
 # rabbitmq prometheus plugin yokken phantom scrape job'ları "down" alarm üretiyordu.

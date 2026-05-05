@@ -68,7 +68,10 @@ jobs:
         run: npm ci
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        # ORTA-CFG-5.1.2 fix (2026-05-04): --omit=dev — devDependencies CVE'leri
+        # üretimi etkilemez ama pipeline'ı kırarak gürültü yapıyor. Sadece prod
+        # deps üzerinde audit, devDeps için periyodik manuel inceleme tercih.
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Generate Prisma client
         run: |

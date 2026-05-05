@@ -7,15 +7,24 @@ const listIncidentsQuerySchema = z.object({
   scheduleId: z.coerce.number().int().positive().optional(),
   resolved:   z.enum(['true', 'false']).optional(),
   severity:   z.enum(['INFO', 'WARNING', 'ERROR', 'CRITICAL']).optional(),
+  // ÖNEMLİ-API-1.9.7 fix (2026-05-04): pagination — eski hâlinde tüm
+  // incident'ları tek response'ta döndürüyordu; 10K+ kayıt response bombası.
+  page:     z.coerce.number().int().min(1).max(10_000).optional().default(1),
+  pageSize: z.coerce.number().int().min(1).max(500).optional().default(100),
 });
+
+const createIncidentMetadataSchema = z.record(z.unknown())
+  // ORTA-API-1.9.8 fix (2026-05-04): metadata size cap — JSON serialize sonrası
+  // 16KB üst sınır (DB jsonb için makul; UI'de zaten gösterilemiyor).
+  .refine((m) => JSON.stringify(m).length <= 16_384, 'metadata 16KB sınırını aşıyor');
 
 const createIncidentSchema = z.object({
   scheduleId:  z.number().int().positive().optional(),
   eventType:   z.string().min(1).max(50),
-  description: z.string().optional(),
+  description: z.string().max(4000).optional(),
   tcIn:        z.string().regex(/^\d{2}:\d{2}:\d{2}[:;]\d{2}$/).optional(),
   severity:    z.enum(['INFO', 'WARNING', 'ERROR', 'CRITICAL']).default('INFO'),
-  metadata:    z.record(z.unknown()).optional(),
+  metadata:    createIncidentMetadataSchema.optional(),
 });
 
 const timelineEventSchema = z.object({
@@ -31,15 +40,30 @@ export async function incidentRoutes(app: FastifyInstance) {
     schema: { tags: ['Incidents'] },
   }, async (request) => {
     const q = listIncidentsQuerySchema.parse(request.query);
-    return app.prisma.incident.findMany({
-      where: {
-        ...(q.scheduleId && { scheduleId: q.scheduleId }),
-        ...(q.resolved !== undefined && { resolved: q.resolved === 'true' }),
-        ...(q.severity  && { severity: q.severity as IncidentSeverity }),
-      },
-      include: { schedule: { select: { title: true, channelId: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
+    const where = {
+      ...(q.scheduleId && { scheduleId: q.scheduleId }),
+      ...(q.resolved !== undefined && { resolved: q.resolved === 'true' }),
+      ...(q.severity  && { severity: q.severity as IncidentSeverity }),
+    };
+
+    const [items, total] = await app.prisma.$transaction([
+      app.prisma.incident.findMany({
+        where,
+        include: { schedule: { select: { title: true, channelId: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip: (q.page - 1) * q.pageSize,
+        take: q.pageSize,
+      }),
+      app.prisma.incident.count({ where }),
+    ]);
+
+    return {
+      items,
+      page: q.page,
+      pageSize: q.pageSize,
+      total,
+      totalPages: Math.ceil(total / q.pageSize),
+    };
   });
 
   app.post('/', {
@@ -139,9 +163,15 @@ export async function incidentRoutes(app: FastifyInstance) {
     schema: { tags: ['Timeline'] },
   }, async (request, reply) => {
     const dto = timelineEventSchema.parse(request.body);
+    const scheduleId = z.coerce.number().int().positive().parse(request.params.scheduleId);
+    // ORTA-API-1.9.9 fix (2026-05-04): schedule existence check — random
+    // scheduleId ile timeline event oluşturulamasın; FK P2003 yerine açık 404.
+    const exists = await app.prisma.schedule.findUnique({ where: { id: scheduleId }, select: { id: true } });
+    if (!exists) throw Object.assign(new Error('Schedule bulunamadı'), { statusCode: 404 });
+
     const user = (request.user as { preferred_username: string }).preferred_username;
     const event = await app.prisma.timelineEvent.create({
-      data: { ...dto, scheduleId: z.coerce.number().int().positive().parse(request.params.scheduleId), createdBy: user },
+      data: { ...dto, scheduleId, createdBy: user },
     });
     reply.status(201).send(event);
   });

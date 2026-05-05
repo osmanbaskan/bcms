@@ -9,17 +9,13 @@ import { Subscription, interval } from 'rxjs';
 import { filter } from 'rxjs/operators';
 
 import { KeycloakService } from 'keycloak-angular';
-import type { KeycloakTokenParsed } from 'keycloak-js';
 import { isSkipAuthAllowed } from './core/auth/skip-auth';
 import { getPublicAppOrigin } from './core/auth/public-origin';
 import { GROUP } from '@bcms/shared';
 import { AlertPopoverComponent, AlertItem } from './core/ui/alert-popover.component';
-
-/** Keycloak token + BCMS özel `groups` claim'i (HIGH-FE-002 fix). */
-interface BcmsTokenParsed extends KeycloakTokenParsed {
-  preferred_username?: string;
-  groups?: string[];
-}
+import type { BcmsTokenParsed } from './core/types/auth';
+// ORTA-FE-2.1.3 (2026-05-04): lokal BcmsTokenParsed silindi; tek kaynak
+// core/types/auth.ts. Drift önlemi.
 
 interface NavItem {
   label:       string;

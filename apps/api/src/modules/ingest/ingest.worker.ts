@@ -132,6 +132,23 @@ function generateProxy(sourcePath: string, jobId: number): Promise<string> {
 export async function startIngestWorker(app: FastifyInstance): Promise<void> {
   await app.rabbitmq.consume<IngestMessage>(QUEUES.INGEST_NEW, async (msg) => {
     const { jobId, sourcePath } = msg;
+
+    // ÖNEMLİ-API-1.5.4 fix (2026-05-04): idempotency / dedup.
+    // RabbitMQ at-least-once teslim ediyor; aynı jobId redeliver edildiğinde
+    // PROCESSING'ten yeniden başlamasın. Sadece PENDING/QUEUED state'inden
+    // ileri taşıyoruz; diğer state'ler "zaten işlendi/işleniyor" demek.
+    const existing = await app.prisma.ingestJob.findUnique({
+      where: { id: jobId },
+      select: { status: true },
+    });
+    if (!existing) {
+      app.log.warn({ jobId }, 'Ingest message için DB job bulunamadı; mesaj drop ediliyor');
+      return;
+    }
+    if (existing.status !== 'PENDING') {
+      app.log.info({ jobId, status: existing.status }, 'Ingest job zaten işlenmiş — duplicate consume skip');
+      return;
+    }
     app.log.info({ jobId, sourcePath }, 'Ingest işi başladı');
 
     // ── PROCESSING ─────────────────────────────────────────────────────────

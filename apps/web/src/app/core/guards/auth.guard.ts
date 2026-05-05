@@ -1,13 +1,10 @@
 import { Injectable } from '@angular/core';
 import { ActivatedRouteSnapshot, RouterStateSnapshot, Router, UrlTree } from '@angular/router';
 import { KeycloakAuthGuard, KeycloakService } from 'keycloak-angular';
-import type { KeycloakTokenParsed } from 'keycloak-js';
 import { getPublicAppOrigin } from '../auth/public-origin';
 import { GROUP } from '@bcms/shared';
-
-interface BcmsTokenParsed extends KeycloakTokenParsed {
-  groups?: string[];
-}
+import type { BcmsTokenParsed } from '../types/auth';
+// ORTA-FE-2.1.2 (2026-05-04): lokal BcmsTokenParsed silindi.
 
 @Injectable({ providedIn: 'root' })
 export class AuthGuard extends KeycloakAuthGuard {

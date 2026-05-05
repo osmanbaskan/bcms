@@ -3,6 +3,7 @@ import { inject } from '@angular/core';
 import { KeycloakService } from 'keycloak-angular';
 import { catchError, from, switchMap, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { isSkipAuthAllowed } from '../auth/skip-auth';
 import { getPublicAppOrigin } from '../auth/public-origin';
 import { LoggerService } from '../services/logger.service';
 
@@ -17,7 +18,10 @@ function isApiRequest(url: string): boolean {
 }
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
-  if (!isApiRequest(req.url) || environment.skipAuth) {
+  // ÖNEMLİ-FE-2.1.1 fix (2026-05-04): runtime guard — environment.skipAuth=true
+  // bile prod hostname'inde devre dışı kalmalı; aksi halde prod build'de
+  // bearer token eklenmez ve auth tamamen kapanır.
+  if (!isApiRequest(req.url) || isSkipAuthAllowed()) {
     return next(req);
   }
 
