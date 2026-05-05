@@ -11,7 +11,7 @@
 
 ## 0a. Çözüm State Tracker (2026-05-04 sonrası overnight pass)
 
-10 commit batch ile **~120 bulgu** kapatıldı (`git log --grep="audit-batch" --since="2026-05-04 22:00"`).
+14 commit batch ile **~135 bulgu** kapatıldı (`git log --grep="audit-batch\|secrets" --since="2026-05-04 22:00"`).
 
 | Batch | Commit | Kapsam |
 | ----- | ------ | ------ |
@@ -25,6 +25,10 @@
 | 8 | `5c9a81a` | Frontend API GET retry + dashboard NG8113 + Angular budget tweak |
 | 9 | `4cb2db5` | BXF atomic write, signal channel ref, studio catalog cross-ref, booking transitions |
 | 10 | `aa6d459` | Schedule-list `?new=1` query param + monitoring/MCR lifecycle verify |
+| 11 | `ce94b3e` | Audit doc state tracker + webpack devDep cleanup |
+| 12 | `c96e69b` | IngestJob path cap, DEV_USER env doc, opta prefix safety |
+| (sec) | `fa932dc` | GitGuardian fix — Prometheus basic auth env-driven + RUNBOOK-SECRETS-ROTATION.md |
+| 13 | `bd10c20` | API catalog cache + booking date consistency + HttpError class |
 
 **Mimari onay bekleyen 10 madde** (skip listesi sabit):
 1. AuditLog partition (DB migration + retention strateji)
