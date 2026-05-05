@@ -37,6 +37,7 @@ import { startIngestWatcher } from './modules/ingest/ingest.watcher.js';
 import { startBxfWatcher } from './modules/bxf/bxf.watcher.js';
 import { startOptaWatcher, getOptaWatcherStatus } from './modules/opta/opta.watcher.js';
 import { startAuditRetentionJob } from './modules/audit/audit-retention.job.js';
+import { startAuditPartitionJob } from './modules/audit/audit-partition.job.js';
 
 const BACKGROUND_SERVICES = [
   'notifications',
@@ -45,6 +46,7 @@ const BACKGROUND_SERVICES = [
   'bxf-watcher',
   'opta-watcher',
   'audit-retention',
+  'audit-partition',
 ] as const;
 
 type BackgroundService = (typeof BACKGROUND_SERVICES)[number];
@@ -127,6 +129,7 @@ async function startBackgroundServices(app: FastifyInstance): Promise<void> {
   await run('bxf-watcher', () => startBxfWatcher(app));
   await run('opta-watcher', () => startOptaWatcher(app));
   await run('audit-retention', () => startAuditRetentionJob(app));
+  await run('audit-partition', () => startAuditPartitionJob(app));
 }
 
 function errorResponse(error: Error & { statusCode?: number; code?: string }) {
