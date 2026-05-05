@@ -159,7 +159,23 @@ async function canEditGroup(request: FastifyRequest, group: string): Promise<boo
   return userGroups.includes(group) && await fetchCurrentUserType(request) === 'supervisor';
 }
 
+/** HIGH-API-014 fix (2026-05-05): supervisor flag'i tek seferde hesapla;
+ *  visibleGroups loop'unda canEditGroup'u tekrar tekrar Keycloak'a sormaktan
+ *  vazgeç. */
+function canEditGroupSync(claims: JwtPayload, group: string, isSupervisor: boolean): boolean {
+  const userGroups = claims.groups ?? [];
+  if (hasAnyGroup(userGroups, PERMISSIONS.weeklyShifts.admin)) return true;
+  return userGroups.includes(group) && isSupervisor;
+}
+
 async function buildWeeklyShiftPlan(app: FastifyInstance, request: FastifyRequest, weekStart: string) {
+  const claims = request.user as JwtPayload;
+  // HIGH-API-014: visibleGroups her biri için fetchCurrentUserType (KC HTTP)
+  // çağırıyordu. Tek sefer hesapla, supervisor bayrağını paylaş.
+  const isSupervisor = hasAnyGroup(claims.groups ?? [], PERMISSIONS.weeklyShifts.admin)
+    ? true
+    : (await fetchCurrentUserType(request)) === 'supervisor';
+
   const [users, assignments] = await Promise.all([
     fetchShiftUsers(),
     app.prisma.shiftAssignment.findMany({
@@ -176,13 +192,13 @@ async function buildWeeklyShiftPlan(app: FastifyInstance, request: FastifyReques
   }
 
   const visibleGroups = visibleGroupsFor(request);
-  const groups = await Promise.all(visibleGroups.map(async (name) => {
+  const groups = visibleGroups.map((name) => {
     const members = users
       .filter((user) => user.groups.includes(name))
       .sort((a, b) => a.displayName.localeCompare(b.displayName, 'tr'));
     return {
       name,
-      canEdit: await canEditGroup(request, name),
+      canEdit: canEditGroupSync(claims, name, isSupervisor),
       users: members.map((user) => ({
         ...user,
         assignments: Object.fromEntries(
@@ -198,7 +214,7 @@ async function buildWeeklyShiftPlan(app: FastifyInstance, request: FastifyReques
         ),
       })),
     };
-  }));
+  });
 
   return { weekStart, days: weekDays(weekStart), shiftTypes: SHIFT_TYPES, groups };
 }

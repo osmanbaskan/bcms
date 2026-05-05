@@ -114,9 +114,20 @@ async function fetchGroupUsers(group: string): Promise<AssignableUser[]> {
     .sort((a, b) => a.displayName.localeCompare(b.displayName, 'tr'));
 }
 
+/** HIGH-API-013 fix (2026-05-05): findAll'da her sayfa için Keycloak'dan 500
+ *  kullanıcı çekiliyordu. 60sn TTL cache → list endpoint'lerinde KC'ye yük
+ *  azalır; kullanıcı isim değişiklikleri en geç 60sn'de propage olur. */
+let userDisplayCache: Map<string, string> | null = null;
+let userDisplayExpiry = 0;
+const USER_DISPLAY_TTL_MS = 60_000;
+
 async function fetchUserDisplayNameMap(): Promise<Map<string, string>> {
+  if (userDisplayCache && Date.now() < userDisplayExpiry) return userDisplayCache;
   const users = await kcFetch<any[]>('/users?max=500');
-  return new Map(users.map((user) => [user.username, displayName(user)]));
+  const fresh = new Map(users.map((user) => [user.username, displayName(user)]));
+  userDisplayCache = fresh;
+  userDisplayExpiry = Date.now() + USER_DISPLAY_TTL_MS;
+  return fresh;
 }
 
 export class BookingService {

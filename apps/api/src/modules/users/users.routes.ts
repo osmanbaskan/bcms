@@ -109,9 +109,26 @@ async function setUserGroups(id: string, newGroups: string[]): Promise<void> {
   }
 
   groupMembershipCache.delete(id);
+  clearMembershipsCache();   // HIGH-API-015: full memberships cache de invalidate
+}
+
+/** HIGH-API-015 fix (2026-05-05): bütün memberships map'ini 60sn TTL'le
+ *  cache'le. Eski hâlinde her /users listing çağrısında 12 grup HTTP turu +
+ *  1 users call = 13 KC isteği. Cache hit varsa sadece 1 users call.
+ *  Yan etki: grup üyeliği değişiklikleri en geç 60sn'de propage olur (Admin
+ *  panel sonra "yenile" yapsa görür). updateUser sonrası `clearMembershipsCache`
+ *  ile invalidate edilir. */
+let membershipsCache: Map<string, string[]> | null = null;
+let membershipsExpiry = 0;
+const MEMBERSHIPS_TTL_MS = 60_000;
+
+function clearMembershipsCache(): void {
+  membershipsCache = null;
+  membershipsExpiry = 0;
 }
 
 async function fetchBcmsGroupMemberships(): Promise<Map<string, string[]>> {
+  if (membershipsCache && Date.now() < membershipsExpiry) return membershipsCache;
   const groupIdMap = await getGroupIdMap();
   const memberships = new Map<string, string[]>();
 
@@ -127,6 +144,8 @@ async function fetchBcmsGroupMemberships(): Promise<Map<string, string[]>> {
     }
   }));
 
+  membershipsCache = memberships;
+  membershipsExpiry = Date.now() + MEMBERSHIPS_TTL_MS;
   return memberships;
 }
 
