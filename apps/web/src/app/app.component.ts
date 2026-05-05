@@ -616,7 +616,10 @@ export class AppComponent implements OnInit, OnDestroy {
   async ngOnInit() {
     this.currentUrl.set(this.router.url);
     this.updateClock();
-    this.clockSub = interval(30_000).subscribe(() => this.updateClock());
+    // DÜŞÜK-FE-2.8.2 fix (2026-05-04): 30sn → 60sn. Tarih+dakika header'ı
+    // sadece dakika hassasiyetinde değişiyor; 30sn'lik tick boş change
+    // detection cycle yaratıyordu.
+    this.clockSub = interval(60_000).subscribe(() => this.updateClock());
 
     this.routerSub = this.router.events
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))

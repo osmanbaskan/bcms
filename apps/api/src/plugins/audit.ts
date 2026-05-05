@@ -116,9 +116,18 @@ function buildAuditExtension(base: PrismaClient) {
               }));
             }
             const targetId = (result as any)?.id ?? (before as any)?.id;
+            // ORTA-API-1.1.4 fix (2026-05-04): targetId yok ise 0 placeholder
+            // semantik gürültü yaratıyordu. Composite-PK olmayan modellerde
+            // bu yol nadiren tetiklenir; warn log ile görünür kıl.
+            const entityId = Number(targetId ?? 0);
+            if (entityId === 0) {
+              try {
+                fastifyLogger?.warn?.({ model, operation }, 'Audit entry için entityId tespit edilemedi (composite PK?); 0 ile kaydediliyor');
+              } catch { /* ignore */ }
+            }
             return [{
               entityType: model,
-              entityId: Number(targetId ?? 0),
+              entityId,
               action,
               beforePayload: before ?? undefined,
               afterPayload: after ?? undefined,

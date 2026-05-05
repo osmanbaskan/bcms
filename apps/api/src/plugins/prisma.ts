@@ -10,12 +10,22 @@ declare module 'fastify' {
 
 function buildDatabaseUrl(): string {
   const base = process.env.DATABASE_URL ?? '';
-  if (!base) return base;
+  // ORTA-API-1.1.12 fix (2026-05-04): fail-fast. Eski hâlinde boş URL silently
+  // fall-through ediyor, Prisma kendi error'ıyla başlıyordu — daha geç fail.
+  // validateRuntimeEnv() prod'da zaten zorunlu olarak set ediyor; ama dev/test
+  // ortamında defansif fail-fast yararlı.
+  if (!base) {
+    throw new Error('DATABASE_URL env değişkeni set edilmemiş');
+  }
 
   const url = new URL(base);
-  const isApi =
-    (process.env.BCMS_BACKGROUND_SERVICES ?? 'all').trim().toLowerCase() ===
-    'none';
+  // ORTA-API-1.1.13 fix (2026-05-04): isApi tespiti güçlendirildi.
+  // Eski hâlinde BCMS_BACKGROUND_SERVICES='' boş set edilirse 'all' default'a
+  // düşmüyordu — empty trimmed === '' !== 'none' → isApi=false → worker pool
+  // (5 conn) kullanılıyordu. Açık eşitlik dışında boş'u 'all' kabul et.
+  const bgRaw = (process.env.BCMS_BACKGROUND_SERVICES ?? '').trim().toLowerCase();
+  const bgValue = bgRaw === '' ? 'all' : bgRaw;
+  const isApi = bgValue === 'none';
 
   url.searchParams.set('connection_limit', isApi ? '10' : '5');
   // MED-API-024 fix (2026-05-05): pool_timeout 20s çok uzundu — HTTP isteği

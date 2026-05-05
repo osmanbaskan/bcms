@@ -318,10 +318,16 @@ services:
       - api
 
   # ── Mailhog (Dev SMTP) ────────────────────────────────────────────────────────
+  # DÜŞÜK-INF-4.1.12 (2026-05-04): mailhog yalnızca dev/staging için.
+  # Production deployment'ta bu service tamamen kapatılmalı:
+  #   docker compose --profile dev up -d   (→ mailhog dahil)
+  #   docker compose up -d                 (→ mailhog dahil değil, default profile)
+  # API ve worker SMTP_HOST'u SMTP relay servisine yönlendirilmeli.
   mailhog:
     image: mailhog/mailhog:v1.0.1
     container_name: bcms_mailhog
     restart: unless-stopped
+    profiles: ["dev"]
     logging: *default-logging
     ports:
       - "127.0.0.1:1025:1025"
@@ -345,6 +351,10 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--web.config.file=/etc/prometheus/web-config.yml'
       - '--storage.tsdb.retention.time=30d'
+      # DÜŞÜK-INF-4.3.4 fix (2026-05-04): retention size cap.
+      # 30d × ~50MB/gün = ~1.5GB ortalama; high-cardinality metric eklenince
+      # disk dolma riski. Hard upper bound 5GB.
+      - '--storage.tsdb.retention.size=5GB'
     healthcheck:
       # HIGH-INF-012: Prometheus basic auth aktif; busybox wget --password
       # desteklemiyor. Authorization header ile basic auth gönder.

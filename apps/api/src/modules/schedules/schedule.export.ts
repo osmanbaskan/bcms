@@ -55,10 +55,13 @@ export async function exportSchedulesToStream(
 ): Promise<Buffer> {
   const { from, to, channelId, league, season, week, title, usage = 'broadcast' } = opts;
 
+  // DÜŞÜK-API-1.2.14 fix (2026-05-04): take cap. 50K+ schedule senaryosunda
+  // belleğe sığmama riski; Excel export pratikte 5K-10K satır makul.
   const schedules = await app.prisma.schedule.findMany({
     where: buildExportWhere({ from, to, channelId, league, season, week, usage }),
     include: { channel: { select: { name: true } } },
     orderBy: { startTime: 'asc' },
+    take: 50_000,
   });
 
   const workbook = new ExcelJS.Workbook();

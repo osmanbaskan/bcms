@@ -45,9 +45,9 @@ export async function broadcastTypeRoutes(app: FastifyInstance) {
     const id  = z.coerce.number().int().positive().parse(request.params.id);
     const dto = updateSchema.parse(request.body);
 
-    const existing = await app.prisma.broadcastType.findUnique({ where: { id } });
-    if (!existing) throw Object.assign(new Error('BroadcastType bulunamadı'), { statusCode: 404 });
-
+    // DÜŞÜK-API-1.4.8 fix (2026-05-04): findUnique pre-check kaldırıldı.
+    // Prisma update non-existent ID için P2025 atıyor, global error handler
+    // 404'e map ediyor — extra round-trip gereksiz.
     return app.prisma.broadcastType.update({ where: { id }, data: dto });
   });
 
@@ -56,8 +56,7 @@ export async function broadcastTypeRoutes(app: FastifyInstance) {
     schema: { tags: ['BroadcastTypes'], summary: 'Yayın tipini sil' },
   }, async (request, reply) => {
     const id = z.coerce.number().int().positive().parse(request.params.id);
-    const existing = await app.prisma.broadcastType.findUnique({ where: { id } });
-    if (!existing) throw Object.assign(new Error('BroadcastType bulunamadı'), { statusCode: 404 });
+    // DÜŞÜK-API-1.4.8 fix: aynı pattern delete için.
     await app.prisma.broadcastType.delete({ where: { id } });
     reply.status(204).send();
   });
