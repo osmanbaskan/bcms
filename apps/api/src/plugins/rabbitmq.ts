@@ -33,12 +33,26 @@ interface ConsumerRecord<T = unknown> {
   handler: (payload: T) => Promise<void>;
 }
 
+// ÖNEMLİ-API-1.1.15 fix (2026-05-04): basit retry policy.
+// nack(msg, false, false) eski hâl: requeue=false ve DLX yok → mesaj
+// sessiz drop. DLQ tasarımı tasarım onayı gerektirdiği için (queue
+// topology değişikliği) interim çözüm: ilk hatada requeue=true (bir
+// kez yeniden teslim et), redelivered=true ise drop+log. Email retry
+// kendi içinde 3 attempt yapıyor (notification.consumer.ts) — bu
+// katman onun üzerinde sadece infrastructure-level retry.
+// Tam DLQ + max-retry-count + DLX → ops/REQUIREMENTS-NOTIFICATION-DELIVERY.md
+const MAX_PARSE_BYTES = 1 * 1024 * 1024; // 1MB JSON cap (1.1.17)
+
 async function createRabbitMQClient(url: string, logger: FastifyInstance['log']): Promise<RabbitMQClient> {
   let connection: ChannelModel;
   let channel: ConfirmChannel;
   let connected = false;
   let closing = false;
-  const consumers = new Map<QueueName, ConsumerRecord>();
+  let connecting = false;        // ORTA-API-1.1.18: race koruması
+  // ÖNEMLİ-API-1.1.16 fix (2026-05-04): tek consumer record yerine queue
+  // başına consumer ARRAY. Aynı queue'ya iki kez consume() çağrılırsa
+  // ikincisi birinciyi silmiyor — her ikisi de register kalıyor.
+  const consumers = new Map<QueueName, ConsumerRecord[]>();
 
   const setupChannel = async () => {
     // ConfirmChannel: sendToQueue callback'i broker ack'inden sonra çağırır.
@@ -64,26 +78,39 @@ async function createRabbitMQClient(url: string, logger: FastifyInstance['log'])
   };
 
   const connectWithBackoff = async (): Promise<void> => {
-    let attempt = 0;
-    while (!closing) {
-      attempt++;
-      try {
-        connection = await amqplib.connect(url);
-        await setupChannel();
-        attachEventHandlers();
-        connected = true;
-        logger.info('RabbitMQ connected');
+    // ORTA-API-1.1.18 fix (2026-05-04): initial + scheduleReconnect race
+    // koruması. İki çağrı aynı anda execute edilemez.
+    if (connecting) {
+      logger.debug('RabbitMQ reconnect already in progress, skipping duplicate trigger');
+      return;
+    }
+    connecting = true;
+    try {
+      let attempt = 0;
+      while (!closing) {
+        attempt++;
+        try {
+          connection = await amqplib.connect(url);
+          await setupChannel();
+          attachEventHandlers();
+          connected = true;
+          logger.info('RabbitMQ connected');
 
-        // Re-register existing consumers after reconnect
-        for (const record of consumers.values()) {
-          await startConsumer(record.queue, record.handler as (payload: unknown) => Promise<void>);
+          // Re-register existing consumers after reconnect
+          for (const records of consumers.values()) {
+            for (const record of records) {
+              await startConsumer(record.queue, record.handler as (payload: unknown) => Promise<void>);
+            }
+          }
+          return;
+        } catch (err) {
+          logger.warn({ attempt, err }, 'RabbitMQ connection failed, retrying...');
+          const delay = Math.min(3000 * attempt, 30000);
+          await new Promise((r) => setTimeout(r, delay));
         }
-        return;
-      } catch (err) {
-        logger.warn({ attempt, err }, 'RabbitMQ connection failed, retrying...');
-        const delay = Math.min(3000 * attempt, 30000);
-        await new Promise((r) => setTimeout(r, delay));
       }
+    } finally {
+      connecting = false;
     }
   };
 
@@ -98,13 +125,38 @@ async function createRabbitMQClient(url: string, logger: FastifyInstance['log'])
   const startConsumer = async <T>(queue: QueueName, handler: (payload: T) => Promise<void>) => {
     await channel.consume(queue, async (msg: ConsumeMessage | null) => {
       if (!msg) return;
+
+      // ORTA-API-1.1.17 fix (2026-05-04): JSON.parse size cap.
+      if (msg.content.byteLength > MAX_PARSE_BYTES) {
+        logger.error({ queue, bytes: msg.content.byteLength }, 'RabbitMQ message size cap aşıldı (1MB) — drop');
+        channel.nack(msg, false, false);
+        return;
+      }
+
+      let payload: T;
       try {
-        const payload = JSON.parse(msg.content.toString()) as T;
+        payload = JSON.parse(msg.content.toString()) as T;
+      } catch (parseErr) {
+        // Parse fail — payload bozuk, requeue anlamlı değil.
+        logger.error({ queue, err: parseErr }, 'RabbitMQ message JSON parse hatası — drop');
+        channel.nack(msg, false, false);
+        return;
+      }
+
+      try {
         await handler(payload);
         channel.ack(msg);
       } catch (err) {
-        logger.error({ err }, `Error processing message from ${queue}`);
-        channel.nack(msg, false, false);
+        // ÖNEMLİ-API-1.1.15 fix (2026-05-04): redelivered=false → bir kez
+        // requeue ver (transient error olabilir); zaten redelivered=true ise
+        // drop. DLQ implementasyonu için ops/REQUIREMENTS-NOTIFICATION-DELIVERY.
+        if (!msg.fields.redelivered) {
+          logger.warn({ err, queue }, 'Consumer error — bir kez requeue ediliyor');
+          channel.nack(msg, false, true);
+        } else {
+          logger.error({ err, queue }, 'Consumer error (redelivered) — drop');
+          channel.nack(msg, false, false);
+        }
       }
     });
   };
@@ -128,14 +180,28 @@ async function createRabbitMQClient(url: string, logger: FastifyInstance['log'])
       });
     },
     async consume<T>(queue: QueueName, handler: (payload: T) => Promise<void>): Promise<void> {
-      consumers.set(queue, { queue, handler: handler as (payload: unknown) => Promise<void> });
+      // ÖNEMLİ-API-1.1.16 fix (2026-05-04): array push, multi-consumer destek.
+      const list = consumers.get(queue) ?? [];
+      list.push({ queue, handler: handler as (payload: unknown) => Promise<void> });
+      consumers.set(queue, list);
       await startConsumer(queue, handler);
     },
     async close(): Promise<void> {
+      // DÜŞÜK-API-1.1.19 fix (2026-05-04): channel.close await ediliyor; ama
+      // amqplib'in cancelAll API'si yok — channel.close() server-side delivery
+      // pause + buffered messages flush sağlıyor, sonra connection.close().
       closing = true;
       connected = false;
-      await channel.close();
-      await connection.close();
+      try {
+        await channel?.close();
+      } catch (err) {
+        logger.warn({ err }, 'RabbitMQ channel close hatası');
+      }
+      try {
+        await connection?.close();
+      } catch (err) {
+        logger.warn({ err }, 'RabbitMQ connection close hatası');
+      }
     },
   };
 }

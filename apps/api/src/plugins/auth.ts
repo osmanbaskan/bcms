@@ -69,6 +69,22 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
 
   const jwksClient = jwksRsa({ jwksUri, cache: true, rateLimit: true });
 
+  // ÖNEMLİ-API-1.1.9 fix (2026-05-04): JWKS fetch failure için 503 ayrımı.
+  // Eski hâlinde herhangi bir hata 401'e dönüyordu — Keycloak down ise
+  // kullanıcı sürekli /login redirect'iyle infrastructure problemini
+  // maskeliyordu. JWKS-spesifik hatalar 503 (Service Unavailable),
+  // gerçek invalid/expired token 401 olarak ayrıştırılıyor.
+  type JwksLikeError = { code?: string; name?: string; message?: string };
+  function isJwksInfrastructureError(err: unknown): boolean {
+    const e = err as JwksLikeError;
+    if (!e || typeof e !== 'object') return false;
+    if (e.code === 'ECONNREFUSED' || e.code === 'ENOTFOUND' || e.code === 'ETIMEDOUT') return true;
+    if (e.code === 'EAI_AGAIN' || e.code === 'ECONNRESET') return true;
+    if (e.name === 'JwksError' || e.name === 'JwksRateLimitError') return true;
+    const msg = e.message ?? '';
+    return msg.includes('jwks') || msg.includes('No signing key');
+  }
+
   await app.register(jwt, {
     decode: { complete: true },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,7 +121,11 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
       // Admin tam yetkisi requireGroup içindeki isAdminPrincipal early return
       // ile sağlanıyor (line ~112). Augment "Admin = ops super-grup" eski
       // modelin kalıntısıydı; yeni RBAC ile çakışıyordu.
-    } catch {
+    } catch (err) {
+      if (isJwksInfrastructureError(err)) {
+        app.log.error({ err }, 'JWKS fetch/Keycloak unreachable — 503 dönülüyor');
+        throw Object.assign(new Error('Authentication service unavailable'), { statusCode: 503 });
+      }
       throw Object.assign(new Error('Invalid or expired token'), { statusCode: 401 });
     }
   });

@@ -22,6 +22,10 @@ interface RequestContext {
 
 export const als = new AsyncLocalStorage<RequestContext>();
 
+// audit.ts plugin scope'unda fastify logger referansı; auditPlugin register
+// edildiğinde set edilir.
+let fastifyLogger: { warn?: (...a: unknown[]) => void } | undefined;
+
 /**
  * İki hook: onRequest store'u kurar (tüm request lifecycle'ı sarar),
  * preHandler userId'yi auth doğrulamasından sonra doldurur.
@@ -51,8 +55,17 @@ const contextPlugin: FastifyPluginAsync = fp(async (fastify) => {
  *
  * Arka plan worker bağlamında (ALS store yok): anında yazılır.
  *
- * updateMany/deleteMany: tam before-snapshot alınır (salt ID yerine).
+ * updateMany/deleteMany: tam before-snapshot alınır (salt ID yerine), ama
+ * MAX_BULK_AUDIT_ROWS ile cap'leniyor (ÖNEMLİ-API-1.1.1 fix).
  */
+// ÖNEMLİ-API-1.1.1 fix (2026-05-04): bulk operasyonlarda before-snapshot
+// fetch'i tüm satırları belleğe çekiyordu — large updateMany/deleteMany
+// (örn. retention purge 100K+ row) OOM riski. Cap koyduk:
+//   - Eğer args.where ile etkilenen satır sayısı MAX'tan büyükse:
+//     ilk MAX satırı snapshot al, kalanı sadece id ile kaydet (truncated:true).
+//   - Audit retention job (entityType=AuditLog) zaten short-circuit yukarıda.
+const MAX_BULK_AUDIT_ROWS = 1000;
+
 function buildAuditExtension(base: PrismaClient) {
   return base.$extends({
     query: {
@@ -70,11 +83,19 @@ function buildAuditExtension(base: PrismaClient) {
           let before: any = null;
           let beforeSnapshots: any[] = [];
           let affectedIds: number[] | null = null;
+          let bulkTruncated = false;
 
           if (operation === 'update' || operation === 'delete') {
             before = await (base as any)[model].findFirst({ where: args.where });
           } else if (operation === 'updateMany' || operation === 'deleteMany') {
-            const rows = await (base as any)[model].findMany({ where: args.where });
+            const rows = await (base as any)[model].findMany({
+              where: args.where,
+              take: MAX_BULK_AUDIT_ROWS + 1,
+            });
+            if (rows.length > MAX_BULK_AUDIT_ROWS) {
+              bulkTruncated = true;
+              rows.length = MAX_BULK_AUDIT_ROWS;
+            }
             affectedIds = rows.map((r: any) => r.id);
             beforeSnapshots = rows;
           }
@@ -105,6 +126,13 @@ function buildAuditExtension(base: PrismaClient) {
               ipAddress,
             }];
           };
+
+          if (bulkTruncated) {
+            // Operatörün bilgisi olsun: cap'lenen audit log var.
+            try {
+              fastifyLogger?.warn?.({ model, operation, max: MAX_BULK_AUDIT_ROWS }, 'Audit bulk snapshot cap edildi — fazla satırlar tek özet entry ile kaydediliyor');
+            } catch { /* ignore */ }
+          }
 
           if (context) {
             // HTTP bağlamı: kuyruğa ekle, onSend'de toplu yaz
@@ -143,6 +171,7 @@ function toDbRow(e: AuditEntry): Prisma.AuditLogCreateManyInput {
 export const auditPlugin: FastifyPluginAsync = fp(async (fastify: FastifyInstance) => {
   await fastify.register(contextPlugin);
 
+  fastifyLogger = fastify.log;
   const base = fastify.prisma as PrismaClient;
   (fastify as any).prisma = buildAuditExtension(base);
 

@@ -194,7 +194,18 @@ export async function buildApp() {
   });
 
   // ── Security ─────────────────────────────────────────────────────────────────
-  await app.register(helmet, { contentSecurityPolicy: false });
+  // ORTA-API-1.12.1 fix (2026-05-04): helmet defaults aktif, CSP kapalı.
+  // Edge'de (nginx) CSP ana savunma; ama mobil/native client veya direct
+  // port erişiminde minimal default-src koruması sağlamak için Fastify
+  // tarafında "report-only" pattern düşünülmedi (worker side-effect riski).
+  // Bunun yerine helmet'in diğer header'ları (HSTS, frameguard, noSniff,
+  // xssFilter, hidePoweredBy) açık bırakıldı. CSP sıkılaştırma follow-up
+  // PR'ında nginx config ile aynı policy'yi backend'e de senkronize edecek.
+  await app.register(helmet, {
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false, // Swagger UI ve external font'lar
+    crossOriginResourcePolicy: { policy: 'same-site' },
+  });
 
   await app.register(cors, {
     origin: corsOrigin(),
@@ -270,7 +281,18 @@ export async function buildApp() {
   await app.register(auditPlugin);
   await app.register(rabbitmqPlugin);
   await app.register(metricsPlugin);
-  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }); // max 10 MB
+  // ORTA-API-1.12.2 fix (2026-05-04): nginx client_max_body_size 100m ile
+  // hizalı; eski 10MB sınırı 50MB Excel upload'larında ambiguous "413 vs.
+  // multipart parse error" davranışına yol açıyordu. fields/files cap
+  // eklendi (10 alan, 5 dosya) — DoS koruması.
+  await app.register(multipart, {
+    limits: {
+      fileSize: 100 * 1024 * 1024, // 100 MB — nginx ile aynı
+      fields: 10,
+      files: 5,
+      headerPairs: 100,
+    },
+  });
 
   // ── Health check ──────────────────────────────────────────────────────────────
   app.get('/health', { schema: { hide: true }, config: { rateLimit: false } }, async (_req, reply) => {

@@ -260,10 +260,45 @@ export async function ingestRoutes(app: FastifyInstance) {
   }, async (request) => {
     const dto = saveRecordingPortsSchema.parse(request.body) satisfies SaveRecordingPortsDto;
 
+    // ÖNEMLİ-API-1.5.1 fix (2026-05-04): full deleteMany + createMany yerine
+    // diff-based update. Kayıt portu bir ingest job'unun primary/backup'ında
+    // kullanılıyorsa FK violation; veya onPort cascade ile child plan_items
+    // istemsizce siliniyordu. Yeni davranış:
+    //   1. Mevcut listeyi al.
+    //   2. dto'da olmayan portları "active=false" yap (hard delete YOK).
+    //   3. dto'da olup DB'de olmayan portları create et.
+    //   4. Hem dto hem DB'de olan portları update et (sortOrder/active).
+    // Hard delete sadece port hiçbir yerde referans edilmiyorsa mümkün —
+    // ama o karar audit log'da görünmesi için ayrı endpoint'e ait olmalı.
     await app.prisma.$transaction(async (tx) => {
-      await tx.recordingPort.deleteMany();
-      if (dto.ports.length > 0) {
-        await tx.recordingPort.createMany({ data: dto.ports });
+      const existing = await tx.recordingPort.findMany();
+      const dtoByName = new Map(dto.ports.map((p) => [p.name, p]));
+      const existingByName = new Map(existing.map((p) => [p.name, p]));
+
+      // 2. dto'da olmayan port'lar → active=false (soft retire)
+      for (const ex of existing) {
+        if (!dtoByName.has(ex.name) && ex.active) {
+          await tx.recordingPort.update({
+            where: { id: ex.id },
+            data: { active: false },
+          });
+        }
+      }
+
+      // 3+4. dto'daki her port: yoksa create, varsa update
+      for (const port of dto.ports) {
+        const existingPort = existingByName.get(port.name);
+        if (!existingPort) {
+          await tx.recordingPort.create({ data: port });
+        } else if (
+          existingPort.sortOrder !== port.sortOrder ||
+          existingPort.active !== port.active
+        ) {
+          await tx.recordingPort.update({
+            where: { id: existingPort.id },
+            data: { sortOrder: port.sortOrder, active: port.active },
+          });
+        }
       }
     });
 
