@@ -1,6 +1,6 @@
 # BCMS Operasyon — Docker Compose
 
-> Son güncelleme: 2026-05-01 (geç saat) — RBAC yeniden yapılandırma: SystemEng "ops super-grubu" davranışı kaldırıldı, **Admin tek full-yetki**. SystemEng artık Provys/Kanallar/Ingest/Monitoring/MCR/Raporlama'da gizli; Canlı Yayın Plan/Stüdyo/Bookings/Weekly-Shift kısıtlı; Audit/Ayarlar/Kullanıcılar/Dökümanlar/Incidents tam yetki. Önceki turlar: recording port normalize, OPTA cascade, auth 403 fix, postgres_backup sidecar.
+> Son güncelleme: 2026-05-06 — **Outbox + DLQ V1 program** (Madde 2+7) Phase 2 shadow tüm domain'lerde aktif; PR-C1 poller deployed (`OUTBOX_POLLER_ENABLED` env-gated, default false; non-authoritative); PR-C2 cut-over production soak gate pending. **Madde 5 live-plan data model** decision lock: live-plan ayrı entity strangler (`ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md`); §4.1 Booking cleanup closed (local dev DB inventory: 0 satır); M5-B1 schema PR teknik olarak unblocked. Önceki tur (2026-05-01): RBAC yeniden yapılandırma (Admin tek full-yetki, SystemEng kısıtlı); recording port normalize; OPTA cascade; auth 403 fix; postgres_backup sidecar.
 
 Proje tamamen **Docker Compose** ile yönetilmektedir. `systemd`, `ng serve`, `tsx watch` kullanılmaz.
 
@@ -41,7 +41,7 @@ npm run smoke:api
 | Servis | Konteyner | Görev | Durum |
 |---|---|---|---|
 | `api` | bcms_api | HTTP, Swagger, health — worker yok | `healthy` |
-| `worker` | bcms_worker | ingest, bxf, notifications consumer, audit retention | Healthcheck disabled — worker HTTP sunucusu çalıştırmaz |
+| `worker` | bcms_worker | ingest, bxf, notifications consumer, audit retention/partition, **outbox-poller** (PR-C1 — `OUTBOX_POLLER_ENABLED` env-gated) | Healthcheck disabled — worker HTTP sunucusu çalıştırmaz |
 | `opta-watcher` | bcms_opta_watcher | SMB → /api/v1/opta/sync, state `/data` volume | `healthy` |
 | `web` | bcms_web | Angular (nginx) | `healthy` |
 | `postgres` | bcms_postgres | PostgreSQL 16 | — |
@@ -194,12 +194,62 @@ docker compose logs -f opta-watcher
 docker compose restart opta-watcher
 ```
 
+## Outbox + DLQ V1 (2026-05-06)
+
+Tüm domain event'leri `outbox_events` tablosuna **Phase 2 shadow** olarak yazılır (status='published'). Direct publish (queue.X) hâlâ aktif; poller henüz authoritative değil. PR-C2 cut-over (shadow→pending + direct publish disable) production soak gate'e bağlı.
+
+### Background service
+
+`worker` container'ında `outbox-poller` registered. Default disabled — `OUTBOX_POLLER_ENABLED=true` env ile aktive edilir:
+
+```bash
+# .env veya docker-compose.override.yml içinde:
+OUTBOX_POLLER_ENABLED=true   # PR-C1 deploy + soak için
+OUTBOX_POLLER_DRY_RUN=false  # default; pick + log + publish + status update
+```
+
+### Smoke check
+
+```bash
+node ops/scripts/check-outbox-cutover.mjs --phase=pre   # PR-C2 öncesi
+node ops/scripts/check-outbox-cutover.mjs --phase=post  # cut-over sonrası
+node ops/scripts/check-outbox-cutover.mjs --phase=pre --json   # CI/automation
+```
+
+Pre kontrolleri: `event_type` breakdown + `idempotency_key` duplicate yok + `pending=0` (Phase 2 invariant).
+Post kontrolleri: `failed=0` + `dead=0` + `pending_lag` ≤30s.
+
+### Manuel SQL
+
+```sql
+-- Status breakdown
+SELECT status, COUNT(*) FROM outbox_events GROUP BY status;
+
+-- Failed/dead drill-down
+SELECT id, event_type, attempts, last_error, next_attempt_at
+FROM outbox_events WHERE status IN ('failed', 'dead')
+ORDER BY id DESC LIMIT 20;
+```
+
+### Rollback
+
+`ops/RUNBOOK-OUTBOX-POLLER-CUTOVER.md` §4: 3 katman (soft env / hard revert / nuclear).
+
+### Tasarım docs
+
+- `ops/REQUIREMENTS-OUTBOX-DLQ-V1.md` — üst tasarım
+- `ops/REQUIREMENTS-OUTBOX-POLLER-CUTOVER-V1.md` — Phase 3 cut-over plan (PR-C)
+- `ops/REQUIREMENTS-OUTBOX-PR-D-V1.md` — replay/retention/cleanup (PR-D)
+- `ops/DECISION-INGEST_COMPLETED-AUTHORITATIVE-PRODUCER.md` — sub-option B2 (idempotency_key)
+
 ## Canli Yayin Plani Kapsami
 
 ```text
 schedules.usage_scope = 'live-plan'   → Sadece Raporlama + Ingest
 schedules.usage_scope = 'broadcast'  → Normal yayın
 ```
+
+> **Madde 5 (2026-05-06 decision lock)**: Live-plan kendi tablosuna (`live_plan_entries`) taşınır; schedule = broadcast slot + reporting context olarak daraltılır. `channel_id NULL` workflow state, bug değil. Strangler M5-B1...B6 (M5-A done, M5-B1 unblocked). Detay: `ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md`.
 
 ## Web / Frontend
 

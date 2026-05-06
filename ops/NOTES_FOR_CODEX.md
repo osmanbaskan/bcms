@@ -10,13 +10,14 @@ This applies to all destructive operations (`git checkout`, `git reset`, `rm`, `
 
 ## Mimari Kurallar (Değiştirilmez)
 
-1. **API/Worker ayrıştırması**: `api` servisi `BCMS_BACKGROUND_SERVICES=none` ile çalışır. Worker servisi `notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention` çalıştırır. OPTA Python watcher ayrı konteyner. Bu ayrım bozulmamalı.
+1. **API/Worker ayrıştırması**: `api` servisi `BCMS_BACKGROUND_SERVICES=none` ile çalışır. Worker servisi `notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention,audit-partition,outbox-poller` çalıştırır (2026-05-06 itibariyle outbox-poller eklendi). OPTA Python watcher ayrı konteyner. Bu ayrım bozulmamalı.
 2. **Prisma connection limit**: API `connection_limit=10`, Worker `connection_limit=5`, `pool_timeout=20`. `apps/api/src/plugins/prisma.ts`'te `BCMS_BACKGROUND_SERVICES` env değişkenine göre ayarlanır.
 2. **Graceful shutdown**: `server.ts`'de SIGTERM/SIGINT → `app.close()` → 30 sn timeout. Worker için 60 sn. `--force` veya anında kill önerilmez.
-3. **usageScope kanonik**: `schedules.usage_scope` DB kolonudur. Metadata JSON filtresi yoktur. Ham SQL köprüsü eklenmez.
+3. **usageScope kanonik**: `schedules.usage_scope` DB kolonudur. Metadata JSON filtresi yoktur. Ham SQL köprüsü eklenmez. **Madde 5 (2026-05-06 decision)**: live-plan kendi tablosuna (`live_plan_entries`) taşınacak; schedule = broadcast slot + reporting context olarak daraltılır. Şu an strangler'ın M5-A (decision lock) aşamasında; M5-B1+ pending. Detay: `ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md`. **`channel_id NULL` bug değil**, workflow state.
 4. **Nginx static serve**: Angular dosyaları `infra/docker/web.Dockerfile` → nginx:alpine ile sunulur.
 5. **Audit log**: `apps/api/src/plugins/audit.ts` Prisma `$extends` ile tüm write işlemlerini loglar. Bu plugin'i devre dışı bırakma.
 6. **Angular production environment**: `apps/web/angular.json` production konfigürasyonunda `fileReplacements` ile `environment.ts` → `environment.prod.ts` değişimi tanımlı olmalı.
+7. **Outbox + DLQ V1 (2026-05-06)**: Tüm domain event'leri `outbox_events` tablosuna **Phase 2 shadow** olarak yazılır (status='published'). Helper: `outbox/outbox.helpers.ts:writeShadowEvent(tx, input)` — tx içinde, direct publish tx dışında. Idempotency: eventId UUID v4 her satırda + opsiyonel `idempotency_key VARCHAR(160)` partial unique (cross-producer dedup için, ör. INGEST_COMPLETED worker+callback). Poller (`outbox-poller`) PR-C1'de deploy edildi ama **non-authoritative** — `OUTBOX_POLLER_ENABLED` env-gated default false; PR-C2 cut-over (shadow→pending + direct publish env-gated skip) production soak gate'e bağlı. Detay: `ops/REQUIREMENTS-OUTBOX-DLQ-V1.md`, `ops/REQUIREMENTS-OUTBOX-POLLER-CUTOVER-V1.md`, `ops/RUNBOOK-OUTBOX-POLLER-CUTOVER.md`. Smoke: `ops/scripts/check-outbox-cutover.mjs --phase=pre|post`.
 
 ## Güvenlik / npm Audit Notları
 
@@ -46,7 +47,7 @@ Adresler:
 
 ```
 api              → BCMS_BACKGROUND_SERVICES=none (HTTP only)
-worker           → BCMS_BACKGROUND_SERVICES=notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention
+worker           → BCMS_BACKGROUND_SERVICES=notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention,audit-partition,outbox-poller
 opta-watcher     → Python, SMB → POST /api/v1/opta/sync
 web              → nginx, Angular statik
 postgres         → PostgreSQL 16
