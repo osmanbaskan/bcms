@@ -732,6 +732,26 @@ Foundation pattern: Madde 2+7 PR-A'daki gibi — boş tablo + Prisma + test, dav
 
 **Pre-req (Y9 HARD):** `ops/RUNBOOK-MIGRATION-CATCHUP-2026-05-07.md` çalıştırılmadan implementation oturumu açılmaz. 6 Mayıs migration prod'a uygulanmalı + API/worker rebuild yapılmalı.
 
+#### M5-B10 PR-split (2026-05-07)
+
+Y1-Y13 lock'u tek PR yerine iki ardışık PR'a parçalandı (kullanıcı kararı):
+
+**M5-B10a — Segments-only PR (önce)**
+- Yeni `/live-plan/:entryId` detay sayfası **iskeleti** (technical-details bölümü placeholder).
+- Yeni `/live-plan` liste sayfası (minimal — entry list + detaya navigasyon).
+- **Transmisyon Süreleri** bölümü: `live_plan_transmission_segments` mat-table list + Mat-Dialog form (create/edit/delete). Alanlar: feedRole (MAIN/BACKUP/FIBER/OTHER), kind (TEST/PROGRAM/HIGHLIGHTS/INTERVIEW/OTHER), startTime, endTime, description.
+- API: M5-B2 `/api/v1/live-plan` (list/detail) + M5-B9 `/api/v1/live-plan/:entryId/segments` (CRUD).
+- Schedule-list **dokunulmaz** bu PR'da (Y2 REVIZE M5-B10b'ye ertelenir).
+- Test: API client/service unit + segment dialog component smoke.
+
+**M5-B10b — 76 alan technical-details + Y2 REVIZE tam disable (sonra)**
+- Detay sayfasında 6 mat-tab technical-details form (REQUIREMENTS §5.1-§5.6).
+- ApiService `CACHEABLE_PATHS` regex update (`/^\/live-plan\/lookups\/[a-z_]+$/`, 60s TTL).
+- Y2 REVIZE: `usage_scope='live-plan'` schedule-list satırlarında eski Edit/Teknik Detay aksiyonları **disabled** + redirect (`/live-plan/:entryId`). Broadcast etkilenmez. Minimal satır-bazlı müdahale.
+- Test: form section component smoke (her mat-tab) + schedule-list satır disable regresyon.
+
+**Sıra:** M5-B10a → M5-B10b. M5-B10a kapanmadan M5-B10b'ye geçilmez. Pre-req (Y9) her iki PR için de geçerlidir — prod migration catch-up tamamlanmalı.
+
 **Route + ekran (Y1, Y10, Y11):**
 - Yeni `/live-plan` (liste) + `/live-plan/:entryId` (detay) route'ları. Mevcut `/schedules` ekranına dokunulmaz (paralel ekran; strangler step-down).
 - Detay ayrı sayfa (modal değil — 76 alan + segment listesi modal'a sığmaz).
