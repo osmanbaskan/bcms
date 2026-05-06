@@ -19,6 +19,8 @@ import { metricsPlugin } from './plugins/metrics.js';
 import { scheduleRoutes } from './modules/schedules/schedule.routes.js';
 import { livePlanRoutes } from './modules/live-plan/live-plan.routes.js';
 import { livePlanLookupRoutes } from './modules/live-plan/lookup.routes.js';
+import { livePlanTechnicalDetailsRoutes } from './modules/live-plan/technical-details.routes.js';
+import { livePlanSegmentsRoutes } from './modules/live-plan/segments.routes.js';
 import { bookingRoutes } from './modules/bookings/booking.routes.js';
 import { channelRoutes } from './modules/channels/channel.routes.js';
 import { ingestRoutes } from './modules/ingest/ingest.routes.js';
@@ -361,6 +363,10 @@ export async function buildApp() {
   await app.register(scheduleRoutes, { prefix: '/api/v1/schedules' });
   await app.register(livePlanRoutes, { prefix: '/api/v1/live-plan' });
   await app.register(livePlanLookupRoutes, { prefix: '/api/v1/live-plan/lookups' });
+  // M5-B9 (U4): parent-nested singleton — /api/v1/live-plan/:entryId/technical-details
+  await app.register(livePlanTechnicalDetailsRoutes, { prefix: '/api/v1/live-plan/:entryId/technical-details' });
+  // M5-B9 (U5): parent-nested collection — /api/v1/live-plan/:entryId/segments
+  await app.register(livePlanSegmentsRoutes, { prefix: '/api/v1/live-plan/:entryId/segments' });
   await app.register(bookingRoutes,  { prefix: '/api/v1/bookings' });
   await app.register(channelRoutes,  { prefix: '/api/v1/channels' });
   await app.register(ingestRoutes,   { prefix: '/api/v1/ingest' });

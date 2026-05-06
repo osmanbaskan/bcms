@@ -163,10 +163,12 @@ export class LivePlanService {
     }
 
     return this.app.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
       const result = await tx.livePlanEntry.updateMany({
         where: { id, version: ifMatchVersion, deletedAt: null },
         data: {
-          deletedAt: new Date(),
+          deletedAt: now,
           version:   { increment: 1 },
         },
       });
@@ -174,6 +176,19 @@ export class LivePlanService {
       if (result.count !== 1) {
         throw Object.assign(new Error('Live-plan version conflict'), { statusCode: 412 });
       }
+
+      // M5-B9 U8: entry soft-delete aktif technical_details + segments'i de
+      // soft-delete eder (DB FK CASCADE sadece hard-delete'te tetiklenir).
+      // Tek tx; child shadow events parent silme bağlamını taşıyamaz, parent
+      // event yeterli (consumer parent.deleted alır → child orphan inferred).
+      await tx.livePlanTechnicalDetail.updateMany({
+        where: { livePlanEntryId: id, deletedAt: null },
+        data:  { deletedAt: now, version: { increment: 1 } },
+      });
+      await tx.livePlanTransmissionSegment.updateMany({
+        where: { livePlanEntryId: id, deletedAt: null },
+        data:  { deletedAt: now },
+      });
 
       const refreshed = await tx.livePlanEntry.findUniqueOrThrow({ where: { id } });
 
