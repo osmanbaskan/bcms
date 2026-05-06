@@ -1,6 +1,6 @@
 # Live-Plan Data Model — Karar Notu
 
-> **Status**: 🟢 14 karar locked (2026-05-06); 1 open + 1 deferred; M5-A (bu doc) implement edildi sayılır. Schema PR'ları (M5-B1+) açık kararlar netleştikten sonra başlar.
+> **Status**: 🟢 14 karar locked + 1 open closed + 1 deferred (2026-05-06); M5-A doc implement edildi. Schema PR'ları (M5-B1+) deferred decision (sourceType cleanup) M5-B6/B7'de ele alınacak; başka blocker yok.
 > **Tarih**: 2026-05-06
 > **Audit referansı**: `BCMS_INDEPENDENT_AUDIT_2026-05-04.md` Madde 5 (skip listesi); finding 3.2.2 (severity revize §7) + 3.1.4 + yeni bulgu (schedule.content_id orphan §7).
 > **Önceki versiyon**: Bu doc'un ilk taslağı `channel_id NULL = data quality bug` varsayımıyla yazılmıştı; o varsayım kullanıcı domain açıklamasıyla **reddedildi**. Bu sürüm o varsayımı içermez.
@@ -22,9 +22,9 @@
 | Sınıf | Sayı | Detay |
 |---|---|---|
 | ✅ Locked | 14 | §3 |
-| ⚠️ Open | 1 | §4.1 — Booking semantic (production data analizine bağlı) |
+| ✅ Closed | 1 | §4.1 — Booking semantic (local dev DB inventory 2026-05-06: 0 satır) |
 | ⏸️ Deferred | 1 | §4.2 — `sourceType`/`sourceKey` cleanup timing |
-| 🔍 Pre-req SQL | 3 | §6 — production read-only doğrulamaları |
+| ✅ Inventory done | 3 SQL | §6 — local dev DB üzerinde çalıştırıldı (sonuçlar §6.4) |
 
 ### 0.3 channel_id NULL hakkında düzeltme
 
@@ -195,17 +195,19 @@ Bu zamanlama §5 PR sıralamasında yansıtılmıştır.
 
 ## §4 — Open & Deferred Decisions
 
-### 4.1 Booking ↔ Schedule cleanup (OPEN)
+### 4.1 Booking ↔ Schedule cleanup (✅ CLOSED 2026-05-06)
 
 **Soru**: Mevcut 129 test live-plan schedule satırına bağlı bookings var mı? Varsa M5-B5 cleanup'ta nasıl ele alınacak?
 
-**Pre-req**: §6.3 SQL — production read-only inventory.
+**Pre-req sonucu**: §6.3 SQL local dev DB üzerinde çalıştırıldı — **0 satır** (live-plan schedule satırlarına bağlı booking yok).
 
-**Karar matrisi**:
-- **Eğer hiç booking yoksa veya bookings test data'sı ise**: birlikte silinir (CASCADE), ek karar yok.
-- **Eğer production booking varsa**: M5 durur; Booking semantic kararı gerekir (broadcast-only mu, live-plan'a da bağlanmalı mı?).
+**Karar (V1)**:
+- Booking'e `live_plan_entry_id` FK **eklenmez**.
+- Booking broadcast-bound varsayımı korunur.
+- M5-B5 cleanup CASCADE riski göstermiyor; güvenli.
+- Live-plan'a bağlı booking ihtiyacı V2 scope'a bırakılır.
 
-**V1 default**: Booking'e `live_plan_entry_id` FK **eklenmez**. Booking broadcast-bound varsayımı korunur. Live-plan'a bağlı bookings mevcut değilse / test ise cleanup; mevcutsa M5 scope dışı bir karar.
+**Caveat**: Local dev DB inventory production-like dataset kabul edilerek karar verildi (sistem inşa aşamasında, kullanıcı teyidi 2026-05-06). Production deploy öncesi gerçek production DB'de (varsa) aynı sorgu tekrar çalıştırılarak 0 satır invariant'i doğrulanır.
 
 ### 4.2 sourceType / sourceKey cleanup timing (DEFERRED)
 
@@ -316,9 +318,9 @@ Sebep: M5-B6 zaten yeni `live-plan-list-component` ekliyor + mevcut `schedule-li
 
 ---
 
-## §6 — Pre-req SQL Queries
+## §6 — Pre-req SQL Queries + Inventory Results
 
-Production read-only doğrulamalar. M5-B5 ve M5-B4 öncesi çalıştırılması zorunlu. **Ayrı onay gerektirir** (kullanıcı `obskan` "network onayı zorunlu" feedback memory).
+Read-only doğrulamalar. **Local dev DB üzerinde 2026-05-06'da çalıştırıldı** (sistem inşa aşamasında olduğundan production-like dataset kabul edildi, kullanıcı onayı). Production deploy öncesi gerçek production DB varsa aynı sorgular tekrar çalıştırılır (production network onayı ayrı).
 
 ### 6.1 schedules usage_scope/channel_id breakdown
 
@@ -374,6 +376,63 @@ Ne arıyoruz: live-plan schedule satırlarına bağlı booking var mı? §4.1 op
 - 0 satır veya hepsi test → cleanup OK.
 - Production bookings → M5 durur, Booking semantic kararı.
 
+### 6.4 Local dev DB inventory result (2026-05-06)
+
+Üç sorgu local docker `bcms_postgres` container'ında çalıştırıldı (kullanıcı onayı; sistem inşa aşamasında, dataset test).
+
+#### 6.4.1 schedules breakdown
+
+```
+ usage_scope | no_channel | toplam
+-------------+------------+--------
+ live-plan   | t          |    129
+ live-plan   | f          |      3
+```
+
+**Bulgular:**
+- 129 satır: live-plan + no_channel=true (beklenen).
+- 3 satır: live-plan + no_channel=false (channel atanmış live-plan; düşük-severity anomali).
+- **0 satır: usage_scope='broadcast'** — current dev DB'de tüm schedules satırları live-plan; broadcast hiç kullanılmamış.
+
+**Yorum:**
+- Schedules tablosu canonical broadcast slot olarak **boş başlayabilir**. Bu durum migration shim ihtiyacını azaltır (mevcut broadcast satırlarını taşımaya gerek yok; zaten yok).
+- 3 channel-atanmış live-plan satırı: M5-B5 cleanup ile diğer 129 ile birlikte silinir. Test data; B1/B2 sonrası yeni live-plan schedules'a yazmayacağı için tekrar oluşmaz. **Erken CHECK rule önerilmiyor** — workflow'u daraltmamak için.
+
+#### 6.4.2 ingest_plan_items source_type breakdown
+
+```
+ source_type | toplam
+-------------+--------
+ live-plan   |     49
+ studio-plan |     14
+ ingest-plan |      2
+ manual      |      1
+```
+
+**Bulgular:**
+- 49 live-plan kaynaklı → M5-B3 FK migration'ında bağlanacak.
+- 14 studio-plan kaynaklı → M5-B4 FK migration'ında studio_plan_slots.id'ye map edilebilirlik kontrolü gerek (sourceKey formatı incelenir).
+- 2 ingest-plan + 1 manual → legacy/transitional discriminator; FK'siz branch (XOR CHECK NULL/NULL düşer; manual gibi davranır).
+
+**Yorum:**
+- M5-B4 öncesi 14 studio-plan satırının sourceKey değerlerinin studio_plan_slots tablosundaki record'lara map edilebildiği doğrulanmalı (bu da bir ek inventory; B4 PR'ı içinde yapılır).
+- `'ingest-plan'` ve `'manual'` discriminator'ları FK gerektirmez; mevcut ingest.routes.ts:598 davranışı (manuel silinebilir kategorisi) korunur.
+
+#### 6.4.3 bookings tied to live-plan schedules
+
+```
+ booking_id | task_title | status | created_at | schedule_id | usage_scope | schedule_title
+------------+------------+--------+------------+-------------+-------------+----------------
+(0 rows)
+```
+
+**Bulgular:** 0 satır.
+
+**Yorum:**
+- §4.1 open decision V1 için **closed**.
+- M5-B5 cleanup booking CASCADE riski göstermiyor.
+- Booking broadcast-bound varsayımı V1'de korunur.
+
 ---
 
 ## §7 — Audit Cross-Reference
@@ -412,14 +471,12 @@ Bu finding M5 scope'una **dahil edilmiyor** (locked decision §3.14). Asset enti
 
 ## §8 — Sonraki Adımlar
 
-1. **Doc commit + push** (kullanıcı onayı bekliyor).
-2. Audit doc satırları güncelle (3.2.2 severity, Madde 5 skip listesi satırı, yeni 3.1.X content_id orphan) — bu commit veya ayrı `docs(audit): state sync` commit'i.
-3. **§6 SQL pre-req'leri production'da çalıştırma onayı** — kullanıcı `obskan` ayrıca onaylar (network onayı zorunlu memory):
-   - 6.1 → 4.1 open decision'ı kısmen aydınlatır (anomalous kombinasyon).
-   - 6.2 → M5-B4 öncesi gereklidir (studio_plan satırı kaç tane).
-   - 6.3 → 4.1 open decision'ı kapatır (Booking cleanup yolu netleşir).
-4. SQL sonuçları gelince §4 open/deferred ya kapanır ya da M5-A doc'a güncelleme commit'i atılır.
-5. **M5-B1 schema PR** — açık kararlar netleştikten sonra.
+1. ✅ **M5-A decision doc commit** (`729c74c`).
+2. ✅ **Audit state sync commit** (`3b70957`) — 3.2.2 severity revize, Madde 5 skip listesi satırı, yeni 3.1.21 content_id orphan finding.
+3. ✅ **§6 SQL inventory** (local dev DB, 2026-05-06) — sonuçlar §6.4'te; §4.1 closed.
+4. **M5-B1 schema PR** — open decision yok; başlanabilir. İçerik: `live_plan_entries` foundation tablosu + Prisma model + migration + test interim helper.
+5. **Production deploy öncesi**: gerçek production DB varsa §6 SQL'leri tekrar çalıştırılarak invariant'ler doğrulanır (network onayı ayrı; kullanıcı `obskan` feedback memory).
+6. **M5-B4 öncesi**: 14 studio-plan satırının sourceKey → studio_plan_slots.id map edilebilirliği inceleme (ek inventory; B4 PR'ı içinde).
 
 ---
 
