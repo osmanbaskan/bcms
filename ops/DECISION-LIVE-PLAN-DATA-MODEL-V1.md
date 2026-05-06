@@ -388,38 +388,51 @@ const listLivePlanQuerySchema = z.object({
 
 **Metadata kuralı**: object only (`Record<string, unknown>`). Prisma JSON kolonu teorik olarak array/string/null kabul eder ama metadata semantik olarak object. Helper veya Zod schema doğrudan `z.record(...)` ile object zorlanır.
 
-**K9 — If-Match / optimistic locking (PATCH + DELETE):**
+**K9 — If-Match / optimistic locking (PATCH + DELETE) — Schedule'dan bilinçli ayrışma:**
 
-Schedule pattern authoritative. M5-B2 implementation öncesi `apps/api/src/modules/schedules/schedule.service.ts:update()` + ilgili route handler okunur.
+Pre-impl investigation (2026-05-06) sonucu: Schedule pattern If-Match'i **opsiyonel** yapmış. `schedule.routes.ts:298-310` + `schedule.service.ts:365-375` analizi:
+- Header missing/invalid → `version=undefined`; service `where` clause'unda version check **skip** edilir.
+- `result.count !== 1 ? (ifMatchVersion ? 412 : 404)` → version yoksa sadece "row not found" semantiği.
+- DELETE handler'ı (`schedule.routes.ts:317`) optimistic lock **hiç kullanmıyor** (`svc.remove(id)` doğrudan).
 
-Fallback semantik (Schedule pattern eksikse):
+Bu davranış optimistic locking'in amacını fiilen zayıflatıyor (lost update riski). Live-plan **yeni API yüzeyi** olduğu için bu zayıflığı taşımayacak — K3 optimistic locking lock'una gerçekten uymak için If-Match zorunlu yapılır.
+
+**Karar (kullanıcı 2026-05-06): Schedule pattern KULLANILMAZ**; live-plan If-Match zorunluluğunu uygular.
 
 | Durum | HTTP |
 |---|---|
-| Header `If-Match` eksik | 428 Precondition Required |
-| `If-Match` integer parse edilmez (örn. `'abc'`) | 400 Bad Request |
+| Header `If-Match` eksik | **428 Precondition Required** |
+| `If-Match` integer parse edilmez (örn. `'abc'`) | **400 Bad Request** |
 | Row not found | 404 |
 | Row exists ama `deleted_at != NULL` | **404** (soft-deleted gizli) |
-| Row exists, version mismatch | 412 Precondition Failed |
-| Happy path | 200 + updated entity DTO (PATCH) / 200 + soft-deleted entity DTO (DELETE) |
+| Row exists, version mismatch | **412 Precondition Failed** |
+| PATCH happy | 200 + updated entity DTO |
+| DELETE happy | 200 + soft-deleted entity DTO |
+
+**PATCH ve DELETE ikisinde de** If-Match zorunlu. DELETE soft delete olduğu için yine bir write operasyon; iki kullanıcıdan biri silerken diğeri update ediyorsa version koruması gerekir.
 
 **Implementation iki adım:**
 1. `findUnique({ where: { id } })` — yoksa veya `deletedAt != null` → 404.
 2. `tx.livePlanEntry.updateMany({ where: { id, version, deletedAt: null }, data: { ...merged, version: { increment: 1 } } })` — count=0 → 412.
 
-**K10 — Audit subject implementation:**
+**Doc note (M5-B2 PR'ında commit message + service yorum):**
+> Schedule investigation showed If-Match is optional there. Live-plan intentionally requires it because this is a new API surface and K3 optimistic locking must be enforced.
 
-K4 lock: `subject = "LivePlanEntry"`.
+**K10 — Audit subject implementation (otomatik):**
 
-Implementation iki olasılık (audit plugin pattern okumadan kesin yok):
-- (a) **Otomatik**: Prisma `$extends` audit plugin model adından subject türetiyorsa → `LivePlanEntry` otomatik. Ek kod yok.
-- (b) **Manuel**: Audit context veya mapping gerekiyorsa → service'te `subject: 'LivePlanEntry'` set edilir.
+Pre-impl investigation (2026-05-06) sonucu: `apps/api/src/plugins/audit.ts:107-136` analizi — Prisma `$extends` audit plugin model adından `entityType` alanını **otomatik** doldurur. `entityId` Prisma `result.id` veya `before.id`'den otomatik. Action type Prisma operation'dan türetilir.
 
-M5-B2 implementation öncesi `apps/api/src/plugins/audit.ts` okunur, hangi pattern'in geçerli olduğu netleşir; minimal mapping eklenir veya hiç eklenmez.
-
-Action types: create / update / delete (audit plugin convention'ına göre — Prisma operation type'larından otomatik türemesi muhtemel).
+**Sonuç:** K4 lock'u (`subject = "LivePlanEntry"`) **ek kod gerektirmez**. `LivePlanEntry` Prisma model adı doğrudan audit log'a `entityType="LivePlanEntry"` olarak yazılır. M5-B2 service'inde audit context override **yapılmaz**.
 
 Historical Schedule audit migrate edilmez (K4 lock).
+
+**Soft delete audit coverage — integration test ile doğrulama (2026-05-06 ek not):**
+
+Soft delete `prisma.livePlanEntry.update({...})` veya `updateMany` çağrısıyla yapılır. Audit plugin `update` ve `updateMany` operasyonlarını kapsar (audit.ts:88-101 before-snapshot logic). Yine de:
+
+- M5-B2 integration test'inde **soft delete audit coverage doğrulaması** eklenir: DELETE endpoint'i çağrılır → `audit_logs`'ta `entityType='LivePlanEntry'`, `action='delete'` veya `'update'` (plugin convention'ına göre) entry oluşmuş olmalı.
+- Eğer audit plugin soft-delete-via-update'i `delete` action olarak tanımıyorsa (gerçek `prisma.delete()` değil, sadece `update({deletedAt})` olduğundan) **service-level audit pattern** revize edilir (örn. action-level override veya delete operasyonunu farklı yöntemle).
+- Bu test M5-B2 PR'ı içinde implement edilir; keşif sonucu pattern revizesi gerekirse o PR'ın scope'una alınır.
 
 **K11 — Soft delete only:**
 
@@ -451,26 +464,28 @@ Live-plan create/update/delete service akışlarında outbox shadow yazılır (P
 
 Idempotency key kullanılmaz (cross-producer dedup gerek yok; tek üretici live-plan service).
 
-**K13 — RBAC permissions namespace:**
+**K13 — RBAC permissions namespace (Schedule clone, locked 2026-05-06):**
 
-Yeni permission map satırı (`packages/shared/src/types/rbac.ts`):
+Pre-impl investigation (2026-05-06) sonucu: `packages/shared/src/types/rbac.ts` analizi — domain → action map pattern doğrulandı; `[]` empty = "all authenticated" konvansiyonu (service-level filter); SystemEng demoted (2026-05-01 RBAC restructure).
+
+**Karar (kullanıcı 2026-05-06): Schedule.write/delete clone pattern.**
 
 ```ts
 livePlan: {
-  read:   [...] as BcmsGroup[],
-  write:  [...] as BcmsGroup[],
-  delete: [...] as BcmsGroup[],
+  read:   [] as BcmsGroup[],                                                 // all authenticated
+  write:  ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],
+  delete: ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],
 }
 ```
 
-**Hardcoded group YOK**. Route handler'lar `app.requireGroup(...PERMISSIONS.livePlan.read)` pattern.
+**Hardcoded group YOK** — route handler'lar `app.requireGroup(...PERMISSIONS.livePlan.X)` pattern. `Admin` auto-bypass `isAdminPrincipal()` davranışı korunur (Admin listede yok ama her endpoint'e erişir).
 
-Grup listesi M5-B2 implementation öncesi mevcut `PERMISSIONS.schedules` + `PERMISSIONS.ingest` patterns okunarak seçilir. Tahmin (lock değil):
-- `read`: `Booking`, `YayınPlanlama`, `Ingest`, `SystemEng`
-- `write`: `Booking`, `YayınPlanlama`, `Ingest`
-- `delete`: aynı write seti (V1'de delete-only ayrı grup yok)
+**Doc note (rbac.ts yorum + commit message):**
+> Live-plan bugün yayın operasyonuna yakın çalıştığı ve Schedule ile aynı kullanıcı kitlesi tarafından yönetileceği için V1'de Schedule.write grubu clone edilir. Yetki daraltma RBAC audit sonrası ayrı karar olabilir.
 
-`Admin` auto-bypass `isAdminPrincipal()` mevcut davranışı.
+Reddedilen alternatifler:
+- Daha dar (`['Booking', 'YayınPlanlama']` only): Tekyon/Transmisyon Schedule.write'da var; live-plan'a erişimsiz bırakmak production iş akışını kırabilir; gerekirse RBAC audit sonrası daraltılır.
+- Schedule.write'ın aynı seti (4 grup) kullanılır; Ingest dahil edilmez (Ingest read için all-auth empty array zaten yeterli).
 
 **K14 — Response shape:**
 
@@ -525,15 +540,15 @@ Field naming: Prisma camelCase (DTO) ↔ DB snake_case (kolon). Service mapping 
 - `q` text search, custom sort, `includeDeleted` → V1 dışı (K7).
 - Hard delete / force delete → V1 dışı (K11).
 
-#### M5-B2 Pre-impl Read-Only Investigation
+#### M5-B2 Pre-impl Read-Only Investigation (✅ COMPLETED 2026-05-06)
 
-İmplementation başlamadan önce 3 dosya okunur (kod yazılmaz):
+3 dosya read-only inceleme yapıldı, bulgular K9/K10/K13'e yansıtıldı:
 
-1. **`apps/api/src/modules/schedules/schedule.service.ts:update()` + ilgili route** — If-Match pattern (K9 fallback semantik teyidi: missing/invalid header HTTP code).
-2. **`apps/api/src/plugins/audit.ts`** — audit subject pattern (K10 (a) otomatik mi (b) manuel mi).
-3. **`packages/shared/src/types/rbac.ts`** — mevcut PERMISSIONS pattern + Schedule live-plan + Ingest grup setleri (K13 grup listesi seçimi).
+1. **`apps/api/src/modules/schedules/schedule.service.ts:update()` + `schedule.routes.ts:298-310`** — If-Match Schedule'da **opsiyonel** (missing/invalid silently skip). DELETE handler optimistic lock kullanmıyor. **Sonuç**: K9 Schedule pattern'den **bilinçli ayrışıyor** — live-plan If-Match zorunlu.
+2. **`apps/api/src/plugins/audit.ts:107-136`** — Prisma `$extends` audit plugin model adından `entityType` **otomatik** doldurur. **Sonuç**: K10 (a) otomatik; ek mapping yok. Soft delete audit coverage M5-B2 integration test'inde doğrulanır.
+3. **`packages/shared/src/types/rbac.ts:57-135`** — Domain → action map pattern; `[]` empty = "all authenticated"; SystemEng demoted; Schedule.write = `['Tekyon','Transmisyon','Booking','YayınPlanlama']`. **Sonuç**: K13 Schedule.write/delete clone pattern.
 
-Bu inceleme M5-B2 PR'ında **commit edilmeden**, sadece scope teyidi için.
+Bulguların hiçbirinde scope blocker yok; M5-B2 implementation başlayabilir.
 
 ---
 
