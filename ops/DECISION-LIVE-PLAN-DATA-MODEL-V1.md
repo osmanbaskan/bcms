@@ -24,6 +24,7 @@
 | ✅ Locked (architectural) | 14 | §3 |
 | ✅ Locked (M5-B1 scope) | K1-K6 | §3.2 — field/index set + out-of-scope |
 | ✅ Locked (M5-B2 scope) | K7-K14 | §3.3 — route/DTO/If-Match/audit/soft delete/outbox shadow/RBAC/response |
+| ✅ Locked (K15 technical normalization) | K15.1-K15.5 + X1, X2 | §3.4 — JSON yok; tek `live_plan_technical_details` tablo; mapping ayrı doc |
 | ✅ Closed | 1 | §4.1 — Booking semantic (local dev DB inventory 2026-05-06: 0 satır) |
 | ⏸️ Deferred | 1 | §4.2 — `sourceType`/`sourceKey` cleanup timing |
 | ✅ Inventory done | 3 SQL | §6 — local dev DB üzerinde çalıştırıldı (sonuçlar §6.4) |
@@ -550,6 +551,41 @@ Field naming: Prisma camelCase (DTO) ↔ DB snake_case (kolon). Service mapping 
 
 Bulguların hiçbirinde scope blocker yok; M5-B2 implementation başlayabilir.
 
+### 3.4 K15 — Live-plan technical details normalization (2026-05-06)
+
+K15 prensibi: Canlı Yayın Plan altındaki teknik detaylar JSON'da tutulmaz; structured DB modeline taşınır. Detaylı field-by-field mapping ayrı dosyada: **`ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md`**.
+
+**K15.1** — JSON canonical storage YOK. Canlı Yayın Plan altındaki tüm alanlar structured DB kolonlarına / lookup FK'lara taşınır. `metadata` JSONB canonical kaynak değil. Ad-hoc not için `description`/`operationNotes`/`technicalNotes` text kolonları yeterli.
+
+**K15.2 (REVIZE 2026-05-06)** — Teknik Detay altındaki Yayın/OB + Ana Feed + Yedek Feed + Fiber alanlarının tamamı **tek `live_plan_technical_details` tablosunda** tutulur (1:1 ile `live_plan_entries`). Ana Feed kolonları prefix'siz; Yedek Feed `backup_*` prefix'li; Fiber `fiber_*` prefix'li. `live_plan_transmission_segments` ayrı 1:N tablo (live_plan_entries.id FK + `feed_role` enum kolon) — net uydu kullanım segmentleri için.
+
+> **Önceki K15.2 (Ana/Yedek/Fiber tek `live_plan_transmissions` + feedRole) iptal edildi**. Sebep: kullanıcı "tek tablo" tercihi (kısa vadeli pragmatik); per-feed split V2 scope'una bırakıldı.
+
+**K15.3** — Kategorik/select alanlar lookup FK; serbest teknik değerler (txp, satChannel, frequency, symbolRate, bandwidth, pre/match/post keys) scalar string; açıklama/notlar text kolon. JSON yok.
+
+**K15.4** — Legacy data migration YOK; yeni model boş başlar. Eski `schedules.metadata.liveDetails` + `transStart/transEnd` test data; M5-B13 cleanup'ta silinir. UI yeni structured API'ye geçtikten sonra cleanup.
+
+**K15.5** — Mapping doc ayrı dosya: `ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md`. Field-by-field tablo + 25 lookup + ~80 alan + tüm lock kararları orada.
+
+#### İptal olan önceki lock'lar
+
+K15.2 revize ile birlikte aşağıdaki feed-level lock'lar **iptal edildi** (gelecek developer için context):
+- **W1**: IRD/Fiber slotları per-feed (`live_plan_transmissions.ird1/2/3_id`) → İptal. Yeni: `live_plan_technical_details.ird1/2/3_id` event-level. Yedek için Edit dialog'da kolon yok.
+- **W2**: modulationType/videoCoding per-feed → İptal. Yeni: ana ve `backup_*` prefix'li ayrı kolonlar tek satırda.
+- **W3**: demod/tie/virtualResource per-feed → İptal. Yeni: technical_details event-level kolonlar.
+- **W4**: planned_start_time/planned_end_time per-feed → İptal. Yeni: technical_details kolon (tek window varsayımı).
+
+Detaylar mapping doc §5'te.
+
+#### Lookup management
+
+§6.8 alt-kararı: lookup tabloları için **basic admin API + UI** M5 scope'unda (M5-B5/B6). Operatör DB'den lookup değerlerini ekleyip düzenleyebilir.
+
+#### Cross-references
+
+- M5 strangler revize PR sırası: §5 (M5-B3..B14)
+- Field mapping detayları + 25 lookup tablo + seed kaynakları: `ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md`
+
 ---
 
 ## §4 — Open & Deferred Decisions
@@ -628,15 +664,85 @@ Foundation pattern: Madde 2+7 PR-A'daki gibi — boş tablo + Prisma + test, dav
 
 **Pre-impl read-only:** §3.3 sonu — Schedule routes (If-Match), audit.ts (subject pattern), rbac.ts (PERMISSIONS pattern).
 
-### M5-B3 — `ingest_plan_items.live_plan_entry_id` FK
+### M5-B3 — Mapping doc commit (DECISION K15 + REQUIREMENTS yeni dosya)
+
+**Bu PR (M5-A pattern; doc-only).**
+
+İçerik:
+- DECISION-LIVE-PLAN-DATA-MODEL-V1.md §3.4 K15 alt-bölüm (bu doc).
+- Yeni `ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md` — full mapping (~76 alan, 25 lookup).
+- Hiç kod/schema değişikliği YOK.
+
+### M5-B4 — Lookup tabloları foundation + seed + metadata DROP
+
+İçerik:
+- Migration: 25 lookup tablo (transmission_satellites/irds/fibers/feed_types/modulation_types/video_codings/audio_configs/key_types/polarizations/fec_rates/roll_offs/iso_feed_options/int_resources/tie_options/demod_options/virtual_resources/equipment_options/companies/locations/usage_locations/regions/languages/off_tube_options/fiber_audio_formats/fiber_video_formats).
+- Seed migration: hardcoded frontend listelerinden seed (RESOURCE_OPTIONS, INT_OPTIONS, TIE_OPTIONS, DEMOD_OPTIONS, SANAL_OPTIONS, feedType options, vs).
+- **`live_plan_entries.metadata` kolon DROP** (K15.1 disiplin için).
+- **API/DTO/service/test cleanup**: M5-B2'de eklenen `LivePlanEntry.metadata` Zod alanı, service create/update path, integration testlerinde metadata kullanımı kaldırılır. Migration tek başına runtime kırmasın diye kod tarafı önce temizlenir, migration sonra çalışır.
+- Prisma model'ler.
+
+### M5-B5 — Lookup management API
+
+İçerik:
+- Generic CRUD endpoints: `GET/POST/PATCH/DELETE /api/v1/live-plan/lookups/:type`
+- Type whitelist (security).
+- RBAC: read = `livePlan.read`; write = admin/SystemEng (dar yetki).
+
+### M5-B6 — Lookup management UI
+
+İçerik:
+- Admin sayfası: lookup type seçimi + value liste/edit/silme.
+- Active flag yönetimi.
+- M5-B7+ teknik UI'larında select box kaynağı bu admin'den gelir.
+
+### M5-B7 — `live_plan_technical_details` schema
+
+İçerik:
+- Migration: `live_plan_technical_details` tablo (~80 kolon; ana_/backup_/fiber_ prefix'li; 1:1 ile live_plan_entries).
+- Prisma model.
+- FK relations'lar lookup tablolara.
+- DB CHECK: `planned_end_time > planned_start_time` (NULL hariç).
+- Test interim helper (Madde 4 pattern; CHECK reapply).
+
+### M5-B8 — `live_plan_transmission_segments` schema
+
+İçerik:
+- Migration: `live_plan_transmission_segments` tablo.
+  - `live_plan_entry_id INT NOT NULL FK → live_plan_entries.id (ON DELETE RESTRICT)`
+  - `feed_role` enum kolon (FeedRole: MAIN/BACKUP/FIBER/OTHER)
+  - `start_time`, `end_time` DateTime
+  - `kind` enum (TransmissionSegmentKind: TEST/PROGRAM/HIGHLIGHTS/INTERVIEW/OTHER)
+  - `description` text nullable
+- DB CHECK: `end_time > start_time`.
+- Prisma model + tests.
+
+### M5-B9 — Technical details + segments service/API
+
+İçerik:
+- `LivePlanTechnicalDetailService` (CRUD; If-Match; soft delete cascade ile parent).
+- `LivePlanTransmissionSegmentService` (CRUD; child of entry).
+- API routes: `/api/v1/live-plan/:id/technical-details`, `/api/v1/live-plan/:id/segments`.
+- Audit subject otomatik (Prisma model adı).
+- Outbox shadow events (live_plan_technical.updated, live_plan_segment.created/updated/deleted) — routing M5-B9 dışı.
+
+### M5-B10 — Live-plan UI migration
+
+İçerik:
+- Yeni live-plan ekranı: Genel Bilgi + Teknik Detay + Transmisyon Segmentleri + Kayıt Planı tab'ları.
+- **Canlı Yayın Plan surface'inde** eski Schedule "Edit / Teknik Detay" yazma path'i kapatılır veya yeni structured API'ye yönlendirilir. Diğer sekmeler (broadcast schedule, booking, ingest, vs.) bu PR scope'u dışında.
+- Lookup select box'lar M5-B6 admin'den gelen DB değerleriyle dolar.
+
+### M5-B11 — `ingest_plan_items.live_plan_entry_id` FK (revize X2)
 
 İçerik:
 - Migration: `live_plan_entry_id INT NULL FK → live_plan_entries.id (ON DELETE RESTRICT)`.
+  - **Not (X2 lock)**: Eski plan transmission_id idi; live_plan_transmissions tablosu V1'de olmadığı için doğrudan entry'e bağlanır.
 - Yeni ingest plan item'lar `sourceType='live-plan'` olduğunda `live_plan_entry_id` doldurulur.
 - Eski sourceType + sourceKey paralel kalır (transitional).
 - **XOR CHECK YOK henüz** — sadece live path bağlı.
 
-### M5-B4 — `ingest_plan_items.studio_plan_slot_id` FK + XOR CHECK
+### M5-B12 — `ingest_plan_items.studio_plan_slot_id` FK + XOR CHECK
 
 İçerik:
 - Pre-req inventory: §6.2 SQL `sourceType='studio-plan'` satır sayısı; varsa data analiz / cleanup.
@@ -652,26 +758,15 @@ Foundation pattern: Madde 2+7 PR-A'daki gibi — boş tablo + Prisma + test, dav
   ```
 - Test interim helper (Madde 4 pattern) reapply.
 
-### M5-B5 — Cleanup test data
+### M5-B13 — Cleanup eski metadata + test data
 
 İçerik:
-- §6.3 booking inventory (open decision §4.1 kapanır):
-  - Bookings yoksa veya test ise: CASCADE delete ile birlikte silinir.
-  - Production bookings varsa: M5 durur.
-- `DELETE FROM schedules WHERE usage_scope='live-plan'` (test data temizliği).
-- M5-B2'deki read fallback (UNION) kaldırılır.
-- 132 satırın 129'u düşer; schedules **3 broadcast satır + bundan sonra yazılan yeni broadcast satırları** olur.
+- §6.3 booking inventory (open decision §4.1 zaten closed; 0 satır).
+- `DELETE FROM schedules WHERE usage_scope='live-plan'` (test data temizliği — 129 satır + 3 anomali).
+- `metadata.liveDetails`, `metadata.transStart`, `metadata.transEnd` artık yazılmıyor (M5-B10 sonrası); historical data UI'da görünmez.
+- 132 satırın 129'u düşer; schedules **broadcast satırları** olur.
 
-### M5-B6 — UI separation
-
-İçerik:
-- Frontend route: `/schedules` (broadcast list — daraltılmış kapsam) + `/live-plan` (live-plan list — yeni component).
-- Schedule-list 2385 satır component (**Madde 6**) bu PR'a girmez — Madde 6 ayrı PR'da işlenir.
-  - Sebep: domain ayrımı (yeni `live-plan-list-component`) + 2385 satır refactor aynı PR'a girerse review/test sürtünmesi yüksek.
-  - Önceki taslakta "B2 ile birleştir" önerimi geri çekildi (kullanıcı önerisi sonrası).
-- Live-plan ekranında "bağlı ingest_plan_items + portları" gösterimi (read-only via FK relation).
-
-### M5-B7 (opsiyonel; deferred) — `sourceType` cleanup
+### M5-B14 (opsiyonel; deferred) — `sourceType` cleanup
 
 İçerik (§4.2 deferred decision):
 - UI/API'de sourceType string kullanımı kalkmış mı kontrol et.
