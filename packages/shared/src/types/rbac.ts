@@ -64,6 +64,16 @@ export const PERMISSIONS = {
     delete:        ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],               // silme
     write:         ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],               // API PATCH/POST
   },
+  /** Madde 5 M5-B2 (decision §3.3 K13, 2026-05-06): live-plan yeni canonical
+   *  API yüzeyi. Schedule.write/delete grup seti **clone** edilir — live-plan
+   *  bugün yayın operasyonuna yakın çalıştığı ve Schedule ile aynı kullanıcı
+   *  kitlesi tarafından yönetileceği için. Yetki daraltma RBAC audit sonrası
+   *  ayrı karar olabilir. Admin auto-bypass `isAdminPrincipal()` davranışı korunur. */
+  livePlan: {
+    read:   [] as BcmsGroup[],                                                                          // all authenticated (izleme)
+    write:  ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],                       // API POST/PATCH
+    delete: ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],                       // API DELETE (soft)
+  },
   /** MED-SHARED-005 (2026-05-05): bookings boş array = `requireGroup(...[])`
    *  her authenticated kullanıcıya açık. Bu kasıtlı: ekip iş takip sistemi
    *  tüm gruplar için ortak çalışır; backend'de `BookingService.visibleGroups`
