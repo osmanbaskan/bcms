@@ -454,6 +454,15 @@ model OutboxEvent {
   publishedAt     DateTime? @map("published_at") @db.Timestamptz(6)
   /// Poller bu zaman geçince tekrar dener (backoff schedule).
   nextAttemptAt   DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  /// Madde 2+7 PR-B3b-2 schema PR: aggregate-level idempotency key. Cross-producer
+  /// dedup (örn. INGEST_COMPLETED — Node worker + Avid capture callback aynı job için).
+  /// Format: `{eventType}:{aggregateType}:{aggregateId}:{discriminator}` (ör.
+  /// `ingest.job_completed:IngestJob:42:COMPLETED`). Tüm domain event'ler için
+  /// zorunlu DEĞİL — yalnız cross-producer dedup gereken event'lerde set edilir.
+  /// DB UNIQUE: partial unique index (`WHERE idempotency_key IS NOT NULL`) — bu
+  /// migration SQL'de + test interim helper'da uygulanır; Prisma 5 partial @@unique
+  /// desteği sınırlı olduğu için schema'da @@unique YAZMAYINIZ.
+  idempotencyKey  String?   @map("idempotency_key") @db.VarChar(160)
 
   @@index([status, nextAttemptAt], map: "outbox_events_status_next_attempt_idx") // poller hot-path
   @@index([aggregateType, aggregateId], map: "outbox_events_aggregate_idx")      // lookup/replay

@@ -113,6 +113,31 @@ export async function applyOutboxConstraints(): Promise<void> {
 }
 
 /**
+ * Madde 2+7 PR-B3b-2 schema PR interim helper (2026-05-06):
+ * outbox_events.idempotency_key partial unique index manuel reapply.
+ *
+ * Production migration: 20260506000001_outbox_idempotency_key. Test DB
+ * `db push --force-reset` ile sync edildiği için partial UNIQUE index tüketilmez
+ * (db push partial unique attribute'unu schema.prisma'dan üretemez; bilinçli
+ * olarak sadece nullable field tutuluyor). Bu helper aynı index'i reapply eder.
+ *
+ * Idempotent: DROP IF EXISTS + CREATE UNIQUE.
+ *
+ * Madde 1 (migration baseline) sonrası kaldırılır.
+ */
+export async function applyOutboxIdempotencyIndex(): Promise<void> {
+  const prisma = getRawPrisma();
+  await prisma.$executeRawUnsafe(`
+    DROP INDEX IF EXISTS "outbox_events_idempotency_key_uniq"
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX "outbox_events_idempotency_key_uniq"
+    ON "outbox_events"("idempotency_key")
+    WHERE "idempotency_key" IS NOT NULL
+  `);
+}
+
+/**
  * Minimal seed — channels, broadcast_types, leagues. Booking spec için yeterli.
  * Idempotent: zaten varsa skip eder (CI'da migrate reset sonrası çalışır).
  */

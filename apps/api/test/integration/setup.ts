@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll } from 'vitest';
-import { applyOutboxConstraints, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
+import { applyOutboxConstraints, applyOutboxIdempotencyIndex, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
 
 /**
  * Hybrid setup:
@@ -56,6 +56,10 @@ beforeAll(async () => {
   // manuel reapply (db push schema.prisma'dan oluşturuyor; CHECK schema'da yok).
   await applyTestConstraints();
   await applyOutboxConstraints();
+  // Madde 2+7 PR-B3b-2 schema PR: idempotency_key partial UNIQUE index reapply
+  // (db push partial unique attribute'unu üretmez; bilinçli olarak schema.prisma'da
+  // sadece nullable field var).
+  await applyOutboxIdempotencyIndex();
 
   // Minimal seed
   await seedTestFixtures();
