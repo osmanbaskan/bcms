@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { Prisma, IngestStatus } from '@prisma/client';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { PERMISSIONS, type SaveIngestPlanItemDto, type SaveRecordingPortsDto } from '@bcms/shared';
-import { validateIngestSourcePath } from './ingest.paths.js';
+import { triggerManualIngest } from './ingest.service.js';
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const ingestPlanStatusSchema = z.enum(['WAITING', 'RECEIVED', 'INGEST_STARTED', 'COMPLETED', 'ISSUE']);
@@ -612,46 +612,7 @@ export async function ingestRoutes(app: FastifyInstance) {
     schema: { tags: ['Ingest'], summary: 'Trigger a new ingest job' },
   }, async (request, reply) => {
     const dto = createIngestSchema.parse(request.body);
-    const sourcePath = validateIngestSourcePath(dto.sourcePath);
-
-    if (dto.targetId) {
-      const schedule = await app.prisma.schedule.findFirst({
-        where: { id: dto.targetId, usageScope: 'live-plan' },
-        select: { id: true },
-      });
-      if (!schedule) {
-        throw Object.assign(new Error('Ingest hedefi canlı yayın planı kaydı olmalıdır'), { statusCode: 400 });
-      }
-    }
-
-    const job = await app.prisma.ingestJob.create({
-      data: {
-        sourcePath,
-        targetId:   dto.targetId,
-        metadata:   dto.metadata as Prisma.InputJsonValue,
-      },
-    });
-
-    const planSourceKey = typeof dto.metadata?.ingestPlanSourceKey === 'string'
-      ? dto.metadata.ingestPlanSourceKey
-      : null;
-    if (planSourceKey) {
-      await app.prisma.ingestPlanItem.updateMany({
-        where: { sourceKey: planSourceKey },
-        data: {
-          sourcePath,
-          status: 'INGEST_STARTED',
-          jobId: job.id,
-        },
-      });
-    }
-
-    await app.rabbitmq.publish(QUEUES.INGEST_NEW, {
-      jobId:      job.id,
-      sourcePath: job.sourcePath,
-      targetId:   job.targetId,
-    });
-
+    const job = await triggerManualIngest(app, dto);
     reply.status(202).send(job);
   });
 

@@ -2,6 +2,7 @@ import path from 'node:path';
 import chokidar from 'chokidar';
 import type { FastifyInstance } from 'fastify';
 import { QUEUES } from '../../plugins/rabbitmq.js';
+import { writeShadowEvent } from '../outbox/outbox.helpers.js';
 import { validateIngestSourcePath, VIDEO_EXTENSIONS } from './ingest.paths.js';
 
 const WATCH_FOLDER    = process.env.WATCH_FOLDER ?? './tmp/watch';
@@ -25,8 +26,21 @@ export function startIngestWatcher(app: FastifyInstance): void {
     try {
       const sourcePath = validateIngestSourcePath(filePath);
 
-      const job = await app.prisma.ingestJob.create({
-        data: { sourcePath },
+      // Madde 2+7 PR-B3b-1: tx içinde job create + shadow outbox; direct
+      // publish (queue.ingest.new) tx dışında — mevcut davranış korunur.
+      // Shadow row eventType='ingest.job_started', payload mevcut publish ile 1:1.
+      const job = await app.prisma.$transaction(async (tx) => {
+        const created = await tx.ingestJob.create({ data: { sourcePath } });
+        await writeShadowEvent(tx, {
+          eventType:     'ingest.job_started',
+          aggregateType: 'IngestJob',
+          aggregateId:   created.id,
+          payload: {
+            jobId:      created.id,
+            sourcePath: created.sourcePath,
+          },
+        });
+        return created;
       });
 
       await app.rabbitmq.publish(QUEUES.INGEST_NEW, {
