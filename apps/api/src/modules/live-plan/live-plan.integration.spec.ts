@@ -37,7 +37,6 @@ describe('LivePlanEntry — schema foundation (DB integration)', () => {
     expect(created.optaMatchId).toBeNull();            // K1 nullable
     expect(created.createdBy).toBeNull();              // K6 nullable
     expect(created.operationNotes).toBeNull();
-    expect(created.metadata).toBeNull();
     expect(created.deletedAt).toBeNull();
     expect(created.createdAt).toBeInstanceOf(Date);
     expect(created.updatedAt).toBeInstanceOf(Date);
@@ -66,7 +65,7 @@ describe('LivePlanEntry — schema foundation (DB integration)', () => {
         optaMatchId:    'opta-event-12345',
         status:         'READY',
         operationNotes: 'Özel prodüksiyon',
-        metadata:       { tags: ['derby', 'priority'] },
+        // metadata kolonu M5-B4'te DROP edildi (K15.1).
         createdBy:      'integration-test',
       },
     });
@@ -75,7 +74,6 @@ describe('LivePlanEntry — schema foundation (DB integration)', () => {
     expect(created.optaMatchId).toBe('opta-event-12345');
     expect(created.status).toBe('READY');
     expect(created.operationNotes).toBe('Özel prodüksiyon');
-    expect((created.metadata as Record<string, unknown>).tags).toEqual(['derby', 'priority']);
     expect(created.createdBy).toBe('integration-test');
   });
 

@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll } from 'vitest';
-import { applyOutboxConstraints, applyOutboxIdempotencyIndex, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
+import { applyLivePlanLookupConstraints, applyOutboxConstraints, applyOutboxIdempotencyIndex, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
 
 /**
  * Hybrid setup:
@@ -60,6 +60,9 @@ beforeAll(async () => {
   // (db push partial unique attribute'unu üretmez; bilinçli olarak schema.prisma'da
   // sadece nullable field var).
   await applyOutboxIdempotencyIndex();
+  // Madde 5 M5-B4: lookup tabloları için partial unique index + CHECK
+  // constraint reapply (Prisma 5 partial+functional+CHECK desteği sınırlı).
+  await applyLivePlanLookupConstraints();
 
   // Minimal seed
   await seedTestFixtures();

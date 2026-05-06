@@ -74,6 +74,16 @@ export const PERMISSIONS = {
     write:  ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],                       // API POST/PATCH
     delete: ['Tekyon', 'Transmisyon', 'Booking', 'YayınPlanlama'] as BcmsGroup[],                       // API DELETE (soft)
   },
+  /** Madde 5 M5-B4 (decision §3.4 K15.9, 2026-05-06): live-plan lookup tablo
+   *  master data yönetimi. Read all-authenticated (UI dropdown'larda kullanılır);
+   *  write/delete sadece SystemEng + Admin auto-bypass — operatör değer ekleme
+   *  yetkisi sınırlı. M5-B5/B6 lookup management API + UI bu permission
+   *  setini kullanır. */
+  livePlanLookups: {
+    read:   [] as BcmsGroup[],                                                                          // all authenticated (UI dropdown source)
+    write:  ['SystemEng'] as BcmsGroup[],                                                               // master data ekleme/güncelleme (Admin auto-bypass)
+    delete: ['SystemEng'] as BcmsGroup[],                                                               // soft delete
+  },
   /** MED-SHARED-005 (2026-05-05): bookings boş array = `requireGroup(...[])`
    *  her authenticated kullanıcıya açık. Bu kasıtlı: ekip iş takip sistemi
    *  tüm gruplar için ortak çalışır; backend'de `BookingService.visibleGroups`

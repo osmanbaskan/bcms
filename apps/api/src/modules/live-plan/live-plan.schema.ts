@@ -34,7 +34,9 @@ export const createLivePlanSchema = z.object({
   optaMatchId:     z.string().trim().min(1).max(80).optional(),
   status:          livePlanStatusSchema.optional().default('PLANNED'),
   operationNotes:  z.string().trim().max(8_000).optional(),
-  metadata:        z.record(z.unknown()).optional(),
+  // Madde 5 K15.1 (M5-B4): metadata JSONB kolonu kaldırıldı. Teknik detaylar
+  // artık `live_plan_technical_details` tablosunda structured kolon olarak yaşar
+  // (M5-B7+); ad-hoc not için operationNotes yeterli.
 }).refine(dateOrderRefine, {
   message: 'eventEndTime, eventStartTime\'tan sonra olmalı',
   path:    ['eventEndTime'],
@@ -60,7 +62,7 @@ export const updateLivePlanSchema = z.object({
   optaMatchId:     z.string().trim().min(1).max(80).nullable().optional(),
   status:          livePlanStatusSchema.optional(),
   operationNotes:  z.string().trim().max(8_000).nullable().optional(),
-  metadata:        z.record(z.unknown()).nullable().optional(),
+  // Madde 5 K15.1 (M5-B4): metadata JSONB kolonu kaldırıldı.
 }).refine((d) => Object.keys(d).length > 0, {
   message: 'En az bir field güncellenmeli',
 }).refine(

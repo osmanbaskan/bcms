@@ -30,6 +30,34 @@ const TRANSACTIONAL_TABLES = [
   'teams',
   'outbox_events',
   'live_plan_entries',
+  // Madde 5 M5-B4: lookup tabloları (25 adet — testlerde isolated kalmalı;
+  // seed migration tarafından doldurulduğu için truncate sonrası boş kalır;
+  // testler kendi seed'ini yapar).
+  'transmission_satellites',
+  'transmission_irds',
+  'transmission_fibers',
+  'transmission_int_resources',
+  'transmission_tie_options',
+  'transmission_demod_options',
+  'transmission_virtual_resources',
+  'transmission_feed_types',
+  'transmission_modulation_types',
+  'transmission_video_codings',
+  'transmission_audio_configs',
+  'transmission_key_types',
+  'transmission_polarizations',
+  'transmission_fec_rates',
+  'transmission_roll_offs',
+  'transmission_iso_feed_options',
+  'technical_companies',
+  'live_plan_equipment_options',
+  'live_plan_locations',
+  'live_plan_usage_locations',
+  'live_plan_regions',
+  'live_plan_languages',
+  'live_plan_off_tube_options',
+  'fiber_audio_formats',
+  'fiber_video_formats',
 ];
 
 let prismaSingleton: PrismaClient | null = null;
@@ -111,6 +139,107 @@ export async function applyOutboxConstraints(): Promise<void> {
     ADD CONSTRAINT "outbox_events_status_check"
     CHECK ("status" IN ('pending','published','failed','dead'))
   `);
+}
+
+/**
+ * Madde 5 M5-B4 interim helper (2026-05-06):
+ * Live-plan lookup tabloları için partial unique index + CHECK constraint
+ * manuel reapply. Prisma 5 partial unique + functional index + CHECK
+ * desteği sınırlı; migration SQL'de uygulanan bu constraint'ler db push
+ * ile yeniden oluşturulmaz.
+ *
+ * Idempotent: DROP IF EXISTS + CREATE/ADD.
+ *
+ * Madde 1 (migration baseline) sonrası kaldırılır.
+ */
+export async function applyLivePlanLookupConstraints(): Promise<void> {
+  const prisma = getRawPrisma();
+  const tables: { name: string; type?: string[] }[] = [
+    { name: 'transmission_satellites' },
+    { name: 'transmission_irds' },
+    { name: 'transmission_fibers' },
+    { name: 'transmission_int_resources' },
+    { name: 'transmission_tie_options' },
+    { name: 'transmission_demod_options' },
+    { name: 'transmission_virtual_resources' },
+    { name: 'transmission_feed_types' },
+    { name: 'transmission_modulation_types' },
+    { name: 'transmission_video_codings' },
+    { name: 'transmission_audio_configs' },
+    { name: 'transmission_key_types' },
+    { name: 'transmission_polarizations' },
+    { name: 'transmission_fec_rates' },
+    { name: 'transmission_roll_offs' },
+    { name: 'transmission_iso_feed_options' },
+    { name: 'live_plan_locations' },
+    { name: 'live_plan_usage_locations' },
+    { name: 'live_plan_regions' },
+    { name: 'live_plan_languages' },
+    { name: 'live_plan_off_tube_options' },
+    { name: 'fiber_audio_formats' },
+    { name: 'fiber_video_formats' },
+  ];
+  // CHECK length(trim(label)) > 0 + partial unique LOWER(label)
+  for (const t of tables) {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "${t.name}"
+      DROP CONSTRAINT IF EXISTS "${t.name}_label_not_blank"
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "${t.name}"
+      ADD CONSTRAINT "${t.name}_label_not_blank"
+      CHECK (length(trim("label")) > 0)
+    `);
+    await prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "${t.name}_label_uniq"`);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX "${t.name}_label_uniq"
+      ON "${t.name}"(LOWER("label"))
+      WHERE "deleted_at" IS NULL
+    `);
+  }
+  // Type-polymorphic tablolar (technical_companies + live_plan_equipment_options):
+  // partial unique (type, LOWER(label)) + type CHECK + label CHECK + type index.
+  const polymorphic = [
+    {
+      name:    'technical_companies',
+      types:   ['OB_VAN', 'GENERATOR', 'SNG', 'CARRIER', 'FIBER'],
+    },
+    {
+      name:    'live_plan_equipment_options',
+      types:   ['JIMMY_JIB', 'STEADICAM', 'IBM'],
+    },
+  ];
+  for (const p of polymorphic) {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "${p.name}"
+      DROP CONSTRAINT IF EXISTS "${p.name}_label_not_blank"
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "${p.name}"
+      ADD CONSTRAINT "${p.name}_label_not_blank"
+      CHECK (length(trim("label")) > 0)
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "${p.name}"
+      DROP CONSTRAINT IF EXISTS "${p.name}_type_check"
+    `);
+    const typeList = p.types.map((t) => `'${t}'`).join(', ');
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "${p.name}"
+      ADD CONSTRAINT "${p.name}_type_check"
+      CHECK ("type" IN (${typeList}))
+    `);
+    await prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "${p.name}_type_label_uniq"`);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX "${p.name}_type_label_uniq"
+      ON "${p.name}"("type", LOWER("label"))
+      WHERE "deleted_at" IS NULL
+    `);
+    await prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "${p.name}_type_idx"`);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX "${p.name}_type_idx" ON "${p.name}"("type") WHERE "deleted_at" IS NULL
+    `);
+  }
 }
 
 /**

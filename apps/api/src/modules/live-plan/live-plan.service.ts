@@ -82,7 +82,7 @@ export class LivePlanService {
           optaMatchId:     dto.optaMatchId,
           status:          dto.status,
           operationNotes:  dto.operationNotes,
-          metadata:        dto.metadata as Prisma.InputJsonValue | undefined,
+          // metadata kolonu M5-B4'te DROP edildi (K15.1).
           createdBy:       user,
         },
       });
@@ -125,11 +125,7 @@ export class LivePlanService {
         ...(dto.matchId !== undefined && { matchId: dto.matchId }),
         ...(dto.optaMatchId !== undefined && { optaMatchId: dto.optaMatchId }),
         ...(dto.operationNotes !== undefined && { operationNotes: dto.operationNotes }),
-        ...(dto.metadata !== undefined && {
-          metadata: dto.metadata === null
-            ? Prisma.JsonNull
-            : (dto.metadata as Prisma.InputJsonValue),
-        }),
+        // metadata kolonu M5-B4'te DROP edildi (K15.1).
         version: { increment: 1 },
       };
 

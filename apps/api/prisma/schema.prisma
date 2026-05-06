@@ -521,7 +521,6 @@ model LivePlanEntry {
   optaMatchId     String?        @map("opta_match_id") @db.VarChar(80)
   status          LivePlanStatus @default(PLANNED)
   operationNotes  String?        @map("operation_notes")
-  metadata        Json?
   /// M5-B2 route-level kural: kullanıcı işlemlerinde doldur. Script/seed/
   /// system import için nullable bırakıldı.
   createdBy       String?        @map("created_by") @db.VarChar(100)
@@ -651,4 +650,326 @@ enum workspace_role {
   viewer
   editor
   admin
+}
+
+// ╔═════════════════════════════════════════════════════════════════════════════╗
+// ║ Madde 5 M5-B4 — Live-plan Lookup Tabloları (25 adet)                        ║
+// ║                                                                             ║
+// ║ Tasarım: ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md §3                ║
+// ║ Locked: K15.6-K15.9 (DECISION §3.4 + ek kurallar):                           ║
+// ║   - Standart kolon set: id/label/active/sortOrder/timestamps/deletedAt       ║
+// ║   - type sütunu sadece polymorphic ayrımda (technical_companies, equipment)  ║
+// ║   - Partial unique (deleted_at IS NULL); case-insensitive (LOWER(label))     ║
+// ║   - CHECK length(trim(label)) > 0 (boş whitespace engeli)                    ║
+// ║   - Seed migration SQL içinde deterministic; frontend label formatı birebir  ║
+// ║                                                                             ║
+// ║ NOT: Prisma 5 partial unique + functional index sınırlı; UNIQUE migration   ║
+// ║ SQL'de + test interim helper'da reapply edilir (Madde 4 / PR-A pattern).    ║
+// ║ Schema.prisma'da @@unique YAZILMAYACAK; sadece nullable label kolonu.       ║
+// ╚═════════════════════════════════════════════════════════════════════════════╝
+
+model TransmissionSatellite {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_satellites")
+}
+
+model TransmissionIrd {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_irds")
+}
+
+model TransmissionFiber {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_fibers")
+}
+
+model TransmissionIntResource {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_int_resources")
+}
+
+model TransmissionTieOption {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_tie_options")
+}
+
+model TransmissionDemodOption {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_demod_options")
+}
+
+model TransmissionVirtualResource {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_virtual_resources")
+}
+
+model TransmissionFeedType {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_feed_types")
+}
+
+model TransmissionModulationType {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_modulation_types")
+}
+
+model TransmissionVideoCoding {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_video_codings")
+}
+
+model TransmissionAudioConfig {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_audio_configs")
+}
+
+model TransmissionKeyType {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_key_types")
+}
+
+model TransmissionPolarization {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_polarizations")
+}
+
+model TransmissionFecRate {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_fec_rates")
+}
+
+model TransmissionRollOff {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_roll_offs")
+}
+
+model TransmissionIsoFeedOption {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("transmission_iso_feed_options")
+}
+
+/// type-polymorphic: OB_VAN | GENERATOR | SNG | CARRIER | FIBER (DB CHECK).
+model TechnicalCompany {
+  id         Int       @id @default(autoincrement())
+  type       String    @db.VarChar(30)
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("technical_companies")
+}
+
+/// type-polymorphic: JIMMY_JIB | STEADICAM | IBM (DB CHECK).
+model LivePlanEquipmentOption {
+  id         Int       @id @default(autoincrement())
+  type       String    @db.VarChar(30)
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("live_plan_equipment_options")
+}
+
+model LivePlanLocation {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("live_plan_locations")
+}
+
+model LivePlanUsageLocation {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("live_plan_usage_locations")
+}
+
+model LivePlanRegion {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("live_plan_regions")
+}
+
+model LivePlanLanguage {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("live_plan_languages")
+}
+
+model LivePlanOffTubeOption {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("live_plan_off_tube_options")
+}
+
+/// X1 (decision §3.4): Fiber audio signal format — codec ile farklı domain.
+model FiberAudioFormat {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("fiber_audio_formats")
+}
+
+/// X1: Fiber video signal format.
+model FiberVideoFormat {
+  id         Int       @id @default(autoincrement())
+  label      String    @db.VarChar(200)
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("fiber_video_formats")
 }
