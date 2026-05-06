@@ -1,6 +1,6 @@
 # BCMS Operasyon — Docker Compose
 
-> Son güncelleme: 2026-05-06 — **Outbox + DLQ V1 program** (Madde 2+7) Phase 2 shadow tüm domain'lerde aktif; PR-C1 poller deployed (`OUTBOX_POLLER_ENABLED` env-gated, default false; non-authoritative); PR-C2 cut-over production soak gate pending. **Madde 5 live-plan data model** decision lock: live-plan ayrı entity strangler (`ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md`); §4.1 Booking cleanup closed (local dev DB inventory: 0 satır); M5-B1 schema PR teknik olarak unblocked. Önceki tur (2026-05-01): RBAC yeniden yapılandırma (Admin tek full-yetki, SystemEng kısıtlı); recording port normalize; OPTA cascade; auth 403 fix; postgres_backup sidecar.
+> Son güncelleme: 2026-05-06 — **Madde 5 strangler M5-B5 done** (5 implementation PR: B1 schema → B2 service/API → B3 K15 mapping doc → B4 lookup foundation + metadata DROP → B5 lookup management API). Yeni: `live_plan_entries`, 25 lookup tablo, `/api/v1/live-plan` + `/api/v1/live-plan/lookups/:type` API, K15 + L1-L12 lock'lar. Sıradaki: M5-B6 lookup admin UI (ilk frontend PR) → M5-B7 technical_details schema. Eş zamanlı **Outbox + DLQ V1 (Madde 2+7)**: Phase 2 shadow tüm domain'lerde; PR-C1 poller deployed non-authoritative; PR-C2/PR-D production soak gate pending. Önceki tur (2026-05-01): RBAC yeniden yapılandırma (Admin tek full-yetki); recording port normalize; OPTA cascade; auth 403 fix.
 
 Proje tamamen **Docker Compose** ile yönetilmektedir. `systemd`, `ng serve`, `tsx watch` kullanılmaz.
 
@@ -249,7 +249,7 @@ schedules.usage_scope = 'live-plan'   → Sadece Raporlama + Ingest
 schedules.usage_scope = 'broadcast'  → Normal yayın
 ```
 
-> **Madde 5 (2026-05-06 decision lock)**: Live-plan kendi tablosuna (`live_plan_entries`) taşınır; schedule = broadcast slot + reporting context olarak daraltılır. `channel_id NULL` workflow state, bug değil. Strangler M5-B1...B6 (M5-A done, M5-B1 unblocked). Detay: `ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md`.
+> **Madde 5 (2026-05-06)**: Live-plan kendi domain'inde — `live_plan_entries` (1:1 ile event), `live_plan_technical_details` (M5-B7 sırada, ~80 prefix'li kolon), `live_plan_transmission_segments` (M5-B8). 25 lookup tablo + `/api/v1/live-plan/lookups/:type` generic CRUD (M5-B5 done). PERMISSIONS namespace'leri: `livePlan` (entity CRUD) + `livePlanLookups` (master data — read all-auth, write/delete SystemEng+Admin). K15 prensibi: JSON canonical YOK. Strangler M5-B1..B5 done; B6 (lookup admin UI) sırada → B7..B14. Detay: `ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md` + `ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md`.
 
 ## Web / Frontend
 
