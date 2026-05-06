@@ -728,10 +728,38 @@ Foundation pattern: Madde 2+7 PR-A'daki gibi — boş tablo + Prisma + test, dav
 
 ### M5-B10 — Live-plan UI migration
 
-İçerik:
-- Yeni live-plan ekranı: Genel Bilgi + Teknik Detay + Transmisyon Segmentleri + Kayıt Planı tab'ları.
-- **Canlı Yayın Plan surface'inde** eski Schedule "Edit / Teknik Detay" yazma path'i kapatılır veya yeni structured API'ye yönlendirilir. Diğer sekmeler (broadcast schedule, booking, ingest, vs.) bu PR scope'u dışında.
-- Lookup select box'lar M5-B6 admin'den gelen DB değerleriyle dolar.
+#### Scope Lock Y1-Y13 (2026-05-07)
+
+**Pre-req (Y9 HARD):** `ops/RUNBOOK-MIGRATION-CATCHUP-2026-05-07.md` çalıştırılmadan implementation oturumu açılmaz. 6 Mayıs migration prod'a uygulanmalı + API/worker rebuild yapılmalı.
+
+**Route + ekran (Y1, Y10, Y11):**
+- Yeni `/live-plan` (liste) + `/live-plan/:entryId` (detay) route'ları. Mevcut `/schedules` ekranına dokunulmaz (paralel ekran; strangler step-down).
+- Detay ayrı sayfa (modal değil — 76 alan + segment listesi modal'a sığmaz).
+- Detay form layout: 6 mat-tab (Yayın/OB · Ortak · IRD/Fiber · Ana Feed · Yedek Feed · Fiber Format) — REQUIREMENTS §5.1-§5.6 ile birebir.
+
+**API kullanımı (Y3, Y4, Y5):**
+- Parent: M5-B2 `/api/v1/live-plan` (list/detail/create/patch/delete).
+- Technical details: M5-B9 `/api/v1/live-plan/:entryId/technical-details` (singleton).
+- Segments: M5-B9 `/api/v1/live-plan/:entryId/segments` (collection).
+- İlk kayıt akışı: GET → null ise "Teknik detay ekle" buton → POST. Var olan row → form pre-fill + PATCH (If-Match: \<version\>).
+- Lookup select kaynakları: M5-B5 `GET /live-plan/lookups/:type?activeOnly=true&pageSize=500`. ApiService cache 60s TTL — `/^\/live-plan\/lookups\/[a-z_]+$/` regex'i `CACHEABLE_PATHS`'e eklenir. Admin update sonrası invalidation V1'de manuel "yenile" (TTL içinde stale tolere edilir).
+
+**UI pattern (Y6, Y12):**
+- Segment UI: mat-table list + Mat-Dialog form (M5-B6 admin-lookups paritesi). Inline edit YOK.
+- State: signals + ngModel (M5-B6 paritesi); reactive form değil.
+
+**Eski path / koruma (Y2 REVIZE, Y8):**
+- **Y2 lock revize (2026-05-07):** K15 disiplinine sadık kalmak için eski Schedule "Edit / Teknik Detay" write path'i Canlı Yayın Plan bağlamında **kapatılır**:
+  - `usage_scope='live-plan'` satırlarında schedule-list edit ve teknik-detay aksiyonları **disabled** ya da yeni `/live-plan/:entryId` route'una yönlendirilir.
+  - Broadcast schedule path (`usage_scope='broadcast'`) **etkilenmez**.
+  - Schedule-list refactor YOK — sadece satır-bazlı disabled flag + tooltip, minimal müdahale.
+- Y8: Live-plan feature dizini bağımsız (`apps/web/src/app/features/live-plan/...`); 2385 satırlık schedule-list refactor'a girilmez.
+
+**Yetki (Y7):**
+- `PERMISSIONS.livePlan.read/write/delete` (mevcut M5-B2 set: read [], write/delete Tekyon/Transmisyon/Booking/YayınPlanlama; Admin auto-bypass). Page-level all-auth read; button-level write/delete role check (M5-B6 paritesi).
+
+**Test scope (Y13):**
+- API client/service unit + form section component smoke (her mat-tab section component'i için smoke). e2e dışı; schedule-list refactor yok.
 
 ### M5-B11 — `ingest_plan_items.live_plan_entry_id` FK (revize X2)
 
