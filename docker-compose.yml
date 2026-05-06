@@ -213,7 +213,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       NODE_ENV: production
-      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention,audit-partition
+      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention,audit-partition,outbox-poller
+      OUTBOX_POLLER_ENABLED: ${OUTBOX_POLLER_ENABLED:-false}
+      OUTBOX_POLLER_DRY_RUN: ${OUTBOX_POLLER_DRY_RUN:-false}
       AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-90}
       CORS_ORIGIN: ${CORS_ORIGIN}
       KEYCLOAK_URL: http://keycloak:8080

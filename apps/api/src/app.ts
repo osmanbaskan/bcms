@@ -38,6 +38,7 @@ import { startBxfWatcher } from './modules/bxf/bxf.watcher.js';
 import { startOptaWatcher, getOptaWatcherStatus } from './modules/opta/opta.watcher.js';
 import { startAuditRetentionJob } from './modules/audit/audit-retention.job.js';
 import { startAuditPartitionJob } from './modules/audit/audit-partition.job.js';
+import { startOutboxPoller } from './modules/outbox/outbox.poller.js';
 
 const BACKGROUND_SERVICES = [
   'notifications',
@@ -47,6 +48,7 @@ const BACKGROUND_SERVICES = [
   'opta-watcher',
   'audit-retention',
   'audit-partition',
+  'outbox-poller',
 ] as const;
 
 type BackgroundService = (typeof BACKGROUND_SERVICES)[number];
@@ -130,6 +132,7 @@ async function startBackgroundServices(app: FastifyInstance): Promise<void> {
   await run('opta-watcher', () => startOptaWatcher(app));
   await run('audit-retention', () => startAuditRetentionJob(app));
   await run('audit-partition', () => startAuditPartitionJob(app));
+  await run('outbox-poller',   () => startOutboxPoller(app));
 }
 
 function errorResponse(error: Error & { statusCode?: number; code?: string }) {
