@@ -23,6 +23,7 @@
 |---|---|---|
 | ✅ Locked (architectural) | 14 | §3 |
 | ✅ Locked (M5-B1 scope) | K1-K6 | §3.2 — field/index set + out-of-scope |
+| ✅ Locked (M5-B2 scope) | K7-K14 | §3.3 — route/DTO/If-Match/audit/soft delete/outbox shadow/RBAC/response |
 | ✅ Closed | 1 | §4.1 — Booking semantic (local dev DB inventory 2026-05-06: 0 satır) |
 | ⏸️ Deferred | 1 | §4.2 — `sourceType`/`sourceKey` cleanup timing |
 | ✅ Inventory done | 3 SQL | §6 — local dev DB üzerinde çalıştırıldı (sonuçlar §6.4) |
@@ -307,6 +308,233 @@ model LivePlanEntry {
 - Outbox shadow yazımı → M5-B2 (live-plan create/update tetiklenirse).
 - `deleted_at` index → deferred.
 
+### 3.3 M5-B2 Scope Lock — `/api/v1/live-plan` service/API (2026-05-06)
+
+K7-K14 kararları kullanıcı tarafından sırayla kilitlendi. M5-B2 PR'ı bu lock setine göre yazılır. Implementation öncesi 3 read-only inceleme şart: Schedule routes (If-Match pattern), audit plugin (`apps/api/src/plugins/audit.ts`), `packages/shared/src/types/rbac.ts` permissions map.
+
+**K7 — Route/list shape (minimal V1):**
+
+| Endpoint | Method | Auth | Davranış |
+|---|---|---|---|
+| `/api/v1/live-plan` | GET | `livePlan.read` | List + filter + pagination |
+| `/api/v1/live-plan` | POST | `livePlan.write` | Create (201 + entity DTO) |
+| `/api/v1/live-plan/:id` | GET | `livePlan.read` | Detail (404 if not found / soft-deleted) |
+| `/api/v1/live-plan/:id` | PATCH | `livePlan.write` | Update (If-Match zorunlu) |
+| `/api/v1/live-plan/:id` | DELETE | `livePlan.delete` | Soft delete (If-Match zorunlu) |
+
+List query parametreleri:
+
+| Param | Tip | Default | Davranış |
+|---|---|---|---|
+| `status` | comma-separated | yok | Multi-value filter (örn. `?status=PLANNED,READY`) |
+| `from` | ISO datetime | yok | `event_start_time >= from` |
+| `to` | ISO datetime | yok | `event_start_time < to` (half-open interval) |
+| `matchId` | int | yok | Exact filter |
+| `optaMatchId` | string | yok | Exact filter |
+| `page` | int | 1 | ≥1 |
+| `pageSize` | int | 50 | ≤200 |
+
+List defaults:
+- `WHERE deleted_at IS NULL` (soft-deleted exclude)
+- `ORDER BY event_start_time ASC`
+
+**V1 dışı**: `q` text search, custom `sort` parametresi, `includeDeleted=true` admin override. Bunlar V1'e eklenmez (text search index/perf borcu yaratır; sort API yüzeyi gereksiz; includeDeleted RBAC karmaşası getirir).
+
+**K8 — Zod DTO + validation:**
+
+```typescript
+const livePlanStatusSchema = z.enum([
+  'PLANNED','READY','IN_PROGRESS','COMPLETED','CANCELLED',
+]);
+
+const createLivePlanSchema = z.object({
+  title:           z.string().trim().min(1).max(500),
+  eventStartTime:  z.string().datetime(),
+  eventEndTime:    z.string().datetime(),
+  matchId:         z.number().int().positive().optional(),
+  optaMatchId:     z.string().trim().min(1).max(80).optional(),
+  status:          livePlanStatusSchema.optional().default('PLANNED'),
+  operationNotes:  z.string().trim().max(8_000).optional(),
+  metadata:        z.record(z.unknown()).optional(),  // object only; array değil
+}).refine(
+  (d) => new Date(d.eventEndTime) > new Date(d.eventStartTime),
+  { message: 'eventEndTime eventStartTime\'tan sonra olmalı', path: ['eventEndTime'] },
+);
+
+const updateLivePlanSchema = createLivePlanSchema.partial()
+  // İki tarih birlikte gelirse Zod refine eder.
+  // Sadece biri gelirse service-level merge-aware check (BookingService pattern).
+  .refine((d) => Object.keys(d).length > 0, {
+    message: 'En az bir field güncellenmeli',
+  });
+
+const listLivePlanQuerySchema = z.object({
+  status:      z.string().optional()
+                .transform((s) => s ? s.split(',').filter(Boolean) : undefined)
+                .pipe(z.array(livePlanStatusSchema).optional()),
+  from:        z.string().datetime().optional(),
+  to:          z.string().datetime().optional(),
+  matchId:     z.coerce.number().int().positive().optional(),
+  optaMatchId: z.string().trim().min(1).optional(),
+  page:        z.coerce.number().int().positive().default(1),
+  pageSize:    z.coerce.number().int().positive().max(200).default(50),
+});
+```
+
+**Service-level merge-aware date check (update path):**
+- Sadece `eventEndTime` gelirse: existing `eventStartTime` ile karşılaştır → > değilse 400.
+- Sadece `eventStartTime` gelirse: existing `eventEndTime` ile karşılaştır → < değilse 400.
+- BookingService `update()` pattern'iyle aynı.
+
+**Metadata kuralı**: object only (`Record<string, unknown>`). Prisma JSON kolonu teorik olarak array/string/null kabul eder ama metadata semantik olarak object. Helper veya Zod schema doğrudan `z.record(...)` ile object zorlanır.
+
+**K9 — If-Match / optimistic locking (PATCH + DELETE):**
+
+Schedule pattern authoritative. M5-B2 implementation öncesi `apps/api/src/modules/schedules/schedule.service.ts:update()` + ilgili route handler okunur.
+
+Fallback semantik (Schedule pattern eksikse):
+
+| Durum | HTTP |
+|---|---|
+| Header `If-Match` eksik | 428 Precondition Required |
+| `If-Match` integer parse edilmez (örn. `'abc'`) | 400 Bad Request |
+| Row not found | 404 |
+| Row exists ama `deleted_at != NULL` | **404** (soft-deleted gizli) |
+| Row exists, version mismatch | 412 Precondition Failed |
+| Happy path | 200 + updated entity DTO (PATCH) / 200 + soft-deleted entity DTO (DELETE) |
+
+**Implementation iki adım:**
+1. `findUnique({ where: { id } })` — yoksa veya `deletedAt != null` → 404.
+2. `tx.livePlanEntry.updateMany({ where: { id, version, deletedAt: null }, data: { ...merged, version: { increment: 1 } } })` — count=0 → 412.
+
+**K10 — Audit subject implementation:**
+
+K4 lock: `subject = "LivePlanEntry"`.
+
+Implementation iki olasılık (audit plugin pattern okumadan kesin yok):
+- (a) **Otomatik**: Prisma `$extends` audit plugin model adından subject türetiyorsa → `LivePlanEntry` otomatik. Ek kod yok.
+- (b) **Manuel**: Audit context veya mapping gerekiyorsa → service'te `subject: 'LivePlanEntry'` set edilir.
+
+M5-B2 implementation öncesi `apps/api/src/plugins/audit.ts` okunur, hangi pattern'in geçerli olduğu netleşir; minimal mapping eklenir veya hiç eklenmez.
+
+Action types: create / update / delete (audit plugin convention'ına göre — Prisma operation type'larından otomatik türemesi muhtemel).
+
+Historical Schedule audit migrate edilmez (K4 lock).
+
+**K11 — Soft delete only:**
+
+| Davranış | Detay |
+|---|---|
+| DELETE endpoint | Soft (`deletedAt = NOW()`, `version++`) |
+| If-Match header | Zorunlu |
+| Hard delete | V1'de YOK |
+| Force delete (`?force=true`) | V1'de YOK |
+| Soft-deleted row detail/list | Görünmez (404 / exclude) |
+| Soft-deleted row PATCH/DELETE | 404 |
+| `includeDeleted=true` admin override | V1'de YOK |
+
+PK auto-increment olduğu için soft-deleted ID asla yeniden kullanılmaz; audit subject + aggregateId çakışması olmaz.
+
+**K12 — Outbox shadow events:**
+
+Live-plan create/update/delete service akışlarında outbox shadow yazılır (Phase 2 invariant: `status='published'`, poller pick etmez).
+
+| Event type | aggregateType | Trigger | Payload (minimal) |
+|---|---|---|---|
+| `live_plan.created` | `LivePlanEntry` | POST sonrası | `{ livePlanEntryId: id }` |
+| `live_plan.updated` | `LivePlanEntry` | PATCH sonrası | `{ livePlanEntryId: id }` |
+| `live_plan.deleted` | `LivePlanEntry` | DELETE sonrası | `{ livePlanEntryId: id }` |
+
+**M5-B2 dışı**: queue routing + consumer. `apps/api/src/modules/outbox/outbox.routing.ts:EVENT_TYPE_TO_QUEUE` map'ine **eklenmez**. Phase 2'de poller pick etmediği için routing eksik olması sorun değil.
+
+**Risk**: PR-C2 cut-over M5-B2'den **önce** deploy edilirse, M5-B2 sonrası yeni live-plan event'leri `pending` yazmaya başlar; routing eksik olduğu için poller `failed` state'ine düşer. Mitigasyon: M5-B2 implementation öncesi production outbox mode kontrol edilir; PR-C2 deploy edilmişse routing entry önce eklenir.
+
+Idempotency key kullanılmaz (cross-producer dedup gerek yok; tek üretici live-plan service).
+
+**K13 — RBAC permissions namespace:**
+
+Yeni permission map satırı (`packages/shared/src/types/rbac.ts`):
+
+```ts
+livePlan: {
+  read:   [...] as BcmsGroup[],
+  write:  [...] as BcmsGroup[],
+  delete: [...] as BcmsGroup[],
+}
+```
+
+**Hardcoded group YOK**. Route handler'lar `app.requireGroup(...PERMISSIONS.livePlan.read)` pattern.
+
+Grup listesi M5-B2 implementation öncesi mevcut `PERMISSIONS.schedules` + `PERMISSIONS.ingest` patterns okunarak seçilir. Tahmin (lock değil):
+- `read`: `Booking`, `YayınPlanlama`, `Ingest`, `SystemEng`
+- `write`: `Booking`, `YayınPlanlama`, `Ingest`
+- `delete`: aynı write seti (V1'de delete-only ayrı grup yok)
+
+`Admin` auto-bypass `isAdminPrincipal()` mevcut davranışı.
+
+**K14 — Response shape:**
+
+Schedule list/detail/create/update/delete response shape authoritative. Implementation öncesi `schedule.routes.ts` + `schedule.service.ts` response builder okunur.
+
+Fallback target shape (Schedule pattern eksikse):
+
+```typescript
+// List
+interface ListLivePlanResponse {
+  items:    LivePlanEntryDto[];
+  total:    number;
+  page:     number;
+  pageSize: number;
+}
+
+// Detail / Create / Update / Delete
+type LivePlanEntryDto = {
+  id:              number;
+  title:           string;
+  eventStartTime:  string;       // ISO 8601
+  eventEndTime:    string;
+  matchId:         number | null;
+  optaMatchId:     string | null;
+  status:          'PLANNED'|'READY'|'IN_PROGRESS'|'COMPLETED'|'CANCELLED';
+  operationNotes:  string | null;
+  metadata:        Record<string, unknown> | null;
+  createdBy:       string | null;
+  version:         number;
+  createdAt:       string;
+  updatedAt:       string;
+  deletedAt:       string | null;  // detail'de hiç görünmez ama type'da var
+};
+```
+
+HTTP status:
+- POST → 201 + entity DTO
+- PATCH → 200 + entity DTO
+- DELETE → 200 + soft-deleted entity DTO (Schedule pattern; eğer Schedule 204 dönüyorsa o pattern uygulanır)
+- GET list → 200 + ListLivePlanResponse
+- GET detail → 200 + entity DTO
+
+Field naming: Prisma camelCase (DTO) ↔ DB snake_case (kolon). Service mapping otomatik (Prisma client zaten camelCase döndürür).
+
+#### M5-B2 Out of Scope
+
+- Frontend / UI değişikliği → M5-B6.
+- Outbox routing/consumer → M5-B2 dışı (K12).
+- ingest_plan_items live_plan_entry_id FK → M5-B3.
+- studio_plan_slot_id FK + XOR CHECK → M5-B4.
+- Eski `schedules.usageScope='live-plan'` cleanup → M5-B5.
+- `q` text search, custom sort, `includeDeleted` → V1 dışı (K7).
+- Hard delete / force delete → V1 dışı (K11).
+
+#### M5-B2 Pre-impl Read-Only Investigation
+
+İmplementation başlamadan önce 3 dosya okunur (kod yazılmaz):
+
+1. **`apps/api/src/modules/schedules/schedule.service.ts:update()` + ilgili route** — If-Match pattern (K9 fallback semantik teyidi: missing/invalid header HTTP code).
+2. **`apps/api/src/plugins/audit.ts`** — audit subject pattern (K10 (a) otomatik mi (b) manuel mi).
+3. **`packages/shared/src/types/rbac.ts`** — mevcut PERMISSIONS pattern + Schedule live-plan + Ingest grup setleri (K13 grup listesi seçimi).
+
+Bu inceleme M5-B2 PR'ında **commit edilmeden**, sadece scope teyidi için.
+
 ---
 
 ## §4 — Open & Deferred Decisions
@@ -368,11 +596,22 @@ Foundation pattern: Madde 2+7 PR-A'daki gibi — boş tablo + Prisma + test, dav
 
 ### M5-B2 — Live-plan service/API yeni tabloya yazar
 
+**Scope lock**: §3.3 (K7-K14 + route/DTO/If-Match/audit/soft delete/outbox shadow/RBAC/response).
+
 İçerik:
-- Yeni `live-plan.service.ts` veya `live-plan.routes.ts` (mevcut akışın incelemeye göre konumlanır).
-- Live-plan create/update artık **`live_plan_entries`'e yazar**, `schedules`'a yazmaz.
-- Read fallback: **opsiyonel** — eski `schedules.usageScope='live-plan'` satırları test data ise fallback hiç eklenmez ve M5-B5'te direkt cleanup yapılır. Production data tespit edilirse (§4.1 open decision sonrası) UNION read fallback eklenebilir.
-- Default tercih: fallback eklenmesin; B2 sadece yeni tabloya yazımı bağlar.
+- Yeni `live-plan.service.ts` + `live-plan.routes.ts` (modules/live-plan/).
+- Canonical 5 endpoint (§3.3 K7).
+- Zod DTO + service-level merge-aware date check (§3.3 K8).
+- If-Match optimistic lock PATCH/DELETE (§3.3 K9).
+- Audit subject "LivePlanEntry" (§3.3 K10).
+- Soft delete only (§3.3 K11).
+- Outbox shadow events (live_plan.created/updated/deleted; routing M5-B2 dışı — §3.3 K12).
+- PERMISSIONS.livePlan.read/write/delete (§3.3 K13).
+- Response shape Schedule pattern (§3.3 K14).
+
+**M5-B2 dışı:** UI değişikliği, outbox routing/consumer, ingest FK, eski schedules cleanup, schedules read fallback (test data §4.1 closed; doğrudan M5-B5 cleanup).
+
+**Pre-impl read-only:** §3.3 sonu — Schedule routes (If-Match), audit.ts (subject pattern), rbac.ts (PERMISSIONS pattern).
 
 ### M5-B3 — `ingest_plan_items.live_plan_entry_id` FK
 
