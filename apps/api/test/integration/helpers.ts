@@ -29,6 +29,7 @@ const TRANSACTIONAL_TABLES = [
   'matches',
   'teams',
   'outbox_events',
+  'live_plan_entries',
 ];
 
 let prismaSingleton: PrismaClient | null = null;

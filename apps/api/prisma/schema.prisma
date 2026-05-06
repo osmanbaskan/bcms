@@ -41,21 +41,22 @@ model Team {
 }
 
 model Match {
-  id           Int        @id @default(autoincrement())
-  leagueId     Int        @map("league_id")
-  optaUid      String?    @unique @map("opta_uid") @db.VarChar(50)
-  homeTeamName String     @map("home_team_name") @db.VarChar(100)
-  awayTeamName String     @map("away_team_name") @db.VarChar(100)
-  matchDate    DateTime   @map("match_date") @db.Timestamptz(6)
-  weekNumber   Int?       @map("week_number")
-  season       String     @db.VarChar(20)
-  venue        String?    @db.VarChar(200)
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-  deleted_at   DateTime?
-  bookings     Booking[]
-  league       League     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  schedules    Schedule[]
+  id              Int             @id @default(autoincrement())
+  leagueId        Int             @map("league_id")
+  optaUid         String?         @unique @map("opta_uid") @db.VarChar(50)
+  homeTeamName    String          @map("home_team_name") @db.VarChar(100)
+  awayTeamName    String          @map("away_team_name") @db.VarChar(100)
+  matchDate       DateTime        @map("match_date") @db.Timestamptz(6)
+  weekNumber      Int?            @map("week_number")
+  season          String          @db.VarChar(20)
+  venue           String?         @db.VarChar(200)
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  deleted_at      DateTime?
+  bookings        Booking[]
+  league          League          @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  schedules       Schedule[]
+  livePlanEntries LivePlanEntry[]
 
   @@index([leagueId, matchDate])
   @@map("matches")
@@ -490,6 +491,55 @@ model ShiftAssignment {
   @@map("shift_assignments")
 }
 
+/// Madde 5 M5-B1 (audit doc): live-plan canonical üst entity — yayın akışı
+/// (Schedule) ile karıştırılmaması için ayrı tablo.
+/// Tasarım: ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md §3.2 (M5-B1 Scope Lock)
+/// Migration: 20260506000002_live_plan_entries_foundation
+///
+/// Locked decisions (K1..K6, 2026-05-06):
+///   K1 — matchId + optaMatchId nullable; opta_match_id unique DEĞİL.
+///   K2 — LivePlanStatus = PLANNED/READY/IN_PROGRESS/COMPLETED/CANCELLED.
+///   K3 — version optimistic locking (M5-B2 If-Match).
+///   K4 — audit subject "LivePlanEntry" (M5-B2 service writes).
+///   K5 — canonical /api/v1/live-plan (M5-B2; shim YOK).
+///   K6 — schema foundation only; createdBy nullable.
+///
+/// M5-B1 KAPSAM: tablo + enum + 4 index + Match FK SetNull. Service/route/UI
+/// /ingest FK/cleanup/outbox shadow KAPSAM DIŞI (sırayla M5-B2..B5).
+model LivePlanEntry {
+  id              Int            @id @default(autoincrement())
+  title           String         @db.VarChar(500)
+  eventStartTime  DateTime       @map("event_start_time") @db.Timestamptz(6)
+  eventEndTime    DateTime       @map("event_end_time")   @db.Timestamptz(6)
+  /// Internal Match FK; nullable çünkü her live-plan futbol maçı olmak zorunda
+  /// değil (bant içerik, manuel event, stüdyo kaynaklı içerik mümkün).
+  matchId         Int?           @map("match_id")
+  /// External OPTA identity; unique DEĞİL — aynı OPTA event'ten birden fazla
+  /// operasyon planı doğabilir. metadata.optaMatchId JSON fallback YOK
+  /// (Madde 3 PR-3A transition pattern Schedule içindi; live_plan_entries
+  /// temiz başlar).
+  optaMatchId     String?        @map("opta_match_id") @db.VarChar(80)
+  status          LivePlanStatus @default(PLANNED)
+  operationNotes  String?        @map("operation_notes")
+  metadata        Json?
+  /// M5-B2 route-level kural: kullanıcı işlemlerinde doldur. Script/seed/
+  /// system import için nullable bırakıldı.
+  createdBy       String?        @map("created_by") @db.VarChar(100)
+  /// Optimistic locking (Schedule/Booking ile aynı pattern; M5-B2 If-Match).
+  version         Int            @default(1)
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt      @map("updated_at")
+  deletedAt       DateTime?      @map("deleted_at")
+
+  match           Match?         @relation(fields: [matchId], references: [id], onDelete: SetNull)
+
+  @@index([status, eventStartTime], map: "live_plan_entries_status_event_start_idx")
+  @@index([eventStartTime],         map: "live_plan_entries_event_start_idx")
+  @@index([matchId],                map: "live_plan_entries_match_idx")
+  @@index([optaMatchId],            map: "live_plan_entries_opta_match_idx")
+  @@map("live_plan_entries")
+}
+
 // HIGH-INF-010 fix (2026-05-05): unused models drop edildi.
 // content_entry_categories, content_entry_tags, workspaces — hiçbir relation
 // yok, kod tabanında referans yok, DB'de production data yok ("Ana Workspace"
@@ -561,6 +611,17 @@ enum ScheduleStatus {
   CANCELLED
 
   @@map("schedule_status")
+}
+
+/// Madde 5 M5-B1 (decision §3.2 K2): live-plan operasyon üst statusü.
+/// Manuel/operasyonel; ingest_plan_items state'inden DB trigger ile auto-derive
+/// YOK (UI ileride bağlı ingest item'lardan ayrıca "derived progress" gösterebilir).
+enum LivePlanStatus {
+  PLANNED
+  READY
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }
 
 enum entry_status {
