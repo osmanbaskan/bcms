@@ -7,6 +7,7 @@ import ffprobePath from '@ffprobe-installer/ffprobe';
 import type { FastifyInstance } from 'fastify';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { validateIngestSourcePath } from './ingest.paths.js';
+import { finalizeIngestJob } from './ingest.service.js';
 
 ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH ?? ffmpegPath.path);
 ffmpeg.setFfprobePath(process.env.FFPROBE_PATH ?? ffprobePath.path);
@@ -225,12 +226,9 @@ export async function startIngestWorker(app: FastifyInstance): Promise<void> {
       });
 
       // ── COMPLETED ───────────────────────────────────────────────────────
-      await app.prisma.ingestJob.update({
-        where: { id: jobId },
-        data:  { status: 'COMPLETED', finishedAt: new Date() },
-      });
-
-      await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, { jobId, status: 'COMPLETED' });
+      // Madde 2+7 PR-B3b-2: finalizeIngestJob tx içinde update + outbox shadow
+      // (idempotencyKey set), tx dışı direct publish.
+      await finalizeIngestJob(app, jobId, 'COMPLETED');
       app.log.info({ jobId, passed }, 'Ingest tamamlandı');
 
     } catch (err) {
@@ -241,12 +239,7 @@ export async function startIngestWorker(app: FastifyInstance): Promise<void> {
       const errorMsg = redactPaths(fullMsg);
       app.log.error({ jobId, err }, 'Ingest başarısız');
 
-      await app.prisma.ingestJob.update({
-        where: { id: jobId },
-        data:  { status: 'FAILED', errorMsg, finishedAt: new Date() },
-      });
-
-      await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, { jobId, status: 'FAILED' });
+      await finalizeIngestJob(app, jobId, 'FAILED', { errorMsg });
     }
   });
 

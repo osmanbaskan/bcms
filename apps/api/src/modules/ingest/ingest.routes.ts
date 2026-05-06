@@ -4,9 +4,8 @@ import type { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { Prisma, IngestStatus } from '@prisma/client';
-import { QUEUES } from '../../plugins/rabbitmq.js';
 import { PERMISSIONS, type SaveIngestPlanItemDto, type SaveRecordingPortsDto } from '@bcms/shared';
-import { triggerManualIngest } from './ingest.service.js';
+import { processIngestCallback, triggerManualIngest } from './ingest.service.js';
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const ingestPlanStatusSchema = z.enum(['WAITING', 'RECEIVED', 'INGEST_STARTED', 'COMPLETED', 'ISSUE']);
@@ -694,33 +693,7 @@ export async function ingestRoutes(app: FastifyInstance) {
     config: { rateLimit: false },
   }, async (request, reply) => {
     const dto = callbackSchema.parse(request.body);
-
-    const job = await app.prisma.ingestJob.update({
-      where: { id: dto.jobId },
-      data: {
-        status:     dto.status,
-        proxyPath:  dto.proxyPath,
-        checksum:   dto.checksum,
-        errorMsg:   dto.errorMsg,
-        finishedAt: ['COMPLETED', 'FAILED'].includes(dto.status) ? new Date() : undefined,
-      },
-    });
-
-    if (dto.qcReport) {
-      await app.prisma.qcReport.upsert({
-        where:  { jobId: dto.jobId },
-        create: { jobId: dto.jobId, ...dto.qcReport, errors: dto.qcReport.errors as Prisma.InputJsonValue, warnings: dto.qcReport.warnings as Prisma.InputJsonValue },
-        update: { ...dto.qcReport, errors: dto.qcReport.errors as Prisma.InputJsonValue, warnings: dto.qcReport.warnings as Prisma.InputJsonValue },
-      });
-    }
-
-    await app.prisma.ingestPlanItem.updateMany({
-      where: { jobId: dto.jobId },
-      data: { status: dto.status === 'FAILED' ? 'ISSUE' : dto.status === 'COMPLETED' ? 'COMPLETED' : 'INGEST_STARTED' },
-    });
-
-    await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, { jobId: dto.jobId, status: dto.status });
-
+    const job = await processIngestCallback(app, dto);
     reply.status(200).send(job);
   });
 }

@@ -3,7 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { triggerManualIngest } from './ingest.service.js';
+import {
+  buildIngestCompletedKey,
+  finalizeIngestJob,
+  processIngestCallback,
+  triggerManualIngest,
+} from './ingest.service.js';
 import {
   cleanupTransactional,
   getRawPrisma,
@@ -131,5 +136,183 @@ describe('triggerManualIngest — integration', () => {
     expect(
       harness.publishedEvents.filter((e) => e.queue === 'queue.ingest.new'),
     ).toHaveLength(0);
+  });
+});
+
+/**
+ * Madde 2+7 PR-B3b-2 (audit doc): INGEST_COMPLETED Phase 2 shadow + idempotency.
+ *
+ * Worker (finalizeIngestJob) ve callback (processIngestCallback) iki ayrı
+ * authoritative üretici. Aynı (jobId, terminalStatus) için DB partial unique
+ * üzerinden tek outbox satırı garantisi. Phase 2'de direct publish her iki
+ * yoldan yine yapılır — Phase 3 cut-over'da poller authoritative direct'i alır.
+ *
+ * Intermediate status (PROCESSING/PROXY_GEN/QC) callback'te shadow YAZMAZ;
+ * worker zaten yalnız terminal publish ediyor, parity korunur.
+ */
+describe('INGEST_COMPLETED shadow — finalizeIngestJob + processIngestCallback', () => {
+  let harness: TestAppHarness;
+
+  beforeEach(async () => {
+    await cleanupTransactional();
+    harness = makeAppHarness();
+  });
+
+  async function seedJob(): Promise<{ id: number }> {
+    const prisma = getRawPrisma();
+    const job = await prisma.ingestJob.create({
+      data: { sourcePath: '/tmp/x.mp4', status: 'PROCESSING' },
+    });
+    return { id: job.id };
+  }
+
+  test('finalizeIngestJob COMPLETED: outbox shadow + direct publish + idempotency key set', async () => {
+    const job = await seedJob();
+    await finalizeIngestJob(harness.app as unknown as FastifyInstance, job.id, 'COMPLETED');
+
+    const prisma = getRawPrisma();
+    const updated = await prisma.ingestJob.findUniqueOrThrow({ where: { id: job.id } });
+    expect(updated.status).toBe('COMPLETED');
+    expect(updated.finishedAt).not.toBeNull();
+
+    const rows = await prisma.outboxEvent.findMany({
+      where: { aggregateType: 'IngestJob', aggregateId: String(job.id) },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].eventType).toBe('ingest.job_completed');
+    expect(rows[0].status).toBe('published');
+    expect(rows[0].idempotencyKey).toBe(buildIngestCompletedKey(job.id, 'COMPLETED'));
+
+    const publishes = harness.publishedEvents.filter((e) => e.queue === 'queue.ingest.completed');
+    expect(publishes).toHaveLength(1);
+    expect(publishes[0].payload).toMatchObject({ jobId: job.id, status: 'COMPLETED' });
+  });
+
+  test('finalizeIngestJob FAILED: errorMsg propagate + shadow + key', async () => {
+    const job = await seedJob();
+    await finalizeIngestJob(
+      harness.app as unknown as FastifyInstance,
+      job.id,
+      'FAILED',
+      { errorMsg: 'codec unsupported' },
+    );
+
+    const prisma = getRawPrisma();
+    const updated = await prisma.ingestJob.findUniqueOrThrow({ where: { id: job.id } });
+    expect(updated.status).toBe('FAILED');
+    expect(updated.errorMsg).toBe('codec unsupported');
+
+    const rows = await prisma.outboxEvent.findMany({
+      where: { aggregateType: 'IngestJob', aggregateId: String(job.id) },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].idempotencyKey).toBe(buildIngestCompletedKey(job.id, 'FAILED'));
+  });
+
+  test('processIngestCallback COMPLETED: tx içi update + qcReport + planItem + shadow', async () => {
+    const job = await seedJob();
+    const prisma = getRawPrisma();
+
+    // Plan item seed (callback updateMany'ye bir hedef bulsun).
+    await prisma.ingestPlanItem.create({
+      data: {
+        sourceKey:  'test-source-1',
+        sourceType: 'manual',
+        dayDate:    new Date('2026-05-06'),
+        jobId:      job.id,
+        status:     'INGEST_STARTED',
+      },
+    });
+
+    await processIngestCallback(harness.app as unknown as FastifyInstance, {
+      jobId:    job.id,
+      status:   'COMPLETED',
+      proxyPath: '/tmp/proxy.mp4',
+      checksum:  'sha256-abc',
+      qcReport: { codec: 'h264', resolution: '1920x1080', errors: [], warnings: [], passed: true },
+    });
+
+    const updated = await prisma.ingestJob.findUniqueOrThrow({ where: { id: job.id } });
+    expect(updated.status).toBe('COMPLETED');
+    expect(updated.proxyPath).toBe('/tmp/proxy.mp4');
+
+    const qc = await prisma.qcReport.findUnique({ where: { jobId: job.id } });
+    expect(qc).not.toBeNull();
+    expect(qc?.passed).toBe(true);
+
+    const planItem = await prisma.ingestPlanItem.findUnique({ where: { sourceKey: 'test-source-1' } });
+    expect(planItem?.status).toBe('COMPLETED');
+
+    const rows = await prisma.outboxEvent.findMany({
+      where: { aggregateType: 'IngestJob', aggregateId: String(job.id) },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].eventType).toBe('ingest.job_completed');
+    expect(rows[0].idempotencyKey).toBe(buildIngestCompletedKey(job.id, 'COMPLETED'));
+
+    const publishes = harness.publishedEvents.filter((e) => e.queue === 'queue.ingest.completed');
+    expect(publishes).toHaveLength(1);
+  });
+
+  test('processIngestCallback intermediate (PROCESSING): direct publish var, shadow YOK', async () => {
+    const job = await seedJob();
+    await processIngestCallback(harness.app as unknown as FastifyInstance, {
+      jobId:  job.id,
+      status: 'PROCESSING',
+    });
+
+    const prisma = getRawPrisma();
+    const rows = await prisma.outboxEvent.findMany({
+      where: { aggregateType: 'IngestJob', aggregateId: String(job.id) },
+    });
+    expect(rows).toHaveLength(0);
+
+    // Direct publish her status için aktif (mevcut davranış korunur).
+    const publishes = harness.publishedEvents.filter((e) => e.queue === 'queue.ingest.completed');
+    expect(publishes).toHaveLength(1);
+    expect(publishes[0].payload).toMatchObject({ jobId: job.id, status: 'PROCESSING' });
+  });
+
+  test('cross-source dedup: worker COMPLETED + callback COMPLETED → tek outbox satırı', async () => {
+    const job = await seedJob();
+    const app = harness.app as unknown as FastifyInstance;
+    const prisma = getRawPrisma();
+
+    // Önce worker tarafı.
+    await finalizeIngestJob(app, job.id, 'COMPLETED');
+    // Sonra aynı job için callback (Avid capture senaryosu — race veya recovery).
+    await processIngestCallback(app, { jobId: job.id, status: 'COMPLETED' });
+
+    const rows = await prisma.outboxEvent.findMany({
+      where: { aggregateType: 'IngestJob', aggregateId: String(job.id) },
+      orderBy: { id: 'asc' },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].idempotencyKey).toBe(buildIngestCompletedKey(job.id, 'COMPLETED'));
+
+    // Phase 2 invariant: direct publish her iki yoldan da yapıldı (kabul,
+    // Phase 3 cut-over'da disable edilecek).
+    const publishes = harness.publishedEvents.filter((e) => e.queue === 'queue.ingest.completed');
+    expect(publishes).toHaveLength(2);
+  });
+
+  test('farklı terminal status (worker COMPLETED + callback FAILED): iki ayrı outbox satırı', async () => {
+    const job = await seedJob();
+    const app = harness.app as unknown as FastifyInstance;
+    const prisma = getRawPrisma();
+
+    await finalizeIngestJob(app, job.id, 'COMPLETED');
+    // Aynı job için callback FAILED — recovery/override senaryosu.
+    await processIngestCallback(app, { jobId: job.id, status: 'FAILED', errorMsg: 'override' });
+
+    const rows = await prisma.outboxEvent.findMany({
+      where: { aggregateType: 'IngestJob', aggregateId: String(job.id) },
+      orderBy: { id: 'asc' },
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.idempotencyKey).sort()).toEqual([
+      buildIngestCompletedKey(job.id, 'COMPLETED'),
+      buildIngestCompletedKey(job.id, 'FAILED'),
+    ]);
   });
 });
