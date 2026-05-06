@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll } from 'vitest';
-import { applyLivePlanLookupConstraints, applyLivePlanTechnicalDetailsConstraints, applyOutboxConstraints, applyOutboxIdempotencyIndex, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
+import { applyLivePlanLookupConstraints, applyLivePlanTechnicalDetailsConstraints, applyLivePlanTransmissionSegmentsConstraints, applyOutboxConstraints, applyOutboxIdempotencyIndex, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
 
 /**
  * Hybrid setup:
@@ -67,6 +67,10 @@ beforeAll(async () => {
   // CHECK end>start reapply. Prisma model FK'leri scalar-only (relation YOK)
   // olduğundan db push bu FK setini oluşturmaz.
   await applyLivePlanTechnicalDetailsConstraints();
+  // Madde 5 M5-B8: live_plan_transmission_segments için 3 CHECK constraint
+  // (feed_role IN, kind IN, end>start) reapply. Parent FK + index Prisma
+  // schema'da; db push üretir.
+  await applyLivePlanTransmissionSegmentsConstraints();
 
   // Minimal seed
   await seedTestFixtures();

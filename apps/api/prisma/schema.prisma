@@ -530,14 +530,17 @@ model LivePlanEntry {
   updatedAt      DateTime       @updatedAt @map("updated_at")
   deletedAt      DateTime?      @map("deleted_at")
 
-  match            Match?                   @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  match                Match?                        @relation(fields: [matchId], references: [id], onDelete: SetNull)
   /// Madde 5 M5-B7 (decision §5 + scope lock S2, 2026-05-07): 1:1 child;
   /// live_plan_technical_details.live_plan_entry_id UNIQUE NOT NULL
   /// FK ON DELETE CASCADE. Reverse relation optional (henüz oluşturulmamış
   /// olabilir). 25 lookup FK scalar-only Prisma model'inde — relation
   /// tanımlanmadı (47 reverse field'ı önlemek için pragmatik tercih;
   /// service M5-B9'da gerekirse manuel join).
-  technicalDetails LivePlanTechnicalDetail?
+  technicalDetails     LivePlanTechnicalDetail?
+  /// Madde 5 M5-B8 (decision sec. 5 + scope lock T2/T3, 2026-05-07): 1:N
+  /// transmission segments. Parent FK ON DELETE CASCADE.
+  transmissionSegments LivePlanTransmissionSegment[]
 
   @@index([status, eventStartTime], map: "live_plan_entries_status_event_start_idx")
   @@index([eventStartTime], map: "live_plan_entries_event_start_idx")
@@ -1092,4 +1095,39 @@ model LivePlanTechnicalDetail {
   livePlanEntry LivePlanEntry @relation(fields: [livePlanEntryId], references: [id], onDelete: Cascade)
 
   @@map("live_plan_technical_details")
+}
+
+/// Madde 5 M5-B8 (decision sec. 5 + scope lock T1-T12, 2026-05-07):
+/// Net uydu kullanim pencereleri (TEST/PROGRAM/HIGHLIGHTS/INTERVIEW/OTHER)
+/// her feed role icin (MAIN/BACKUP/FIBER/OTHER). 1:N child of LivePlanEntry.
+///
+/// T9: version kolonu YOK V1; segment update'leri last-write-wins, parent
+/// entry version'i operasyonel concurrency icin yeterli. M5-B9 service
+/// ihtiyac gorurse minor PR ekler.
+/// T10: deleted_at nullable (soft delete pattern; live_plan_entries +
+/// technical_details ile parite).
+/// CHECK (feed_role IN, kind IN, end_time > start_time) Prisma 5 sinirli
+/// CHECK destegi nedeniyle migration SQL'den gelir; test interim helper
+/// db push sonrasi reapply eder.
+model LivePlanTransmissionSegment {
+  id              Int       @id @default(autoincrement())
+  livePlanEntryId Int       @map("live_plan_entry_id")
+  /// CHECK: feed_role IN ('MAIN','BACKUP','FIBER','OTHER'). Schema'da string
+  /// + DB CHECK pattern (postgres native enum yerine; lookup tablo degil,
+  /// kucuk sabit set). FeedType lookup'tan ayri domain.
+  feedRole        String    @map("feed_role") @db.VarChar(20)
+  /// CHECK: kind IN ('TEST','PROGRAM','HIGHLIGHTS','INTERVIEW','OTHER').
+  kind            String    @db.VarChar(20)
+  startTime       DateTime  @map("start_time") @db.Timestamptz(6)
+  endTime         DateTime  @map("end_time") @db.Timestamptz(6)
+  description     String?   @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  /// Parent FK CASCADE (T3).
+  livePlanEntry LivePlanEntry @relation(fields: [livePlanEntryId], references: [id], onDelete: Cascade)
+
+  @@index([livePlanEntryId, startTime], map: "live_plan_transmission_segments_entry_start_idx")
+  @@map("live_plan_transmission_segments")
 }

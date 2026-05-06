@@ -62,6 +62,9 @@ const TRANSACTIONAL_TABLES = [
   // truncate ile temizlenir ama explicit listeleyerek RESTART IDENTITY
   // sırası korunsun).
   'live_plan_technical_details',
+  // Madde 5 M5-B8: transmission segments (1:N with live_plan_entries;
+  // CASCADE).
+  'live_plan_transmission_segments',
 ];
 
 let prismaSingleton: PrismaClient | null = null;
@@ -368,6 +371,50 @@ export async function applyLivePlanTechnicalDetailsConstraints(): Promise<void> 
       OR "planned_end_time" IS NULL
       OR "planned_end_time" > "planned_start_time"
     )
+  `);
+}
+
+/**
+ * Madde 5 M5-B8 interim helper (2026-05-07):
+ * `live_plan_transmission_segments` üzerindeki 3 CHECK constraint'i (feed_role IN,
+ * kind IN, end_time > start_time) test DB'sinde reapply eder. Parent FK ve
+ * @@index Prisma `@relation` + `@@index` ile schema'da tanımlı; db push üretir.
+ *
+ * Idempotent: DROP IF EXISTS + ADD.
+ *
+ * Madde 1 (migration baseline) sonrası kaldırılır.
+ */
+export async function applyLivePlanTransmissionSegmentsConstraints(): Promise<void> {
+  const prisma = getRawPrisma();
+
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_transmission_segments"
+    DROP CONSTRAINT IF EXISTS "live_plan_transmission_segments_feed_role_check"
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_transmission_segments"
+    ADD CONSTRAINT "live_plan_transmission_segments_feed_role_check"
+    CHECK ("feed_role" IN ('MAIN','BACKUP','FIBER','OTHER'))
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_transmission_segments"
+    DROP CONSTRAINT IF EXISTS "live_plan_transmission_segments_kind_check"
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_transmission_segments"
+    ADD CONSTRAINT "live_plan_transmission_segments_kind_check"
+    CHECK ("kind" IN ('TEST','PROGRAM','HIGHLIGHTS','INTERVIEW','OTHER'))
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_transmission_segments"
+    DROP CONSTRAINT IF EXISTS "live_plan_transmission_segments_window_check"
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_transmission_segments"
+    ADD CONSTRAINT "live_plan_transmission_segments_window_check"
+    CHECK ("end_time" > "start_time")
   `);
 }
 
