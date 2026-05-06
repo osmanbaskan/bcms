@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll } from 'vitest';
-import { applyLivePlanLookupConstraints, applyOutboxConstraints, applyOutboxIdempotencyIndex, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
+import { applyLivePlanLookupConstraints, applyLivePlanTechnicalDetailsConstraints, applyOutboxConstraints, applyOutboxIdempotencyIndex, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
 
 /**
  * Hybrid setup:
@@ -63,6 +63,10 @@ beforeAll(async () => {
   // Madde 5 M5-B4: lookup tabloları için partial unique index + CHECK
   // constraint reapply (Prisma 5 partial+functional+CHECK desteği sınırlı).
   await applyLivePlanLookupConstraints();
+  // Madde 5 M5-B7: live_plan_technical_details için 25 lookup FK (RESTRICT) +
+  // CHECK end>start reapply. Prisma model FK'leri scalar-only (relation YOK)
+  // olduğundan db push bu FK setini oluşturmaz.
+  await applyLivePlanTechnicalDetailsConstraints();
 
   // Minimal seed
   await seedTestFixtures();

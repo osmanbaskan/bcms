@@ -58,6 +58,10 @@ const TRANSACTIONAL_TABLES = [
   'live_plan_off_tube_options',
   'fiber_audio_formats',
   'fiber_video_formats',
+  // Madde 5 M5-B7: technical details (1:1 with live_plan_entries; CASCADE
+  // truncate ile temizlenir ama explicit listeleyerek RESTART IDENTITY
+  // sırası korunsun).
+  'live_plan_technical_details',
 ];
 
 let prismaSingleton: PrismaClient | null = null;
@@ -264,6 +268,106 @@ export async function applyOutboxIdempotencyIndex(): Promise<void> {
     CREATE UNIQUE INDEX "outbox_events_idempotency_key_uniq"
     ON "outbox_events"("idempotency_key")
     WHERE "idempotency_key" IS NOT NULL
+  `);
+}
+
+/**
+ * Madde 5 M5-B7 interim helper (2026-05-07):
+ * `live_plan_technical_details` üzerindeki 25 lookup FK (RESTRICT) + parent
+ * CASCADE FK + CHECK (planned_end > planned_start) constraints'lerini test
+ * DB'sinde reapply eder.
+ *
+ * Niçin gerekli: Prisma schema'da scalar-only FK kolon (relation tanımlanmadı,
+ * 47 reverse field patlamasını önlemek için). `prisma db push --force-reset`
+ * yalnızca `@relation` ile işaretli FK'leri ve CHECK'i oluşturmaz; bu helper
+ * migration SQL'deki constraint setini test ortamına idempotent uygular.
+ *
+ * Idempotent: DROP IF EXISTS + ADD.
+ *
+ * Madde 1 (migration baseline) sonrası kaldırılır.
+ */
+export async function applyLivePlanTechnicalDetailsConstraints(): Promise<void> {
+  const prisma = getRawPrisma();
+
+  /** [constraintName, columnName, refTable] */
+  const lookupFks: Array<[string, string, string]> = [
+    ['lpt_broadcast_location_fkey',         'broadcast_location_id',         'live_plan_locations'],
+    ['lpt_ob_van_company_fkey',             'ob_van_company_id',             'technical_companies'],
+    ['lpt_generator_company_fkey',          'generator_company_id',          'technical_companies'],
+    ['lpt_jimmy_jib_fkey',                  'jimmy_jib_id',                  'live_plan_equipment_options'],
+    ['lpt_steadicam_fkey',                  'steadicam_id',                  'live_plan_equipment_options'],
+    ['lpt_sng_company_fkey',                'sng_company_id',                'technical_companies'],
+    ['lpt_carrier_company_fkey',            'carrier_company_id',            'technical_companies'],
+    ['lpt_ibm_fkey',                        'ibm_id',                        'live_plan_equipment_options'],
+    ['lpt_usage_location_fkey',             'usage_location_id',             'live_plan_usage_locations'],
+    ['lpt_second_ob_van_fkey',              'second_ob_van_id',              'technical_companies'],
+    ['lpt_region_fkey',                     'region_id',                     'live_plan_regions'],
+    ['lpt_hdvg_resource_fkey',              'hdvg_resource_id',              'transmission_int_resources'],
+    ['lpt_int1_resource_fkey',              'int1_resource_id',              'transmission_int_resources'],
+    ['lpt_int2_resource_fkey',              'int2_resource_id',              'transmission_int_resources'],
+    ['lpt_off_tube_fkey',                   'off_tube_id',                   'live_plan_off_tube_options'],
+    ['lpt_language_fkey',                   'language_id',                   'live_plan_languages'],
+    ['lpt_demod_fkey',                      'demod_id',                      'transmission_demod_options'],
+    ['lpt_tie_fkey',                        'tie_id',                        'transmission_tie_options'],
+    ['lpt_virtual_resource_fkey',           'virtual_resource_id',           'transmission_virtual_resources'],
+    ['lpt_ird1_fkey',                       'ird1_id',                       'transmission_irds'],
+    ['lpt_ird2_fkey',                       'ird2_id',                       'transmission_irds'],
+    ['lpt_ird3_fkey',                       'ird3_id',                       'transmission_irds'],
+    ['lpt_fiber1_fkey',                     'fiber1_id',                     'transmission_fibers'],
+    ['lpt_fiber2_fkey',                     'fiber2_id',                     'transmission_fibers'],
+    ['lpt_feed_type_fkey',                  'feed_type_id',                  'transmission_feed_types'],
+    ['lpt_satellite_fkey',                  'satellite_id',                  'transmission_satellites'],
+    ['lpt_uplink_polarization_fkey',        'uplink_polarization_id',        'transmission_polarizations'],
+    ['lpt_downlink_polarization_fkey',      'downlink_polarization_id',      'transmission_polarizations'],
+    ['lpt_modulation_type_fkey',            'modulation_type_id',            'transmission_modulation_types'],
+    ['lpt_roll_off_fkey',                   'roll_off_id',                   'transmission_roll_offs'],
+    ['lpt_video_coding_fkey',               'video_coding_id',               'transmission_video_codings'],
+    ['lpt_audio_config_fkey',               'audio_config_id',               'transmission_audio_configs'],
+    ['lpt_iso_feed_fkey',                   'iso_feed_id',                   'transmission_iso_feed_options'],
+    ['lpt_key_type_fkey',                   'key_type_id',                   'transmission_key_types'],
+    ['lpt_fec_rate_fkey',                   'fec_rate_id',                   'transmission_fec_rates'],
+    ['lpt_backup_feed_type_fkey',           'backup_feed_type_id',           'transmission_feed_types'],
+    ['lpt_backup_satellite_fkey',           'backup_satellite_id',           'transmission_satellites'],
+    ['lpt_backup_uplink_polarization_fkey', 'backup_uplink_polarization_id', 'transmission_polarizations'],
+    ['lpt_backup_downlink_polarization_fkey','backup_downlink_polarization_id','transmission_polarizations'],
+    ['lpt_backup_modulation_type_fkey',     'backup_modulation_type_id',     'transmission_modulation_types'],
+    ['lpt_backup_roll_off_fkey',            'backup_roll_off_id',            'transmission_roll_offs'],
+    ['lpt_backup_video_coding_fkey',        'backup_video_coding_id',        'transmission_video_codings'],
+    ['lpt_backup_audio_config_fkey',        'backup_audio_config_id',        'transmission_audio_configs'],
+    ['lpt_backup_key_type_fkey',            'backup_key_type_id',            'transmission_key_types'],
+    ['lpt_backup_fec_rate_fkey',            'backup_fec_rate_id',            'transmission_fec_rates'],
+    ['lpt_fiber_company_fkey',              'fiber_company_id',              'technical_companies'],
+    ['lpt_fiber_audio_format_fkey',         'fiber_audio_format_id',         'fiber_audio_formats'],
+    ['lpt_fiber_video_format_fkey',         'fiber_video_format_id',         'fiber_video_formats'],
+  ];
+
+  for (const [name, col, ref] of lookupFks) {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "live_plan_technical_details"
+      DROP CONSTRAINT IF EXISTS "${name}"
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "live_plan_technical_details"
+      ADD CONSTRAINT "${name}"
+      FOREIGN KEY ("${col}") REFERENCES "${ref}"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE
+    `);
+  }
+
+  // Parent FK CASCADE — db push @relation tarafından oluşturulur (Prisma model'inde
+  // tanımlı), bu nedenle reapply etmiyoruz. CHECK constraint ise db push'ta yok.
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_technical_details"
+    DROP CONSTRAINT IF EXISTS "live_plan_technical_details_planned_window_check"
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_technical_details"
+    ADD CONSTRAINT "live_plan_technical_details_planned_window_check"
+    CHECK (
+      "planned_start_time" IS NULL
+      OR "planned_end_time" IS NULL
+      OR "planned_end_time" > "planned_start_time"
+    )
   `);
 }
 

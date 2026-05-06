@@ -198,21 +198,21 @@ model IngestJob {
 }
 
 model IngestPlanItem {
-  id                 Int              @id @default(autoincrement())
-  sourceType         String           @map("source_type") @db.VarChar(30)
-  sourceKey          String           @unique @map("source_key") @db.VarChar(500)
-  dayDate            DateTime         @map("day_date") @db.Date
-  sourcePath         String?          @map("source_path")
-  plannedStartMinute Int?             @map("planned_start_minute")
-  plannedEndMinute   Int?             @map("planned_end_minute")
-  status             IngestPlanStatus @default(WAITING)
-  jobId              Int?             @map("job_id")
+  id                 Int                  @id @default(autoincrement())
+  sourceType         String               @map("source_type") @db.VarChar(30)
+  sourceKey          String               @unique @map("source_key") @db.VarChar(500)
+  dayDate            DateTime             @map("day_date") @db.Date
+  sourcePath         String?              @map("source_path")
+  plannedStartMinute Int?                 @map("planned_start_minute")
+  plannedEndMinute   Int?                 @map("planned_end_minute")
+  status             IngestPlanStatus     @default(WAITING)
+  jobId              Int?                 @map("job_id")
   note               String?
-  updatedBy          String?          @map("updated_by") @db.VarChar(100)
-  createdAt          DateTime         @default(now()) @map("created_at")
-  updatedAt          DateTime         @updatedAt @map("updated_at")
+  updatedBy          String?              @map("updated_by") @db.VarChar(100)
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
   deleted_at         DateTime?
-  job                IngestJob?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job                IngestJob?           @relation(fields: [jobId], references: [id], onDelete: Cascade)
   ports              IngestPlanItemPort[]
 
   @@index([dayDate])
@@ -227,15 +227,15 @@ model IngestPlanItem {
 /// (port meşgulse rol farkı yok). day_date ve start/end alanları parent'tan kopyalanır
 /// (denormalized) — app layer Prisma $transaction ile sync tutar.
 model IngestPlanItemPort {
-  id                 Int      @id @default(autoincrement())
-  planItemId         Int      @map("plan_item_id")
-  portName           String   @map("port_name") @db.VarChar(50)
-  role               String   @db.VarChar(20)
-  dayDate            DateTime @map("day_date") @db.Date
-  plannedStartMinute Int      @map("planned_start_minute")
-  plannedEndMinute   Int      @map("planned_end_minute")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  id                 Int            @id @default(autoincrement())
+  planItemId         Int            @map("plan_item_id")
+  portName           String         @map("port_name") @db.VarChar(50)
+  role               String         @db.VarChar(20)
+  dayDate            DateTime       @map("day_date") @db.Date
+  plannedStartMinute Int            @map("planned_start_minute")
+  plannedEndMinute   Int            @map("planned_end_minute")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
   planItem           IngestPlanItem @relation(fields: [planItemId], references: [id], onDelete: Cascade)
 
   @@unique([planItemId, role], map: "ingest_plan_item_ports_role_unique")
@@ -438,23 +438,23 @@ model AuditLog {
 /// PR-A scope: sadece schema foundation. Poller, service refactor, admin endpoint,
 /// metric → PR-B/C/D.
 model OutboxEvent {
-  id              Int       @id @default(autoincrement())
+  id             Int       @id @default(autoincrement())
   /// UUID v4 (crypto.randomUUID() = 36 char); idempotency anchor.
-  eventId         String    @unique @map("event_id") @db.VarChar(36)
-  eventType       String    @map("event_type") @db.VarChar(100)
-  aggregateType   String    @map("aggregate_type") @db.VarChar(50)
-  aggregateId     String    @map("aggregate_id") @db.VarChar(50)
-  schemaVersion   Int       @default(1) @map("schema_version")
-  payload         Json
+  eventId        String    @unique @map("event_id") @db.VarChar(36)
+  eventType      String    @map("event_type") @db.VarChar(100)
+  aggregateType  String    @map("aggregate_type") @db.VarChar(50)
+  aggregateId    String    @map("aggregate_id") @db.VarChar(50)
+  schemaVersion  Int       @default(1) @map("schema_version")
+  payload        Json
   /// CHECK enum: pending | published | failed | dead. Bkz schema header yorumu.
-  status          String    @default("pending") @db.VarChar(20)
-  attempts        Int       @default(0)
-  lastError       String?   @map("last_error")
-  occurredAt      DateTime  @map("occurred_at") @db.Timestamptz(6)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  publishedAt     DateTime? @map("published_at") @db.Timestamptz(6)
+  status         String    @default("pending") @db.VarChar(20)
+  attempts       Int       @default(0)
+  lastError      String?   @map("last_error")
+  occurredAt     DateTime  @map("occurred_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt    DateTime? @map("published_at") @db.Timestamptz(6)
   /// Poller bu zaman geçince tekrar dener (backoff schedule).
-  nextAttemptAt   DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  nextAttemptAt  DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
   /// Madde 2+7 PR-B3b-2 schema PR: aggregate-level idempotency key. Cross-producer
   /// dedup (örn. INGEST_COMPLETED — Node worker + Avid capture callback aynı job için).
   /// Format: `{eventType}:{aggregateType}:{aggregateId}:{discriminator}` (ör.
@@ -463,10 +463,10 @@ model OutboxEvent {
   /// DB UNIQUE: partial unique index (`WHERE idempotency_key IS NOT NULL`) — bu
   /// migration SQL'de + test interim helper'da uygulanır; Prisma 5 partial @@unique
   /// desteği sınırlı olduğu için schema'da @@unique YAZMAYINIZ.
-  idempotencyKey  String?   @map("idempotency_key") @db.VarChar(160)
+  idempotencyKey String?   @map("idempotency_key") @db.VarChar(160)
 
   @@index([status, nextAttemptAt], map: "outbox_events_status_next_attempt_idx") // poller hot-path
-  @@index([aggregateType, aggregateId], map: "outbox_events_aggregate_idx")      // lookup/replay
+  @@index([aggregateType, aggregateId], map: "outbox_events_aggregate_idx") // lookup/replay
   @@index([eventType], map: "outbox_events_event_type_idx")
   @@map("outbox_events")
 }
@@ -507,35 +507,42 @@ model ShiftAssignment {
 /// M5-B1 KAPSAM: tablo + enum + 4 index + Match FK SetNull. Service/route/UI
 /// /ingest FK/cleanup/outbox shadow KAPSAM DIŞI (sırayla M5-B2..B5).
 model LivePlanEntry {
-  id              Int            @id @default(autoincrement())
-  title           String         @db.VarChar(500)
-  eventStartTime  DateTime       @map("event_start_time") @db.Timestamptz(6)
-  eventEndTime    DateTime       @map("event_end_time")   @db.Timestamptz(6)
+  id             Int            @id @default(autoincrement())
+  title          String         @db.VarChar(500)
+  eventStartTime DateTime       @map("event_start_time") @db.Timestamptz(6)
+  eventEndTime   DateTime       @map("event_end_time") @db.Timestamptz(6)
   /// Internal Match FK; nullable çünkü her live-plan futbol maçı olmak zorunda
   /// değil (bant içerik, manuel event, stüdyo kaynaklı içerik mümkün).
-  matchId         Int?           @map("match_id")
+  matchId        Int?           @map("match_id")
   /// External OPTA identity; unique DEĞİL — aynı OPTA event'ten birden fazla
   /// operasyon planı doğabilir. metadata.optaMatchId JSON fallback YOK
   /// (Madde 3 PR-3A transition pattern Schedule içindi; live_plan_entries
   /// temiz başlar).
-  optaMatchId     String?        @map("opta_match_id") @db.VarChar(80)
-  status          LivePlanStatus @default(PLANNED)
-  operationNotes  String?        @map("operation_notes")
+  optaMatchId    String?        @map("opta_match_id") @db.VarChar(80)
+  status         LivePlanStatus @default(PLANNED)
+  operationNotes String?        @map("operation_notes")
   /// M5-B2 route-level kural: kullanıcı işlemlerinde doldur. Script/seed/
   /// system import için nullable bırakıldı.
-  createdBy       String?        @map("created_by") @db.VarChar(100)
+  createdBy      String?        @map("created_by") @db.VarChar(100)
   /// Optimistic locking (Schedule/Booking ile aynı pattern; M5-B2 If-Match).
-  version         Int            @default(1)
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt      @map("updated_at")
-  deletedAt       DateTime?      @map("deleted_at")
+  version        Int            @default(1)
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  deletedAt      DateTime?      @map("deleted_at")
 
-  match           Match?         @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  match            Match?                   @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  /// Madde 5 M5-B7 (decision §5 + scope lock S2, 2026-05-07): 1:1 child;
+  /// live_plan_technical_details.live_plan_entry_id UNIQUE NOT NULL
+  /// FK ON DELETE CASCADE. Reverse relation optional (henüz oluşturulmamış
+  /// olabilir). 25 lookup FK scalar-only Prisma model'inde — relation
+  /// tanımlanmadı (47 reverse field'ı önlemek için pragmatik tercih;
+  /// service M5-B9'da gerekirse manuel join).
+  technicalDetails LivePlanTechnicalDetail?
 
   @@index([status, eventStartTime], map: "live_plan_entries_status_event_start_idx")
-  @@index([eventStartTime],         map: "live_plan_entries_event_start_idx")
-  @@index([matchId],                map: "live_plan_entries_match_idx")
-  @@index([optaMatchId],            map: "live_plan_entries_opta_match_idx")
+  @@index([eventStartTime], map: "live_plan_entries_event_start_idx")
+  @@index([matchId], map: "live_plan_entries_match_idx")
+  @@index([optaMatchId], map: "live_plan_entries_opta_match_idx")
   @@map("live_plan_entries")
 }
 
@@ -669,307 +676,420 @@ enum workspace_role {
 // ╚═════════════════════════════════════════════════════════════════════════════╝
 
 model TransmissionSatellite {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_satellites")
 }
 
 model TransmissionIrd {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_irds")
 }
 
 model TransmissionFiber {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_fibers")
 }
 
 model TransmissionIntResource {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_int_resources")
 }
 
 model TransmissionTieOption {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_tie_options")
 }
 
 model TransmissionDemodOption {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_demod_options")
 }
 
 model TransmissionVirtualResource {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_virtual_resources")
 }
 
 model TransmissionFeedType {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_feed_types")
 }
 
 model TransmissionModulationType {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_modulation_types")
 }
 
 model TransmissionVideoCoding {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_video_codings")
 }
 
 model TransmissionAudioConfig {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_audio_configs")
 }
 
 model TransmissionKeyType {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_key_types")
 }
 
 model TransmissionPolarization {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_polarizations")
 }
 
 model TransmissionFecRate {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_fec_rates")
 }
 
 model TransmissionRollOff {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_roll_offs")
 }
 
 model TransmissionIsoFeedOption {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("transmission_iso_feed_options")
 }
 
 /// type-polymorphic: OB_VAN | GENERATOR | SNG | CARRIER | FIBER (DB CHECK).
 model TechnicalCompany {
-  id         Int       @id @default(autoincrement())
-  type       String    @db.VarChar(30)
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  type      String    @db.VarChar(30)
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("technical_companies")
 }
 
 /// type-polymorphic: JIMMY_JIB | STEADICAM | IBM (DB CHECK).
 model LivePlanEquipmentOption {
-  id         Int       @id @default(autoincrement())
-  type       String    @db.VarChar(30)
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  type      String    @db.VarChar(30)
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("live_plan_equipment_options")
 }
 
 model LivePlanLocation {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("live_plan_locations")
 }
 
 model LivePlanUsageLocation {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("live_plan_usage_locations")
 }
 
 model LivePlanRegion {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("live_plan_regions")
 }
 
 model LivePlanLanguage {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("live_plan_languages")
 }
 
 model LivePlanOffTubeOption {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("live_plan_off_tube_options")
 }
 
 /// X1 (decision §3.4): Fiber audio signal format — codec ile farklı domain.
 model FiberAudioFormat {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("fiber_audio_formats")
 }
 
 /// X1: Fiber video signal format.
 model FiberVideoFormat {
-  id         Int       @id @default(autoincrement())
-  label      String    @db.VarChar(200)
-  active     Boolean   @default(true)
-  sortOrder  Int       @default(0) @map("sort_order")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@map("fiber_video_formats")
+}
+
+/// Madde 5 M5-B7 (decision sec. 5 + scope lock S1-S12, 2026-05-07):
+/// live-plan teknik detayları — 1:1 ile LivePlanEntry. ~73 domain alani + 5
+/// sistem kolonu + deleted_at = ~79 kolon (K15.2 revize: tek satir;
+/// backup_ ve fiber_ prefixleri; eski K15.2 W1-W4 per-feed split iptal).
+///
+/// 25 lookup FK scalar-only — Prisma relation attribute tanimlanmadi;
+/// reverse field patlamasini (47 array) onlemek icin pragmatik tercih.
+/// Service M5-B9: include yerine manuel prisma lookup findUnique ile join.
+///
+/// CHECK ve UNIQUE constraintleri schema.prisma yerine migration SQL ile
+/// uygulanir (Prisma 5 sinirli CHECK destegi). Test interim helper db push
+/// sonrasi bu constraintleri yeniden uygular (Madde 4 pattern).
+model LivePlanTechnicalDetail {
+  id              Int       @id @default(autoincrement())
+  livePlanEntryId Int       @unique @map("live_plan_entry_id")
+  /// Optimistic locking (K9 — Schedule/Booking/LivePlan ile aynı pattern;
+  /// If-Match enforce M5-B9 service'inde).
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  // §5.1 Yayın/OB grubu (14)
+  broadcastLocationId Int?    @map("broadcast_location_id")
+  obVanCompanyId      Int?    @map("ob_van_company_id")
+  generatorCompanyId  Int?    @map("generator_company_id")
+  jimmyJibId          Int?    @map("jimmy_jib_id")
+  steadicamId         Int?    @map("steadicam_id")
+  sngCompanyId        Int?    @map("sng_company_id")
+  carrierCompanyId    Int?    @map("carrier_company_id")
+  ibmId               Int?    @map("ibm_id")
+  usageLocationId     Int?    @map("usage_location_id")
+  fixedPhone1         String? @map("fixed_phone_1") @db.VarChar(80)
+  secondObVanId       Int?    @map("second_ob_van_id")
+  regionId            Int?    @map("region_id")
+  cameraCount         Int?    @map("camera_count")
+  fixedPhone2         String? @map("fixed_phone_2") @db.VarChar(80)
+
+  // §5.2 Ortak (10)
+  plannedStartTime  DateTime? @map("planned_start_time") @db.Timestamptz(6)
+  plannedEndTime    DateTime? @map("planned_end_time") @db.Timestamptz(6)
+  hdvgResourceId    Int?      @map("hdvg_resource_id")
+  int1ResourceId    Int?      @map("int1_resource_id")
+  int2ResourceId    Int?      @map("int2_resource_id")
+  offTubeId         Int?      @map("off_tube_id")
+  languageId        Int?      @map("language_id")
+  demodId           Int?      @map("demod_id")
+  tieId             Int?      @map("tie_id")
+  virtualResourceId Int?      @map("virtual_resource_id")
+
+  // §5.3 IRD/Fiber (5)
+  ird1Id   Int? @map("ird1_id")
+  ird2Id   Int? @map("ird2_id")
+  ird3Id   Int? @map("ird3_id")
+  fiber1Id Int? @map("fiber1_id")
+  fiber2Id Int? @map("fiber2_id")
+
+  // §5.4 Ana Feed (21)
+  feedTypeId             Int?    @map("feed_type_id")
+  satelliteId            Int?    @map("satellite_id")
+  txp                    String? @db.VarChar(120)
+  satChannel             String? @map("sat_channel") @db.VarChar(120)
+  uplinkFrequency        String? @map("uplink_frequency") @db.VarChar(120)
+  uplinkPolarizationId   Int?    @map("uplink_polarization_id")
+  downlinkFrequency      String? @map("downlink_frequency") @db.VarChar(120)
+  downlinkPolarizationId Int?    @map("downlink_polarization_id")
+  modulationTypeId       Int?    @map("modulation_type_id")
+  rollOffId              Int?    @map("roll_off_id")
+  videoCodingId          Int?    @map("video_coding_id")
+  audioConfigId          Int?    @map("audio_config_id")
+  preMatchKey            String? @map("pre_match_key") @db.VarChar(200)
+  matchKey               String? @map("match_key") @db.VarChar(200)
+  postMatchKey           String? @map("post_match_key") @db.VarChar(200)
+  isoFeedId              Int?    @map("iso_feed_id")
+  keyTypeId              Int?    @map("key_type_id")
+  symbolRate             String? @map("symbol_rate") @db.VarChar(80)
+  fecRateId              Int?    @map("fec_rate_id")
+  bandwidth              String? @db.VarChar(80)
+  uplinkFixedPhone       String? @map("uplink_fixed_phone") @db.VarChar(80)
+
+  // §5.5 Yedek Feed (19)
+  backupFeedTypeId             Int?    @map("backup_feed_type_id")
+  backupSatelliteId            Int?    @map("backup_satellite_id")
+  backupTxp                    String? @map("backup_txp") @db.VarChar(120)
+  backupSatChannel             String? @map("backup_sat_channel") @db.VarChar(120)
+  backupUplinkFrequency        String? @map("backup_uplink_frequency") @db.VarChar(120)
+  backupUplinkPolarizationId   Int?    @map("backup_uplink_polarization_id")
+  backupDownlinkFrequency      String? @map("backup_downlink_frequency") @db.VarChar(120)
+  backupDownlinkPolarizationId Int?    @map("backup_downlink_polarization_id")
+  backupModulationTypeId       Int?    @map("backup_modulation_type_id")
+  backupRollOffId              Int?    @map("backup_roll_off_id")
+  backupVideoCodingId          Int?    @map("backup_video_coding_id")
+  backupAudioConfigId          Int?    @map("backup_audio_config_id")
+  backupPreMatchKey            String? @map("backup_pre_match_key") @db.VarChar(200)
+  backupMatchKey               String? @map("backup_match_key") @db.VarChar(200)
+  backupPostMatchKey           String? @map("backup_post_match_key") @db.VarChar(200)
+  backupKeyTypeId              Int?    @map("backup_key_type_id")
+  backupSymbolRate             String? @map("backup_symbol_rate") @db.VarChar(80)
+  backupFecRateId              Int?    @map("backup_fec_rate_id")
+  backupBandwidth              String? @map("backup_bandwidth") @db.VarChar(80)
+
+  // §5.6 Fiber (4)
+  fiberCompanyId     Int?    @map("fiber_company_id")
+  fiberAudioFormatId Int?    @map("fiber_audio_format_id")
+  fiberVideoFormatId Int?    @map("fiber_video_format_id")
+  fiberBandwidth     String? @map("fiber_bandwidth") @db.VarChar(80)
+
+  /// Parent FK CASCADE (S4). Schema-only PR; service M5-B9 If-Match.
+  livePlanEntry LivePlanEntry @relation(fields: [livePlanEntryId], references: [id], onDelete: Cascade)
+
+  @@map("live_plan_technical_details")
 }
