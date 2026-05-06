@@ -120,6 +120,17 @@ export const routes: Routes = [
     canActivate: [AuthGuard],
     data: { groups: [GROUP.SystemEng] },
   },
+  {
+    /** Madde 5 M5-B6 (2026-05-06): Live-plan lookup master data yönetimi.
+     *  Page-level read = all authenticated; write/delete butonları
+     *  PERMISSIONS.livePlanLookups.write/delete (SystemEng + Admin auto-bypass)
+     *  ile component içinde gizlenir. */
+    path: 'admin/live-plan-lookups',
+    loadComponent: () =>
+      import('./features/live-plan/admin-lookups/admin-lookups.component').then((m) => m.AdminLookupsComponent),
+    canActivate: [AuthGuard],
+    data: { groups: [] },
+  },
   // ORTA-FE-2.6.1 fix (2026-05-04): /login-error route eklendi.
   // auth.guard.ts hata path'inde parseUrl('/login-error') döndürüyordu;
   // route tanımlı değildi → ** wildcard ile /schedules'a düşüyor ve kullanıcı

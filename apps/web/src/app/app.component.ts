@@ -567,6 +567,7 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Kanallar',          icon: 'tune',                route: '/channels',           groups: [GROUP.Admin] },
         { label: 'Kullanıcılar',      icon: 'manage_accounts',     route: '/users',              groups: [GROUP.SystemEng] },
         { label: 'Ayarlar',           icon: 'settings',            route: '/settings',           groups: [GROUP.SystemEng] },
+        { label: 'Live-Plan Lookup',  icon: 'tune',                route: '/admin/live-plan-lookups', groups: [] },
         { label: 'Dökümanlar',        icon: 'description',         route: '/documents',          groups: [GROUP.SystemEng] },
       ],
     },
