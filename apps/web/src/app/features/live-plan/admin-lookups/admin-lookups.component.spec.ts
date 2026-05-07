@@ -21,7 +21,7 @@ describe('AdminLookupsComponent', () => {
   function setup(groups: string[]) {
     TestBed.resetTestingModule();
     const apiSpy = jasmine.createSpyObj('ApiService', ['get', 'post', 'patch', 'delete']);
-    apiSpy.get.and.returnValue(of({ data: [], total: 0, page: 1, pageSize: 500, totalPages: 0 }));
+    apiSpy.get.and.returnValue(of({ items: [], total: 0, page: 1, pageSize: 500 }));
     TestBed.configureTestingModule({
       imports: [AdminLookupsComponent, NoopAnimationsModule],
       providers: [

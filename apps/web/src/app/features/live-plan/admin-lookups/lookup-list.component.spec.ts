@@ -23,7 +23,7 @@ const POLY_DEF: LookupDefinition = {
 };
 
 const EMPTY_RESPONSE: LookupListResponse = {
-  data: [], total: 0, page: 1, pageSize: 500, totalPages: 0,
+  items: [], total: 0, page: 1, pageSize: 500,
 };
 
 describe('LookupListComponent', () => {

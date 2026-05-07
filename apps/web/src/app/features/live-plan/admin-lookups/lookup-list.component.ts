@@ -208,7 +208,7 @@ export class LookupListComponent implements OnChanges {
     }
     this.api.get<LookupListResponse>(lookupEndpoint.list(this.definition.type), params).subscribe({
       next: (res) => {
-        this.rows.set(res.data ?? []);
+        this.rows.set(res.items ?? []);
         this.loading.set(false);
       },
       error: () => {

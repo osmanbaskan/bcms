@@ -115,11 +115,10 @@ export interface LookupRow {
 }
 
 export interface LookupListResponse {
-  data:       LookupRow[];
-  total:      number;
-  page:       number;
-  pageSize:   number;
-  totalPages: number;
+  items:    LookupRow[];
+  total:    number;
+  page:     number;
+  pageSize: number;
 }
 
 export interface LookupCreateBody {
