@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll } from 'vitest';
-import { applyLivePlanLookupConstraints, applyLivePlanTechnicalDetailsConstraints, applyLivePlanTransmissionSegmentsConstraints, applyOutboxConstraints, applyOutboxIdempotencyIndex, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
+import { applyLivePlanLookupConstraints, applyLivePlanTechnicalDetailsConstraints, applyLivePlanTransmissionSegmentsConstraints, applyOutboxConstraints, applyOutboxIdempotencyIndex, applyScheduleBroadcastFlowConstraints, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
 
 /**
  * Hybrid setup:
@@ -71,6 +71,10 @@ beforeAll(async () => {
   // (feed_role IN, kind IN, end>start) reapply. Parent FK + index Prisma
   // schema'da; db push üretir.
   await applyLivePlanTransmissionSegmentsConstraints();
+  // SCHED-B2: Schedule/Yayın Planlama broadcast flow CHECK + lookup partial
+  // unique reapply (3 channel slot duplicate yasak; source_type CHECK; 3
+  // schedule lookup tablosu CHECK + partial unique).
+  await applyScheduleBroadcastFlowConstraints();
 
   // Minimal seed
   await seedTestFixtures();

@@ -65,6 +65,10 @@ const TRANSACTIONAL_TABLES = [
   // Madde 5 M5-B8: transmission segments (1:N with live_plan_entries;
   // CASCADE).
   'live_plan_transmission_segments',
+  // SCHED-B2: schedule lookup tabloları (3 yeni; M5-B4 paritesi).
+  'schedule_commercial_options',
+  'schedule_logo_options',
+  'schedule_format_options',
 ];
 
 let prismaSingleton: PrismaClient | null = null;
@@ -415,6 +419,129 @@ export async function applyLivePlanTransmissionSegmentsConstraints(): Promise<vo
     ALTER TABLE "live_plan_transmission_segments"
     ADD CONSTRAINT "live_plan_transmission_segments_window_check"
     CHECK ("end_time" > "start_time")
+  `);
+}
+
+/**
+ * SCHED-B2 interim helper (2026-05-07): Schedule/Yayın Planlama broadcast
+ * flow + live_plan_entries event_key/source_type/channel slot CHECK + 3
+ * schedule lookup tablosunun CHECK + partial unique reapply.
+ *
+ * `prisma db push --force-reset` partial unique + CHECK + functional index
+ * desteği sınırlı; migration SQL'deki constraint setini test ortamına
+ * idempotent uygular.
+ *
+ * Idempotent: DROP IF EXISTS + ADD.
+ */
+export async function applyScheduleBroadcastFlowConstraints(): Promise<void> {
+  const prisma = getRawPrisma();
+
+  // schedules: 3 channel slot duplicate yasak
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "schedules"
+    DROP CONSTRAINT IF EXISTS "schedules_channel_slots_distinct"
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "schedules"
+    ADD CONSTRAINT "schedules_channel_slots_distinct" CHECK (
+      (channel_1_id IS NULL OR channel_2_id IS NULL OR channel_1_id <> channel_2_id) AND
+      (channel_1_id IS NULL OR channel_3_id IS NULL OR channel_1_id <> channel_3_id) AND
+      (channel_2_id IS NULL OR channel_3_id IS NULL OR channel_2_id <> channel_3_id)
+    )
+  `);
+
+  // live_plan_entries: source_type CHECK + 3 channel slot duplicate yasak
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_entries"
+    DROP CONSTRAINT IF EXISTS "live_plan_entries_source_type_check"
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_entries"
+    ADD CONSTRAINT "live_plan_entries_source_type_check"
+    CHECK ("source_type" IN ('OPTA','MANUAL'))
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_entries"
+    DROP CONSTRAINT IF EXISTS "live_plan_entries_channel_slots_distinct"
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "live_plan_entries"
+    ADD CONSTRAINT "live_plan_entries_channel_slots_distinct" CHECK (
+      (channel_1_id IS NULL OR channel_2_id IS NULL OR channel_1_id <> channel_2_id) AND
+      (channel_1_id IS NULL OR channel_3_id IS NULL OR channel_1_id <> channel_3_id) AND
+      (channel_2_id IS NULL OR channel_3_id IS NULL OR channel_2_id <> channel_3_id)
+    )
+  `);
+
+  // 3 schedule lookup tablo: label CHECK + partial unique LOWER(label)
+  for (const tbl of [
+    'schedule_commercial_options',
+    'schedule_logo_options',
+    'schedule_format_options',
+  ]) {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "${tbl}"
+      DROP CONSTRAINT IF EXISTS "${tbl}_label_not_blank"
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "${tbl}"
+      ADD CONSTRAINT "${tbl}_label_not_blank"
+      CHECK (length(trim("label")) > 0)
+    `);
+    await prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "${tbl}_label_uniq"`);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX "${tbl}_label_uniq"
+      ON "${tbl}"(LOWER("label"))
+      WHERE "deleted_at" IS NULL
+    `);
+  }
+
+  // 10 yeni FK: Prisma schema'da scalar-only kolonlar; @relation
+  // tanımlanmadığı için db push bu FK'leri oluşturmaz. Migration SQL'deki
+  // constraint setini reapply (idempotent DROP IF EXISTS + ADD).
+  type FkSpec = readonly [name: string, table: string, column: string, refTable: string, refCol: string, onDelete: 'SET NULL' | 'RESTRICT' | 'CASCADE'];
+  const fks: readonly FkSpec[] = [
+    // schedules → channels (3 slot)
+    ['schedules_channel_1_id_fkey', 'schedules', 'channel_1_id', 'channels', 'id', 'SET NULL'],
+    ['schedules_channel_2_id_fkey', 'schedules', 'channel_2_id', 'channels', 'id', 'SET NULL'],
+    ['schedules_channel_3_id_fkey', 'schedules', 'channel_3_id', 'channels', 'id', 'SET NULL'],
+    // schedules → live_plan_entries
+    ['schedules_selected_live_plan_entry_id_fkey', 'schedules', 'selected_live_plan_entry_id', 'live_plan_entries', 'id', 'SET NULL'],
+    // schedules → 3 schedule lookup (RESTRICT)
+    ['schedules_commercial_option_id_fkey', 'schedules', 'commercial_option_id', 'schedule_commercial_options', 'id', 'RESTRICT'],
+    ['schedules_logo_option_id_fkey',       'schedules', 'logo_option_id',       'schedule_logo_options',       'id', 'RESTRICT'],
+    ['schedules_format_option_id_fkey',     'schedules', 'format_option_id',     'schedule_format_options',     'id', 'RESTRICT'],
+    // live_plan_entries → channels (3 slot)
+    ['live_plan_entries_channel_1_id_fkey', 'live_plan_entries', 'channel_1_id', 'channels', 'id', 'SET NULL'],
+    ['live_plan_entries_channel_2_id_fkey', 'live_plan_entries', 'channel_2_id', 'channels', 'id', 'SET NULL'],
+    ['live_plan_entries_channel_3_id_fkey', 'live_plan_entries', 'channel_3_id', 'channels', 'id', 'SET NULL'],
+  ];
+
+  for (const [name, tbl, col, refTbl, refCol, onDel] of fks) {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "${tbl}" DROP CONSTRAINT IF EXISTS "${name}"
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "${tbl}"
+      ADD CONSTRAINT "${name}"
+      FOREIGN KEY ("${col}") REFERENCES "${refTbl}"("${refCol}")
+      ON DELETE ${onDel} ON UPDATE CASCADE
+    `);
+  }
+
+  // schedules.event_key UNIQUE — Prisma @unique attribute db push ile gelir
+  // ama defensive olarak reapply (test isolation için garanti).
+  await prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "schedules_event_key_uniq"`);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX "schedules_event_key_uniq" ON "schedules"("event_key")
+  `);
+
+  // live_plan_entries.event_key partial index
+  await prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "live_plan_entries_event_key_idx"`);
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX "live_plan_entries_event_key_idx"
+    ON "live_plan_entries"("event_key")
+    WHERE "event_key" IS NOT NULL
   `);
 }
 

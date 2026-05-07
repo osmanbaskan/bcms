@@ -91,44 +91,62 @@ model BroadcastType {
 }
 
 model Schedule {
-  id               Int             @id @default(autoincrement())
-  channelId        Int?            @map("channel_id")
-  startTime        DateTime        @map("start_time") @db.Timestamptz(6)
-  endTime          DateTime        @map("end_time") @db.Timestamptz(6)
-  title            String          @db.VarChar(500)
-  contentId        Int?            @map("content_id")
-  broadcastTypeId  Int?            @map("broadcast_type_id")
-  matchId          Int?            @map("match_id")
-  status           ScheduleStatus  @default(DRAFT)
+  id               Int            @id @default(autoincrement())
+  channelId        Int?           @map("channel_id")
+  startTime        DateTime       @map("start_time") @db.Timestamptz(6)
+  endTime          DateTime       @map("end_time") @db.Timestamptz(6)
+  title            String         @db.VarChar(500)
+  contentId        Int?           @map("content_id")
+  broadcastTypeId  Int?           @map("broadcast_type_id")
+  matchId          Int?           @map("match_id")
+  status           ScheduleStatus @default(DRAFT)
   /// DB seviyesinde CHECK constraint: usage_scope IN ('broadcast', 'live-plan').
   /// Migration: 20260422000002_schedule_usage_scope_constraint.
   /// Prisma 5 native CHECK desteklemediği için bu yorum drift uyarısı görevi yapar.
   /// Yeni değer eklemek için: önce ALTER TABLE migration, sonra bu yorumu güncelle.
   /// Ek koruma katmanı: zod ScheduleUsageScopeEnum (`schedule.schema.ts`).
-  usageScope       String          @default("broadcast") @map("usage_scope") @db.VarChar(30)
-  reportLeague     String?         @map("report_league") @db.VarChar(200)
-  reportSeason     String?         @map("report_season") @db.VarChar(30)
-  reportWeekNumber Int?            @map("report_week_number")
+  usageScope       String         @default("broadcast") @map("usage_scope") @db.VarChar(30)
+  reportLeague     String?        @map("report_league") @db.VarChar(200)
+  reportSeason     String?        @map("report_season") @db.VarChar(30)
+  reportWeekNumber Int?           @map("report_week_number")
   /// Madde 3 PR-3A (audit doc): metadata->>'optaMatchId' yerine type-safe kolon.
   /// Non-unique index — aynı OPTA match için birden fazla schedule/live-plan
   /// entry mümkün (farklı kanal, broadcast vs live-plan, vb.).
   /// Backfill: migration 20260505000001_schedule_opta_match_id_promote.
   /// Transition: dual-write ile metadata.optaMatchId paralel yazılır;
   /// PR-3B'de metadata yazımı kaldırılacak.
-  optaMatchId      String?         @map("opta_match_id") @db.VarChar(50)
-  finishedAt       DateTime?       @map("finished_at") @db.Timestamptz(6)
-  createdBy        String          @map("created_by") @db.VarChar(100)
-  version          Int             @default(1)
+  optaMatchId      String?        @map("opta_match_id") @db.VarChar(50)
+  finishedAt       DateTime?      @map("finished_at") @db.Timestamptz(6)
+  createdBy        String         @map("created_by") @db.VarChar(100)
+  version          Int            @default(1)
   metadata         Json?
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
   deleted_at       DateTime?
-  bookings         Booking[]
-  incidents        Incident[]
-  broadcastType    BroadcastType?  @relation(fields: [broadcastTypeId], references: [id])
-  channel          Channel?        @relation(fields: [channelId], references: [id])
-  match            Match?          @relation(fields: [matchId], references: [id])
-  timelineEvents   TimelineEvent[]
+
+  // SCHED-B2 (decision sec.3.5 K16, 2026-05-07): broadcast flow yeni alanlar.
+  // Eski usage_scope/start_time/end_time/channel_id/metadata SCHED-B5'te DROP.
+  // Yeni FK'ler scalar-only Prisma model'inde (47 lookup FK reverse field
+  // patlamasini onlemek pragmatik; live_plan_technical_details paritesi).
+  eventKey                String?   @unique @map("event_key") @db.VarChar(120)
+  selectedLivePlanEntryId Int?      @map("selected_live_plan_entry_id")
+  scheduleDate            DateTime? @map("schedule_date") @db.Date
+  scheduleTime            DateTime? @map("schedule_time") @db.Time(6)
+  team1Name               String?   @map("team_1_name") @db.VarChar(200)
+  team2Name               String?   @map("team_2_name") @db.VarChar(200)
+  channel1Id              Int?      @map("channel_1_id")
+  channel2Id              Int?      @map("channel_2_id")
+  channel3Id              Int?      @map("channel_3_id")
+  commercialOptionId      Int?      @map("commercial_option_id")
+  logoOptionId            Int?      @map("logo_option_id")
+  formatOptionId          Int?      @map("format_option_id")
+
+  bookings       Booking[]
+  incidents      Incident[]
+  broadcastType  BroadcastType?  @relation(fields: [broadcastTypeId], references: [id])
+  channel        Channel?        @relation(fields: [channelId], references: [id])
+  match          Match?          @relation(fields: [matchId], references: [id])
+  timelineEvents TimelineEvent[]
 
   @@index([channelId, startTime, endTime])
   @@index([status])
@@ -529,6 +547,17 @@ model LivePlanEntry {
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
   deletedAt      DateTime?      @map("deleted_at")
+
+  // SCHED-B2 (decision sec.3.5 K16, 2026-05-07): event_key + source_type +
+  // 3 channel slot. event_key non-unique (aynı event icin birden cok entry
+  // mumkun). source_type CHECK migration SQL'de (OPTA | MANUAL); default
+  // MANUAL. Channel slotlari scalar-only FK; CHECK duplicate yasagi
+  // migration SQL'de.
+  eventKey   String? @map("event_key") @db.VarChar(120)
+  sourceType String  @default("MANUAL") @map("source_type") @db.VarChar(20)
+  channel1Id Int?    @map("channel_1_id")
+  channel2Id Int?    @map("channel_2_id")
+  channel3Id Int?    @map("channel_3_id")
 
   match                Match?                        @relation(fields: [matchId], references: [id], onDelete: SetNull)
   /// Madde 5 M5-B7 (decision §5 + scope lock S2, 2026-05-07): 1:1 child;
@@ -1130,4 +1159,45 @@ model LivePlanTransmissionSegment {
 
   @@index([livePlanEntryId, startTime], map: "live_plan_transmission_segments_entry_start_idx")
   @@map("live_plan_transmission_segments")
+}
+
+/// SCHED-B2 (decision sec.3.5 K16.7 + REQUIREMENTS sec.5, 2026-05-07):
+/// Schedule/Yayin Planlama lookup tablolari. M5-B4 paritesi.
+/// Standart kolon set: id/label/active/sort_order/timestamps/deleted_at.
+/// CHECK length(trim(label)) > 0 + partial unique LOWER(label) WHERE
+/// deleted_at IS NULL migration SQL'de (Prisma 5 sinirli destegi).
+model ScheduleCommercialOption {
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("schedule_commercial_options")
+}
+
+model ScheduleLogoOption {
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("schedule_logo_options")
+}
+
+model ScheduleFormatOption {
+  id        Int       @id @default(autoincrement())
+  label     String    @db.VarChar(200)
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("schedule_format_options")
 }
