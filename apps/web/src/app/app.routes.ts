@@ -131,6 +131,18 @@ export const routes: Routes = [
     canActivate: [AuthGuard],
     data: { groups: [] },
   },
+  {
+    /** Madde 5 M5-B10a (2026-05-07): yeni Live-Plan ekranı (paralel; mevcut
+     *  /schedules dokunulmaz). Y1 lock. List + detail (segments-only iskelet);
+     *  76 alan technical-details form M5-B10b'de. Page-level read = all-auth;
+     *  write/delete butonları component içi role-check. */
+    path: 'live-plan',
+    loadChildren: () =>
+      import('./features/live-plan/live-plan.routes').then((m) => m.livePlanRoutes),
+    canActivate: [AuthGuard],
+    canActivateChild: [AuthGuard],
+    data: { groups: [] },
+  },
   // ORTA-FE-2.6.1 fix (2026-05-04): /login-error route eklendi.
   // auth.guard.ts hata path'inde parseUrl('/login-error') döndürüyordu;
   // route tanımlı değildi → ** wildcard ile /schedules'a düşüyor ve kullanıcı
