@@ -1,6 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { Prisma } from '@prisma/client';
-import type { CreateScheduleDto, UpdateScheduleDto, ScheduleQuery } from './schedule.schema.js';
+import type {
+  CreateScheduleDto, UpdateScheduleDto, ScheduleQuery,
+  CreateBroadcastScheduleDto, UpdateBroadcastScheduleDto,
+} from './schedule.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { createEnvelope } from '../outbox/outbox.types.js';
 
@@ -427,4 +430,248 @@ export class ScheduleService {
     await this.app.prisma.schedule.delete({ where: { id } });
   }
 
+  // ───────────────────────────────────────────────────────────────────────
+  // SCHED-B3a (decision §3.5 K16, K-B3 lock 2026-05-07): broadcast flow
+  // canonical service path. Eski create/update/remove method'ları SCHED-B5
+  // destructive cleanup'a kadar paralel kalır (yeni Schedule UI buradan
+  // çağırır). Channel propagation tx + event_key UNIQUE conflict 409 +
+  // schedule delete → live-plan channel slot NULL.
+  // ───────────────────────────────────────────────────────────────────────
+
+  async createBroadcastFlow(
+    dto: CreateBroadcastScheduleDto,
+    request: FastifyRequest,
+  ) {
+    const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'unknown';
+
+    // 1. selected_live_plan_entry varlığı + meta okuma (K-B3.20: title/team
+    // schedule body'de gelmez; entry'den kopya).
+    const entry = await this.app.prisma.livePlanEntry.findUnique({
+      where: { id: dto.selectedLivePlanEntryId },
+    });
+    if (!entry || entry.deletedAt !== null) {
+      throw Object.assign(new Error('selected_live_plan_entry not found'), { statusCode: 404 });
+    }
+
+    // 2. event_key UNIQUE pre-check (K-B3.13: aynı event ikinci satır olamaz).
+    const existing = await this.app.prisma.schedule.findUnique({
+      where: { eventKey: dto.eventKey },
+    });
+    if (existing) {
+      throw Object.assign(
+        new Error('Bu event Yayın Planlama\'da zaten var'),
+        { statusCode: 409 },
+      );
+    }
+
+    // 3. Legacy alan derive (SCHED-B5'e kadar dual-write):
+    //   start_time = scheduleDate + scheduleTime UTC.
+    //   end_time   = start + 2h placeholder. ⚠ Bu canonical değil; sadece
+    //               legacy NOT NULL kolonu doyurmak için. Export/report
+    //               buradan gerçek yayın süresi ÇIKARMASIN.
+    const startISO = composeUtc(dto.scheduleDate, dto.scheduleTime);
+    const startDate = new Date(startISO);
+    const endDate = new Date(startDate.getTime() + 2 * 3600 * 1000);
+
+    return this.app.prisma.$transaction(async (tx) => {
+      const created = await tx.schedule.create({
+        data: {
+          // Yeni canonical:
+          eventKey:                dto.eventKey,
+          selectedLivePlanEntryId: dto.selectedLivePlanEntryId,
+          scheduleDate:            new Date(`${dto.scheduleDate}T00:00:00.000Z`),
+          scheduleTime:            new Date(`1970-01-01T${normalizeTime(dto.scheduleTime)}.000Z`),
+          channel1Id:              dto.channel1Id ?? null,
+          channel2Id:              dto.channel2Id ?? null,
+          channel3Id:              dto.channel3Id ?? null,
+          commercialOptionId:      dto.commercialOptionId ?? null,
+          logoOptionId:            dto.logoOptionId ?? null,
+          formatOptionId:          dto.formatOptionId ?? null,
+          // K-B3.20: title + team_1/2 entry'den kopya (Schedule body'de bu
+          // alanlar yazılmaz). Entry'de team_1/2 NULL ise schedule'da NULL
+          // (M5-B2 entry create zorunlu kılmıyordu; B3b OPTA selection
+          // akışında zorunluluk ayrıca kararlaştırılır).
+          team1Name:  entry.team1Name,
+          team2Name:  entry.team2Name,
+          // Legacy (SCHED-B5'e kadar):
+          title:      entry.title,
+          startTime:  startDate,
+          endTime:    endDate, // ⚠ LEGACY PLACEHOLDER (start + 2h); canonical değil
+          usageScope: 'broadcast',
+          createdBy:  user,
+        },
+      });
+
+      // 4. Channel propagation (K-B3.11, K-B3.12 reverse): aynı event_key'li
+      // tüm live_plan_entries'e channel slot UPDATE.
+      await tx.livePlanEntry.updateMany({
+        where: { eventKey: dto.eventKey, deletedAt: null },
+        data: {
+          channel1Id: dto.channel1Id ?? null,
+          channel2Id: dto.channel2Id ?? null,
+          channel3Id: dto.channel3Id ?? null,
+        },
+      });
+
+      return created;
+    });
+  }
+
+  async updateBroadcastFlow(
+    id: number,
+    dto: UpdateBroadcastScheduleDto,
+    ifMatchVersion: number | undefined,
+    _request: FastifyRequest,
+  ) {
+    const existing = await this.app.prisma.schedule.findUnique({ where: { id } });
+    if (!existing) {
+      throw Object.assign(new Error('Schedule not found'), { statusCode: 404 });
+    }
+
+    return this.app.prisma.$transaction(async (tx) => {
+      // 1. Canonical alan update + version increment + If-Match check.
+      const data: Prisma.ScheduleUpdateInput = {
+        ...(dto.scheduleDate !== undefined && {
+          scheduleDate: new Date(`${dto.scheduleDate}T00:00:00.000Z`),
+        }),
+        ...(dto.scheduleTime !== undefined && {
+          scheduleTime: new Date(`1970-01-01T${normalizeTime(dto.scheduleTime)}.000Z`),
+        }),
+        ...(dto.channel1Id !== undefined && { channel1Id: dto.channel1Id }),
+        ...(dto.channel2Id !== undefined && { channel2Id: dto.channel2Id }),
+        ...(dto.channel3Id !== undefined && { channel3Id: dto.channel3Id }),
+        ...(dto.commercialOptionId !== undefined && { commercialOptionId: dto.commercialOptionId }),
+        ...(dto.logoOptionId !== undefined && { logoOptionId: dto.logoOptionId }),
+        ...(dto.formatOptionId !== undefined && { formatOptionId: dto.formatOptionId }),
+        version: { increment: 1 },
+      };
+
+      // Legacy start_time/end_time dual-write: scheduleDate veya scheduleTime
+      // değiştiyse legacy alanlar da güncellenir (placeholder 2h korunur).
+      if (dto.scheduleDate !== undefined || dto.scheduleTime !== undefined) {
+        const newDate = dto.scheduleDate ?? formatDate(existing.scheduleDate ?? existing.startTime);
+        const newTime = dto.scheduleTime ?? formatTime(existing.scheduleTime ?? existing.startTime);
+        const startISO = composeUtc(newDate, newTime);
+        const startDate = new Date(startISO);
+        data.startTime = startDate;
+        data.endTime   = new Date(startDate.getTime() + 2 * 3600 * 1000); // legacy placeholder
+      }
+
+      const where: Prisma.ScheduleWhereUniqueInput =
+        ifMatchVersion !== undefined
+          ? { id, version: ifMatchVersion }
+          : { id };
+
+      const result = await tx.schedule.updateMany({ where, data });
+      if (result.count !== 1) {
+        if (ifMatchVersion !== undefined) {
+          throw Object.assign(new Error('Schedule version conflict'), { statusCode: 412 });
+        }
+        throw Object.assign(new Error('Schedule update failed'), { statusCode: 500 });
+      }
+      const refreshed = await tx.schedule.findUniqueOrThrow({ where: { id } });
+
+      // 2. Channel propagation (K-B3.11): kanal slotlarından biri değiştiyse
+      // aynı event_key'li tüm live_plan_entries'e UPDATE.
+      const channelChanged =
+        dto.channel1Id !== undefined ||
+        dto.channel2Id !== undefined ||
+        dto.channel3Id !== undefined;
+      if (channelChanged && refreshed.eventKey) {
+        await tx.livePlanEntry.updateMany({
+          where: { eventKey: refreshed.eventKey, deletedAt: null },
+          data: {
+            channel1Id: refreshed.channel1Id,
+            channel2Id: refreshed.channel2Id,
+            channel3Id: refreshed.channel3Id,
+          },
+        });
+      }
+
+      // 3. K-B3.19: scheduleDate/scheduleTime değiştiyse aynı event_key'li
+      // live_plan_entries.eventStartTime/eventEndTime UPDATE (duration korunur).
+      const timeChanged =
+        dto.scheduleDate !== undefined || dto.scheduleTime !== undefined;
+      if (timeChanged && refreshed.eventKey) {
+        const newStart = refreshed.startTime; // legacy compose üstte yapıldı
+        await this.syncLivePlanEventTimes(tx, refreshed.eventKey, newStart);
+      }
+
+      return refreshed;
+    });
+  }
+
+  async removeBroadcastFlow(id: number) {
+    const existing = await this.app.prisma.schedule.findUnique({ where: { id } });
+    if (!existing) {
+      throw Object.assign(new Error('Schedule not found'), { statusCode: 404 });
+    }
+
+    await this.app.prisma.$transaction(async (tx) => {
+      // K-B3.16: schedule sil → aynı event_key'li live_plan_entries channel
+      // slot NULL (live-plan satırı silinmez; K-B3.15).
+      if (existing.eventKey) {
+        await tx.livePlanEntry.updateMany({
+          where: { eventKey: existing.eventKey, deletedAt: null },
+          data: {
+            channel1Id: null,
+            channel2Id: null,
+            channel3Id: null,
+          },
+        });
+      }
+      // Schedule satırı hard-delete (mevcut remove pattern; soft-delete bu
+      // domain'de uygulanmıyor).
+      await tx.schedule.delete({ where: { id } });
+    });
+  }
+
+  // K-B3.19: live_plan_entries.eventStartTime + eventEndTime UPDATE.
+  // Duration korunur (yeni eventStart = newStart; yeni eventEnd = eventStart + originalDuration).
+  private async syncLivePlanEventTimes(
+    tx: Prisma.TransactionClient,
+    eventKey: string,
+    newStart: Date,
+  ) {
+    const entries = await tx.livePlanEntry.findMany({
+      where: { eventKey, deletedAt: null },
+      select: { id: true, eventStartTime: true, eventEndTime: true },
+    });
+    for (const e of entries) {
+      const duration = e.eventEndTime.getTime() - e.eventStartTime.getTime();
+      const newEnd = new Date(newStart.getTime() + (duration > 0 ? duration : 2 * 3600 * 1000));
+      await tx.livePlanEntry.update({
+        where: { id: e.id },
+        data: { eventStartTime: newStart, eventEndTime: newEnd },
+      });
+    }
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// SCHED-B3a helpers (date/time compose + format).
+// ───────────────────────────────────────────────────────────────────────────
+
+function composeUtc(dateStr: string, timeStr: string): string {
+  return `${dateStr}T${normalizeTime(timeStr)}.000Z`;
+}
+
+function normalizeTime(timeStr: string): string {
+  return timeStr.length === 5 ? `${timeStr}:00` : timeStr;
+}
+
+function formatDate(d: Date | null): string {
+  if (!d) return '1970-01-01';
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatTime(d: Date | null): string {
+  if (!d) return '00:00:00';
+  const h = String(d.getUTCHours()).padStart(2, '0');
+  const m = String(d.getUTCMinutes()).padStart(2, '0');
+  const s = String(d.getUTCSeconds()).padStart(2, '0');
+  return `${h}:${m}:${s}`;
 }

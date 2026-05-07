@@ -93,3 +93,49 @@ export const livePlanExportQuerySchema = livePlanQuerySchema.extend({
 export type CreateScheduleDto = z.infer<typeof createScheduleSchema>;
 export type UpdateScheduleDto = z.infer<typeof updateScheduleSchema>;
 export type ScheduleQuery     = z.infer<typeof scheduleQuerySchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCHED-B3a (decision §3.5 K16, K-B3 lock 2026-05-07): Broadcast flow
+// canonical create/update DTO. Yeni Schedule UI bu schema ile çağırır;
+// eski createScheduleSchema/updateScheduleSchema legacy path olarak SCHED-B5
+// destructive cleanup'a kadar paralel kalır.
+//
+// Required (K32): eventKey, selectedLivePlanEntryId, scheduleDate, scheduleTime.
+// Opsiyonel (K30-K31): channel_1/2/3, commercial/logo/format option.
+// Schedule başlığı/takım/title doğrudan body'de ALINMAZ (K-B3.20): live-plan
+// entry'den kopya yapılır; schedule.update body'de title/team_1/2 alanı yok.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD format');
+// HH:MM veya HH:MM:SS kabul; service composeDateTime saniye yoksa 00 ekler.
+const timeStr = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'HH:MM veya HH:MM:SS format');
+
+export const createBroadcastScheduleSchema = z.object({
+  eventKey:                z.string().trim().min(1).max(120),
+  selectedLivePlanEntryId: z.number().int().positive(),
+  scheduleDate:            dateStr,
+  scheduleTime:            timeStr,
+  channel1Id:              z.number().int().positive().nullable().optional(),
+  channel2Id:              z.number().int().positive().nullable().optional(),
+  channel3Id:              z.number().int().positive().nullable().optional(),
+  commercialOptionId:      z.number().int().positive().nullable().optional(),
+  logoOptionId:            z.number().int().positive().nullable().optional(),
+  formatOptionId:          z.number().int().positive().nullable().optional(),
+});
+
+export type CreateBroadcastScheduleDto = z.infer<typeof createBroadcastScheduleSchema>;
+
+export const updateBroadcastScheduleSchema = z.object({
+  scheduleDate:       dateStr.optional(),
+  scheduleTime:       timeStr.optional(),
+  channel1Id:         z.number().int().positive().nullable().optional(),
+  channel2Id:         z.number().int().positive().nullable().optional(),
+  channel3Id:         z.number().int().positive().nullable().optional(),
+  commercialOptionId: z.number().int().positive().nullable().optional(),
+  logoOptionId:       z.number().int().positive().nullable().optional(),
+  formatOptionId:     z.number().int().positive().nullable().optional(),
+}).refine((d) => Object.keys(d).length > 0, {
+  message: 'En az bir field güncellenmeli',
+});
+
+export type UpdateBroadcastScheduleDto = z.infer<typeof updateBroadcastScheduleSchema>;

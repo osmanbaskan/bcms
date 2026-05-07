@@ -28,6 +28,8 @@ import {
   exportQuerySchema,
   livePlanQuerySchema,
   livePlanExportQuerySchema,
+  createBroadcastScheduleSchema,
+  updateBroadcastScheduleSchema,
 } from './schedule.schema.js';
 import { importSchedulesFromBuffer } from './schedule.import.js';
 import { exportSchedulesToStream }   from './schedule.export.js';
@@ -317,6 +319,52 @@ export async function scheduleRoutes(app: FastifyInstance) {
     schema: { tags: ['Schedules'], summary: 'Delete schedule' },
   }, async (request, reply) => {
     await svc.remove(z.coerce.number().int().positive().parse(request.params.id));
+    reply.status(204);
+    return null;
+  });
+
+  // ── SCHED-B3a Broadcast Flow canonical routes ──────────────────────────
+  // Yeni Schedule UI (SCHED-B4) bu endpoint'leri çağırır. Eski POST/PATCH/
+  // DELETE /api/v1/schedules legacy path olarak SCHED-B5'e kadar paralel
+  // çalışır.
+
+  // POST /api/v1/schedules/broadcast — yeni canonical create (event_key,
+  // selected_lpe, schedule_date/time, channel_1/2/3, 3 lookup option).
+  // Channel propagation tx-içi.
+  app.post('/broadcast', {
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
+    schema: { tags: ['Schedules'], summary: 'Create broadcast flow schedule (K-B3 canonical)' },
+  }, async (request, reply) => {
+    const dto = createBroadcastScheduleSchema.parse(request.body);
+    const created = await svc.createBroadcastFlow(dto, request);
+    reply.status(201);
+    return created;
+  });
+
+  // PATCH /api/v1/schedules/broadcast/:id — canonical update + channel
+  // propagation + temel bilgi senkron (K-B3.11, K-B3.19). If-Match opsiyonel.
+  app.patch<{ Params: { id: string } }>('/broadcast/:id', {
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.write),
+    schema: { tags: ['Schedules'], summary: 'Update broadcast flow schedule (K-B3 canonical)' },
+  }, async (request) => {
+    const id = z.coerce.number().int().positive().parse(request.params.id);
+    const dto = updateBroadcastScheduleSchema.parse(request.body);
+    const rawIfMatch = request.headers['if-match'];
+    const ifMatchStr = Array.isArray(rawIfMatch) ? rawIfMatch[0] : rawIfMatch;
+    const versionRaw = ifMatchStr ? parseInt(ifMatchStr, 10) : NaN;
+    const version = Number.isFinite(versionRaw) && versionRaw >= 0 ? versionRaw : undefined;
+    return svc.updateBroadcastFlow(id, dto, version, request);
+  });
+
+  // DELETE /api/v1/schedules/broadcast/:id — schedule sil + aynı event_key'li
+  // live_plan_entries channel slot NULL (K-B3.16). Live-plan satırları
+  // silinmez (K-B3.15).
+  app.delete<{ Params: { id: string } }>('/broadcast/:id', {
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.delete),
+    schema: { tags: ['Schedules'], summary: 'Delete broadcast flow schedule (K-B3 canonical)' },
+  }, async (request, reply) => {
+    const id = z.coerce.number().int().positive().parse(request.params.id);
+    await svc.removeBroadcastFlow(id);
     reply.status(204);
     return null;
   });
