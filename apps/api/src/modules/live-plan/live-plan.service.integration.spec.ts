@@ -338,4 +338,64 @@ describe('LivePlanService — integration', () => {
 
     await expect(svc.getById(created.id)).rejects.toMatchObject({ statusCode: 404 });
   });
+
+  // ── K-B3.20 follow-up: team_1/team_2 canonical alanlar ──────────────────
+  test('create: team1Name + team2Name body\'den yazılır', async () => {
+    const user = makeUser({ username: 'team-test', groups: ['Booking'] });
+    const req  = makeRequest(user);
+
+    const created = await svc.create(
+      {
+        title:          'Galatasaray vs Fenerbahçe',
+        eventStartTime: '2026-06-01T19:00:00Z',
+        eventEndTime:   '2026-06-01T21:00:00Z',
+        status:         'PLANNED',
+        team1Name:      'Galatasaray',
+        team2Name:      'Fenerbahçe',
+      },
+      req,
+    );
+
+    expect(created.team1Name).toBe('Galatasaray');
+    expect(created.team2Name).toBe('Fenerbahçe');
+  });
+
+  test('create: team_1/2 verilmediyse NULL kalır (M5-B2 zorunlu değil; manuel content)', async () => {
+    const req = makeRequest(makeUser({ username: 'team-null', groups: ['Booking'] }));
+    const created = await svc.create(
+      {
+        title:          'Manuel İçerik',
+        eventStartTime: '2026-06-01T19:00:00Z',
+        eventEndTime:   '2026-06-01T21:00:00Z',
+        status:         'PLANNED',
+      },
+      req,
+    );
+    expect(created.team1Name).toBeNull();
+    expect(created.team2Name).toBeNull();
+  });
+
+  test('update: team_1/2 set + null=clear (PATCH semantik)', async () => {
+    const req = makeRequest(makeUser({ username: 'team-upd', groups: ['Booking'] }));
+    const created = await svc.create(
+      {
+        title:          'Match',
+        eventStartTime: '2026-06-01T19:00:00Z',
+        eventEndTime:   '2026-06-01T21:00:00Z',
+        status:         'PLANNED',
+        team1Name:      'Eski Takım 1',
+      },
+      req,
+    );
+
+    // Set team_2
+    const r1 = await svc.update(created.id, { team2Name: 'Yeni Takım 2' }, created.version, req);
+    expect(r1.team1Name).toBe('Eski Takım 1');
+    expect(r1.team2Name).toBe('Yeni Takım 2');
+
+    // Clear team_1
+    const r2 = await svc.update(created.id, { team1Name: null }, r1.version, req);
+    expect(r2.team1Name).toBeNull();
+    expect(r2.team2Name).toBe('Yeni Takım 2');
+  });
 });

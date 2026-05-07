@@ -559,6 +559,13 @@ model LivePlanEntry {
   channel2Id Int?    @map("channel_2_id")
   channel3Id Int?    @map("channel_3_id")
 
+  // K-B3.20 follow-up (mini migration 20260507110000, 2026-05-07): SCHED-B3a
+  // Schedule create entry'den team_1/2_name kopyalar; live-plan canonical
+  // alanlar. Nullable (M5-B2 entry create zorunlu kılmıyordu; OPTA selection
+  // B3b'de zorunluluk kararı ayrı; manuel content boş kalabilir).
+  team1Name String? @map("team_1_name") @db.VarChar(200)
+  team2Name String? @map("team_2_name") @db.VarChar(200)
+
   match                Match?                        @relation(fields: [matchId], references: [id], onDelete: SetNull)
   /// Madde 5 M5-B7 (decision §5 + scope lock S2, 2026-05-07): 1:1 child;
   /// live_plan_technical_details.live_plan_entry_id UNIQUE NOT NULL

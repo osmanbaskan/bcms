@@ -82,6 +82,10 @@ export class LivePlanService {
           optaMatchId:     dto.optaMatchId,
           status:          dto.status,
           operationNotes:  dto.operationNotes,
+          // K-B3.20 follow-up: team_1/2_name canonical alanlar (SCHED-B3a
+          // schedule create entry'den kopyalar).
+          team1Name:       dto.team1Name,
+          team2Name:       dto.team2Name,
           // metadata kolonu M5-B4'te DROP edildi (K15.1).
           createdBy:       user,
         },
@@ -125,6 +129,9 @@ export class LivePlanService {
         ...(dto.matchId !== undefined && { matchId: dto.matchId }),
         ...(dto.optaMatchId !== undefined && { optaMatchId: dto.optaMatchId }),
         ...(dto.operationNotes !== undefined && { operationNotes: dto.operationNotes }),
+        // K-B3.20 follow-up: team_1/2 update (null → temizle).
+        ...(dto.team1Name !== undefined && { team1Name: dto.team1Name }),
+        ...(dto.team2Name !== undefined && { team2Name: dto.team2Name }),
         // metadata kolonu M5-B4'te DROP edildi (K15.1).
         version: { increment: 1 },
       };

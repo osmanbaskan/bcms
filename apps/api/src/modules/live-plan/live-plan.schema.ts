@@ -34,6 +34,11 @@ export const createLivePlanSchema = z.object({
   optaMatchId:     z.string().trim().min(1).max(80).optional(),
   status:          livePlanStatusSchema.optional().default('PLANNED'),
   operationNotes:  z.string().trim().max(8_000).optional(),
+  // K-B3.20 follow-up (2026-05-07): SCHED-B3a Schedule create bu alanları
+  // entry'den kopyalar. M5-B2 zorunlu değildi; manuel content boş kalabilir.
+  // OPTA selection (B3b) zorunluluğu ayrı karar.
+  team1Name:       z.string().trim().min(1).max(200).optional(),
+  team2Name:       z.string().trim().min(1).max(200).optional(),
   // Madde 5 K15.1 (M5-B4): metadata JSONB kolonu kaldırıldı. Teknik detaylar
   // artık `live_plan_technical_details` tablosunda structured kolon olarak yaşar
   // (M5-B7+); ad-hoc not için operationNotes yeterli.
@@ -62,6 +67,9 @@ export const updateLivePlanSchema = z.object({
   optaMatchId:     z.string().trim().min(1).max(80).nullable().optional(),
   status:          livePlanStatusSchema.optional(),
   operationNotes:  z.string().trim().max(8_000).nullable().optional(),
+  // K-B3.20 follow-up (2026-05-07): null → kolonu temizle.
+  team1Name:       z.string().trim().min(1).max(200).nullable().optional(),
+  team2Name:       z.string().trim().min(1).max(200).nullable().optional(),
   // Madde 5 K15.1 (M5-B4): metadata JSONB kolonu kaldırıldı.
 }).refine((d) => Object.keys(d).length > 0, {
   message: 'En az bir field güncellenmeli',
