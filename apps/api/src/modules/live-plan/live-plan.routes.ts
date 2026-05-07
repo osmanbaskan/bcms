@@ -5,6 +5,7 @@ import {
   createLivePlanSchema,
   listLivePlanQuerySchema,
   updateLivePlanSchema,
+  createFromOptaSchema,
 } from './live-plan.schema.js';
 import { LivePlanService } from './live-plan.service.js';
 
@@ -93,5 +94,39 @@ export async function livePlanRoutes(app: FastifyInstance) {
     const id = idParamSchema.parse(request.params.id);
     const ifMatch = parseIfMatch(request.headers['if-match']);
     return svc.remove(id, ifMatch, request);
+  });
+
+  // ── SCHED-B3b — duplicate + from-opta ────────────────────────────────────
+  // K-B3.4 / K-B3.5 / K-B3.10: + duplicate açık aksiyon; OPTA seçim akışı
+  // matches.opta_uid'den temel bilgi kopya (default duplicate engel 409).
+  //
+  // Static route (/from-opta) param route (/:id/duplicate) ÖNCESİNDE
+  // tanımlanır — Fastify radix-tree static path öncelik verse de defensive
+  // sıralama: yanlışlıkla id='from-opta' parse edilmesini garanti önler.
+
+  // POST /api/v1/live-plan/from-opta — OPTA seçim akışı; matches.opta_uid'den
+  // temel bilgi kopya. matchDate NULL → 400. Default duplicate (aktif) → 409.
+  // Body sadece optaMatchId; sourceType/eventKey backend forced (anti-bypass).
+  app.post('/from-opta', {
+    preHandler: app.requireGroup(...PERMISSIONS.livePlan.write),
+    schema: { tags: ['LivePlan'], summary: 'Create live-plan from OPTA match (K-B3.5/K-B3.10)' },
+  }, async (request, reply) => {
+    const { optaMatchId } = createFromOptaSchema.parse(request.body);
+    const created = await svc.createFromOpta(optaMatchId, request);
+    reply.status(201);
+    return created;
+  });
+
+  // POST /api/v1/live-plan/:id/duplicate — aynı eventKey kopya entry;
+  // technical_details + segments + ingest + version + audit kopyalanmaz;
+  // status reset PLANNED.
+  app.post<{ Params: { id: string } }>('/:id/duplicate', {
+    preHandler: app.requireGroup(...PERMISSIONS.livePlan.write),
+    schema: { tags: ['LivePlan'], summary: 'Duplicate live-plan entry (K-B3.4)' },
+  }, async (request, reply) => {
+    const id = idParamSchema.parse(request.params.id);
+    const created = await svc.duplicate(id, request);
+    reply.status(201);
+    return created;
   });
 }

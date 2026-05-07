@@ -39,6 +39,11 @@ export const createLivePlanSchema = z.object({
   // OPTA selection (B3b) zorunluluğu ayrı karar.
   team1Name:       z.string().trim().min(1).max(200).optional(),
   team2Name:       z.string().trim().min(1).max(200).optional(),
+  // SCHED-B3b (K-B3 lock 2026-05-07): genel POST /live-plan manuel content
+  // create için; sourceType + eventKey backend'de set edilir (sourceType
+  // forced 'MANUAL'; eventKey = `manual:<uuid>`). OPTA create yolu sadece
+  // POST /live-plan/from-opta üzerinden; bu endpoint'te body'de
+  // sourceType/eventKey KABUL EDİLMEZ — domain bypass yasak.
   // Madde 5 K15.1 (M5-B4): metadata JSONB kolonu kaldırıldı. Teknik detaylar
   // artık `live_plan_technical_details` tablosunda structured kolon olarak yaşar
   // (M5-B7+); ad-hoc not için operationNotes yeterli.
@@ -104,3 +109,15 @@ export const listLivePlanQuerySchema = z.object({
 });
 
 export type ListLivePlanQuery = z.infer<typeof listLivePlanQuerySchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCHED-B3b (K-B3.5, K-B3.10, 2026-05-07): from-opta endpoint body.
+// Kullanıcı OPTA seçim akışından maç gönderir; backend matches.opta_uid
+// üzerinden temel bilgi kopyalar. Default duplicate engellenir (409).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const createFromOptaSchema = z.object({
+  optaMatchId: z.string().trim().min(1).max(80),
+});
+
+export type CreateFromOptaDto = z.infer<typeof createFromOptaSchema>;
