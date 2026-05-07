@@ -16,7 +16,7 @@ import { LivePlanService } from './live-plan.service.js';
  *   - missing → 428
  *   - invalid (NaN / non-positive) → 400
  *   - version mismatch → 412
- *   - not found / soft-deleted → 404
+ *   - not found → 404
  *
  * Schedule investigation showed If-Match is optional there. Live-plan
  * intentionally requires it because this is a new API surface and K3
@@ -89,7 +89,7 @@ export async function livePlanRoutes(app: FastifyInstance) {
   // ── DELETE /api/v1/live-plan/:id ─────────────────────────────────────────
   app.delete<{ Params: { id: string } }>('/:id', {
     preHandler: app.requireGroup(...PERMISSIONS.livePlan.delete),
-    schema: { tags: ['LivePlan'], summary: 'Soft delete live-plan entry (If-Match required)' },
+    schema: { tags: ['LivePlan'], summary: 'Hard delete live-plan entry (If-Match required)' },
   }, async (request) => {
     const id = idParamSchema.parse(request.params.id);
     const ifMatch = parseIfMatch(request.headers['if-match']);

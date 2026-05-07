@@ -15,7 +15,8 @@ import type {
  * - U3 version YOK V1 (last-write-wins).
  * - U6 explicit POST + PATCH.
  * - U7 PATCH undefined=no change; description null=clear.
- * - U8 entry soft-delete cascades — burada segment delete kendi satırını siler.
+ * - U8 entry hard-delete cascades (FK `onDelete: Cascade`); standalone segment
+ *   delete kendi satırını hard-delete eder (cleanup 2026-05-07).
  * - U10 compact outbox shadow events (live_plan.segment.{created|updated|deleted}).
  *
  * Audit subject otomatik: entityType="LivePlanTransmissionSegment".
@@ -110,7 +111,9 @@ export class LivePlanTransmissionSegmentService {
     });
   }
 
-  // ── Delete (soft) ────────────────────────────────────────────────────────
+  // ── Delete (HARD) ────────────────────────────────────────────────────────
+  // Hard-delete cleanup (2026-05-07): silindiğinde DB'de row kalmaz.
+  // List sonrası segment yok; aynı entry'ye yeni segment eklenebilir.
   async remove(
     entryId: number,
     segmentId: number,
@@ -118,19 +121,16 @@ export class LivePlanTransmissionSegmentService {
     const existing = await this.fetchActiveSegment(entryId, segmentId);
 
     return this.app.prisma.$transaction(async (tx) => {
-      const updated = await tx.livePlanTransmissionSegment.update({
-        where: { id: existing.id },
-        data:  { deletedAt: new Date() },
-      });
-
+      // Shadow event önce.
       await writeShadowEvent(tx, {
         eventType:     'live_plan.segment.deleted',
         aggregateType: SHADOW_AGGREGATE_TYPE,
-        aggregateId:   updated.id,
-        payload:       { livePlanEntryId: entryId, segmentId: updated.id },
+        aggregateId:   existing.id,
+        payload:       { livePlanEntryId: entryId, segmentId: existing.id },
       });
 
-      return updated;
+      await tx.livePlanTransmissionSegment.delete({ where: { id: existing.id } });
+      return existing;
     });
   }
 

@@ -17,7 +17,7 @@ import { LivePlanTransmissionSegmentService } from './segments.service.js';
  *   GET    /              → list (feedRole/kind filter)
  *   POST   /              → 201
  *   PATCH  /:segmentId    → update (no If-Match V1)
- *   DELETE /:segmentId    → soft delete
+ *   DELETE /:segmentId    → hard delete (cleanup 2026-05-07)
  */
 
 const entryIdParam   = z.coerce.number().int().positive();

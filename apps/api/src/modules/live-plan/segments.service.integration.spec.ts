@@ -13,17 +13,17 @@ import {
 } from '../../../test/integration/helpers.js';
 
 /**
- * Madde 5 M5-B9 spec — segments service davranışı + entry soft-delete cascade
- * (U8: technical_details + segments birlikte cascade edilir).
+ * Madde 5 M5-B9 spec — segments service davranışı + entry hard-delete cascade
+ * (U8: technical_details + segments FK `onDelete: Cascade` ile birlikte siler).
  *
  * Kapsam:
  *   ✓ POST/GET/PATCH/DELETE collection; version YOK V1 (last-write-wins).
- *   ✓ List filter (feedRole / kind); soft-deleted hariç.
+ *   ✓ List filter (feedRole / kind); deleted hariç.
  *   ✓ U7 PATCH undefined=no change; description null=clear.
  *   ✓ U10 outbox shadow events live_plan.segment.{created|updated|deleted}.
  *   ✓ Cross-entry segment update/delete → 404.
- *   ✓ U8 entry soft-delete cascade → technical_details + active segments
- *     deletedAt set edilir aynı tx'te.
+ *   ✓ U8 entry hard-delete cascade → technical_details + segments DB'den siler
+ *     (cleanup 2026-05-07).
  */
 
 describe('LivePlanTransmissionSegmentService — integration', () => {
@@ -84,7 +84,7 @@ describe('LivePlanTransmissionSegmentService — integration', () => {
   });
 
   // ── List ───────────────────────────────────────────────────────────────
-  test('list: feedRole filtre + soft-deleted hariç', async () => {
+  test('list: feedRole filtre + deleted hariç', async () => {
     const entryId = await makeEntry();
     const a = await svc.create(entryId, { ...baseSegment(entryId), feedRole: 'MAIN' });
     await svc.create(entryId, { ...baseSegment(entryId), feedRole: 'BACKUP' });
@@ -94,7 +94,7 @@ describe('LivePlanTransmissionSegmentService — integration', () => {
     expect(main).toHaveLength(1);
     expect(main[0].id).toBe(a.id);
 
-    // Soft delete; listede gözükmeyecek.
+    // Hard delete; row DB'den siler, listede gözükmeyecek.
     await svc.remove(entryId, a.id);
     const mainAfter = await svc.list(entryId, { feedRole: 'MAIN' });
     expect(mainAfter).toHaveLength(0);
@@ -140,14 +140,20 @@ describe('LivePlanTransmissionSegmentService — integration', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  // ── Delete ─────────────────────────────────────────────────────────────
-  test('DELETE: soft + outbox segment.deleted', async () => {
+  // ── Delete (HARD) ──────────────────────────────────────────────────────
+  test('DELETE: HARD delete (DB row yok, listede yok) + outbox segment.deleted', async () => {
     const entryId = await makeEntry();
     const seg = await svc.create(entryId, baseSegment(entryId));
     const removed = await svc.remove(entryId, seg.id);
-    expect(removed.deletedAt).toBeInstanceOf(Date);
+    expect(removed.id).toBe(seg.id);
 
     const prisma = getRawPrisma();
+    const dbRow = await prisma.livePlanTransmissionSegment.findUnique({ where: { id: seg.id } });
+    expect(dbRow).toBeNull();
+
+    const list = await svc.list(entryId, {} as never);
+    expect(list.find((s) => s.id === seg.id)).toBeUndefined();
+
     const events = await prisma.outboxEvent.findMany({
       where: { aggregateType: 'LivePlanTransmissionSegment', aggregateId: String(seg.id) },
       orderBy: { id: 'asc' },
@@ -155,36 +161,32 @@ describe('LivePlanTransmissionSegmentService — integration', () => {
     expect(events.map((e) => e.eventType)).toContain('live_plan.segment.deleted');
   });
 
-  // ── U8 cascade ─────────────────────────────────────────────────────────
-  test('U8 cascade: entry soft-delete → technical_details + active segments soft-delete edilir', async () => {
+  test('DELETE: hard-delete sonrası aynı entry\'ye yeni segment eklenebilir', async () => {
+    const entryId = await makeEntry();
+    const seg = await svc.create(entryId, baseSegment(entryId));
+    await svc.remove(entryId, seg.id);
+    const fresh = await svc.create(entryId, baseSegment(entryId));
+    expect(fresh.id).not.toBe(seg.id);
+  });
+
+  // ── Cascade hard-delete (parent live-plan delete → child satırlar gone) ─
+  test('cascade HARD delete: entry hard-delete → technical_details + segments DB\'den siler', async () => {
     const entryId = await makeEntry();
     const tdSvc = new LivePlanTechnicalDetailService(harness.app as unknown as FastifyInstance);
     const td = await tdSvc.create(entryId, {});
     const seg1 = await svc.create(entryId, baseSegment(entryId));
     const seg2 = await svc.create(entryId, { ...baseSegment(entryId), feedRole: 'BACKUP' });
-    // Önceden soft-delete edilmiş bir segment (cascade ile dokunmamalı — zaten silinmiş).
-    const seg3 = await svc.create(entryId, { ...baseSegment(entryId), feedRole: 'FIBER' });
-    await svc.remove(entryId, seg3.id);
-    const seg3Snapshot = await getRawPrisma().livePlanTransmissionSegment.findUniqueOrThrow({
-      where: { id: seg3.id },
-    });
 
-    // Entry soft-delete (LivePlanService.remove)
+    // Parent hard-delete (LivePlanService.remove) — FK Cascade child satırları siler.
     const user = makeUser({ username: 'ops', groups: ['Booking'] });
     const req = makeRequest(user);
     const entry = await getRawPrisma().livePlanEntry.findUniqueOrThrow({ where: { id: entryId } });
     await liveSvc.remove(entryId, entry.version, req);
 
     const prisma = getRawPrisma();
-    const tdAfter   = await prisma.livePlanTechnicalDetail.findUniqueOrThrow({ where: { id: td.id } });
-    const seg1After = await prisma.livePlanTransmissionSegment.findUniqueOrThrow({ where: { id: seg1.id } });
-    const seg2After = await prisma.livePlanTransmissionSegment.findUniqueOrThrow({ where: { id: seg2.id } });
-    const seg3After = await prisma.livePlanTransmissionSegment.findUniqueOrThrow({ where: { id: seg3.id } });
-
-    expect(tdAfter.deletedAt).toBeInstanceOf(Date);
-    expect(seg1After.deletedAt).toBeInstanceOf(Date);
-    expect(seg2After.deletedAt).toBeInstanceOf(Date);
-    // Pre-existing soft-delete: cascade dokunmamalı; deletedAt aynı kalmalı.
-    expect(seg3After.deletedAt!.getTime()).toBe(seg3Snapshot.deletedAt!.getTime());
+    expect(await prisma.livePlanEntry.findUnique({ where: { id: entryId } })).toBeNull();
+    expect(await prisma.livePlanTechnicalDetail.findUnique({ where: { id: td.id } })).toBeNull();
+    expect(await prisma.livePlanTransmissionSegment.findUnique({ where: { id: seg1.id } })).toBeNull();
+    expect(await prisma.livePlanTransmissionSegment.findUnique({ where: { id: seg2.id } })).toBeNull();
   });
 });

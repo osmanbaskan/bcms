@@ -17,7 +17,10 @@ import type {
  *   intentionally requires it because this is a new API surface and K3
  *   optimistic locking must be enforced.
  * - K10 audit subject otomatik (Prisma model adından entityType="LivePlanEntry").
- * - K11 soft delete only (deletedAt = NOW + version++).
+ * - K11 hard delete (2026-05-07 cleanup) — version-aware deleteMany, FK
+ *   `onDelete: Cascade` ile child satırlar (technical_details + segments)
+ *   aynı tx'te silinir. Lookup tabloları soft-delete pattern korur (lifecycle
+ *   farklı). `deletedAt` kolon defansif filtre olarak kalır.
  * - K12 outbox shadow events: live_plan.created/updated/deleted; routing dışı
  *   (poller pick etmez — Phase 2 status='published').
  * - K14 response shape: Schedule pattern (entity DTO; list { items, total, page, pageSize }).
@@ -40,7 +43,7 @@ export class LivePlanService {
   // ── List ───────────────────────────────────────────────────────────────────
   async list(query: ListLivePlanQuery): Promise<ListLivePlanResult> {
     const where: Prisma.LivePlanEntryWhereInput = {
-      deletedAt: null, // K11: soft-deleted exclude
+      deletedAt: null, // K11 defansif filter (hard-delete sonrası no-op)
       ...(query.status?.length ? { status: { in: query.status } } : {}),
       ...(query.matchId !== undefined ? { matchId: query.matchId } : {}),
       ...(query.optaMatchId !== undefined ? { optaMatchId: query.optaMatchId } : {}),
@@ -129,7 +132,7 @@ export class LivePlanService {
     ifMatchVersion: number,
     _request: FastifyRequest,
   ): Promise<LivePlanEntry> {
-    // 1. Existence + soft-deleted gizleme.
+    // 1. Existence check (deletedAt defansif; K11 hard-delete sonrası row gone).
     const existing = await this.app.prisma.livePlanEntry.findUnique({ where: { id } });
     if (!existing || existing.deletedAt !== null) {
       throw Object.assign(new Error('Live-plan not found'), { statusCode: 404 });
@@ -182,55 +185,49 @@ export class LivePlanService {
     });
   }
 
-  // ── Delete (soft) — K9 If-Match zorunlu, version check ─────────────────────
+  // ── Delete (HARD) — K9 If-Match zorunlu, version check ────────────────────
+  // Hard-delete cleanup (2026-05-07): operasyonel veri silindiğinde DB'de
+  // satır kalmaz. Child tablolar (technical_details + transmission_segments)
+  // FK `onDelete: Cascade` ile aynı tx'te silinir. Lookup tablo soft-delete
+  // pattern'i (L5/L10) korunur (lifecycle farklı).
+  //
+  // Sıra: snapshot al → shadow event yaz (silinmiş row'u sonra okuyamayız) →
+  // deleteMany version-aware (count==1 zorunlu, 412 on conflict).
   async remove(
     id: number,
     ifMatchVersion: number,
     _request: FastifyRequest,
   ): Promise<LivePlanEntry> {
     const existing = await this.app.prisma.livePlanEntry.findUnique({ where: { id } });
-    if (!existing || existing.deletedAt !== null) {
+    if (!existing) {
       throw Object.assign(new Error('Live-plan not found'), { statusCode: 404 });
     }
 
     return this.app.prisma.$transaction(async (tx) => {
-      const now = new Date();
-
-      const result = await tx.livePlanEntry.updateMany({
-        where: { id, version: ifMatchVersion, deletedAt: null },
-        data: {
-          deletedAt: now,
-          version:   { increment: 1 },
+      // Shadow event silmeden ÖNCE: payload satır gone olduktan sonra okunamaz.
+      // id + eventKey + title minimum identification.
+      await writeShadowEvent(tx, {
+        eventType:     'live_plan.deleted',
+        aggregateType: SHADOW_AGGREGATE_TYPE,
+        aggregateId:   existing.id,
+        payload: {
+          livePlanEntryId: existing.id,
+          eventKey:        existing.eventKey,
+          title:           existing.title,
         },
       });
 
+      // Optimistic locking: version match olmazsa count==0 → 412.
+      // FK Cascade child satırları (technical_details + segments) aynı tx'te
+      // siler; manuel updateMany gerekmiyor.
+      const result = await tx.livePlanEntry.deleteMany({
+        where: { id, version: ifMatchVersion },
+      });
       if (result.count !== 1) {
         throw Object.assign(new Error('Live-plan version conflict'), { statusCode: 412 });
       }
 
-      // M5-B9 U8: entry soft-delete aktif technical_details + segments'i de
-      // soft-delete eder (DB FK CASCADE sadece hard-delete'te tetiklenir).
-      // Tek tx; child shadow events parent silme bağlamını taşıyamaz, parent
-      // event yeterli (consumer parent.deleted alır → child orphan inferred).
-      await tx.livePlanTechnicalDetail.updateMany({
-        where: { livePlanEntryId: id, deletedAt: null },
-        data:  { deletedAt: now, version: { increment: 1 } },
-      });
-      await tx.livePlanTransmissionSegment.updateMany({
-        where: { livePlanEntryId: id, deletedAt: null },
-        data:  { deletedAt: now },
-      });
-
-      const refreshed = await tx.livePlanEntry.findUniqueOrThrow({ where: { id } });
-
-      await writeShadowEvent(tx, {
-        eventType:     'live_plan.deleted',
-        aggregateType: SHADOW_AGGREGATE_TYPE,
-        aggregateId:   refreshed.id,
-        payload:       { livePlanEntryId: refreshed.id },
-      });
-
-      return refreshed;
+      return existing;
     });
   }
 

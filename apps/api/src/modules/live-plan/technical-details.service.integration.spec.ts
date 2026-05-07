@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { LivePlanService } from './live-plan.service.js';
 import { LivePlanTechnicalDetailService } from './technical-details.service.js';
@@ -18,9 +18,10 @@ import {
  *   ✓ POST/GET/PATCH/DELETE singleton; If-Match own version (412 mismatch);
  *     1:1 enforce (409); explicit POST + PATCH (no upsert).
  *   ✓ U7 PATCH undefined=no change, null=clear.
- *   ✓ U9 lookup FK active/deleted validation (400) — active false + soft-deleted.
+ *   ✓ U9 lookup FK active/deleted validation (400) — active false + lookup
+ *     soft-deleted (lookup pattern korur).
  *   ✓ U10 outbox shadow events live_plan.technical.{created|updated|deleted}.
- *   ✓ Entry not found 404; soft-deleted entry de 404.
+ *   ✓ Entry not found 404 (parent live-plan hard-delete sonrası row gone).
  *
  * Auth scope: route preHandler kapsam dışı (live-plan service spec pattern).
  */
@@ -70,9 +71,16 @@ describe('LivePlanTechnicalDetailService — integration', () => {
   });
 
   test('POST: 1:1 enforce — ikinci POST aynı entry için → 409', async () => {
-    const entryId = await makeEntry();
-    await svc.create(entryId, {});
-    await expect(svc.create(entryId, {})).rejects.toMatchObject({ statusCode: 409 });
+    // Beklenen P2002 → service 409'a çevirir; Prisma stderr 'pretty' format
+    // P2002'de log basar (cosmetic). Stub: assert akışını kirletme.
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const entryId = await makeEntry();
+      await svc.create(entryId, {});
+      await expect(svc.create(entryId, {})).rejects.toMatchObject({ statusCode: 409 });
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 
   test('POST: entry yoksa → 404', async () => {
@@ -179,18 +187,21 @@ describe('LivePlanTechnicalDetailService — integration', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  // ── Delete ─────────────────────────────────────────────────────────────
-  test('DELETE: version match → soft delete + outbox technical.deleted', async () => {
+  // ── Delete (HARD) ──────────────────────────────────────────────────────
+  test('DELETE: version match → HARD delete (DB row yok) + outbox technical.deleted', async () => {
     const entryId = await makeEntry();
     const td = await svc.create(entryId, {});
     const removed = await svc.remove(entryId, td.version);
-    expect(removed.deletedAt).toBeInstanceOf(Date);
+    expect(removed.id).toBe(td.id);
 
-    // GET soft-deleted satırı atlar.
+    // GET null + DB-level row YOK.
     const after = await svc.getByEntry(entryId);
     expect(after).toBeNull();
 
     const prisma = getRawPrisma();
+    const dbRow = await prisma.livePlanTechnicalDetail.findUnique({ where: { id: td.id } });
+    expect(dbRow).toBeNull();
+
     const events = await prisma.outboxEvent.findMany({
       where: { aggregateType: 'LivePlanTechnicalDetail', aggregateId: String(td.id) },
       orderBy: { id: 'asc' },
@@ -198,11 +209,37 @@ describe('LivePlanTechnicalDetailService — integration', () => {
     expect(events.map((e) => e.eventType)).toContain('live_plan.technical.deleted');
   });
 
-  test('DELETE: version mismatch → 412', async () => {
+  test('DELETE: hard-delete sonrası aynı entry\'ye yeniden POST mümkün (1:1 unique boş)', async () => {
+    const entryId = await makeEntry();
+    const td = await svc.create(entryId, {});
+    await svc.remove(entryId, td.version);
+    // Yeniden create — P2002 unique conflict yok.
+    const recreated = await svc.create(entryId, {});
+    expect(recreated.id).not.toBe(td.id);
+    expect(recreated.livePlanEntryId).toBe(entryId);
+  });
+
+  test('DELETE: version mismatch → 412 + tx rollback (row DB\'de var, shadow event YOK)', async () => {
     const entryId = await makeEntry();
     const td = await svc.create(entryId, {});
     await expect(
       svc.remove(entryId, td.version + 99),
     ).rejects.toMatchObject({ statusCode: 412 });
+
+    // Tx rollback: shadow event önce yazılır; deleteMany count==0 → 412 →
+    // rollback → outbox da geri alınır.
+    const prisma = getRawPrisma();
+    const stillThere = await prisma.livePlanTechnicalDetail.findUnique({ where: { id: td.id } });
+    expect(stillThere).not.toBeNull();
+    expect(stillThere!.deletedAt).toBeNull();
+
+    const deletedEvents = await prisma.outboxEvent.findMany({
+      where: {
+        aggregateType: 'LivePlanTechnicalDetail',
+        aggregateId:   String(td.id),
+        eventType:     'live_plan.technical.deleted',
+      },
+    });
+    expect(deletedEvents).toHaveLength(0);
   });
 });

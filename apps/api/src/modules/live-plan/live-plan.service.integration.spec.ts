@@ -132,7 +132,7 @@ describe('LivePlanService — integration', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  test('update: soft-deleted → 404 (gizli; K11)', async () => {
+  test('update: deleted entry → 404 (K11 hard-delete sonrası row gone)', async () => {
     const user = makeUser({ username: 'ops-5', groups: ['Booking'] });
     const req = makeRequest(user);
 
@@ -178,9 +178,9 @@ describe('LivePlanService — integration', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  // ── Soft delete ────────────────────────────────────────────────────────────
+  // ── Hard delete ────────────────────────────────────────────────────────────
 
-  test('remove: soft delete (deletedAt + version++) + outbox shadow (live_plan.deleted)', async () => {
+  test('remove: HARD delete (row DB\'den silinir) + outbox shadow (live_plan.deleted)', async () => {
     const user = makeUser({ username: 'ops-7', groups: ['Booking'] });
     const req = makeRequest(user);
 
@@ -194,20 +194,29 @@ describe('LivePlanService — integration', () => {
       req,
     );
 
-    const deleted = await svc.remove(created.id, created.version, req);
-    expect(deleted.deletedAt).not.toBeNull();
-    expect(deleted.version).toBe(2);
+    const snapshot = await svc.remove(created.id, created.version, req);
+    // Service silmeden önceki snapshot'ı döner (deletedAt null, version 1).
+    expect(snapshot.id).toBe(created.id);
+    expect(snapshot.title).toBe('To delete');
 
+    // Hard-delete: row DB'de yok.
     const prisma = getRawPrisma();
+    const after = await prisma.livePlanEntry.findUnique({ where: { id: created.id } });
+    expect(after).toBeNull();
+
+    // Shadow event payload silmeden önce yazılmış (eventKey + title taşır).
     const outboxRows = await prisma.outboxEvent.findMany({
       where: { aggregateType: 'LivePlanEntry', aggregateId: String(created.id) },
       orderBy: { createdAt: 'asc' },
     });
     expect(outboxRows).toHaveLength(2);
     expect(outboxRows[1].eventType).toBe('live_plan.deleted');
+    const payload = outboxRows[1].payload as { livePlanEntryId: number; title: string };
+    expect(payload.livePlanEntryId).toBe(created.id);
+    expect(payload.title).toBe('To delete');
   });
 
-  test('remove: version mismatch → 412', async () => {
+  test('remove: version mismatch → 412 + tx rollback (row DB\'de var, shadow event YOK)', async () => {
     const user = makeUser({ username: 'ops-8', groups: ['Booking'] });
     const req = makeRequest(user);
 
@@ -224,9 +233,25 @@ describe('LivePlanService — integration', () => {
     await expect(
       svc.remove(created.id, created.version - 1, req),
     ).rejects.toMatchObject({ statusCode: 412 });
+
+    // Tx rollback assertion: shadow event silmeden önce yazılır; deleteMany
+    // count==0 → 412 throw → tx rollback → outbox da geri alınır.
+    const prisma = getRawPrisma();
+    const stillThere = await prisma.livePlanEntry.findUnique({ where: { id: created.id } });
+    expect(stillThere).not.toBeNull();
+    expect(stillThere!.deletedAt).toBeNull();
+
+    const deletedEvents = await prisma.outboxEvent.findMany({
+      where: {
+        aggregateType: 'LivePlanEntry',
+        aggregateId:   String(created.id),
+        eventType:     'live_plan.deleted',
+      },
+    });
+    expect(deletedEvents).toHaveLength(0);
   });
 
-  // ── Audit coverage (K10 ek not — soft delete audit log doğrulaması) ─────
+  // ── Audit coverage (K10 ek not — delete audit log doğrulaması) ──────────
   // NOT: makeAppHarness raw Prisma (audit extension'sız) kullanıyor; audit
   // plugin davranışı bu test scope'unda doğrulanamaz. Audit pattern teyidi
   // PR-A pattern (entityType=model adı otomatik) audit.ts:107-136 kod-okuma
@@ -236,7 +261,7 @@ describe('LivePlanService — integration', () => {
 
   // ── List ───────────────────────────────────────────────────────────────────
 
-  test('list: default exclude soft-deleted + sort eventStartTime ASC', async () => {
+  test('list: default exclude deleted + sort eventStartTime ASC', async () => {
     const user = makeUser({ username: 'ops-9', groups: ['Booking'] });
     const req = makeRequest(user);
 
@@ -326,7 +351,7 @@ describe('LivePlanService — integration', () => {
     await expect(svc.getById(999_999)).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  test('getById: soft-deleted → 404 (gizli)', async () => {
+  test('getById: deleted → 404 (K11 hard-delete sonrası row gone)', async () => {
     const user = makeUser({ username: 'ops-12', groups: ['Booking'] });
     const req = makeRequest(user);
 

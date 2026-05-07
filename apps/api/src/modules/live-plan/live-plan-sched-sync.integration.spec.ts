@@ -20,7 +20,7 @@ import {
  *   ✓ createFromOpta matches.opta_uid'den kopya
  *   ✓ createFromOpta matchDate NULL → 400 (default tarih üretmez)
  *   ✓ createFromOpta default duplicate (aktif) → 409
- *   ✓ createFromOpta soft-deleted aynı eventKey → 409 değil; yeni create OK
+ *   ✓ createFromOpta deleted aynı eventKey → 409 değil; yeni create OK
  *   ✓ schedule sync tek update (schedules.eventKey UNIQUE)
  */
 
@@ -270,16 +270,16 @@ describe('LivePlanService SCHED-B3b — sched sync + duplicate + from-opta', () 
       .rejects.toMatchObject({ statusCode: 409 });
   });
 
-  test('createFromOpta: soft-deleted aynı eventKey → 409 atmaz; yeni entry yaratılır', async () => {
+  test('createFromOpta: deleted aynı eventKey → 409 atmaz; yeni entry yaratılır', async () => {
     await makeOptaMatch({
       optaUid:   'OPTA-SOFT',
       matchDate: new Date('2026-06-01T19:00:00Z'),
     });
     const first = await svc.createFromOpta('OPTA-SOFT', user());
-    // Soft-delete first
+    // Hard-delete first (K11 cleanup 2026-05-07)
     await svc.remove(first.id, first.version, user());
 
-    // İkinci create OK (deletedAt: null filter sayesinde)
+    // İkinci create OK (row gone, eventKey serbest)
     const second = await svc.createFromOpta('OPTA-SOFT', user());
     expect(second.id).not.toBe(first.id);
     expect(second.eventKey).toBe('opta:OPTA-SOFT');

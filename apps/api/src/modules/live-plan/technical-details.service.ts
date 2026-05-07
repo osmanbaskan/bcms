@@ -15,7 +15,8 @@ import type {
  * - U2 If-Match own version (PATCH/DELETE).
  * - U6 explicit POST + PATCH (no PUT upsert).
  * - U7 PATCH undefined=no change, null=clear.
- * - U8 entry soft-delete cascades — burada td.delete kendi satırını siler.
+ * - U8 entry hard-delete cascades (FK `onDelete: Cascade`); standalone td
+ *   delete kendi satırını hard-delete eder (cleanup 2026-05-07).
  * - U9 lookup FK active/deleted validation on create/update.
  * - U10 compact outbox shadow events (live_plan.technical.{created|updated|deleted}).
  *
@@ -148,7 +149,9 @@ export class LivePlanTechnicalDetailService {
     });
   }
 
-  // ── Delete (soft) — If-Match zorunlu, sadece kendi satırı ────────────────
+  // ── Delete (HARD) — If-Match zorunlu, sadece kendi satırı ────────────────
+  // Hard-delete cleanup (2026-05-07): silindiğinde DB'de row kalmaz.
+  // GET sonrası null; aynı entry'ye yeniden POST mümkün (1:1 unique boş).
   async remove(
     entryId: number,
     ifMatchVersion: number,
@@ -158,37 +161,29 @@ export class LivePlanTechnicalDetailService {
     const existing = await this.app.prisma.livePlanTechnicalDetail.findUnique({
       where: { livePlanEntryId: entryId },
     });
-    if (!existing || existing.deletedAt !== null) {
+    if (!existing) {
       throw Object.assign(new Error('Technical details not found'), { statusCode: 404 });
     }
 
     return this.app.prisma.$transaction(async (tx) => {
-      const result = await tx.livePlanTechnicalDetail.updateMany({
-        where: { id: existing.id, version: ifMatchVersion, deletedAt: null },
-        data: {
-          deletedAt: new Date(),
-          version:   { increment: 1 },
-        },
+      // Shadow event önce (silindikten sonra row okunamaz).
+      await writeShadowEvent(tx, {
+        eventType:     'live_plan.technical.deleted',
+        aggregateType: SHADOW_AGGREGATE_TYPE,
+        aggregateId:   existing.id,
+        payload:       { livePlanEntryId: entryId, technicalDetailsId: existing.id },
       });
 
+      const result = await tx.livePlanTechnicalDetail.deleteMany({
+        where: { id: existing.id, version: ifMatchVersion },
+      });
       if (result.count !== 1) {
         throw Object.assign(new Error('Technical details version conflict'), {
           statusCode: 412,
         });
       }
 
-      const refreshed = await tx.livePlanTechnicalDetail.findUniqueOrThrow({
-        where: { id: existing.id },
-      });
-
-      await writeShadowEvent(tx, {
-        eventType:     'live_plan.technical.deleted',
-        aggregateType: SHADOW_AGGREGATE_TYPE,
-        aggregateId:   refreshed.id,
-        payload:       { livePlanEntryId: entryId, technicalDetailsId: refreshed.id },
-      });
-
-      return refreshed;
+      return existing;
     });
   }
 
