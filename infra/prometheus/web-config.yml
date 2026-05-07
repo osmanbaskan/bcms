@@ -21,4 +21,4 @@
 # ─────────────────────────────────────────────────────────────────────────────
 basic_auth_users:
   # ⚠️  PLACEHOLDER — production'da DEĞİŞTİR (yukarıdaki ROTATION adımları)
-  admin: $2b$10$M.NYCJI4209bcEX8OxqXNOMWIhgDcR7IctAbGi5PqlT3RPtan6xeC
+  admin: $2b$10$rKZCmD6G9NUIjGkTuXuuS.6FiwjzOd9CwAjM77HOdEH3nNpvK1UWu
