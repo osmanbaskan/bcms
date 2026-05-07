@@ -61,7 +61,8 @@ export async function livePlanTechnicalDetailsRoutes(app: FastifyInstance) {
     const entryId = entryIdParam.parse(request.params.entryId);
     const dto = createTechnicalDetailsSchema.parse(request.body);
     const created = await svc.create(entryId, dto);
-    reply.status(201).send(created);
+    reply.status(201);
+    return created;
   });
 
   // ── PATCH ───────────────────────────────────────────────────────────────

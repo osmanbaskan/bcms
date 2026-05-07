@@ -111,7 +111,8 @@ export async function livePlanLookupRoutes(app: FastifyInstance) {
     void config; // not used after schema dispatch
 
     const created = await svc.create(lookupType, dto);
-    reply.status(201).send(created);
+    reply.status(201);
+    return created;
   });
 
   // ── PATCH /api/v1/live-plan/lookups/:type/:id ────────────────────────────

@@ -70,7 +70,8 @@ export async function livePlanRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const dto = createLivePlanSchema.parse(request.body);
     const created = await svc.create(dto, request);
-    reply.status(201).send(created);
+    reply.status(201);
+    return created;
   });
 
   // ── PATCH /api/v1/live-plan/:id ──────────────────────────────────────────

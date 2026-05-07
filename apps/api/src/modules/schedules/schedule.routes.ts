@@ -111,7 +111,8 @@ export async function scheduleRoutes(app: FastifyInstance) {
       defaultDurationMin: q.durationMin ?? 120,
     });
 
-    reply.status(200).send(result);
+    reply.status(200);
+    return result;
   });
 
   // GET /api/v1/schedules/export — Programları Türkçe Excel formatında indir
@@ -291,7 +292,8 @@ export async function scheduleRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const dto = createScheduleSchema.parse(request.body);
     const schedule = await svc.create(dto, request);
-    reply.status(201).send(schedule);
+    reply.status(201);
+    return schedule;
   });
 
   // PATCH /api/v1/schedules/:id
@@ -315,6 +317,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
     schema: { tags: ['Schedules'], summary: 'Delete schedule' },
   }, async (request, reply) => {
     await svc.remove(z.coerce.number().int().positive().parse(request.params.id));
-    reply.status(204).send();
+    reply.status(204);
+    return null;
   });
 }

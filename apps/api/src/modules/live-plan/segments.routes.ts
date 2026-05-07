@@ -44,7 +44,8 @@ export async function livePlanSegmentsRoutes(app: FastifyInstance) {
     const entryId = entryIdParam.parse(request.params.entryId);
     const dto = createSegmentSchema.parse(request.body);
     const created = await svc.create(entryId, dto);
-    reply.status(201).send(created);
+    reply.status(201);
+    return created;
   });
 
   // ── PATCH /:segmentId ───────────────────────────────────────────────────
