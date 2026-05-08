@@ -1,12 +1,17 @@
-# Schedule/Yayın Planlama Cleanup V1 (SCHED-B5)
+# Schedule/Yayın Planlama Cleanup V1 (SCHED-B5a + B5b)
 
-> **Status**: ✅ Locked (2026-05-08). Implementation gate for SCHED-B5 destructive cleanup.
+> **Status**: ✅ Locked (2026-05-08; revize 2026-05-08 → iki faza bölündü). Implementation gate for SCHED-B5a (safe cleanup) ve SCHED-B5b (reporting canonicalization + hard drops).
 > **Tarih**: 2026-05-08
 > **Cross-reference**:
 > - `ops/REQUIREMENTS-SCHEDULE-BROADCAST-FLOW-V1.md` (K-B3.1-K-B3.27)
 > - `ops/REQUIREMENTS-SCHEDULE-OPTA-SYNC-V1.md` (KO1-KO14)
 > - `ops/REQUIREMENTS-SCHEDULE-FRONTEND-V1.md` (Y4-1..Y4-10 + Y4-4 revize)
 > - `ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md` §3.5 K16
+
+**Faz ayrımı (preflight 2026-05-08 sonrası revize)**: Reporting `/schedules/reporting`, `metadata.contentName`/`metadata.houseNumber`, `start_time`, `end_time` kolonlarına bağlı. Drop edilirse reporting kırılır. Patron kararı: **B5'i iki faza böl, reporting'i kırarak drop yapma**.
+
+- **B5a (Safe Cleanup)**: Frontend/backend legacy code DELETE + nav final + ingest coupling kaldır + legacy row DELETE + dependency sıfırlama. `usage_scope` kod dependency'si sıfırlanır; **`metadata`/`start_time`/`end_time` DROP YOK**.
+- **B5b (Reporting Canonicalization + Hard Drops)**: Reporting refactor (canonical alanlara taşı; gerekirse yeni structured kolon: `house_number`, `content_name`, `event_duration_min` veya `event_end_time`); sonra `metadata`/`start_time`/`end_time` (ve B5a'da kalan kolonlar) DROP edilir.
 
 ## §0 — Status & cross-references
 
@@ -80,22 +85,51 @@ Bu doc SCHED-B5 destructive cleanup scope lock'unu kayıt altına alır. **Read-
 
 **Gerekçe**: B5 destructive cleanup ile eski schedule-list silindiğinde "Canlı Yayın Plan" sekmesinin eski `/schedules` UI'da kalması imkansız. Yeni canonical Canlı Yayın Plan domain'i `/live-plan` (M5).
 
-### Y5-2 — DB DROP NOW (kolonlar + ilişkili constraint/index)
+### Y5-2a — B5a Safe Cleanup (preflight revize 2026-05-08)
 
-**Karar**: Aşağıdaki kolonlar B5 migration'ında DROP edilir:
+**B5a kapsamı**:
 
-| Kolon | Sebep |
-|-------|-------|
-| `schedules.usage_scope` | discriminator artık modelde olmayacak; CHECK + 2 index DROP |
-| `schedules.metadata` | JSON canonical değil; transStart/End/optaMatchId zaten kolon promote oldu |
-| `schedules.start_time` | canonical `scheduleDate + scheduleTime` yeterli; legacy GiST exclusion ile DROP |
-| `schedules.end_time` | aynı |
-| `schedules.channel_id` | legacy single-channel; `channel_1/2/3_id` canonical; FK + index DROP |
-| `schedules.deleted_at` | hard-delete domain (B5 sonrası schedule soft-delete YAPILMAZ); index DROP |
+**Kod tarafı dependency sıfırlama**:
+- `usage_scope` kod dependency'si tamamen kaldırılır (backend service/route/import/export + frontend ScheduleService + ingest coupling + dashboard)
+- Eski `start_time`/`end_time` kod kullanımı **frontend** silinir (schedule-list/form/detail DELETE; Y5-3); **backend reporting/export bağımlılığı B5a'da KORUNUR** (B5b'de canonicalize)
+- `metadata` kod kullanımı reporting dışında temizlenir; reporting `metadata.contentName/houseNumber` B5b'de canonicalize
 
-**Legacy row DELETE**:
+**Legacy row DELETE** (B5a'da):
 - Filter: `event_key IS NULL OR usage_scope='live-plan'` (132 row; 0 FK cascade impact)
-- Migration sırası: row delete → constraint drop → index drop → column drop
+- Reporting'in B5a'da gösterdiği veri etkilenmez (zaten legacy/empty data)
+
+**B5a'da DROP edilebilen** (kod dependency sıfırlandıktan sonra):
+| Kolon/Constraint/Index | Şart |
+|-----------------------|------|
+| `schedules_usage_scope_check` CHECK | usage_scope kod dependency sıfırlanırsa |
+| `schedules_usage_scope_idx` | aynı |
+| `schedules_usage_scope_report_..._idx` | aynı |
+| `schedules_no_channel_time_overlap` GiST | start_time/end_time hala kolon olarak DURUR; **exclusion DROP B5a'da yapılabilir** (Y5-5) |
+| `schedules_channel_id_fkey` FK + `schedules.channel_id` kolon | dependency sıfırsa (kod taraması zorunlu) |
+| `schedules.deleted_at` kolon + `schedules_deleted_at_idx` | dependency sıfırsa |
+| **`schedules.usage_scope` kolon** | **dependency sıfırlandıktan sonra DROP edilebilir; reporting `usageScope='live-plan'` filter B5a'da `eventKey IS NOT NULL` veya benzeri canonical filter'a refactor edilirse DROP kabul** |
+
+**B5a'da DROP EDİLMEZ**:
+- `schedules.metadata` (B5b'ye ertelendi — `contentName`/`houseNumber` reporting bağımlılığı)
+- `schedules.start_time` (B5b — reporting derive)
+- `schedules.end_time` (B5b — reporting duration calc + tablo kolonu)
+
+### Y5-2b — B5b Reporting Canonicalization + Hard Drops
+
+**B5b kapsamı**:
+1. **Reporting refactor**: `schedule.export.ts` + `schedule.routes.ts:/reports/live-plan*` + `reporting/schedule-reporting.component.ts` canonical alanlara taşınır
+2. **Yeni structured kolon kararı** (gerekirse):
+   - `schedules.content_name VARCHAR(500)` (metadata.contentName karşılığı)
+   - `schedules.house_number VARCHAR(50)` (metadata.houseNumber karşılığı)
+   - `schedules.event_duration_min INT` veya `schedules.event_end_time TIMESTAMPTZ` (reporting duration calc + endTime)
+   - **B5b başlangıcında karar**: yeni kolon eklemek vs reporting UI'dan kolonları çıkarmak
+3. **Hard DROP** (reporting canonicalize edildikten sonra):
+   - `schedules.metadata` + ilgili JSON key kullanımı temiz
+   - `schedules.start_time`
+   - `schedules.end_time`
+   - B5a'dan kalan ne varsa (`channel_id`, `deleted_at` vs.)
+
+**Sırayla**: Reporting refactor → smoke + Karma + Playwright → ALTER TABLE DROP COLUMN.
 
 ### Y5-3 — Frontend cleanup
 
@@ -174,31 +208,53 @@ Bu doc SCHED-B5 destructive cleanup scope lock'unu kayıt altına alır. **Read-
 
 ## §3 — Implementation checklist (B5 PR scope)
 
-### §3.1 DB migration (yeni Prisma migration dosyası)
+### §3.1a B5a DB migration (preflight revize 2026-05-08)
 
 ```sql
+-- B5a: Safe cleanup — kod dependency sıfırlandıktan sonra; reporting kırılmaz.
+
 -- 1. Legacy row DELETE (cascade FK 0 impact)
 DELETE FROM schedules WHERE event_key IS NULL;
 
--- 2. Constraint DROP
-ALTER TABLE schedules DROP CONSTRAINT schedules_usage_scope_check;
-ALTER TABLE schedules DROP CONSTRAINT schedules_no_channel_time_overlap;
-ALTER TABLE schedules DROP CONSTRAINT schedules_channel_id_fkey;
+-- 2. Legacy GiST exclusion DROP (yeni cross-row overlap B5'te YOK; Y5-5)
+ALTER TABLE schedules DROP CONSTRAINT IF EXISTS schedules_no_channel_time_overlap;
 
--- 3. Index DROP
-DROP INDEX schedules_usage_scope_idx;
-DROP INDEX schedules_usage_scope_report_league_report_season_report_we_idx;
-DROP INDEX schedules_channel_id_start_time_end_time_idx;
-DROP INDEX schedules_deleted_at_idx;
+-- 3. CHECK + FK DROP (usage_scope/channel_id dependency sıfırsa)
+ALTER TABLE schedules DROP CONSTRAINT IF EXISTS schedules_usage_scope_check;
+ALTER TABLE schedules DROP CONSTRAINT IF EXISTS schedules_channel_id_fkey;
 
--- 4. Column DROP
+-- 4. Index DROP (kolon DROP'tan önce)
+DROP INDEX IF EXISTS schedules_usage_scope_idx;
+DROP INDEX IF EXISTS schedules_usage_scope_report_league_report_season_report_we_idx;
+DROP INDEX IF EXISTS schedules_channel_id_start_time_end_time_idx;
+DROP INDEX IF EXISTS schedules_deleted_at_idx;
+
+-- 5. Kolon DROP (B5a — reporting bağımlı OLMAYANLAR)
 ALTER TABLE schedules
-  DROP COLUMN usage_scope,
-  DROP COLUMN metadata,
-  DROP COLUMN start_time,
-  DROP COLUMN end_time,
-  DROP COLUMN channel_id,
-  DROP COLUMN deleted_at;
+  DROP COLUMN IF EXISTS usage_scope,
+  DROP COLUMN IF EXISTS channel_id,
+  DROP COLUMN IF EXISTS deleted_at;
+
+-- B5a YAPMAZ: metadata, start_time, end_time DROP (reporting bağımlı; B5b'ye ertelendi)
+```
+
+### §3.1b B5b DB migration (canonicalization sonrası)
+
+```sql
+-- B5b: Reporting canonical alanlara taşındıktan ve smoke geçtikten sonra.
+
+-- 1. (Opsiyonel) Yeni structured kolon ekle (B5b başlangıcında karar)
+-- ALTER TABLE schedules
+--   ADD COLUMN content_name VARCHAR(500),
+--   ADD COLUMN house_number VARCHAR(50),
+--   ADD COLUMN event_duration_min INT;       -- veya event_end_time TIMESTAMPTZ
+-- (data backfill metadata'dan veya reporting'e karşılığı UI'dan kaldırma kararına göre)
+
+-- 2. Hard DROP (reporting canonicalize sonrası; smoke yeşil olduktan sonra)
+ALTER TABLE schedules
+  DROP COLUMN IF EXISTS metadata,
+  DROP COLUMN IF EXISTS start_time,
+  DROP COLUMN IF EXISTS end_time;
 ```
 
 ### §3.2 Backend changes
@@ -287,13 +343,18 @@ Column drop **destructive**, geri dönüş için backup gerekli. Eğer migration
 - **PR-D replay/retention** (öncelik sırası: 5.)
 - **Production cloud DB deploy** (ayrı backup + runbook + onay)
 
-### §6.1 Reporting kapsamı netleştirme
+### §6.1 Reporting kapsamı (preflight 2026-05-08 revize: faz ayrımı)
 
-`/schedules/reporting` UI'sı **B5'te korunur** (Y5-1). Ancak reporting backend/frontend **DROP edilecek kolonlara (`usage_scope`, `start_time`, `end_time`, `metadata`, `deleted_at`) bağlı ise B5 implementation içinde canonical uyuma refactor edilir** — drop migration kullanıcının raporlama akışını kırarak teslim edilemez.
+`/schedules/reporting` UI'sı **B5a'da kırılmaz** (Y5-1). Reporting backend/frontend `metadata.contentName`/`metadata.houseNumber`/`start_time`/`end_time` kullanımı **B5b'ye taşındı**:
 
-- Implementation öncesi reporting dependency inventory zorunlu (`schedule.routes.ts:170-282` `/reports/live-plan*`, `schedule.export.ts`, `reporting/schedule-reporting.component.ts`, vb.).
-- Refactor kapsamı: legacy alanları **canonical karşılıklarına bağla** (örn. `start_time` → `scheduleDate + scheduleTime`, `usage_scope='live-plan'` → `event_key IS NOT NULL`).
-- Ürün davranışı + rapor çıktıları **birebir korunur** (kullanıcı algı süreklilik); UI redesign B5 dışı follow-up.
+- **B5a**: reporting `usage_scope` filter'ı `eventKey IS NOT NULL` veya canonical filter'a refactor edilir (kolon DROP olabilir hale getirilir). `metadata.contentName/houseNumber/start_time/end_time` reporting'de **dokunulmaz** (kolonlar DURUR).
+- **B5b**: reporting'in canonical alanlara tam taşınması:
+  - `start_time` → `scheduleDate + scheduleTime` derive
+  - `end_time` → yeni `event_end_time` kolonu **veya** `event_duration_min` ile derive **veya** UI'dan endTime kolon kaldırma (B5b başlangıcında karar)
+  - `metadata.contentName` → yeni `content_name` kolon **veya** UI'dan kaldırma
+  - `metadata.houseNumber` → yeni `house_number` kolon **veya** UI'dan kaldırma
+- B5b'de smoke + Karma + Playwright yeşil olduktan **sonra** `metadata`/`start_time`/`end_time` DROP edilir.
+- Ürün davranışı (rapor çıktıları, kolonlar) B5a'da **birebir korunur**; B5b'de canonical alanlardan beslenir; advanced reporting redesign ayrı PR.
 
 ---
 
@@ -314,3 +375,4 @@ Column drop **destructive**, geri dönüş için backup gerekli. Eğer migration
 | Tarih | Yorum |
 |-------|-------|
 | 2026-05-08 | Y5-1..Y5-8 lock'lu (B5 destructive cleanup scope). Read-only inventory + 8 karar + migration runbook. Implementation onayı ayrı turda. |
+| 2026-05-08 (preflight revize) | B5 → B5a + B5b iki faza ayrıldı. Reporting `metadata.contentName`/`houseNumber`/`start_time`/`end_time` bağımlılığı bulundu; metadata/start_time/end_time DROP B5a'da YAPILMAZ → B5b'de reporting canonicalization sonrası yapılır. B5a kapsamında: code dependency sıfırlama + frontend DELETE + ingest coupling kaldır + legacy row DELETE + `usage_scope`/`channel_id`/`deleted_at` kolon DROP (dependency sıfırsa). B5b kapsamı: reporting canonical alanlara taşıma + (opsiyonel) yeni structured kolon (`content_name`/`house_number`/`event_end_time` veya `event_duration_min`) + `metadata`/`start_time`/`end_time` DROP. |
