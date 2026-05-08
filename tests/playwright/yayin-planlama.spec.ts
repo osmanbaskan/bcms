@@ -41,15 +41,14 @@ test('nav: "Live-Plan (yeni)" YOK; "Canlı Yayın Plan" + "Yayın Planlama" gör
   await expect(page.locator('a', { hasText: 'Yayın Planlama' })).toBeVisible();
 });
 
-test('nav click: Canlı Yayın Plan → /schedules eski schedule-list ekranı', async ({ page }) => {
+test('nav click: Canlı Yayın Plan → /live-plan canonical UI (Y5-1)', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
 
   const link = page.locator('a', { hasText: 'Canlı Yayın Plan' }).first();
   await link.click();
-  await page.waitForURL(/\/schedules/);
-  expect(page.url()).toContain('/schedules');
-  expect(page.url()).not.toContain('/yayin-planlama');
+  await page.waitForURL(/\/live-plan/);
+  expect(page.url()).toContain('/live-plan');
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
 

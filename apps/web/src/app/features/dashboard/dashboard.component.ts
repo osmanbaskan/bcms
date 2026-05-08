@@ -9,7 +9,8 @@ import { StatusTagComponent } from '../../core/ui/status-tag.component';
 // DÜŞÜK-FE hijyen (2026-05-04): SevTagComponent template'de kullanılmıyor
 // (NG8113 warning); ileride uyarı/incident bölümü dashboard'a gelirse eklenecek.
 import { PageHeaderComponent } from '../../core/ui/page-header.component';
-import { ScheduleService } from '../../core/services/schedule.service';
+// SCHED-B5a (2026-05-08): legacy ScheduleService silindi; broadcast list
+// endpoint canonical (/schedules/broadcast) doğrudan ApiService ile çağrılır.
 import { ApiService } from '../../core/services/api.service';
 
 interface ScheduleRow {
@@ -100,7 +101,7 @@ interface StudioSlot {
                   {{ h.league?.name ?? 'Lig bilgisi yok' }}@if (h.channel) { · {{ h.channel.name }} }
                 </div>
                 <div class="hero-actions">
-                  <a class="hero-btn" [routerLink]="['/schedules', h.id]">Detaya git →</a>
+                  <a class="hero-btn" [routerLink]="['/yayin-planlama', h.id, 'edit']">Detaya git →</a>
                   <button class="hero-btn-ghost" type="button">Sorun bildir</button>
                 </div>
               </div>
@@ -127,7 +128,7 @@ interface StudioSlot {
       <div class="row broadcasts-row">
         <bp-card [title]="'Bugünün yayın akışı'"
                  [count]="todayBroadcasts().length + ' yayın'">
-          <a card-action class="link-action" routerLink="/schedules">Tümü →</a>
+          <a card-action class="link-action" routerLink="/yayin-planlama">Tümü →</a>
           <div class="broadcast-list">
             @if (loadingBroadcasts()) {
               <div class="empty">Yükleniyor…</div>
@@ -465,7 +466,6 @@ interface StudioSlot {
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
-  private scheduleSvc = inject(ScheduleService);
   private api = inject(ApiService);
 
   todayDate = signal('');
@@ -528,8 +528,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private loadTodayBroadcasts() {
     this.loadingBroadcasts.set(true);
     const today = this.isoToday();
-    // ScheduleService.list ya da api.get('/schedules?date=YYYY-MM-DD')
-    this.api.get<{ data: ScheduleRow[]; total: number } | ScheduleRow[]>(`/schedules?from=${today}&to=${today}&pageSize=50`).subscribe({
+    // SCHED-B5a: canonical broadcast list endpoint (B4-prep edfda69 + acb8167).
+    // YYYY-MM-DD scheduleDate filter; legacy /schedules?from=ISO yerine.
+    this.api.get<{ data: ScheduleRow[]; total: number } | ScheduleRow[]>(`/schedules/broadcast?from=${today}&to=${today}&pageSize=50`).subscribe({
       next: (res) => {
         const rows = Array.isArray(res) ? res : (res.data ?? []);
         // Sort by startTime

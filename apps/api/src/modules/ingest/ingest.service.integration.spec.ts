@@ -23,7 +23,7 @@ import {
  *   ✓ Manual ingest happy path → IngestJob create + outbox row
  *     (eventType='ingest.job_started', status='published') + direct publish
  *     (queue.ingest.new). Tx içi shadow + tx dışı direct publish invariant.
- *   ✓ Boundary: targetId broadcast usageScope schedule'ı işaret ediyor → 400
+ *   ✓ Boundary: targetId non-existing live_plan_entry → 400 (Y5-7 paritesi)
  *     atomic (no IngestJob, no outbox row, no direct publish).
  *
  * NOT — auth scope:
@@ -102,29 +102,21 @@ describe('triggerManualIngest — integration', () => {
     expect(payload.sourcePath).toBe(job.sourcePath);
   });
 
-  test('boundary: targetId broadcast schedule → 400 atomic (no job, no outbox, no publish)', async () => {
-    // Broadcast usageScope schedule oluştur — manual ingest target olamaz.
-    const prisma = getRawPrisma();
-    const sch = await prisma.schedule.create({
-      data: {
-        channelId:  1,
-        startTime:  new Date(),
-        endTime:    new Date(Date.now() + 60 * 60 * 1000),
-        title:      'Broadcast schedule (ingest target invalid)',
-        status:     'CONFIRMED',
-        usageScope: 'broadcast',
-        createdBy:  'integration-test',
-      },
-    });
+  test('boundary: targetId non-existing live_plan_entry → 400 atomic (no job, no outbox, no publish)', async () => {
+    // SCHED-B5a (Y5-7): ingest schedule coupling kaldırıldı; targetId
+    // canonical olarak live_plan_entries.id beklenir. Existing OLMAYAN ID
+    // ile ingest tetiklenirse 400 + atomik rollback.
+    const NON_EXISTING_LPE_ID = 999_999_999;
 
     await expect(
       triggerManualIngest(
         harness.app as unknown as FastifyInstance,
-        { sourcePath: tmpFile, targetId: sch.id },
+        { sourcePath: tmpFile, targetId: NON_EXISTING_LPE_ID },
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
 
     // Atomicity: hiç IngestJob yok, outbox satırı yok, publish yok.
+    const prisma = getRawPrisma();
     const jobCount = await prisma.ingestJob.count();
     expect(jobCount).toBe(0);
 

@@ -52,13 +52,18 @@ export async function triggerManualIngest(
   const sourcePath = validateIngestSourcePath(dto.sourcePath);
 
   if (dto.targetId) {
-    const schedule = await app.prisma.schedule.findFirst({
-      where: { id: dto.targetId, usageScope: 'live-plan' },
+    // SCHED-B5a (Y5-7 — Domain Ownership lock): ingest hedefi canlı yayın
+    // plan canonical olarak `live_plan_entries`. Eski `schedules.usage_scope=
+    // 'live-plan'` coupling kaldırıldı. Frontend "live-plan'dan ingest
+    // tetikleme" akışı follow-up PR'da; geçişte targetId mismatch operasyonel
+    // break — guard explicit hata mesajıyla görünür kalsın.
+    const entry = await app.prisma.livePlanEntry.findFirst({
+      where: { id: dto.targetId, deletedAt: null },
       select: { id: true },
     });
-    if (!schedule) {
+    if (!entry) {
       throw Object.assign(
-        new Error('Ingest hedefi canlı yayın planı kaydı olmalıdır'),
+        new Error('Ingest hedefi canlı yayın planı kaydı olmalıdır (live_plan_entries.id)'),
         { statusCode: 400 },
       );
     }

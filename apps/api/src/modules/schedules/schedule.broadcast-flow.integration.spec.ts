@@ -68,7 +68,8 @@ describe('ScheduleService — broadcast flow (SCHED-B3a)', () => {
     expect(created.endTime).toBeInstanceOf(Date);
     expect(created.endTime.getTime() - created.startTime.getTime()).toBe(2 * 3600 * 1000);
     expect(created.title).toBe(entry.title);
-    expect(created.usageScope).toBe('broadcast');
+    // SCHED-B5a (Y5-2a): usageScope assertion kaldırıldı (Prisma model
+     //  field'ı silindi; DB default 'broadcast'; B5b'de kolon DROP).
     expect(created.createdBy).toBe('sched-1');
   });
 

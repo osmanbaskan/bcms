@@ -206,8 +206,8 @@ interface ChannelOption { id: number; name: string; }
     .entry-summary { flex: 1 1 280px; min-width: 0; }
     .entry-row > button { flex-shrink: 0; }
     @media (max-width: 600px) {
-      // Mobile: entry-summary butonun click alanını overlap etmesin (Pixel 7
-      // viewport 412px; flex row'da text growth pointer-event intercept ederdi).
+      /* Mobile: entry-summary butonun click alanını overlap etmesin (Pixel 7
+       * viewport 412px; flex row'da text growth pointer-event intercept ederdi). */
       .entry-row { flex-direction: column; align-items: stretch; }
       .entry-row > button { width: 100%; }
     }

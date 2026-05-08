@@ -64,7 +64,6 @@ describe('ScheduleService.findBroadcastList — SCHED-B4-prep', () => {
         startTime:               new Date('2026-06-01T19:00:00Z'),
         endTime:                 new Date('2026-06-01T21:00:00Z'),
         createdBy:               'test',
-        usageScope:              'broadcast',
         eventKey,
         selectedLivePlanEntryId: entryId,
         scheduleDate:            overrides.scheduleDate === undefined
@@ -97,7 +96,6 @@ describe('ScheduleService.findBroadcastList — SCHED-B4-prep', () => {
         startTime:  new Date('2026-06-01T19:00:00Z'),
         endTime:    new Date('2026-06-01T21:00:00Z'),
         createdBy:  'test',
-        usageScope: 'broadcast',
       },
     });
     const r = await svc.findBroadcastList({ page: 1, pageSize: 50 });
@@ -114,7 +112,6 @@ describe('ScheduleService.findBroadcastList — SCHED-B4-prep', () => {
         startTime:    new Date('2026-06-01T19:00:00Z'),
         endTime:      new Date('2026-06-01T21:00:00Z'),
         createdBy:    'test',
-        usageScope:   'broadcast',
         eventKey:     'opta:partial-1',
         scheduleDate: new Date('2026-06-01T00:00:00Z'),
         scheduleTime: new Date('1970-01-01T19:00:00Z'),

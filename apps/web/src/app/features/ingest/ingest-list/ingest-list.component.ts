@@ -371,45 +371,22 @@ class TrDateAdapter extends NativeDateAdapter {
         </div>
       </mat-expansion-panel>
 
-      <mat-expansion-panel class="trigger-panel">
+      <!-- SCHED-B5a (Y5-7 + Domain Ownership LOCKED): "Canlı Yayın Planından
+           Ingest Başlat" panel devre dışı. Backend ingest schedule coupling
+           kaldırıldı (live_plan_entries.id bekler). Yeni canonical akış
+           B5a follow-up PR'da live-plan'dan tetiklenecek; geçişte UI panel
+           kapalı tutulur (kullanıcı 400 görmez). -->
+      <mat-expansion-panel class="trigger-panel" [disabled]="true">
         <mat-expansion-panel-header>
           <mat-panel-title>
-            <mat-icon>event_available</mat-icon>&nbsp;Canlı Yayın Planından Ingest Başlat
+            <mat-icon>event_busy</mat-icon>&nbsp;Canlı Yayın Planından Ingest Başlat — geçici devre dışı (B5a)
           </mat-panel-title>
         </mat-expansion-panel-header>
 
-        <div class="trigger-form">
-          <mat-form-field class="schedule-field">
-            <mat-label>Canlı Yayın Planı Kaydı</mat-label>
-            <mat-select [(ngModel)]="selectedScheduleId" [disabled]="livePlanLoading()">
-              <mat-option [value]="null">— Seçin —</mat-option>
-              @for (schedule of livePlanCandidates(); track schedule.id) {
-                <mat-option [value]="schedule.id">
-                  {{ schedule.startTime | date:'HH:mm' }} - {{ schedule.metadata?.['contentName'] || schedule.title }} · {{ schedule.channel?.name || '-' }}
-                </mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-
-          <mat-form-field appearance="outline" class="path-field">
-            <mat-label>Kaynak Dosya Yolu</mat-label>
-            <input matInput [(ngModel)]="livePlanSourcePath" placeholder="/mnt/nas/video.mp4" />
-          </mat-form-field>
-
-          <button mat-flat-button color="primary"
-                  [disabled]="!selectedScheduleId || !livePlanSourcePath.trim() || triggering()"
-                  (click)="triggerLivePlanJob()">
-            <mat-icon>cloud_upload</mat-icon>
-            {{ triggering() ? 'Başlatılıyor…' : 'Başlat' }}
-          </button>
-        </div>
-
-        @if (livePlanLoading()) {
-          <mat-progress-bar mode="indeterminate"></mat-progress-bar>
-        }
-        @if (!livePlanLoading() && livePlanCandidates().length === 0) {
-          <p class="empty-live-plan">Seçili tarih için canlı yayın planı kaydı bulunamadı.</p>
-        }
+        <p class="empty-live-plan">
+          Bu akış canlı yayın plan canonical domain'ine taşınıyor; takip eden PR'da yeniden açılacak.
+          Şimdilik manuel ingest tetikleme için yukarıdaki "Manuel Ingest Tetikle" panelini kullanın.
+        </p>
       </mat-expansion-panel>
 
       <!-- Durum Sekmeleri -->
@@ -1517,11 +1494,15 @@ export class IngestListComponent implements OnInit, OnDestroy {
     if (!sourcePath || !schedule) return;
 
     this.triggering.set(true);
+    // SCHED-B5a (Y5-7): ingest schedule coupling kaldırıldı; metadata.usageScope
+    // ref kaldırılır. Backend ingest.service artık live_plan_entry.id bekler;
+    // frontend "live-plan'dan ingest tetikleme" akışı ayrı PR follow-up.
+    // Mevcut çağrıda schedule.id geçici olarak gönderilir; backend reddederse
+    // operasyonel break (Y5-7 follow-up).
     this.api.post<IngestJob>('/ingest', {
       sourcePath,
       targetId: schedule.id,
       metadata: {
-        usageScope: 'live-plan',
         source: 'live-plan',
         ingestPlanSourceKey: `live:${schedule.id}`,
         scheduleId: schedule.id,

@@ -160,7 +160,6 @@ async function makeOptaSchedule(opts: {
       startTime:    FIXED_NOW,
       endTime:      new Date(FIXED_NOW.getTime() + TWO_HOURS_MS),
       createdBy:    'test',
-      usageScope:   'broadcast',
       // Canonical
       eventKey:     `opta:${opts.optaUid}`,
       scheduleDate: new Date('2026-06-01T00:00:00Z'),
@@ -667,7 +666,6 @@ describe('OPTA sync cascade — SCHED-B3c (KO1-KO14)', () => {
         startTime:    FIXED_NOW,
         endTime:      new Date(FIXED_NOW.getTime() + TWO_HOURS_MS),
         createdBy:    'test',
-        usageScope:   'broadcast',
         eventKey:     'opta:M-T14',
         scheduleDate: new Date('2026-06-01T00:00:00Z'),
         scheduleTime: new Date('1970-01-01T19:00:00Z'),

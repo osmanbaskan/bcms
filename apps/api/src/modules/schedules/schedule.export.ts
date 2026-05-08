@@ -46,21 +46,22 @@ export interface ExportOptions {
   season?:    string;
   week?:      number;
   title?:     string;   // Üst başlık: "TÜRKİYE SİGORTA BASKETBOL SÜPER LİGİ - (26. HAFTA)"
-  usage?:     'broadcast' | 'live-plan' | 'all';
+  // SCHED-B5a (Y5-4): legacy `usage` param kaldırıldı; canonical filter
+  // (`eventKey IS NOT NULL`) export.ts buildExportWhere'de uygulanır.
 }
 
 export async function exportSchedulesToStream(
   app: FastifyInstance,
   opts: ExportOptions,
 ): Promise<Buffer> {
-  const { from, to, channelId, league, season, week, title, usage = 'broadcast' } = opts;
+  const { from, to, channelId, league, season, week, title } = opts;
 
   // DÜŞÜK-API-1.2.14 fix (2026-05-04): take cap. 50K+ schedule senaryosunda
   // belleğe sığmama riski; Excel export pratikte 5K-10K satır makul.
   const schedules = await app.prisma.schedule.findMany({
-    where: buildExportWhere({ from, to, channelId, league, season, week, usage }),
+    where: buildExportWhere({ from, to, channelId, league, season, week }),
     include: { channel: { select: { name: true } } },
-    orderBy: { startTime: 'asc' },
+    orderBy: { startTime: 'asc' }, // B5b'de canonical scheduleDate/Time order
     take: 50_000,
   });
 
@@ -111,14 +112,15 @@ export async function exportSchedulesToStream(
   return Buffer.from(arr);
 }
 
-function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' | 'league' | 'season' | 'week' | 'usage'>): Prisma.ScheduleWhereInput {
+function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' | 'league' | 'season' | 'week'>): Prisma.ScheduleWhereInput {
+  // SCHED-B5a (Y5-4): canonical filter — `eventKey IS NOT NULL` (broadcast
+  // flow row guarantee). Legacy `usage_scope` filter kaldırıldı.
   return {
+    eventKey: { not: null },
     status: { not: 'CANCELLED' },
     ...(opts.channelId && { channelId: opts.channelId }),
     ...(opts.from && { startTime: { gte: new Date(opts.from) } }),
     ...(opts.to && { startTime: { lte: new Date(opts.to) } }),
-    ...(opts.usage === 'live-plan' && { usageScope: 'live-plan' }),
-    ...(opts.usage === 'broadcast' && { usageScope: 'broadcast' }),
     ...(opts.league && { reportLeague: opts.league }),
     ...(opts.season && { reportSeason: opts.season }),
     ...(opts.week && { reportWeekNumber: opts.week }),

@@ -30,7 +30,6 @@ async function makeBaseSchedule(extra: Record<string, unknown> = {}) {
       startTime:  new Date('2026-06-01T19:00:00Z'),
       endTime:    new Date('2026-06-01T21:00:00Z'),
       createdBy:  'test',
-      usageScope: 'broadcast',
       ...extra,
     },
   });

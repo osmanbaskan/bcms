@@ -100,12 +100,9 @@ model Schedule {
   broadcastTypeId  Int?           @map("broadcast_type_id")
   matchId          Int?           @map("match_id")
   status           ScheduleStatus @default(DRAFT)
-  /// DB seviyesinde CHECK constraint: usage_scope IN ('broadcast', 'live-plan').
-  /// Migration: 20260422000002_schedule_usage_scope_constraint.
-  /// Prisma 5 native CHECK desteklemediği için bu yorum drift uyarısı görevi yapar.
-  /// Yeni değer eklemek için: önce ALTER TABLE migration, sonra bu yorumu güncelle.
-  /// Ek koruma katmanı: zod ScheduleUsageScopeEnum (`schedule.schema.ts`).
-  usageScope       String         @default("broadcast") @map("usage_scope") @db.VarChar(30)
+  /// SCHED-B5a (Y5-2a, 2026-05-08): legacy `usageScope` field Prisma model'den
+  /// kaldırıldı (DB kolonu B5a Block 2 migration'ında DROP edilecek; geçici
+  /// drift kabul). CHECK + 2 index B5a migration'ında DROP.
   reportLeague     String?        @map("report_league") @db.VarChar(200)
   reportSeason     String?        @map("report_season") @db.VarChar(30)
   reportWeekNumber Int?           @map("report_week_number")
@@ -150,8 +147,8 @@ model Schedule {
 
   @@index([channelId, startTime, endTime])
   @@index([status])
-  @@index([usageScope])
-  @@index([usageScope, reportLeague, reportSeason, reportWeekNumber])
+  // SCHED-B5a (Y5-2a): legacy `usageScope` index'leri Prisma model'den
+  // kaldırıldı; DB'de B5a Block 2 migration'da DROP edilecek.
   @@index([broadcastTypeId])
   @@index([matchId])
   @@index([optaMatchId])

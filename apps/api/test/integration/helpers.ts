@@ -118,16 +118,11 @@ export async function cleanupTransactional(): Promise<void> {
  * production migration'ları doğal olarak uygular.
  */
 export async function applyTestConstraints(): Promise<void> {
-  const prisma = getRawPrisma();
-  await prisma.$executeRawUnsafe(`
-    ALTER TABLE "schedules"
-    DROP CONSTRAINT IF EXISTS "schedules_usage_scope_check"
-  `);
-  await prisma.$executeRawUnsafe(`
-    ALTER TABLE "schedules"
-    ADD CONSTRAINT "schedules_usage_scope_check"
-    CHECK ("usage_scope" IN ('broadcast', 'live-plan'))
-  `);
+  // SCHED-B5a (Y5-2a, 2026-05-08): legacy `schedules_usage_scope_check`
+  // CHECK reapply kaldırıldı (kolon Prisma schema'dan silindi; B5a Block 2
+  // migration'ında DB DROP CONSTRAINT). Helper boş bırakıldı (idempotent
+  // no-op); diğer test setup'lar bu helper'ı çağırmaya devam edebilir.
+  void getRawPrisma;
 }
 
 /**
@@ -600,7 +595,7 @@ export async function createTestSchedule(opts?: {
       endTime: end,
       title: opts?.title ?? 'Integration test schedule',
       status: opts?.status ?? 'CONFIRMED',
-      usageScope: 'broadcast',
+      // SCHED-B5a (Y5-2a): usageScope kaldırıldı (DB default 'broadcast').
       createdBy: 'integration-test',
     },
   });
