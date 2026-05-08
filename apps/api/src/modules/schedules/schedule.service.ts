@@ -108,6 +108,47 @@ export class ScheduleService {
     };
   }
 
+  /** SCHED-B4-prep (2026-05-08): Yayın Planlama list endpoint için broadcast-
+   *  complete row guarantee. Server-side filter (frontend pagination'da yanlış
+   *  sonuç veren `eventKey != null` post-filter'ı önler):
+   *    eventKey != null AND selectedLivePlanEntryId != null
+   *    AND scheduleDate != null AND scheduleTime != null
+   *  Query: eventKey?, from?, to?, status?, page, pageSize (max 200). */
+  async findBroadcastList(query: import('./schedule.schema.js').BroadcastScheduleListQuery) {
+    const { eventKey, from, to, status, page, pageSize } = query;
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.ScheduleWhereInput = {
+      eventKey:                { not: null },
+      selectedLivePlanEntryId: { not: null },
+      scheduleDate:            { not: null },
+      scheduleTime:            { not: null },
+      ...(eventKey && { eventKey }),
+      ...(status   && { status }),
+      ...(from && { endTime:   { gte: new Date(from) } }),
+      ...(to   && { startTime: { lte: new Date(to)   } }),
+    };
+
+    const [data, total] = await Promise.all([
+      this.app.prisma.schedule.findMany({
+        where,
+        include: { channel: true },
+        orderBy: [{ scheduleDate: 'asc' }, { scheduleTime: 'asc' }, { id: 'asc' }],
+        skip,
+        take: pageSize,
+      }),
+      this.app.prisma.schedule.count({ where }),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
   async findById(id: number) {
     const schedule = await this.app.prisma.schedule.findUnique({
       where: { id },

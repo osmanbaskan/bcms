@@ -30,6 +30,7 @@ import {
   livePlanExportQuerySchema,
   createBroadcastScheduleSchema,
   updateBroadcastScheduleSchema,
+  broadcastScheduleListQuerySchema,
 } from './schedule.schema.js';
 import { importSchedulesFromBuffer } from './schedule.import.js';
 import { exportSchedulesToStream }   from './schedule.export.js';
@@ -327,6 +328,17 @@ export async function scheduleRoutes(app: FastifyInstance) {
   // Yeni Schedule UI (SCHED-B4) bu endpoint'leri çağırır. Eski POST/PATCH/
   // DELETE /api/v1/schedules legacy path olarak SCHED-B5'e kadar paralel
   // çalışır.
+
+  // GET /api/v1/schedules/broadcast — Yayın Planlama list (SCHED-B4-prep).
+  // Server-side filter: eventKey/selectedLivePlanEntryId/scheduleDate/scheduleTime
+  // not null + query (eventKey, from, to, status). Pagination.
+  app.get('/broadcast', {
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
+    schema: { tags: ['Schedules'], summary: 'List broadcast flow schedules (B4 canonical)' },
+  }, async (request) => {
+    const query = broadcastScheduleListQuerySchema.parse(request.query);
+    return svc.findBroadcastList(query);
+  });
 
   // POST /api/v1/schedules/broadcast — yeni canonical create (event_key,
   // selected_lpe, schedule_date/time, channel_1/2/3, 3 lookup option).

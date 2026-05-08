@@ -139,3 +139,24 @@ export const updateBroadcastScheduleSchema = z.object({
 });
 
 export type UpdateBroadcastScheduleDto = z.infer<typeof updateBroadcastScheduleSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCHED-B4-prep (2026-05-08): broadcast schedule list query — Yayın Planlama
+// list ekranı server-side filter contract'ı.
+//
+// Server-side filter (route handler):
+//   eventKey != null AND selectedLivePlanEntryId != null
+//   AND scheduleDate != null AND scheduleTime != null
+// (B5 öncesi karışık veri için canonical broadcast-complete row guarantee'si.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const broadcastScheduleListQuerySchema = z.object({
+  eventKey: z.string().trim().min(1).max(120).optional(),
+  from:     z.string().datetime({ offset: true }).optional(),
+  to:       z.string().datetime({ offset: true }).optional(),
+  status:   ScheduleStatusEnum.optional(),
+  page:     z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+export type BroadcastScheduleListQuery = z.infer<typeof broadcastScheduleListQuerySchema>;
