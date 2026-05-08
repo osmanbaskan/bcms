@@ -1,6 +1,6 @@
 # Schedule/Yayın Planlama Cleanup V1 (SCHED-B5a + B5b)
 
-> **Status**: ✅ Locked (2026-05-08; revize 2026-05-08 → iki faza bölündü). Implementation gate for SCHED-B5a (safe cleanup) ve SCHED-B5b (reporting canonicalization + hard drops).
+> **Status**: ✅ Locked (2026-05-08; revize 2026-05-08 → iki faza bölündü; **revize 2026-05-08 ikinci kez** → UI delete iptal, datasource migration kararı). Implementation gate for SCHED-B5a (Canlı Yayın Plan UI datasource migration + legacy form/detail cleanup) ve SCHED-B5b (reporting canonicalization + hard drops).
 > **Tarih**: 2026-05-08
 > **Cross-reference**:
 > - `ops/REQUIREMENTS-SCHEDULE-BROADCAST-FLOW-V1.md` (K-B3.1-K-B3.27)
@@ -8,9 +8,11 @@
 > - `ops/REQUIREMENTS-SCHEDULE-FRONTEND-V1.md` (Y4-1..Y4-10 + Y4-4 revize)
 > - `ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md` §3.5 K16
 
-**Faz ayrımı (preflight 2026-05-08 sonrası revize)**: Reporting `/schedules/reporting`, `metadata.contentName`/`metadata.houseNumber`, `start_time`, `end_time` kolonlarına bağlı. Drop edilirse reporting kırılır. Patron kararı: **B5'i iki faza böl, reporting'i kırarak drop yapma**.
+**İkinci revize ürün kararı (2026-05-08)**: Patron'un asıl talebi "Canlı Yayın Plan sekmesi arayüz hissi korunur, datasource live-plan API'ye taşınır" — route ve arayüz bir şey, datasource başka şey. B5a'nın ilk turunda yapılan "Canlı Yayın Plan → `/live-plan`", "`/schedules` redirect", "schedule-list UI delete" kararları **iptal**. B5a artık **UI delete değil, datasource migration**.
 
-- **B5a (Safe Cleanup)**: Frontend/backend legacy code DELETE + nav final + ingest coupling kaldır + legacy row DELETE + dependency sıfırlama. `usage_scope` kod dependency'si sıfırlanır; **`metadata`/`start_time`/`end_time` DROP YOK**.
+**Faz ayrımı**: Reporting `/schedules/reporting`, `metadata.contentName`/`metadata.houseNumber`, `start_time`, `end_time` kolonlarına bağlı. Drop edilirse reporting kırılır. Patron kararı: **B5'i iki faza böl, reporting'i kırarak drop yapma**.
+
+- **B5a (Canlı Yayın Plan UI datasource migration + legacy form/detail cleanup)**: schedule-list bileşeni **korunur**, datasource'u live-plan API'ye taşınır (LivePlanEntry → SchedulePresentation mapper). schedule-form/schedule-detail **silinir** (Canlı Yayın Plan ekranı bu fazda liste odaklı / read-only). Backend legacy POST/PATCH/DELETE silinmiş kalır (yeni broadcast flow canonical). Nav: "Canlı Yayın Plan" → `/schedules` (eski yer, eski hisse). `usage_scope` kod dependency'si sıfırlanır; **`metadata`/`start_time`/`end_time` DROP YOK**.
 - **B5b (Reporting Canonicalization + Hard Drops)**: Reporting refactor (canonical alanlara taşı; gerekirse yeni structured kolon: `house_number`, `content_name`, `event_duration_min` veya `event_end_time`); sonra `metadata`/`start_time`/`end_time` (ve B5a'da kalan kolonlar) DROP edilir.
 
 ## §0 — Status & cross-references
@@ -74,31 +76,48 @@ Bu doc SCHED-B5 destructive cleanup scope lock'unu kayıt altına alır. **Read-
 
 ## §2 — Y5 Locked Decisions
 
-### Y5-1 — B5 sonrası nav (Y4-4 revize sonrası nihai)
+### Y5-1 — B5 sonrası nav (ikinci revize 2026-05-08)
 
-**Karar**:
-- "Canlı Yayın Plan" sekmesi → **`/live-plan`** route (M5 canonical)
-- "Live-Plan (yeni)" geçici label **geri gelmeyecek**
-- "Yayın Planlama" sekmesi → `/yayin-planlama` (kalıcı)
-- `/schedules` root → `/yayin-planlama` redirect (B5 sonrası geçerli; B4'te eski schedule-list paralel)
-- `/schedules/reporting` korunur (raporlama ayrı domain; cleanup sonrası ayrı revize)
+**Karar (ikinci revize 2026-05-08)**:
+- "Canlı Yayın Plan" sekmesi → **`/schedules`** route (eski yer, eski arayüz hissi korunur)
+- `/schedules` root → eski schedule-list UI açılır; **redirect YOK**
+- schedule-list UI bileşeni datasource olarak **live-plan API** kullanır (LivePlanEntry → SchedulePresentation mapper)
+- "Live-Plan (yeni)" nav item **YOK** (geri gelmeyecek)
+- `/live-plan` route **korunur** ama nav'da **görünmez** (M5-B10b ileride bu route üstünde çalışabilir)
+- "Yayın Planlama" sekmesi → `/yayin-planlama` (kalıcı; broadcast flow yeni canonical UI)
+- Wildcard `**` → `/schedules` (eski default)
+- `/schedules/reporting` korunur (raporlama ayrı domain; B5b'de canonicalize)
 
-**Gerekçe**: B5 destructive cleanup ile eski schedule-list silindiğinde "Canlı Yayın Plan" sekmesinin eski `/schedules` UI'da kalması imkansız. Yeni canonical Canlı Yayın Plan domain'i `/live-plan` (M5).
+**Gerekçe**: Patron'un kararı route ismi/arayüz ve datasource ayrımına dayanır. Canlı Yayın Plan sekmesi kullanıcı için **arayüz sürekliliği** ister; ama backend datasource canonical olarak live-plan'dadır. UI delete değil, datasource swap. B5a'nın ilk turunda yapılan "Canlı Yayın Plan → /live-plan" + "/schedules redirect" + "schedule-list UI delete" kararları **iptal**.
 
-### Y5-2a — B5a Safe Cleanup (preflight revize 2026-05-08)
+### Y5-2a — B5a Canlı Yayın Plan UI datasource migration + legacy form/detail cleanup (ikinci revize 2026-05-08)
 
 **B5a kapsamı**:
 
-**Kod tarafı dependency sıfırlama**:
-- `usage_scope` kod dependency'si tamamen kaldırılır (backend service/route/import/export + frontend ScheduleService + ingest coupling + dashboard)
-- Eski `start_time`/`end_time` kod kullanımı **frontend** silinir (schedule-list/form/detail DELETE; Y5-3); **backend reporting/export bağımlılığı B5a'da KORUNUR** (B5b'de canonicalize)
+**Frontend datasource migration** (schedule-list UI):
+- `schedule-list/schedule-list.component.ts` **korunur** (~2400 satır UI hissi birebir)
+- Datasource artık legacy `/schedules` GET değil, **`/api/v1/live-plan` GET** (M5-B2 endpoint)
+- LivePlanEntry → SchedulePresentation mapper; eski kolonlar (title, channel slot, start/end time, status) live-plan alanlarından (eventStartTime/EndTime, channel_1/2/3, team_1/2_name, source_type) türetilir
+- `core/services/schedule.service.ts` ya restore edilip live-plan API çağrısına refactor edilir, ya da silinir + bileşen `LivePlanService`/`ApiService` kullanır (implementation tercihi)
+
+**Frontend legacy form/detail DELETE**:
+- `schedule-form/` DELETE (create/edit eski schedule UI üstünden olmaz)
+- `schedule-detail/` DELETE (detay eski schedule UI üstünden olmaz)
+- Canlı Yayın Plan sekmesi B5a'da **liste odaklı / read-only**
+- Operasyonel create/edit: Yayın Planlama (`/yayin-planlama`) — broadcast flow canonical UI
+
+**Backend kod tarafı dependency sıfırlama** (B5a Block 1'de yapılmıştı, korunur):
+- `usage_scope` kod dependency'si tamamen kaldırılır (backend service/route/import/export + frontend bileşenler + ingest coupling + dashboard)
+- Backend legacy `POST /schedules`, `PATCH /schedules/:id`, `DELETE /schedules/:id`, `GET /schedules` (root list) silinmiş kalır — yeni schedule-list UI bunları çağırmaz, live-plan endpoint okur
+- Eski `start_time`/`end_time` kod kullanımı **frontend datasource swap** ile dolaylı düşer; **backend reporting/export bağımlılığı B5a'da KORUNUR** (B5b'de canonicalize)
 - `metadata` kod kullanımı reporting dışında temizlenir; reporting `metadata.contentName/houseNumber` B5b'de canonicalize
 
 **Legacy row DELETE** (B5a'da):
 - Filter: `event_key IS NULL OR usage_scope='live-plan'` (132 row; 0 FK cascade impact)
 - Reporting'in B5a'da gösterdiği veri etkilenmez (zaten legacy/empty data)
+- Schedule-list UI live-plan datasource'tan beslendiği için bu DELETE Canlı Yayın Plan görünümünü etkilemez
 
-**B5a'da DROP edilebilen** (kod dependency sıfırlandıktan sonra):
+**B5a'da DROP edilebilen** (kod dependency sıfırlandıktan sonra; **Block 2 ayrı onay**):
 | Kolon/Constraint/Index | Şart |
 |-----------------------|------|
 | `schedules_usage_scope_check` CHECK | usage_scope kod dependency sıfırlanırsa |
@@ -107,12 +126,17 @@ Bu doc SCHED-B5 destructive cleanup scope lock'unu kayıt altına alır. **Read-
 | `schedules_no_channel_time_overlap` GiST | start_time/end_time hala kolon olarak DURUR; **exclusion DROP B5a'da yapılabilir** (Y5-5) |
 | `schedules_channel_id_fkey` FK + `schedules.channel_id` kolon | dependency sıfırsa (kod taraması zorunlu) |
 | `schedules.deleted_at` kolon + `schedules_deleted_at_idx` | dependency sıfırsa |
-| **`schedules.usage_scope` kolon** | **dependency sıfırlandıktan sonra DROP edilebilir; reporting `usageScope='live-plan'` filter B5a'da `eventKey IS NOT NULL` veya benzeri canonical filter'a refactor edilirse DROP kabul** |
+| **`schedules.usage_scope` kolon** | **dependency sıfırlandıktan sonra DROP edilebilir; reporting filter'ı B5a'da `eventKey IS NOT NULL` canonical filter'a refactor edilir; reporting datasource schedule canonical kalır (Y5-1)** |
 
 **B5a'da DROP EDİLMEZ**:
 - `schedules.metadata` (B5b'ye ertelendi — `contentName`/`houseNumber` reporting bağımlılığı)
 - `schedules.start_time` (B5b — reporting derive)
 - `schedules.end_time` (B5b — reporting duration calc + tablo kolonu)
+
+**B5a'da yapılmayan / ertelenen**:
+- Production / cloud DB apply (yalnız local docker compose runtime DB)
+- Reporting'in live-plan datasource'a taşınması (Y5-1 — reporting schedule canonical kalır)
+- M5-B10b technical-details form (sıra: 3.)
 
 ### Y5-2b — B5b Reporting Canonicalization + Hard Drops
 
@@ -131,39 +155,44 @@ Bu doc SCHED-B5 destructive cleanup scope lock'unu kayıt altına alır. **Read-
 
 **Sırayla**: Reporting refactor → smoke + Karma + Playwright → ALTER TABLE DROP COLUMN.
 
-### Y5-3 — Frontend cleanup
+### Y5-3 — Frontend cleanup (ikinci revize 2026-05-08)
 
-**Karar**: Aşağıdaki path'ler B5 migration'ında **DELETE** edilir:
-
-| Path | Aksiyon |
-|------|---------|
-| `apps/web/src/app/features/schedules/schedule-list/` | DELETE (~2200 satır) |
-| `apps/web/src/app/features/schedules/schedule-form/` | DELETE |
-| `apps/web/src/app/features/schedules/schedule-detail/` | DELETE |
-| `apps/web/src/app/core/services/schedule.service.ts` | DELETE (yayin-planlama.service yeni canonical) |
-| `apps/web/src/app/features/schedules/reporting/` | KORUNUR |
-| `apps/web/src/app/features/schedules/schedules.routes.ts` | Refactor: root `''` → `/yayin-planlama` redirect; `reporting` korunur; `new`/`:id`/`:id/edit` DELETE |
-| `apps/web/src/app/app.component.ts` | "Canlı Yayın Plan" route `/schedules` → `/live-plan` (Y5-1) |
-| `apps/web/src/app/app.routes.ts` | Wildcard `**` → `/yayin-planlama` (Y5-1; eski default `/schedules` artık redirect) |
-| `apps/web/src/app/features/dashboard/dashboard.component.ts` | ScheduleService bağımlılığı **kaldır** (Y5-7 paritesi) |
-| `apps/web/src/app/features/ingest/ingest-list/ingest-list.component.ts:1524` | `usageScope: 'live-plan'` ref kaldır (Y5-7 paritesi) |
-| `tests/playwright/yayin-planlama.spec.ts` | Y5-1 yeni nav + redirect test'leri güncel |
-
-### Y5-4 — Backend cleanup
-
-**Karar**: Aşağıdaki backend path'leri B5 migration'ında refactor/delete:
+**Karar**: Aşağıdaki path'ler B5a migration'ında refactor / DELETE edilir:
 
 | Path | Aksiyon |
 |------|---------|
-| `apps/api/src/modules/schedules/schedule.routes.ts` | Legacy `GET /` (root list), `POST /`, `PATCH /:id`, `DELETE /:id` **DELETE** |
-| `apps/api/src/modules/schedules/schedule.routes.ts` | `GET /:id` korunur veya `/broadcast/:id` paritesinde refactor (yayin-planlama getById bağımlı) |
-| `apps/api/src/modules/schedules/schedule.routes.ts` | `GET /export`, `GET /reports/live-plan*`, `GET /ingest-candidates` **canonical uyumuna refactor** |
-| `apps/api/src/modules/schedules/schedule.schema.ts` | `createScheduleSchema`, `updateScheduleSchema`, `scheduleQuerySchema.usage` field DELETE |
-| `apps/api/src/modules/schedules/schedule.service.ts` | `findAll(usage)`, `findById`, `create/update/remove` legacy method'lar DELETE; `attachIngestPorts` `usage_scope='live-plan'` filter kaldır |
-| `apps/api/src/modules/schedules/schedule.import.ts` | **Legacy BXF importer DISABLE veya DELETE** (Y5-6) |
-| `apps/api/src/modules/schedules/schedule.export.ts` | Refactor: `start_time` order → `scheduleDate + scheduleTime`; `usage` query DELETE |
-| `apps/api/src/modules/ingest/ingest.service.ts:56` | `usage_scope='live-plan'` coupling DELETE; `live_plan_entries` temelli filtreye geç (Y5-7) |
-| Test'ler | Legacy spec'ler DELETE/refactor (`schedule.service.integration`, `schedule-opta-match-id`, `db-constraints` usage_scope CHECK testi, `ingest.service.integration` coupling) |
+| `apps/web/src/app/features/schedules/schedule-list/` | **KORUNUR** — restore edilir; datasource live-plan API'ye taşınır (LivePlanEntry → SchedulePresentation mapper); UI hissi birebir |
+| `apps/web/src/app/features/schedules/schedule-form/` | **DELETE** (create/edit eski schedule UI üstünden olmaz; operasyonel create/edit Yayın Planlama'dan) |
+| `apps/web/src/app/features/schedules/schedule-detail/` | **DELETE** (detay eski schedule UI üstünden olmaz) |
+| `apps/web/src/app/core/services/schedule.service.ts` | Eski haliyle restore **EDİLMEZ**; ya silinir ya da live-plan datasource wrapper'a refactor edilir (implementation tercihi) |
+| `apps/web/src/app/features/schedules/reporting/` | KORUNUR (Y5-1 — reporting schedule canonical kalır) |
+| `apps/web/src/app/features/schedules/schedules.routes.ts` | Refactor: root `''` → **schedule-list** (redirect YOK); `reporting` korunur; `new`/`:id`/`:id/edit` DELETE (form/detail yok) |
+| `apps/web/src/app/app.component.ts` | "Canlı Yayın Plan" route `/schedules` (eski yer korunur; B5a Block 1'de `/live-plan`'a yapılan değişiklik **revert**) |
+| `apps/web/src/app/app.routes.ts` | Wildcard `**` → `/schedules` (eski default; B5a Block 1'de `/yayin-planlama`'ya yapılan değişiklik **revert**) |
+| `apps/web/src/app/features/dashboard/dashboard.component.ts` | ScheduleService bağımlılığı kaldırılır veya live-plan datasource'a refactor edilir (Y5-7 paritesi) |
+| `apps/web/src/app/features/ingest/ingest-list/ingest-list.component.ts` | "Canlı Yayın Planından Ingest" panel B5a'da disabled (Y5-7 — ingest live_plan_entries.id bekler) — datasource swap sonrası `live_plan_entries`'ten besleyen yeni akış canonical (ayrı PR) |
+| `tests/playwright/yayin-planlama.spec.ts` | Y5-1 yeni nav beklentisi: "Canlı Yayın Plan" → `/schedules` eski görünümlü ekran; network çağrısı `/api/v1/live-plan` |
+| `tests/playwright` (yeni) | schedule-list datasource swap için "Canlı Yayın Plan listesi live-plan endpoint'i çağırır + boş/dolu render eski hisse" smoke testi |
+
+### Y5-4 — Backend cleanup (B5a Block 1'de yapıldı; ikinci revize 2026-05-08 — datasource migration ışığında durum)
+
+**Karar**: Aşağıdaki backend değişiklikleri **B5a Block 1'de yapıldı (commit 23ef5f4 + 4b9430b)** ve **korunur** — Canlı Yayın Plan UI artık live-plan endpoint'inden okur, legacy schedule CRUD'a ihtiyacı yok.
+
+| Path | Aksiyon | Durum |
+|------|---------|-------|
+| `apps/api/src/modules/schedules/schedule.routes.ts` | Legacy `GET /` (root list), `POST /`, `PATCH /:id`, `DELETE /:id`, `POST /import` **DELETE** | DONE — geri alınmaz; yeni UI bunları çağırmaz, live-plan endpoint okur |
+| `apps/api/src/modules/schedules/schedule.routes.ts` | `GET /:id` korunur (yayin-planlama getById bağımlı) | DONE |
+| `apps/api/src/modules/schedules/schedule.routes.ts` | `GET /export`, `GET /reports/live-plan*`, `GET /ingest-candidates` **canonical filter** (`eventKey IS NOT NULL`) | DONE |
+| `apps/api/src/modules/schedules/schedule.schema.ts` | `createScheduleSchema`, `updateScheduleSchema`, `scheduleQuerySchema.usage` field DELETE | DONE |
+| `apps/api/src/modules/schedules/schedule.service.ts` | `findAll(usage)`, `findById`, `create/update/remove` legacy method'lar DELETE; `attachIngestPorts` `usage_scope='live-plan'` filter kaldır | DONE |
+| `apps/api/src/modules/schedules/schedule.import.ts` | Legacy BXF importer DELETE (Y5-6) | DONE |
+| `apps/api/src/modules/schedules/schedule.export.ts` | Refactor: `start_time` order → `scheduleDate + scheduleTime`; `usage` query DELETE | DONE |
+| `apps/api/src/modules/ingest/ingest.service.ts` | `usage_scope='live-plan'` coupling DELETE; `live_plan_entries.id` temelli (Y5-7) | DONE |
+| `apps/api/prisma/schema.prisma` | `Schedule.usageScope` field + 2 `@@index` DELETE | DONE |
+| `packages/shared/src/types/schedule.ts` | `Schedule.usageScope`, `ScheduleUsageScope`, `ScheduleUsage`, `CreateScheduleDto`, `UpdateScheduleDto` DELETE | DONE |
+| Test'ler | Legacy spec'ler DELETE (`schedule.service.integration`, `schedule-opta-match-id`, `db-constraints` usage_scope CHECK testi, `ingest.service.integration` coupling); `schedule.broadcast-flow.integration` korunur | DONE |
+
+**Not**: Backend cleanup datasource swap'tan bağımsız doğrudur — yeni schedule-list UI live-plan endpoint'i çağırır, legacy CRUD'a dokunmaz; reporting + export + broadcast + lookup + GET /:id korunur.
 
 ### Y5-5 — DB exclusion constraint
 
@@ -257,36 +286,50 @@ ALTER TABLE schedules
   DROP COLUMN IF EXISTS end_time;
 ```
 
-### §3.2 Backend changes
+### §3.2 Backend changes (B5a Block 1'de DONE — 23ef5f4 + 4b9430b)
 
-- `schedule.routes.ts`: legacy endpoint'ler DELETE
-- `schedule.schema.ts`: legacy schemas DELETE
-- `schedule.service.ts`: legacy methods DELETE; broadcast flow korunur
-- `schedule.import.ts`: DISABLE/DELETE
-- `schedule.export.ts`: canonical alanlara refactor (start_time order → scheduleDate+scheduleTime; usage filter DELETE)
-- **Reporting canonical uyumu** (§6.1): `schedule.routes.ts:/reports/live-plan*` + `reporting/schedule-reporting.component.ts` DROP edilen kolonlara (`usage_scope`/`start_time`/`end_time`/`metadata`/`deleted_at`) bağlı ise canonical karşılıklarına bağla; ürün davranışı birebir korunur. Implementation başlangıcında reporting dependency inventory zorunlu.
-- `ingest.service.ts`: usage_scope coupling DELETE
-- Schema.prisma: Schedule model'inden DROP NOW alanları temizle
-- Prisma client regenerate
-- Test'ler: legacy spec DELETE; broadcast flow + opta cascade + lookup spec'ler korunur
+- `schedule.routes.ts`: legacy POST/PATCH/DELETE root + `/:id` DELETE; reports/export/ingest-candidates canonical eventKey filter — DONE
+- `schedule.schema.ts`: legacy schemas DELETE — DONE
+- `schedule.service.ts`: legacy methods DELETE; broadcast flow + lookup + reports korunur — DONE
+- `schedule.import.ts`: DELETE — DONE
+- `schedule.export.ts`: canonical alanlara refactor (start_time order → scheduleDate+scheduleTime; usage filter DELETE) — DONE
+- **Reporting canonical uyumu** (§6.1): reporting datasource schedule canonical kalır (Y5-1); B5b'de canonical alanlara taşınır (UI + backend)
+- `ingest.service.ts`: usage_scope coupling DELETE — DONE
+- `schema.prisma`: `Schedule.usageScope` field + 2 `@@index` DELETE — DONE
+- Prisma client regenerate — DONE
+- Test'ler: legacy spec DELETE; broadcast flow + opta cascade + lookup spec'ler korunur — DONE
 
-### §3.3 Frontend changes
+### §3.3 Frontend changes (ikinci revize 2026-05-08 — datasource migration)
 
-- `schedule-list/`, `schedule-form/`, `schedule-detail/` dizinleri DELETE
-- `core/services/schedule.service.ts` DELETE
-- `schedules.routes.ts` refactor (root redirect + reporting only)
-- `app.component.ts` nav: "Canlı Yayın Plan" → `/live-plan`
-- `app.routes.ts` wildcard → `/yayin-planlama`
-- `dashboard.component.ts` ScheduleService bağımlılık kaldır
-- `ingest-list.component.ts` `usageScope: 'live-plan'` ref kaldır
-- Playwright spec güncel (Y5-1 nav + redirect)
+**Restore + refactor**:
+- `schedule-list/` **restore** (commit 0f62c3a / öncesinden) ve datasource live-plan API'ye taşı
+- LivePlanEntry → SchedulePresentation mapper yaz (eski kolon hissi korunur)
+- `core/services/schedule.service.ts` ya restore edip live-plan endpoint'ine refactor, ya da silip bileşeni `LivePlanService`/`ApiService` ile besle
+- `dashboard.component.ts` ScheduleService bağımlılığı: live-plan datasource'a refactor veya restore
+- `schedules.routes.ts` root path `''` → schedule-list (redirect YOK; B5a Block 1 redirect kararı **iptal**); `reporting` korunur; `new`/`:id`/`:id/edit` DELETE (form/detail yok)
 
-### §3.4 Test impact (DELETE/refactor)
+**Revert (B5a Block 1'de yanlış uygulanmış)**:
+- `app.component.ts` "Canlı Yayın Plan" route → `/schedules` (`/live-plan` revert)
+- `app.routes.ts` wildcard `**` → `/schedules` (`/yayin-planlama` revert)
 
-- `schedule.service.integration.spec.ts`: legacy path DELETE
-- `schedule-opta-match-id.integration.spec.ts`: usage filter refactor
-- `db-constraints.integration.spec.ts`: usage_scope CHECK testi DELETE
-- `ingest.service.integration.spec.ts`: usage_scope coupling refactor
+**Korunur (B5a Block 1'den)**:
+- `schedule-form/`, `schedule-detail/` DELETE — restore EDİLMEZ (Y5-3)
+- `usage_scope` kod dependency sıfırlama (frontend tip + bileşen ref'leri)
+- `ingest-list.component.ts` "Canlı Yayın Planından Ingest" panel disabled (Y5-7 ingest live_plan_entries.id bekler)
+
+**Playwright**:
+- `tests/playwright/yayin-planlama.spec.ts` Y5-1 yeni beklenti: "Canlı Yayın Plan" → `/schedules` eski görünümlü ekran; network çağrısı `/api/v1/live-plan`
+- Yeni smoke (opsiyonel): schedule-list datasource swap doğrulama (boş/dolu render, kolon hissi korunur)
+
+### §3.4 Test impact (B5a Block 1'de DONE; ikinci revize ışığında)
+
+- `schedule.service.integration.spec.ts`: legacy path DELETE — DONE
+- `schedule-opta-match-id.integration.spec.ts`: legacy create body DELETE (canonical broadcast flow ayrı spec'te) — DONE
+- `db-constraints.integration.spec.ts`: usage_scope CHECK testi DELETE — DONE
+- `ingest.service.integration.spec.ts`: usage_scope coupling testi DELETE/refactor — DONE
+- `schedule-list.component.spec.ts`: **restore + datasource mock güncel (live-plan)**
+- `schedule.service.spec.ts` (frontend): restore veya silme (Y5-3 implementation tercihi)
+- `schedule.broadcast-flow.integration.spec.ts`: korunur (DONE B3a)
 
 ---
 
@@ -297,9 +340,10 @@ ALTER TABLE schedules
 | Backend lint | EXIT=0 |
 | Backend full integration | tüm spec'ler yeşil (B3a/B3b/B3c/B4-prep + lookup korunur) |
 | Web typecheck (app + spec) | EXIT=0 |
-| Karma component test | TÜMÜ yeşil |
-| Playwright chromium + mobile-chrome | yayin-planlama.spec.ts + redirect/nav güncel; tümü yeşil |
-| Route smoke (manuel veya Playwright) | `/schedules` → `/yayin-planlama` redirect; `/schedules/reporting` 200; `/live-plan` Canlı Yayın Plan UI; `/yayin-planlama` Yayın Planlama UI |
+| Karma component test | TÜMÜ yeşil (schedule-list datasource swap testleri yeşil) |
+| Playwright chromium + mobile-chrome | yayin-planlama.spec.ts + Canlı Yayın Plan datasource swap smoke yeşil |
+| Route smoke (manuel veya Playwright) | `/schedules` → eski görünümlü Canlı Yayın Plan (datasource live-plan); `/schedules/reporting` 200; `/live-plan` route 200 (M5 UI; nav'da görünmez); `/yayin-planlama` Yayın Planlama UI; wildcard → `/schedules` |
+| Network smoke | "Canlı Yayın Plan" liste sayfası `/api/v1/live-plan` çağırır, **legacy `/api/v1/schedules` GET çağırmaz** |
 
 ---
 
@@ -307,12 +351,16 @@ ALTER TABLE schedules
 
 ### §5.1 Local docker compose runtime DB
 
+**B5a Block 2 migration ayrı onaya tabidir** (Y5-2a — kolon DROP). Sıra:
+
 1. **Backup zorunlu** (`pg_dump bcms` → `backups/bcms-runtime-before-b5-cleanup-<TARIH>.sql`)
-2. `prisma migrate deploy` (yeni B5 migration applied)
-3. Web + API container rebuild
-4. Smoke: `/yayin-planlama`, `/schedules` redirect, `/schedules/reporting`, Canlı Yayın Plan link
-5. Playwright koşum (chromium + mobile-chrome)
-6. API log'da P2022 / undefined column kontrol — temiz olmalı
+2. Frontend datasource migration deploy (UI live-plan'dan okur; API legacy schedule CRUD silinmiş — yeni UI bunlara dokunmaz)
+3. Smoke + Playwright **YEŞİL** olduktan SONRA Block 2 onayı iste
+4. Block 2 onaylanınca: `prisma migrate deploy` (B5a migration `usage_scope` + `channel_id` + `deleted_at` kolon DROP)
+5. Web + API container rebuild
+6. Smoke: `/schedules` Canlı Yayın Plan eski hisse (datasource live-plan), `/schedules/reporting` 200, `/yayin-planlama`, `/live-plan` (route 200, nav'dan gizli)
+7. Playwright koşum (chromium + mobile-chrome)
+8. API log'da P2022 / undefined column kontrol — temiz olmalı
 
 ### §5.2 Production cloud DB (B5 deploy)
 
@@ -343,11 +391,11 @@ Column drop **destructive**, geri dönüş için backup gerekli. Eğer migration
 - **PR-D replay/retention** (öncelik sırası: 5.)
 - **Production cloud DB deploy** (ayrı backup + runbook + onay)
 
-### §6.1 Reporting kapsamı (preflight 2026-05-08 revize: faz ayrımı)
+### §6.1 Reporting kapsamı (ikinci revize 2026-05-08: datasource ayrımı)
 
-`/schedules/reporting` UI'sı **B5a'da kırılmaz** (Y5-1). Reporting backend/frontend `metadata.contentName`/`metadata.houseNumber`/`start_time`/`end_time` kullanımı **B5b'ye taşındı**:
+`/schedules/reporting` UI'sı **B5a'da kırılmaz** (Y5-1). Reporting **datasource schedule canonical kalır** — Canlı Yayın Plan UI datasource swap'ı reporting'i etkilemez. Reporting backend/frontend `metadata.contentName`/`metadata.houseNumber`/`start_time`/`end_time` kullanımı **B5b'ye taşındı**:
 
-- **B5a**: reporting `usage_scope` filter'ı `eventKey IS NOT NULL` veya canonical filter'a refactor edilir (kolon DROP olabilir hale getirilir). `metadata.contentName/houseNumber/start_time/end_time` reporting'de **dokunulmaz** (kolonlar DURUR).
+- **B5a**: reporting `usage_scope` filter'ı `eventKey IS NOT NULL` veya canonical filter'a refactor edilir (B5a Block 1'de DONE). `metadata.contentName/houseNumber/start_time/end_time` reporting'de **dokunulmaz** (kolonlar DURUR). Reporting datasource **schedule canonical** kalır; live-plan'a taşınmaz.
 - **B5b**: reporting'in canonical alanlara tam taşınması:
   - `start_time` → `scheduleDate + scheduleTime` derive
   - `end_time` → yeni `event_end_time` kolonu **veya** `event_duration_min` ile derive **veya** UI'dan endTime kolon kaldırma (B5b başlangıcında karar)
@@ -355,6 +403,8 @@ Column drop **destructive**, geri dönüş için backup gerekli. Eğer migration
   - `metadata.houseNumber` → yeni `house_number` kolon **veya** UI'dan kaldırma
 - B5b'de smoke + Karma + Playwright yeşil olduktan **sonra** `metadata`/`start_time`/`end_time` DROP edilir.
 - Ürün davranışı (rapor çıktıları, kolonlar) B5a'da **birebir korunur**; B5b'de canonical alanlardan beslenir; advanced reporting redesign ayrı PR.
+
+**Önemli ayrım**: Canlı Yayın Plan liste sayfası (`/schedules`) datasource'u **live-plan API**; reporting (`/schedules/reporting`) datasource'u **schedule canonical**. İki UI aynı `/schedules` route prefix'i altında ama farklı backend kaynaklarından beslenir.
 
 ---
 
@@ -376,3 +426,4 @@ Column drop **destructive**, geri dönüş için backup gerekli. Eğer migration
 |-------|-------|
 | 2026-05-08 | Y5-1..Y5-8 lock'lu (B5 destructive cleanup scope). Read-only inventory + 8 karar + migration runbook. Implementation onayı ayrı turda. |
 | 2026-05-08 (preflight revize) | B5 → B5a + B5b iki faza ayrıldı. Reporting `metadata.contentName`/`houseNumber`/`start_time`/`end_time` bağımlılığı bulundu; metadata/start_time/end_time DROP B5a'da YAPILMAZ → B5b'de reporting canonicalization sonrası yapılır. B5a kapsamında: code dependency sıfırlama + frontend DELETE + ingest coupling kaldır + legacy row DELETE + `usage_scope`/`channel_id`/`deleted_at` kolon DROP (dependency sıfırsa). B5b kapsamı: reporting canonical alanlara taşıma + (opsiyonel) yeni structured kolon (`content_name`/`house_number`/`event_end_time` veya `event_duration_min`) + `metadata`/`start_time`/`end_time` DROP. |
+| 2026-05-08 (ikinci revize — UI delete iptal; datasource migration kararı) | Patron'un asıl talebi yanlış anlaşıldı: "Canlı Yayın Plan sekmesi arayüz hissi korunur, datasource live-plan API'ye taşınır" — route ve arayüz bir şey, datasource başka şey. **B5a Block 1'de yapılan yanlış kararlar iptal**: (a) "Canlı Yayın Plan → /live-plan" nav swap; (b) `/schedules` root → `/yayin-planlama` redirect; (c) wildcard → `/yayin-planlama`; (d) `schedule-list/` UI delete; (e) `core/services/schedule.service.ts` delete. **Yeni Y5-1**: "Canlı Yayın Plan" → `/schedules` (eski yer); schedule-list UI restore + datasource swap (LivePlanEntry → SchedulePresentation mapper); wildcard → `/schedules`; `/live-plan` route nav'dan gizli. **Yeni Y5-3**: schedule-list KORUNUR + datasource live-plan'a taşınır; schedule-form/schedule-detail DELETE (Canlı Yayın Plan B5a'da liste odaklı / read-only); operasyonel create/edit Yayın Planlama'dan. **Yeni Y5-4**: backend cleanup B5a Block 1'de DONE — datasource swap'tan bağımsız doğrudur (yeni UI live-plan endpoint'i çağırır, legacy CRUD'a dokunmaz). Reporting datasource schedule canonical kalır (Y5-1; B5b'de canonicalize). Block 2 migration ayrı onaya tabi. Production/cloud DB apply yok. |
