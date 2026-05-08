@@ -118,15 +118,23 @@ export class ScheduleService {
     const { eventKey, from, to, status, page, pageSize } = query;
     const skip = (page - 1) * pageSize;
 
+    // canonical scheduleDate range filter (B5'te legacy start_time/end_time
+    // DROP olduğunda da doğru çalışır). YYYY-MM-DD UTC midnight olarak Date'e
+    // çevrilir; Prisma `@db.Date` ile karşılaştırılır.
+    const dateRange = (from || to) ? {
+      ...(from && { gte: new Date(`${from}T00:00:00.000Z`) }),
+      ...(to   && { lte: new Date(`${to}T00:00:00.000Z`) }),
+    } : undefined;
+
     const where: Prisma.ScheduleWhereInput = {
       eventKey:                { not: null },
       selectedLivePlanEntryId: { not: null },
-      scheduleDate:            { not: null },
       scheduleTime:            { not: null },
+      ...(dateRange
+        ? { scheduleDate: { not: null, ...dateRange } }
+        : { scheduleDate: { not: null } }),
       ...(eventKey && { eventKey }),
       ...(status   && { status }),
-      ...(from && { endTime:   { gte: new Date(from) } }),
-      ...(to   && { startTime: { lte: new Date(to)   } }),
     };
 
     const [data, total] = await Promise.all([

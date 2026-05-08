@@ -166,6 +166,35 @@ describe('ScheduleService.findBroadcastList — SCHED-B4-prep', () => {
     expect(page3.data).toHaveLength(1);
   });
 
+  test('from/to canonical scheduleDate filter (legacy start/end_time bazlı DEĞİL)', async () => {
+    const e1 = await makeEntry('D1');
+    const e2 = await makeEntry('D2');
+    const e3 = await makeEntry('D3');
+    await makeBroadcastSchedule(e1.id, e1.eventKey!, {
+      scheduleDate: new Date('2026-06-01T00:00:00Z'),
+    });
+    await makeBroadcastSchedule(e2.id, e2.eventKey!, {
+      scheduleDate: new Date('2026-06-15T00:00:00Z'),
+    });
+    await makeBroadcastSchedule(e3.id, e3.eventKey!, {
+      scheduleDate: new Date('2026-07-01T00:00:00Z'),
+    });
+
+    // 06-10 .. 06-20 aralığı → sadece e2
+    const r = await svc.findBroadcastList({
+      from: '2026-06-10', to: '2026-06-20', page: 1, pageSize: 50,
+    });
+    expect(r.total).toBe(1);
+    expect(r.data[0].eventKey).toBe(e2.eventKey);
+
+    // Sadece from
+    const r2 = await svc.findBroadcastList({
+      from: '2026-06-15', page: 1, pageSize: 50,
+    });
+    expect(r2.total).toBe(2);
+    expect(r2.data.map((s) => s.eventKey)).toEqual([e2.eventKey, e3.eventKey]);
+  });
+
   test('ordering: scheduleDate/scheduleTime ASC', async () => {
     const e1 = await makeEntry('O1');
     const e2 = await makeEntry('O2');

@@ -25,12 +25,13 @@ describe('YayinPlanlamaService', () => {
       data:  [{ id: 1, eventKey: 'opta:M-1' } as any],
       total: 1, page: 1, pageSize: 50,
     }));
-    service.getList({ from: '2026-06-01T00:00:00Z', status: 'CONFIRMED' }).subscribe((res) => {
+    service.getList({ from: '2026-06-01', status: 'CONFIRMED' }).subscribe((res) => {
       expect(res.data.map((s) => s.id)).toEqual([1]);
       done();
     });
+    // from canonical YYYY-MM-DD (scheduleDate filter; legacy start/end_time DEĞİL)
     expect(apiSpy.get).toHaveBeenCalledWith('/schedules/broadcast', {
-      from:   '2026-06-01T00:00:00Z',
+      from:   '2026-06-01',
       status: 'CONFIRMED',
     });
   });

@@ -40,7 +40,10 @@ import {
 export interface YayinPlanlamaFilter {
   /** event_key tam eşleşme (UNIQUE; tek satır döner). */
   eventKey?: string;
+  /** YYYY-MM-DD — canonical scheduleDate range start (B5 paritesi: legacy
+   *  start_time/end_time DROP olunca da çalışır). */
   from?:     string;
+  /** YYYY-MM-DD — canonical scheduleDate range end. */
   to?:       string;
   status?:   string;
   page?:     number;
