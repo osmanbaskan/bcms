@@ -46,6 +46,14 @@ html, body {
   text-rendering: optimizeLegibility;
 }
 
+// SCHED-B4 mobile fix (2026-05-08): sticky `.top` header (60px) form
+// scrollIntoView'da butonu pointer-event intercept ediyordu (Pixel 7
+// viewport). scroll-padding-top header height kadar — anchor scroll +
+// scrollIntoView header altına ofsetler. Buffer 4px.
+html {
+  scroll-padding-top: calc(var(--bp-toolbar-height, 60px) + 4px);
+}
+
 body {
   overflow: auto;
 }

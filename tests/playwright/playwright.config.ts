@@ -39,5 +39,15 @@ export default defineConfig({
       },
       dependencies: ['setup'],
     },
+    {
+      // SCHED-B4 Y4-8: mobile screenshot + responsive smoke için 375x812.
+      name: 'mobile-chrome',
+      use: {
+        ...devices['Pixel 7'],
+        ignoreHTTPSErrors: true,
+        storageState: './storage/auth.json',
+      },
+      dependencies: ['setup'],
+    },
   ],
 });

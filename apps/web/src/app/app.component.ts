@@ -544,8 +544,15 @@ export class AppComponent implements OnInit, OnDestroy {
       label: 'OPERASYON',
       items: [
         { label: 'Genel Bakış',       icon: 'dashboard',           route: '/dashboard',          groups: [], exactMatch: true },
+        // SCHED-B4 nav cleanup (2026-05-08 revize): mevcut "Canlı Yayın Plan"
+        // sekmesi eski schedule-list UI'sıyla birebir korunur (B5 destructive
+        // cleanup'a kadar paralel; UI rewire follow-up). Eski "Live-Plan
+        // (yeni)" geçici label tamamen kaldırıldı; canonical /live-plan
+        // route'u korunur ama nav'dan gizlenir (M5-B10a/B10b çalışmaya
+        // devam eder; menü kullanıcı algısına dokunmaz). "Yayın Planlama"
+        // yeni broadcast flow için ayrı sekme.
         { label: 'Canlı Yayın Plan',  icon: 'play_circle',         route: '/schedules',          groups: [], exactMatch: true },
-        { label: 'Live-Plan (yeni)',  icon: 'live_tv',             route: '/live-plan',          groups: [] },
+        { label: 'Yayın Planlama',    icon: 'event',               route: '/yayin-planlama',     groups: [] },
         { label: 'Stüdyo Planı',      icon: 'view_module',         route: '/studio-plan',        groups: [] },
         { label: 'Ingest',            icon: 'cloud_upload',        route: '/ingest',             groups: [GROUP.Admin, GROUP.Ingest] },
         { label: 'MCR',               icon: 'videocam',            route: '/mcr',                groups: [GROUP.Admin, GROUP.MCR] },

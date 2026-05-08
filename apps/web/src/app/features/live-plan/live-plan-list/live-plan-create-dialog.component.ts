@@ -115,7 +115,21 @@ export class LivePlanCreateDialogComponent {
       status:         this.form.status,
     };
     this.api.post<LivePlanEntry>(livePlanEndpoint.list(), body).subscribe({
-      next: (entry) => { this.saving.set(false); this.dialogRef.close(entry); },
+      next: (entry) => {
+        // SCHED-B4 (Y4-2): create yeni entry henüz schedule satırına bağlı
+        // değil (event_key ileri eşleşme; schedule operatör tarafından sonra
+        // oluşturulur). Defensive cache invalidate — duplicate veya from-opta
+        // path'inde schedule cache stale kalmasın.
+        //
+        // Live-plan entry UPDATE/DELETE UI **henüz YOK** (M5-B10a iskelet);
+        // bu işlemler M5-B10b ile gelince B3b reverse sync için ek
+        // invalidate hook'u ayrı PR'da eklenir. Segment + technical-details
+        // + lookup mutation'ları KO8 paritesinde schedule'a reverse-sync
+        // ETMEZ; cache invalidate gereksiz.
+        this.api.invalidateCache('/schedules');
+        this.saving.set(false);
+        this.dialogRef.close(entry);
+      },
       error: (err: { error?: { message?: string }; message?: string }) => {
         this.saving.set(false);
         this.errorMsg.set(err?.error?.message ?? err?.message ?? 'Oluşturulamadı');

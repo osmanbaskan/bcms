@@ -83,11 +83,18 @@ Bu doc SCHED-B4 frontend rewiring scope lock'unu kayıt altına alır. **Read-on
 
 **Gerekçe**: B3a backend lock'lu; B4 sadece UI rewire.
 
-### Y4-4 — `/schedules` redirect
+### Y4-4 — `/schedules` korunur (revize 2026-05-08, kullanıcı algı süreklilik)
 
-**Karar**: Eski `/schedules` route'u B4'te `/yayin-planlama`'ya redirect; eski `schedule-list.component.ts` bileşeni **B5 destructive cleanup'a kadar paralel kalır** (doğrudan navigate edilmez).
+**Eski karar (İPTAL)**: ~~Eski `/schedules` route'u B4'te `/yayin-planlama`'ya redirect~~.
 
-**Gerekçe**: K22 DELETE hedefi B5'te (kolon DROP + bileşen silme); B4'te redirect ile kullanıcı eski URL'lere düşmez. Reporting (`/schedules/reporting`) ayrık route, redirect'ten muaf.
+**Yeni karar (revize)**:
+- "Canlı Yayın Plan" sekmesi **kullanıcı algısında korunur** (label + ikon `play_circle` + konum) ve route'u **eski `/schedules` schedule-list UI** olarak kalır. B5 destructive cleanup'a kadar paralel.
+- "Live-Plan (yeni)" geçici nav item **kaldırıldı**; canonical `/live-plan` route'u korunur (M5-B10a/B10b çalışmaya devam) ama nav'dan **gizlenir**.
+- "Yayın Planlama" yeni sekme `/yayin-planlama` (broadcast flow) olarak ayrıca eklenir.
+- Wildcard `**` → `/schedules` (eski default davranış paritesi).
+- `/schedules/reporting` istisna (Y4-5; aşağıda).
+
+**Gerekçe**: Eski "Canlı Yayın Plan" sekmesini redirect'le `/yayin-planlama`'ya yönlendirmek kullanıcı algısında "sekme silindi/rename oldu" hissi yarattı. Mevcut UI/davranış birebir korunur; broadcast flow yeni sekme olarak gelir. Schedule-list bileşeni B5 destructive cleanup turunda DELETE edilir (UI rewire için ayrı PR; M5-B10b sonrası değerlendirilir).
 
 ### Y4-5 — `/schedules/reporting` korunur
 
@@ -146,7 +153,7 @@ Bu doc SCHED-B4 frontend rewiring scope lock'unu kayıt altına alır. **Read-on
 
 | Dosya | Değişiklik |
 |-------|-----------|
-| `apps/web/src/app/app.component.ts` | "Canlı Yayın Plan" route'u `/live-plan`'e değiştir; "(yeni)" label kaldır; "Yayın Planlama" yeni nav item ekle (`/yayin-planlama`, ikon `schedule` veya `event`); `/schedules` nav item kaldır |
+| `apps/web/src/app/app.component.ts` | (revize 2026-05-08) "Canlı Yayın Plan" sekmesi **konum + ikon `play_circle` korunur**, route `/schedules` (eski schedule-list); "Live-Plan (yeni)" item **silinir**; "Yayın Planlama" yeni item ekle (`/yayin-planlama`, ikon `event`) |
 
 ### §3.2 Yeni feature: yayin-planlama
 
@@ -178,9 +185,10 @@ Bu doc SCHED-B4 frontend rewiring scope lock'unu kayıt altına alır. **Read-on
 | Path | Aksiyon |
 |------|---------|
 | `/yayin-planlama` | Yeni feature route (Y4-2) |
-| `/schedules` | Redirect → `/yayin-planlama` (Y4-4) |
+| `/schedules` | **Korunur** (eski schedule-list UI; Y4-4 revize 2026-05-08; redirect İPTAL) |
 | `/schedules/reporting` | Korunur, dokunulmaz (Y4-5) |
-| `/live-plan` | Korunur (Y4-1 — M5-B10b sonra) |
+| `/live-plan` | Route korunur (M5-B10a/B10b); nav'dan gizlenir (Y4-1 + revize) |
+| Wildcard `**` | `/schedules` (eski default davranış; Y4-4 revize) |
 
 ---
 
@@ -232,3 +240,4 @@ Yukarıdaki Y4-8 tablosu birebir test senaryolarına dönüştürülür:
 | Tarih | Yorum |
 |-------|-------|
 | 2026-05-08 | Y4-1..Y4-10 lock'lu (B4 frontend scope). Plan dosyası yazıldı; B4 implementation onayı ayrı turda. |
+| 2026-05-08 (revize) | Y4-4 İPTAL: `/schedules` redirect kararı kullanıcı algısında "sekme silindi" hissi yarattı; eski "Canlı Yayın Plan" sekmesi schedule-list UI'sıyla korunur, route `/schedules`. Wildcard → `/schedules`. "Live-Plan (yeni)" nav silindi; `/live-plan` route nav'dan gizli ama korunur. UI commit (B4 kapsamında) bu revize ile uygulanır. |

@@ -4,6 +4,11 @@ import { AuthGuard } from '../../core/guards/auth.guard';
 
 export const schedulesRoutes: Routes = [
   {
+    /** SCHED-B4 (revize 2026-05-08): "Canlı Yayın Plan" sekmesi kullanıcı
+     *  algısında korunur — eski schedule-list UI eskisi gibi açılır.
+     *  Redirect KALDIRILDI (önceki revizede yanlışlıkla eklenmişti);
+     *  schedule-list bileşeni B5 destructive cleanup'a kadar paralel kalır.
+     *  Yeni broadcast flow ayrı sekme: /yayin-planlama. */
     path: '',
     canActivate: [AuthGuard],
     data: { groups: [] },

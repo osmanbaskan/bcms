@@ -143,6 +143,17 @@ export const routes: Routes = [
     canActivateChild: [AuthGuard],
     data: { groups: [] },
   },
+  {
+    /** SCHED-B4 (Y4-2): Yayın Planlama (broadcast flow) feature route.
+     *  Backend `/api/v1/schedules/broadcast` ile bağlı; eski `/schedules`
+     *  list/form/detail Y4-4 redirect ile bu rotaya yönlendirilir. */
+    path: 'yayin-planlama',
+    loadChildren: () =>
+      import('./features/yayin-planlama/yayin-planlama.routes').then((m) => m.yayinPlanlamaRoutes),
+    canActivate: [AuthGuard],
+    canActivateChild: [AuthGuard],
+    data: { groups: [] },
+  },
   // ORTA-FE-2.6.1 fix (2026-05-04): /login-error route eklendi.
   // auth.guard.ts hata path'inde parseUrl('/login-error') döndürüyordu;
   // route tanımlı değildi → ** wildcard ile /schedules'a düşüyor ve kullanıcı
@@ -153,5 +164,9 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/login-error/login-error.component').then((m) => m.LoginErrorComponent),
   },
+  // SCHED-B4 (revize 2026-05-08): wildcard eski davranışında /schedules
+  // kalır — kullanıcı algı süreklilik (eski "Canlı Yayın Plan" varsayılan
+  // ekranı). B5 destructive cleanup turunda bu wildcard yeniden gözden
+  // geçirilir.
   { path: '**', redirectTo: '/schedules' },
 ];

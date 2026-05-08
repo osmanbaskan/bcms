@@ -31,6 +31,15 @@ export interface LivePlanEntry {
   createdAt:       string;
   updatedAt:       string;
   deletedAt:       string | null;
+  // SCHED-B2/B3a/B3b broadcast flow alanları (canonical; backend response'tan
+  // gelir, picker dialog ve cross-domain işlemler için kullanılır).
+  eventKey?:   string | null;
+  sourceType?: 'OPTA' | 'MANUAL';
+  team1Name?:  string | null;
+  team2Name?:  string | null;
+  channel1Id?: number | null;
+  channel2Id?: number | null;
+  channel3Id?: number | null;
 }
 
 export interface LivePlanListResponse {

@@ -27,6 +27,8 @@ export interface Schedule {
   /** Ingest sekmesinden read-only — canlı yayın için kayıt portu ataması */
   recordingPort?: string | null;
   backupRecordingPort?: string | null;
+  /** Madde 3 PR-3A: type-safe optaMatchId (legacy metadata.optaMatchId paritesi). */
+  optaMatchId?: string | null;
   /** SCHED-B2/B3a/B3b broadcast flow canonical alanlar (K1-K32 + K-B3.1-K-B3.27).
    *  Tüm alanlar opsiyonel — legacy schedule satırları (B5'te DELETE) bu alanları
    *  doldurmaz; broadcast flow ile yaratılan satırlar tam set'i içerir. */

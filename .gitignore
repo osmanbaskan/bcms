@@ -37,3 +37,8 @@ tests/playwright/test-results/
 tests/playwright/report/
 tests/playwright/storage/
 tests/playwright/playwright-report/
+
+# SCHED-B4 (2026-05-08): repo-root pg_dump backup'ları (local docker runtime
+# DB için migrate-öncesi snapshot). Production cloud DB backup kapsamı
+# infra/postgres/backups altında ayrı yönetilir.
+backups/
