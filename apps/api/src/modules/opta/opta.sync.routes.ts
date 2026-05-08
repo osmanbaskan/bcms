@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import crypto from 'node:crypto';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { optaLeagueSyncTotal } from '../../plugins/metrics.js';
+import { als } from '../../plugins/audit.js';
+import { cascadeOptaUpdates, type CascadeMatchUpdate } from './opta-cascade.service.js';
 
 const matchItemSchema = z.object({
   matchUid:   z.string().min(1),
@@ -29,48 +31,27 @@ const syncBodySchema = z.object({
   }),
 });
 
-/** Cascade'in dokunmayacağı schedule durumları.
- *  ON_AIR (yayında olan) kaydı OPTA shift sebebiyle kaydırmak operasyonel risk
- *  (MCR ekibi için sürpriz). COMPLETED + CANCELLED da frozen — geçmiş yayın. */
-const FROZEN_STATUSES = ['COMPLETED', 'CANCELLED', 'ON_AIR'] as const;
-
-/** "HH:MM" string'ini deltaMs kadar kaydır. Format eşleşmiyorsa veya
- *  range geçersizse (hours>=24 || mins>=60) null döner — caller dokunmaz,
- *  silent corruption riskini önler. Geçerli aralık için 24h modulo wrap. */
-function shiftTimeOfDay(value: unknown, deltaMs: number): string | null {
-  if (typeof value !== 'string' || !value.trim()) return null;
-  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
-  if (!match) return null;
-  const hours = Number(match[1]);
-  const mins  = Number(match[2]);
-  if (!Number.isFinite(hours) || !Number.isFinite(mins)) return null;
-  if (hours >= 24 || mins >= 60) return null;
-  const totalMins = hours * 60 + mins;
-  const deltaMins = Math.round(deltaMs / 60000);
-  let nextMins = (totalMins + deltaMins) % 1440;
-  if (nextMins < 0) nextMins += 1440;
-  const h = Math.floor(nextMins / 60);
-  const m = nextMins % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
 interface SyncResponse {
   inserted: number;
   updated: number;
   unchanged: number;
   cascadedSchedules: number;
+  /** SCHED-B3c (KO13): live_plan_entries cascade sayısı. */
+  cascadedLivePlanEntries: number;
+  /** Cascade tx-level error sayısı (KO1: skip yok; sadece tx fail). */
   cascadeConflicts: number;
-  /** Cascade conflict (version mismatch / channel-overlap) yaşandı mı?
-   *  true ise log'lardaki scheduleId/matchUid bilgisi ile manuel reconcile
-   *  gerekir — drift correction otomatik DEĞİL. */
+  /** SCHED-B3c (KO13): live-plan tx fail granular counter. */
+  livePlanCascadeConflicts: number;
+  /** true: en az bir cascade tx fail'i var → manuel reconcile gerekir. */
   manualReconcileRequired: boolean;
-  /** Outer catch fire ettiyse hata mesajı; cascade sayımı tam değildir. */
+  /** Outer catch fire ettiyse hata mesajı. */
   cascadeError?: string | null;
 }
 
 const EMPTY_RESPONSE: SyncResponse = {
   inserted: 0, updated: 0, unchanged: 0,
-  cascadedSchedules: 0, cascadeConflicts: 0,
+  cascadedSchedules: 0, cascadedLivePlanEntries: 0,
+  cascadeConflicts: 0, livePlanCascadeConflicts: 0,
   manualReconcileRequired: false,
   cascadeError: null,
 };
@@ -127,6 +108,14 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
       ) {
         return reply.code(401).send({ error: 'Yetkisiz.' });
       }
+
+      // ── Audit actor (KO10): system:opta-sync ──
+      // Request-scoped ALS store'u mutate ediyoruz; audit onSend flush aynı
+      // store'dan pendingAuditLogs okuduğu için scoped als.run kullanılamaz.
+      // Bearer auth preHandler'da userId set etmiyor (`request.user` yok);
+      // mevcut fallback 'system' yerine explicit `system:opta-sync` enjekte.
+      const auditStore = als.getStore();
+      if (auditStore) auditStore.userId = 'system:opta-sync';
 
       const parsed = syncBodySchema.safeParse(request.body);
       if (!parsed.success) {
@@ -204,36 +193,63 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
           }),
         );
 
-        // ── 2. Mevcut maçları toplu sorgula ──
+        // ── 2. Mevcut maçları toplu sorgula (KO4: team diff için home/away da) ──
         const uids = validMatches.map((m) => m.matchUid);
         const existing = await tx.match.findMany({
           where:  { optaUid: { in: uids } },
-          select: { id: true, optaUid: true, matchDate: true },
+          select: { id: true, optaUid: true, matchDate: true, homeTeamName: true, awayTeamName: true },
         });
         const existingMap = new Map(existing.map((e) => [e.optaUid!, e]));
 
         // ── 3. Insert / update listelerini ayır ──
+        // KO4 (2026-05-07): matchDate diff'e ek olarak homeTeam/awayTeam diff
+        // de yakalanır; cascade B3c kapsamında temel event bilgisi update'i
+        // tetikler.
         const toInsert: typeof validMatches = [];
-        const toUpdate: { id: number; matchUid: string; oldMatchDate: Date; newMatchDate: Date }[] = [];
+        const toUpdate: Array<{
+          id: number;
+          matchUid: string;
+          newMatchDate: Date | null;
+          newHomeTeam: string | null;
+          newAwayTeam: string | null;
+          // Cascade için canonical güncel değerler (home/away her durumda
+          // bilinir; matchDate sadece diff varsa).
+          finalMatchDate: Date;
+          finalHomeTeam: string;
+          finalAwayTeam: string;
+        }> = [];
         let unchanged = 0;
 
         for (const m of validMatches) {
           const ex = existingMap.get(m.matchUid);
           if (!ex) {
             toInsert.push(m);
-          } else {
-            const newDate = new Date(m.matchDate);
-            if (ex.matchDate.getTime() !== newDate.getTime()) {
-              toUpdate.push({
-                id: ex.id,
-                matchUid: m.matchUid,
-                oldMatchDate: ex.matchDate,
-                newMatchDate: newDate,
-              });
-            } else {
-              unchanged++;
-            }
+            continue;
           }
+
+          const newDate = new Date(m.matchDate);
+          const dateDiff = ex.matchDate.getTime() !== newDate.getTime();
+
+          const incomingHome = m.homeTeam || '?';
+          const incomingAway = m.awayTeam || '?';
+          const homeDiff = ex.homeTeamName !== incomingHome;
+          const awayDiff = ex.awayTeamName !== incomingAway;
+
+          if (!dateDiff && !homeDiff && !awayDiff) {
+            unchanged += 1;
+            continue;
+          }
+
+          toUpdate.push({
+            id: ex.id,
+            matchUid: m.matchUid,
+            newMatchDate: dateDiff ? newDate : null,
+            newHomeTeam:  homeDiff ? incomingHome : null,
+            newAwayTeam:  awayDiff ? incomingAway : null,
+            finalMatchDate: dateDiff ? newDate : ex.matchDate,
+            finalHomeTeam:  homeDiff ? incomingHome : ex.homeTeamName,
+            finalAwayTeam:  awayDiff ? incomingAway : ex.awayTeamName,
+          });
         }
 
         // ── 4. Lig ve maç yazımlarını tek transaction içinde yap ──
@@ -259,10 +275,15 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
         const UPDATE_CONCURRENCY = 10;
         for (let i = 0; i < toUpdate.length; i += UPDATE_CONCURRENCY) {
           const chunk = toUpdate.slice(i, i + UPDATE_CONCURRENCY);
-          await Promise.all(chunk.map((u) => tx.match.update({
-            where: { id: u.id },
-            data:  { matchDate: u.newMatchDate },
-          })));
+          await Promise.all(chunk.map((u) => {
+            // KO4: matchDate + team diff'lerin sadece değişeni yazılır
+            // (audit gürültü engeli — only-changed-fields paritesi).
+            const data: Prisma.MatchUpdateInput = {};
+            if (u.newMatchDate) data.matchDate    = u.newMatchDate;
+            if (u.newHomeTeam)  data.homeTeamName = u.newHomeTeam;
+            if (u.newAwayTeam)  data.awayTeamName = u.newAwayTeam;
+            return tx.match.update({ where: { id: u.id }, data });
+          }));
         }
 
         return { inserted: toInsert.length, updated: toUpdate.length, unchanged, toUpdate };
@@ -270,140 +291,74 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
         fastify.log,
       );
 
-      // ── Schedule cascade ────────────────────────────────────────────────
-      // OPTA tx commit'i sonrası best-effort cascade. Ana transaction dışında
-      // tutulur ki bir schedule çakışsa OPTA upsert rollback olmasın.
-      // Tüm exception'lar yakalanır — response asla cascade hatası nedeniyle
-      // 500 dönmez.
-      let cascadedSchedules = 0;
-      let cascadeConflicts = 0;
+      // ── Cascade (SCHED-B3c, KO1-KO14) ─────────────────────────────────
+      // Per-match $transaction; bir match cascade fail ederse diğerleri
+      // etkilenmez (granular hata izolasyonu). Conflict skip YOK (KO1).
+      const cascadeUpdates: CascadeMatchUpdate[] = result.toUpdate.map((u) => ({
+        matchId:        u.id,
+        matchUid:       u.matchUid,
+        newMatchDate:   u.newMatchDate,
+        homeTeamName:   u.finalHomeTeam,
+        awayTeamName:   u.finalAwayTeam,
+        hasFieldChange: u.newMatchDate !== null || u.newHomeTeam !== null || u.newAwayTeam !== null,
+      }));
+
+      let cascadedLivePlanEntries = 0;
+      let cascadedSchedules       = 0;
+      let livePlanCascadeConflicts = 0;
       let cascadeError: string | null = null;
       try {
-        for (const u of result.toUpdate) {
-          const deltaMs = u.newMatchDate.getTime() - u.oldMatchDate.getTime();
-          if (deltaMs === 0) continue;
-
-          // Madde 3 PR-3A (2026-05-05): kolon-first lookup + metadata fallback.
-          // Non-unique olduğu için findMany; aynı OPTA match'in birden fazla
-          // schedule entry'si olabilir (kullanıcı kararı 2026-05-04).
-          const dependents = await fastify.prisma.schedule.findMany({
-            where: {
-              usageScope: 'live-plan',
-              status: { notIn: [...FROZEN_STATUSES] },
-              OR: [
-                { optaMatchId: u.matchUid },
-                { metadata: { path: ['optaMatchId'], equals: u.matchUid } },
-              ],
-            },
-            select: { id: true, startTime: true, endTime: true, version: true, metadata: true, optaMatchId: true },
-          });
-
-          for (const dep of dependents) {
-            const newStart = new Date(dep.startTime.getTime() + deltaMs);
-            const newEnd   = new Date(dep.endTime.getTime()   + deltaMs);
-
-            // metadata.transStart / transEnd: kullanıcının manuel "yayın
-            // saati" alanları. Cascade aynı delta'yı buraya da uygular —
-            // tabloda görünen saatlerin de OPTA shift'iyle hareket etmesi için.
-            const m = (dep.metadata ?? {}) as Record<string, unknown>;
-            const shiftedTransStart = shiftTimeOfDay(m['transStart'], deltaMs);
-            const shiftedTransEnd   = shiftTimeOfDay(m['transEnd'],   deltaMs);
-            const metadataChanges: Record<string, string> = {};
-            if (shiftedTransStart != null) metadataChanges.transStart = shiftedTransStart;
-            if (shiftedTransEnd   != null) metadataChanges.transEnd   = shiftedTransEnd;
-            const newMetadata = Object.keys(metadataChanges).length > 0
-              ? { ...m, ...metadataChanges }
-              : null;
-
-            try {
-              // Real optimistic lock: version match + count check.
-              // Kullanıcı eş zamanlı edit ediyorsa (version moved) cascade
-              // skip eder, user write korunur.
-              //
-              // ⚠ KALICI DRIFT RİSKİ: skip edilen schedule kalıcı olarak
-              // OPTA'dan geri kalır. Sonraki OPTA sync match.matchDate'i
-              // tekrar değiştirmedikçe cascade tetiklenmez. Çözüm: manuel
-              // reconcile (response.manualReconcileRequired=true sinyali +
-              // log'da scheduleId/matchUid/delta). Otomatik drift scan
-              // ayrı bir PR'da; o zaman applied-date metadata + her sync'te
-              // tarama tek atomik introduction olarak gelir.
-              const updated = await fastify.prisma.schedule.updateMany({
-                where: { id: dep.id, version: dep.version },
-                data: {
-                  startTime: newStart,
-                  endTime:   newEnd,
-                  version:   { increment: 1 },
-                  ...(newMetadata != null && { metadata: newMetadata as Prisma.InputJsonValue }),
-                },
-              });
-
-              if (updated.count !== 1) {
-                cascadeConflicts++;
-                fastify.log.warn(
-                  { scheduleId: dep.id, expectedVersion: dep.version, matchUid: u.matchUid },
-                  'OPTA cascade — schedule shift skipped (version conflict)',
-                );
-                continue;
-              }
-
-              cascadedSchedules++;
-
-              // Event publish — best-effort. Audit zaten Prisma extension
-              // ile kapsandı; event bus ayrı sorumluluk.
-              try {
-                await fastify.rabbitmq.publish(QUEUES.SCHEDULE_UPDATED, {
-                  scheduleId: dep.id,
-                  changes: {
-                    startTime: newStart.toISOString(),
-                    endTime:   newEnd.toISOString(),
-                    ...(Object.keys(metadataChanges).length > 0 && { metadata: metadataChanges }),
-                    source: 'opta-cascade',
-                  },
-                });
-              } catch (pubErr) {
-                fastify.log.warn(
-                  { scheduleId: dep.id, err: (pubErr as Error).message },
-                  'OPTA cascade — SCHEDULE_UPDATED publish failed (cascade success kept)',
-                );
-              }
-            } catch (err) {
-              // Channel-overlap exclusion (schedules_no_channel_time_overlap),
-              // FK violation, vs. — schedule kaydırılamadı, devam et.
-              cascadeConflicts++;
-              fastify.log.warn(
-                { scheduleId: dep.id, matchUid: u.matchUid, deltaMs, err: (err as Error).message },
-                'OPTA cascade — schedule shift skipped (DB conflict)',
-              );
-            }
-          }
-        }
+        const r = await cascadeOptaUpdates(fastify, cascadeUpdates);
+        cascadedLivePlanEntries = r.livePlanEntriesUpdated;
+        cascadedSchedules       = r.schedulesUpdated;
+        livePlanCascadeConflicts = r.livePlanConflicts + r.scheduleConflicts;
       } catch (err) {
-        // Beklenmeyen hata (DB connection drop, findMany failure vs.) —
-        // kalan cascade atlanır, response yine başarılı bitirilir. Sayım
-        // eksik kalabilir → cascadeError ile caller'a sinyal verilir.
+        // cascadeOptaUpdates kendi içinde per-match try/catch yapar; üst-düzey
+        // throw beklenmez. Yine de defansif: connection drop / unexpected error
+        // → response yine başarılı bitirilir, sayım eksik olabilir.
         cascadeError = (err as Error).message;
         fastify.log.error(
           { err: cascadeError },
-          'OPTA cascade — beklenmeyen hata, kalan cascade atlandı',
+          'OPTA cascade — beklenmeyen üst-düzey hata, kalan cascade atlandı',
         );
       }
 
-      // Conflict veya outer-catch fire ettiyse manuel reconcile gerekir
-      // (otomatik drift correction yok — drift scan PR'ı follow-up olacak).
-      const manualReconcileRequired = cascadeConflicts > 0 || cascadeError != null;
+      // RabbitMQ direct publish (KO + B3c korunur, source='opta-sync'). Outbox
+      // shadow event'leri zaten cascade service'te yazıldı (Phase 2 status=
+      // published). PR-C2 cut-over sonrası direct publish kaldırılır; B3c
+      // kapsamı dışı.
+      if (cascadedSchedules > 0) {
+        try {
+          await fastify.rabbitmq.publish(QUEUES.SCHEDULE_UPDATED, {
+            cascadedSchedules,
+            source: 'opta-sync',
+          });
+        } catch (pubErr) {
+          fastify.log.warn(
+            { err: (pubErr as Error).message },
+            'OPTA sync — SCHEDULE_UPDATED publish failed (cascade success kept)',
+          );
+        }
+      }
+
+      const manualReconcileRequired = livePlanCascadeConflicts > 0 || cascadeError != null;
 
       fastify.log.info(
         `OPTA sync — yeni:${result.inserted}, güncellenen:${result.updated}, ` +
         `değişmeyen:${result.unchanged}, schedule kaydırılan:${cascadedSchedules}, ` +
-        `çakışma:${cascadeConflicts}, manuelReconcile:${manualReconcileRequired}`,
+        `live-plan kaydırılan:${cascadedLivePlanEntries}, ` +
+        `cascade tx-fail:${livePlanCascadeConflicts}, ` +
+        `manuelReconcile:${manualReconcileRequired}`,
       );
 
       return {
-        inserted:          result.inserted,
-        updated:           result.updated,
-        unchanged:         result.unchanged,
+        inserted:                 result.inserted,
+        updated:                  result.updated,
+        unchanged:                result.unchanged,
         cascadedSchedules,
-        cascadeConflicts,
+        cascadedLivePlanEntries,
+        cascadeConflicts:         livePlanCascadeConflicts,
+        livePlanCascadeConflicts,
         manualReconcileRequired,
         cascadeError,
       };

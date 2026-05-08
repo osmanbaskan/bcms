@@ -66,7 +66,10 @@ const contextPlugin: FastifyPluginAsync = fp(async (fastify) => {
 //   - Audit retention job (entityType=AuditLog) zaten short-circuit yukarıda.
 const MAX_BULK_AUDIT_ROWS = 1000;
 
-function buildAuditExtension(base: PrismaClient) {
+// Test ortamında ALS + extension kombinasyonunu inject etmek için export
+// (production'da auditPlugin tarafından çağrılır). Refactor minimal: davranış
+// değişikliği YOK; sadece görünürlük.
+export function buildAuditExtension(base: PrismaClient) {
   return base.$extends({
     query: {
       $allModels: {
@@ -165,7 +168,9 @@ function toAuditAction(operation: string): AuditLogAction {
   return operation.toUpperCase() as AuditLogAction;
 }
 
-function toDbRow(e: AuditEntry): Prisma.AuditLogCreateManyInput {
+// Test ortamında manual flush taklit için export (auditPlugin onSend hook
+// paritesi). Production behavior değişmez.
+export function toDbRow(e: AuditEntry): Prisma.AuditLogCreateManyInput {
   return {
     entityType: e.entityType,
     entityId: e.entityId,
