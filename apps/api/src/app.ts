@@ -17,6 +17,7 @@ import { rabbitmqPlugin } from './plugins/rabbitmq.js';
 import { metricsPlugin } from './plugins/metrics.js';
 
 import { scheduleRoutes } from './modules/schedules/schedule.routes.js';
+import { scheduleLookupRoutes } from './modules/schedules/schedule-lookup.routes.js';
 import { livePlanRoutes } from './modules/live-plan/live-plan.routes.js';
 import { livePlanLookupRoutes } from './modules/live-plan/lookup.routes.js';
 import { livePlanTechnicalDetailsRoutes } from './modules/live-plan/technical-details.routes.js';
@@ -361,6 +362,8 @@ export async function buildApp() {
 
   // ── Routes ────────────────────────────────────────────────────────────────────
   await app.register(scheduleRoutes, { prefix: '/api/v1/schedules' });
+  // SCHED-B4-prep (2026-05-08): schedule broadcast lookup read-only.
+  await app.register(scheduleLookupRoutes, { prefix: '/api/v1/schedules/lookups' });
   await app.register(livePlanRoutes, { prefix: '/api/v1/live-plan' });
   await app.register(livePlanLookupRoutes, { prefix: '/api/v1/live-plan/lookups' });
   // M5-B9 (U4): parent-nested singleton — /api/v1/live-plan/:entryId/technical-details

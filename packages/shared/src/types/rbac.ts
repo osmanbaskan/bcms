@@ -84,6 +84,12 @@ export const PERMISSIONS = {
     write:  ['SystemEng'] as BcmsGroup[],                                                               // master data ekleme/güncelleme (Admin auto-bypass)
     delete: ['SystemEng'] as BcmsGroup[],                                                               // soft delete
   },
+  /** SCHED-B4-prep (2026-05-08): schedule broadcast lookup tabloları
+   *  (commercial/logo/format) için read-only erişim. Yayın Planlama formu
+   *  dropdown source. Write/delete admin UI ileri PR; B4 read-only yeterli. */
+  scheduleLookups: {
+    read:   [] as BcmsGroup[],                                                                          // all authenticated (UI dropdown source)
+  },
   /** MED-SHARED-005 (2026-05-05): bookings boş array = `requireGroup(...[])`
    *  her authenticated kullanıcıya açık. Bu kasıtlı: ekip iş takip sistemi
    *  tüm gruplar için ortak çalışır; backend'de `BookingService.visibleGroups`
