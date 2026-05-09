@@ -191,21 +191,28 @@ model Booking {
 }
 
 model IngestJob {
-  id         Int              @id @default(autoincrement())
-  sourcePath String           @map("source_path")
-  targetId   Int?             @map("target_id")
-  status     IngestStatus     @default(PENDING)
-  checksum   String?          @db.VarChar(64)
-  proxyPath  String?          @map("proxy_path")
-  metadata   Json?
-  errorMsg   String?          @map("error_msg")
-  startedAt  DateTime?        @map("started_at")
-  finishedAt DateTime?        @map("finished_at")
-  createdAt  DateTime         @default(now()) @map("created_at")
-  updatedAt  DateTime         @default(now()) @updatedAt @map("updated_at")
-  deleted_at DateTime?
-  planItems  IngestPlanItem[]
-  qcReport   QcReport?
+  id            Int              @id @default(autoincrement())
+  sourcePath    String           @map("source_path")
+  targetId      Int?             @map("target_id")
+  status        IngestStatus     @default(PENDING)
+  checksum      String?          @db.VarChar(64)
+  proxyPath     String?          @map("proxy_path")
+  metadata      Json?
+  errorMsg      String?          @map("error_msg")
+  startedAt     DateTime?        @map("started_at")
+  finishedAt    DateTime?        @map("finished_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at")
+  deleted_at    DateTime?
+  planItems     IngestPlanItem[]
+  qcReport      QcReport?
+  /// Phase A1 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A1, 2026-05-09):
+  /// IngestJob.targetId canonical olarak `live_plan_entries.id`'ye işaret eder
+  /// (Y5-7 lock; ingest schedule coupling kaldırıldı). Relation eklemesi DB
+  /// FK constraint + ON DELETE SET NULL ile referential integrity ve historic
+  /// data preservation sağlar (entry hard-delete sonrası job kaydı korunur,
+  /// targetId NULL'lanır).
+  livePlanEntry LivePlanEntry?   @relation("IngestJobLivePlanEntry", fields: [targetId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([targetId])
@@ -574,6 +581,9 @@ model LivePlanEntry {
   /// Madde 5 M5-B8 (decision sec. 5 + scope lock T2/T3, 2026-05-07): 1:N
   /// transmission segments. Parent FK ON DELETE CASCADE.
   transmissionSegments LivePlanTransmissionSegment[]
+  /// Phase A1 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A1, 2026-05-09):
+  /// reverse relation for IngestJob.targetId. ON DELETE SET NULL (job side).
+  ingestJobs           IngestJob[]                   @relation("IngestJobLivePlanEntry")
 
   @@index([status, eventStartTime], map: "live_plan_entries_status_event_start_idx")
   @@index([eventStartTime], map: "live_plan_entries_event_start_idx")

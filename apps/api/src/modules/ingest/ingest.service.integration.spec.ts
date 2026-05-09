@@ -308,3 +308,59 @@ describe('INGEST_COMPLETED shadow — finalizeIngestJob + processIngestCallback'
     ]);
   });
 });
+
+/**
+ * Phase A1 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A1, 2026-05-09):
+ * IngestJob.targetId Prisma relation + DB FK ON DELETE SET NULL.
+ *
+ * Kapsam:
+ *   ✓ Entry hard-delete → IngestJob historic kaydı korunur, target_id NULL
+ *     (cascade DELETE'in operasyonel domain'de yasak olduğu §2/6 ilkesinin
+ *     dolaylı doğrulaması; ingest job kayıtları rapor için referans değer).
+ *
+ * Y5-7 lock + DECISION V1 §4.A1: targetId canonical olarak live_plan_entries.id.
+ * "Boundary: targetId non-existing → 400 atomic" testi yukarıda mevcut spec'te
+ * korunur; FK eklenmesi bu davranışı kuvvetlendirir (early validation 400 +
+ * DB FK referential integrity).
+ */
+describe('IngestJob.targetId FK SetNull (Phase A1) — integration', () => {
+  let harness: TestAppHarness;
+
+  beforeEach(async () => {
+    await cleanupTransactional();
+    harness = makeAppHarness();
+  });
+
+  test('LivePlanEntry hard-delete → IngestJob.targetId NULL (SET NULL cascade)', async () => {
+    const prisma = getRawPrisma();
+
+    // 1. LivePlanEntry seed (M5-B1 schema; minimum required: title + iki tarih).
+    const entry = await prisma.livePlanEntry.create({
+      data: {
+        title:          'A1 FK SetNull test',
+        eventStartTime: new Date('2026-06-01T19:00:00Z'),
+        eventEndTime:   new Date('2026-06-01T21:00:00Z'),
+        eventKey:       `manual:a1-fk-${Date.now()}`,
+        sourceType:     'MANUAL',
+      },
+    });
+
+    // 2. IngestJob create with targetId = entry.id.
+    const job = await triggerManualIngest(
+      harness.app as unknown as FastifyInstance,
+      { sourcePath: tmpFile, targetId: entry.id },
+    );
+    expect(job.targetId).toBe(entry.id);
+
+    // 3. Hard-delete entry (FK ON DELETE SET NULL).
+    await prisma.livePlanEntry.delete({ where: { id: entry.id } });
+
+    // 4. IngestJob hâlâ DB'de; targetId NULL.
+    const updated = await prisma.ingestJob.findUniqueOrThrow({ where: { id: job.id } });
+    expect(updated.id).toBe(job.id);
+    expect(updated.targetId).toBeNull();
+    // Entry gerçekten silindi (cascade ingestJob'ı silmemiş olduğunu da doğrula).
+    const entryAfter = await prisma.livePlanEntry.findUnique({ where: { id: entry.id } });
+    expect(entryAfter).toBeNull();
+  });
+});
