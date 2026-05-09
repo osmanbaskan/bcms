@@ -201,6 +201,14 @@ model IngestJob {
   errorMsg      String?          @map("error_msg")
   startedAt     DateTime?        @map("started_at")
   finishedAt    DateTime?        @map("finished_at")
+  /// Phase A3 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A3, 2026-05-09):
+  /// optimistic locking — terminal status race koruması (worker + callback
+  /// authoritative üreticiler). Internal guard; external callback contract
+  /// DEĞİŞMEZ (If-Match opsiyonel/yok). İlk terminal write kazanır;
+  /// `updateMany` + status filter + version increment ile race idempotent.
+  /// Race kaybeden çağrı: DB update yok, qcReport upsert yok, planItem
+  /// status update yok, outbox shadow yok, direct rabbitmq publish yok.
+  version       Int              @default(1)
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at")
   deleted_at    DateTime?

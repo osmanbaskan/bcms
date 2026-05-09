@@ -16,7 +16,12 @@ import { validateIngestSourcePath } from './ingest.paths.js';
  * Format: `ingest.job_completed:IngestJob:{jobId}:{terminalStatus}`.
  * Kararı: ops/DECISION-INGEST_COMPLETED-AUTHORITATIVE-PRODUCER.md sub-option B2.
  */
-export type IngestTerminalStatus = 'COMPLETED' | 'FAILED';
+export const INGEST_TERMINAL_STATUSES = ['COMPLETED', 'FAILED'] as const;
+export type IngestTerminalStatus = (typeof INGEST_TERMINAL_STATUSES)[number];
+
+export function isTerminalIngestStatus(status: IngestStatus): status is IngestTerminalStatus {
+  return (INGEST_TERMINAL_STATUSES as readonly string[]).includes(status);
+}
 
 export function buildIngestCompletedKey(
   jobId: number,
@@ -172,28 +177,61 @@ export async function finalizeIngestJob(
   terminalStatus: IngestTerminalStatus,
   opts?: FinalizeIngestJobOptions,
 ): Promise<void> {
-  await app.prisma.$transaction(async (tx) => {
-    await tx.ingestJob.update({
-      where: { id: jobId },
+  // Phase A3 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A3, 2026-05-09):
+  // Terminal status race koruması — `updateMany` + status filter + version
+  // increment. İlk terminal write kazanır; race kaybeden çağrı:
+  //   - DB update yapmaz (count=0)
+  //   - outbox yazmaz
+  //   - direct publish yapmaz
+  // Bu bilinçli davranış değişikliği (eski Phase 2 invariant'ı race kaybında
+  // direct publish'i hâlâ tetiklerdi; A3'te skip).
+  // Worker authoritative path: job yoksa açık hata (sessiz yutma yok).
+  const applied = await app.prisma.$transaction(async (tx) => {
+    const result = await tx.ingestJob.updateMany({
+      where: {
+        id:     jobId,
+        status: { notIn: [...INGEST_TERMINAL_STATUSES] },
+      },
       data: {
         status:     terminalStatus,
         finishedAt: new Date(),
+        version:    { increment: 1 },
         ...(opts?.errorMsg !== undefined ? { errorMsg: opts.errorMsg } : {}),
       },
     });
-    await writeShadowEvent(tx, {
-      eventType:     'ingest.job_completed',
-      aggregateType: 'IngestJob',
-      aggregateId:   jobId,
-      payload: { jobId, status: terminalStatus },
-      idempotencyKey: buildIngestCompletedKey(jobId, terminalStatus),
+
+    if (result.count === 1) {
+      await writeShadowEvent(tx, {
+        eventType:     'ingest.job_completed',
+        aggregateType: 'IngestJob',
+        aggregateId:   jobId,
+        payload:       { jobId, status: terminalStatus },
+        idempotencyKey: buildIngestCompletedKey(jobId, terminalStatus),
+      });
+      return true;
+    }
+
+    // count === 0 → ya job yok ya da zaten terminal. Worker path: job
+    // gerçekten yoksa açık hata; varsa terminal kabul (race kaybı, sessiz).
+    const existing = await tx.ingestJob.findUnique({
+      where:  { id: jobId },
+      select: { id: true },
     });
+    if (!existing) {
+      throw Object.assign(
+        new Error(`Ingest job not found (id=${jobId})`),
+        { statusCode: 404 },
+      );
+    }
+    return false;
   });
 
-  await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, {
-    jobId,
-    status: terminalStatus,
-  });
+  if (applied) {
+    await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, {
+      jobId,
+      status: terminalStatus,
+    });
+  }
 }
 
 /**
@@ -237,9 +275,90 @@ export async function processIngestCallback(
   app: FastifyInstance,
   dto: IngestCallbackDto,
 ): Promise<IngestJob> {
-  const isTerminal = dto.status === 'COMPLETED' || dto.status === 'FAILED';
+  const isTerminal = isTerminalIngestStatus(dto.status);
 
-  const job = await app.prisma.$transaction(async (tx) => {
+  // Phase A3 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A3, 2026-05-09):
+  // Terminal callback için race korumalı `updateMany` + status filter +
+  // version increment. İlk terminal write kazanır; race kaybeden callback:
+  //   - DB update yapmaz (status zaten terminal)
+  //   - qcReport upsert yapmaz
+  //   - planItem status update yapmaz
+  //   - outbox yazmaz
+  //   - direct publish yapmaz
+  // Bu bilinçli davranış değişikliği (eski kod direct publish'i her durumda
+  // tetikliyordu; A3'te race kaybında skip).
+  // Job yoksa: 404 (mevcut davranış paritesi).
+  const { job, applied } = await app.prisma.$transaction(async (tx) => {
+    if (isTerminal) {
+      const result = await tx.ingestJob.updateMany({
+        where: {
+          id:     dto.jobId,
+          status: { notIn: [...INGEST_TERMINAL_STATUSES] },
+        },
+        data: {
+          status:     dto.status,
+          proxyPath:  dto.proxyPath,
+          checksum:   dto.checksum,
+          errorMsg:   dto.errorMsg,
+          finishedAt: new Date(),
+          version:    { increment: 1 },
+        },
+      });
+
+      const existing = await tx.ingestJob.findUnique({ where: { id: dto.jobId } });
+      if (!existing) {
+        throw Object.assign(
+          new Error(`Ingest job not found (id=${dto.jobId})`),
+          { statusCode: 404 },
+        );
+      }
+
+      if (result.count !== 1) {
+        // Race kaybedildi: job zaten terminal. Hiçbir side-effect yok;
+        // mevcut row caller'a döner. Idempotency: ilk terminal yazımının
+        // qcReport/planItem/outbox side-effect'leri zaten DB'de.
+        return { job: existing, applied: false };
+      }
+
+      // İlk terminal yazımı: qcReport + planItem + outbox + (post-tx) publish.
+      if (dto.qcReport) {
+        await tx.qcReport.upsert({
+          where:  { jobId: dto.jobId },
+          create: {
+            jobId: dto.jobId,
+            ...dto.qcReport,
+            errors:   dto.qcReport.errors   as Prisma.InputJsonValue,
+            warnings: dto.qcReport.warnings as Prisma.InputJsonValue,
+          },
+          update: {
+            ...dto.qcReport,
+            errors:   dto.qcReport.errors   as Prisma.InputJsonValue,
+            warnings: dto.qcReport.warnings as Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      await tx.ingestPlanItem.updateMany({
+        where: { jobId: dto.jobId },
+        data: {
+          status: dto.status === 'FAILED' ? 'ISSUE' : 'COMPLETED',
+        },
+      });
+
+      await writeShadowEvent(tx, {
+        eventType:     'ingest.job_completed',
+        aggregateType: 'IngestJob',
+        aggregateId:   dto.jobId,
+        payload:       { jobId: dto.jobId, status: dto.status },
+        idempotencyKey: buildIngestCompletedKey(dto.jobId, dto.status as IngestTerminalStatus),
+      });
+
+      const updated = await tx.ingestJob.findUniqueOrThrow({ where: { id: dto.jobId } });
+      return { job: updated, applied: true };
+    }
+
+    // Non-terminal callback: mevcut update mantığı korunur. Worker sequential;
+    // race protection gerekmez. Version increment YOK (intermediate akış).
     const updated = await tx.ingestJob.update({
       where: { id: dto.jobId },
       data: {
@@ -247,7 +366,6 @@ export async function processIngestCallback(
         proxyPath:  dto.proxyPath,
         checksum:   dto.checksum,
         errorMsg:   dto.errorMsg,
-        finishedAt: isTerminal ? new Date() : undefined,
       },
     });
 
@@ -271,29 +389,19 @@ export async function processIngestCallback(
     await tx.ingestPlanItem.updateMany({
       where: { jobId: dto.jobId },
       data: {
-        status: dto.status === 'FAILED'    ? 'ISSUE'
-              : dto.status === 'COMPLETED' ? 'COMPLETED'
-              :                              'INGEST_STARTED',
+        status: 'INGEST_STARTED',
       },
     });
 
-    if (isTerminal) {
-      await writeShadowEvent(tx, {
-        eventType:     'ingest.job_completed',
-        aggregateType: 'IngestJob',
-        aggregateId:   dto.jobId,
-        payload: { jobId: dto.jobId, status: dto.status },
-        idempotencyKey: buildIngestCompletedKey(dto.jobId, dto.status as IngestTerminalStatus),
-      });
-    }
-
-    return updated;
+    return { job: updated, applied: true };
   });
 
-  await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, {
-    jobId:  dto.jobId,
-    status: dto.status,
-  });
+  if (applied) {
+    await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, {
+      jobId:  dto.jobId,
+      status: dto.status,
+    });
+  }
 
   return job;
 }
