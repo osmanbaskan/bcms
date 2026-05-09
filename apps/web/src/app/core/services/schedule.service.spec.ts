@@ -5,14 +5,19 @@ import { ApiService } from './api.service';
 
 // SCHED-B5a (Y5-1, ikinci revize 2026-05-08): ScheduleService Canlı Yayın Plan
 // UI datasource wrapper'ı — `/api/v1/live-plan` endpoint'ine bağlanır;
-// LivePlanEntry → Schedule mapper. Mutation metodları YOK (read-only).
+// LivePlanEntry → Schedule mapper.
+//
+// Mutation restore (2026-05-10): canonical command metodları eklendi
+// (createLivePlanEntry / createLivePlanFromOpta / updateLivePlanEntry /
+// duplicateLivePlanEntry / deleteLivePlanEntry). Hepsi `/api/v1/live-plan*`
+// endpoint'lerine bağlanır; legacy `/schedules` mutation YOK.
 
 describe('ScheduleService — live-plan datasource wrapper', () => {
   let service: ScheduleService;
   let apiSpy: jasmine.SpyObj<ApiService>;
 
   beforeEach(() => {
-    apiSpy = jasmine.createSpyObj('ApiService', ['get']);
+    apiSpy = jasmine.createSpyObj('ApiService', ['get', 'post', 'patch', 'delete']);
     TestBed.configureTestingModule({
       providers: [
         ScheduleService,
@@ -89,6 +94,100 @@ describe('ScheduleService — live-plan datasource wrapper', () => {
     apiSpy.get.and.returnValue(of({ items: [], total: 0, page: 1, pageSize: 0 }));
     service.getSchedules().subscribe((res) => {
       expect(res.totalPages).toBe(0);
+      done();
+    });
+  });
+});
+
+describe('ScheduleService — mutation restore (2026-05-10) canonical command path', () => {
+  let service: ScheduleService;
+  let apiSpy: jasmine.SpyObj<ApiService>;
+
+  function entryFixture() {
+    return {
+      id:             42,
+      title:          'Yeni Yayın',
+      eventStartTime: '2026-05-09T19:00:00Z',
+      eventEndTime:   '2026-05-09T21:00:00Z',
+      matchId:        null,
+      optaMatchId:    null,
+      status:         'PLANNED',
+      operationNotes: null,
+      createdBy:      'u1',
+      version:        1,
+      createdAt:      '2026-05-09T10:00:00Z',
+      updatedAt:      '2026-05-09T10:00:00Z',
+      deletedAt:      null,
+      eventKey:       'manual:abc',
+      sourceType:     'MANUAL',
+      channel1Id:     null,
+      channel2Id:     null,
+      channel3Id:     null,
+      team1Name:      null,
+      team2Name:      null,
+    };
+  }
+
+  beforeEach(() => {
+    apiSpy = jasmine.createSpyObj('ApiService', ['get', 'post', 'patch', 'delete']);
+    TestBed.configureTestingModule({
+      providers: [
+        ScheduleService,
+        { provide: ApiService, useValue: apiSpy },
+      ],
+    });
+    service = TestBed.inject(ScheduleService);
+  });
+
+  it('createLivePlanEntry → POST /live-plan (legacy /schedules ÇAĞIRMAZ)', () => {
+    apiSpy.post.and.returnValue(of(entryFixture() as never));
+    const dto = {
+      title:          'Yeni',
+      eventStartTime: '2026-05-09T19:00:00Z',
+      eventEndTime:   '2026-05-09T21:00:00Z',
+    };
+    service.createLivePlanEntry(dto).subscribe();
+    expect(apiSpy.post).toHaveBeenCalledWith('/live-plan', dto);
+    expect(apiSpy.post).not.toHaveBeenCalledWith('/schedules', jasmine.anything());
+  });
+
+  it('createLivePlanFromOpta → POST /live-plan/from-opta', () => {
+    apiSpy.post.and.returnValue(of(entryFixture() as never));
+    service.createLivePlanFromOpta({ optaMatchId: 'opta-12345' }).subscribe();
+    expect(apiSpy.post).toHaveBeenCalledWith('/live-plan/from-opta', { optaMatchId: 'opta-12345' });
+  });
+
+  it('updateLivePlanEntry → PATCH /live-plan/:id with If-Match version', () => {
+    apiSpy.patch.and.returnValue(of(entryFixture() as never));
+    service.updateLivePlanEntry(42, { title: 'Updated' }, 5).subscribe();
+    expect(apiSpy.patch).toHaveBeenCalledWith('/live-plan/42', { title: 'Updated' }, 5);
+    expect(apiSpy.patch).not.toHaveBeenCalledWith('/schedules/42', jasmine.anything(), jasmine.anything());
+  });
+
+  it('duplicateLivePlanEntry → POST /live-plan/:id/duplicate', () => {
+    apiSpy.post.and.returnValue(of(entryFixture() as never));
+    service.duplicateLivePlanEntry(42).subscribe();
+    expect(apiSpy.post).toHaveBeenCalledWith('/live-plan/42/duplicate', {});
+  });
+
+  it('deleteLivePlanEntry → DELETE /live-plan/:id with If-Match version', () => {
+    apiSpy.delete.and.returnValue(of(undefined as never));
+    service.deleteLivePlanEntry(42, 5).subscribe();
+    expect(apiSpy.delete).toHaveBeenCalledWith('/live-plan/42', 5);
+    expect(apiSpy.delete).not.toHaveBeenCalledWith('/schedules/42', jasmine.anything());
+  });
+
+  it('mutation metodları LivePlanEntry → Schedule mapper kullanır (id/title/version)', (done) => {
+    apiSpy.post.and.returnValue(of(entryFixture() as never));
+    service.createLivePlanEntry({
+      title:          'X',
+      eventStartTime: '2026-05-09T19:00:00Z',
+      eventEndTime:   '2026-05-09T21:00:00Z',
+    }).subscribe((schedule) => {
+      expect(schedule.id).toBe(42);
+      expect(schedule.title).toBe('Yeni Yayın');
+      expect(schedule.version).toBe(1);
+      expect(schedule.eventKey).toBe('manual:abc');
       done();
     });
   });

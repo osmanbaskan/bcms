@@ -125,8 +125,14 @@ export class ApiService {
     );
   }
 
-  delete<T>(path: string): Observable<T> {
-    return this.http.delete<T>(`${this.base}${path}`).pipe(
+  /** Live-plan canonical paritesi (2026-05-10): If-Match optional support.
+   *  Mevcut callers `version` geçmeden çağırır (backward compat); live-plan
+   *  DELETE/PATCH gibi optimistic-locked endpoint'ler `version` ile çağrılır. */
+  delete<T>(path: string, version?: number): Observable<T> {
+    const headers = version !== undefined
+      ? new HttpHeaders({ 'If-Match': String(version) })
+      : new HttpHeaders();
+    return this.http.delete<T>(`${this.base}${path}`, { headers }).pipe(
       tap(() => this.invalidateCache(this.cacheRoot(path))),
     );
   }

@@ -76,16 +76,18 @@ test('Canlı Yayın Plan datasource: /schedules ekranı /api/v1/live-plan çağ�
   expect(legacyCalls, `legacy /schedules?usage=live-plan çağrıldı: ${legacyCalls.join(', ')}`).toEqual([]);
 });
 
-test('Canlı Yayın Plan: mutation butonları görünmez (Yeni / Düzenle / Sil / Çoğalt / Teknik yok)', async ({ page }) => {
+test('Canlı Yayın Plan: mutation butonları görünür (canonical live-plan command path)', async ({ page }) => {
+  // Mutation restore (2026-05-10): Yeni / Düzenle / Sil / Çoğalt / Teknik
+  // butonları eski konumlarına geri geldi; canonical /api/v1/live-plan*
+  // endpoint'lerine bağlı (legacy /schedules mutation YOK).
   await page.locator('a', { hasText: 'Canlı Yayın Plan' }).first().click();
   await page.waitForURL(/\/schedules$/);
   await page.waitForLoadState('networkidle').catch(() => {});
 
-  await expect(page.locator('button', { hasText: /Yeni Ekle/ })).toHaveCount(0);
-  await expect(page.locator('button[matTooltip="Düzenle"]')).toHaveCount(0);
-  await expect(page.locator('button[matTooltip="Sil"]')).toHaveCount(0);
-  await expect(page.locator('button[matTooltip="Materyali çoğalt"]')).toHaveCount(0);
-  await expect(page.locator('button[matTooltip="Teknik Detayları Düzenle"]')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Yeni Ekle/ })).toBeVisible();
+  // Row aksiyonları ancak liste boş değilse görünür; permission açık olduğu
+  // durumda count >= 1 (varsa). Yetki ayrıştırması: canEdit/canDelete
+  // PERMISSIONS.livePlan.write/delete; canReportIssue ayrı set.
 });
 
 test('nav click: Yayın Planlama → /yayin-planlama ekranı', async ({ page }) => {

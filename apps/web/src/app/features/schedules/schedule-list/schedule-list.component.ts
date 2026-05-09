@@ -2,6 +2,7 @@ import {
   Component, HostListener, OnDestroy, OnInit, signal, computed, inject,
 } from '@angular/core';
 import { KeycloakService } from 'keycloak-angular';
+import { Router } from '@angular/router';
 import { environment } from '../../../../environments/environment';
 import { isSkipAuthAllowed } from '../../../core/auth/skip-auth';
 import { CommonModule } from '@angular/common';
@@ -25,13 +26,20 @@ import { ApiService } from '../../../core/services/api.service';
 import { PERMISSIONS, GROUP } from '@bcms/shared';
 import type { Schedule } from '@bcms/shared';
 import type { BcmsTokenParsed } from '../../../core/types/auth';
+import { LivePlanEntryAddDialogComponent } from './live-plan-entry-add-dialog.component';
+import { LivePlanEntryEditDialogComponent } from './live-plan-entry-edit-dialog.component';
 
-// SCHED-B5a (Y5-1, ikinci revize 2026-05-08): Canlı Yayın Plan UI artık
-// `/api/v1/live-plan` endpoint'inden okur (ScheduleService wrapper). Mutation
-// aksiyonları (Yeni / Düzenle / Teknik / Çoğalt / Sil) **tamamen kaldırıldı**;
-// Canlı Yayın Plan B5a'da liste odaklı / read-only. Operasyonel create/edit
-// `/yayin-planlama` (broadcast flow) üstünden yapılır. "Sorun Bildir" `/incidents/report`
-// endpoint'ine yazar — schedule mutation değil, korunur.
+// Mutation restore (2026-05-10): Canlı Yayın Plan mutation aksiyonları
+// (Yeni / Düzenle / Teknik / Çoğalt / Sil) eski konumlarına geri getirildi;
+// command path canonical `/api/v1/live-plan*` endpoint'lerine bağlı (legacy
+// `/schedules` mutation YOK, JSON/metadata YOK).
+//   - Add → POST /live-plan veya /live-plan/from-opta (LivePlanEntryAddDialog)
+//   - Edit → PATCH /live-plan/:id + If-Match (LivePlanEntryEditDialog)
+//   - Technical → router.navigate(['/live-plan', s.id])  (M5-B10b form orada)
+//   - Duplicate → POST /live-plan/:id/duplicate
+//   - Delete → DELETE /live-plan/:id + If-Match (hard-delete)
+//   - ReportIssue → mevcut /api/v1/incidents/report (korunur)
+// Permission: livePlan.write/delete (PERMISSIONS map; rbac.ts:72-76).
 
 function hasGroup(userGroups: string[], required: string[]): boolean {
   if (userGroups.includes(GROUP.Admin)) return true;
@@ -194,6 +202,11 @@ export class ReportIssueDialogComponent {
             <mat-icon>{{ fullscreenActive() ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon>
             {{ fullscreenActive() ? 'Tam Ekrandan Çık' : 'Tam Ekran' }}
           </button>
+          @if (canAdd()) {
+            <button mat-raised-button color="primary" (click)="openAddDialog()">
+              <mat-icon>add</mat-icon> Yeni Ekle
+            </button>
+          }
         </div>
       </div>
 
@@ -260,12 +273,40 @@ export class ReportIssueDialogComponent {
                   <td class="td-league"></td>
                   <td class="td-notes"></td>
                   <td class="td-actions">
+                    @if (canEdit()) {
+                      <button mat-icon-button
+                              matTooltip="Düzenle"
+                              (click)="openEditDialog(s)">
+                        <mat-icon>edit</mat-icon>
+                      </button>
+                    }
+                    @if (canTechnicalEdit()) {
+                      <button mat-icon-button
+                              matTooltip="Teknik Detayları Düzenle"
+                              (click)="openTechnicalDialog(s)">
+                        <mat-icon>settings_input_component</mat-icon>
+                      </button>
+                    }
+                    @if (canDuplicate()) {
+                      <button mat-icon-button
+                              matTooltip="Materyali çoğalt"
+                              (click)="duplicateSchedule(s)">
+                        <mat-icon>add</mat-icon>
+                      </button>
+                    }
                     @if (canReportIssue()) {
                       <button mat-icon-button
                               matTooltip="Sorun Bildir"
                               style="color:#ff7043"
                               (click)="openReportIssueDialog(s)">
                         <mat-icon>report_problem</mat-icon>
+                      </button>
+                    }
+                    @if (canDelete()) {
+                      <button mat-icon-button color="warn"
+                              matTooltip="Sil"
+                              (click)="deleteSchedule(s)">
+                        <mat-icon>delete</mat-icon>
                       </button>
                     }
                   </td>
@@ -438,7 +479,7 @@ export class ReportIssueDialogComponent {
       text-align: left !important;
     }
     .td-record-location { color: var(--bp-fg-2); }
-    .td-actions { width: 60px; padding: 2px 4px; text-align: center; white-space: nowrap; }
+    .td-actions { width: 200px; padding: 2px 4px; text-align: center; white-space: nowrap; }
 
     .table-footer {
       display: flex;
@@ -460,6 +501,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   private snack       = inject(MatSnackBar);
   private dialog      = inject(MatDialog);
   private keycloak    = inject(KeycloakService);
+  private router      = inject(Router);
 
   channels         = signal<Channel[]>([]);
   schedules        = signal<Schedule[]>([]);
@@ -470,7 +512,13 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   fullscreenActive = signal(false);
   private _userGroups = signal<string[]>([]);
 
-  canReportIssue = computed(() => hasGroup(this._userGroups(), PERMISSIONS.incidents.reportIssue));
+  // Mutation restore (2026-05-10): canonical livePlan permission keys.
+  canAdd            = computed(() => hasGroup(this._userGroups(), PERMISSIONS.livePlan.write));
+  canEdit           = computed(() => hasGroup(this._userGroups(), PERMISSIONS.livePlan.write));
+  canTechnicalEdit  = computed(() => hasGroup(this._userGroups(), PERMISSIONS.livePlan.write));
+  canDuplicate      = computed(() => hasGroup(this._userGroups(), PERMISSIONS.livePlan.write));
+  canDelete         = computed(() => hasGroup(this._userGroups(), PERMISSIONS.livePlan.delete));
+  canReportIssue    = computed(() => hasGroup(this._userGroups(), PERMISSIONS.incidents.reportIssue));
 
   pageSize = 100;
   page     = 1;
@@ -569,6 +617,85 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   goToday() {
     this.selectedDate = new Date().toISOString().slice(0, 10);
     this.page = 1; this.load();
+  }
+
+  // ── Mutation aksiyonları (2026-05-10 mutation restore) ────────────────
+  // Canonical command path: /api/v1/live-plan*. Legacy /schedules YOK.
+
+  openAddDialog() {
+    const ref = this.dialog.open(LivePlanEntryAddDialogComponent, {
+      width: '720px',
+      maxWidth: '98vw',
+      panelClass: 'dark-dialog',
+    });
+    ref.afterClosed().subscribe((created) => {
+      if (created) {
+        this.snack.open('Yayın kaydı eklendi', 'Kapat', { duration: 3000 });
+        this.load();
+      }
+    });
+  }
+
+  openEditDialog(s: Schedule) {
+    const ref = this.dialog.open(LivePlanEntryEditDialogComponent, {
+      data: { schedule: s },
+      width: '720px',
+      maxWidth: '98vw',
+      panelClass: 'dark-dialog',
+    });
+    ref.afterClosed().subscribe((result) => {
+      if (result?.stale) {
+        this.load();
+        return;
+      }
+      if (result) {
+        this.snack.open('Yayın kaydı güncellendi', 'Kapat', { duration: 3000 });
+        this.load();
+      }
+    });
+  }
+
+  openTechnicalDialog(s: Schedule) {
+    // Mutation restore (2026-05-10) — Teknik buton M5-B10b form route'una
+    // navigate eder. Disabled/no-op DEĞİL; gerçek aksiyon (route navigate).
+    this.router.navigate(['/live-plan', s.id]);
+  }
+
+  duplicateSchedule(s: Schedule) {
+    const ref = this.snack.open(`"${s.title}" çoğaltılacak`, 'Çoğalt', { duration: 5000 });
+    ref.onAction().subscribe(() => {
+      this.scheduleSvc.duplicateLivePlanEntry(s.id).subscribe({
+        next:  () => {
+          this.snack.open('Yayın kaydı çoğaltıldı', 'Kapat', { duration: 2500 });
+          this.load();
+        },
+        error: (e) => {
+          const msg = e?.status === 409
+            ? 'Aynı eventKey ile aktif kayıt var; yeni duplicate oluşturulamadı'
+            : (e?.error?.message ?? e?.message ?? 'Çoğaltma başarısız');
+          this.snack.open(msg, 'Kapat', { duration: 4000 });
+        },
+      });
+    });
+  }
+
+  deleteSchedule(s: Schedule) {
+    const ref = this.snack.open(`"${s.title}" silinecek`, 'Sil', { duration: 5000 });
+    ref.onAction().subscribe(() => {
+      this.scheduleSvc.deleteLivePlanEntry(s.id, s.version).subscribe({
+        next:  () => {
+          this.snack.open('Yayın kaydı silindi', 'Kapat', { duration: 2000 });
+          this.load();
+        },
+        error: (e) => {
+          const msg = e?.status === 412
+            ? 'Kayıt başka biri tarafından güncellendi; lütfen yenileyip tekrar deneyin'
+            : (e?.error?.message ?? e?.message ?? 'Silme başarısız');
+          this.snack.open(msg, 'Kapat', { duration: 4000 });
+          if (e?.status === 412) this.load();
+        },
+      });
+    });
   }
 
   openReportIssueDialog(s: Schedule) {

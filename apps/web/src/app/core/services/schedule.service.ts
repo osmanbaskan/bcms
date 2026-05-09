@@ -1,7 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { ApiService } from './api.service';
-import type { Schedule, ScheduleStatus, PaginatedResponse } from '@bcms/shared';
+import type {
+  Schedule,
+  ScheduleStatus,
+  PaginatedResponse,
+  LivePlanEntry,
+  LivePlanListResponse,
+  LivePlanStatus,
+  CreateLivePlanEntryDto,
+  UpdateLivePlanEntryDto,
+  CreateLivePlanFromOptaDto,
+} from '@bcms/shared';
 
 export interface ScheduleFilter {
   channel?: number;
@@ -15,41 +25,13 @@ export interface ScheduleFilter {
 // SCHED-B5a (Y5-1, ikinci revize 2026-05-08): Canlı Yayın Plan UI datasource
 // migration. Bu wrapper eski schedule-list bileşeninin ScheduleService API
 // kontratını korur (`getSchedules` → PaginatedResponse<Schedule>) ama altta
-// `/api/v1/live-plan` endpoint'ine bağlanır. Mutation metodları YOK — Canlı
-// Yayın Plan B5a'da liste odaklı / read-only; create/edit Yayın Planlama
-// üstünden yapılır.
-
-type LivePlanStatus = 'PLANNED' | 'READY' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-
-interface LivePlanEntry {
-  id:             number;
-  title:          string;
-  eventStartTime: string;
-  eventEndTime:   string;
-  matchId:        number | null;
-  optaMatchId:    string | null;
-  status:         LivePlanStatus;
-  operationNotes: string | null;
-  createdBy:      string | null;
-  version:        number;
-  createdAt:      string;
-  updatedAt:      string;
-  deletedAt:      string | null;
-  eventKey:       string | null;
-  sourceType:     string;
-  channel1Id:     number | null;
-  channel2Id:     number | null;
-  channel3Id:     number | null;
-  team1Name:      string | null;
-  team2Name:      string | null;
-}
-
-interface LivePlanListResponse {
-  items:    LivePlanEntry[];
-  total:    number;
-  page:     number;
-  pageSize: number;
-}
+// `/api/v1/live-plan` endpoint'ine bağlanır.
+//
+// Mutation restore (2026-05-10): canonical command metodları eklendi —
+// createLivePlanEntry / createLivePlanFromOpta / updateLivePlanEntry /
+// duplicateLivePlanEntry / deleteLivePlanEntry. Hepsi `/api/v1/live-plan*`
+// canonical endpoint'lerine bağlanır; legacy `/schedules` mutation YOK,
+// JSON/metadata YOK. Display'e döndüğünde mapper Schedule shape'ine çevirir.
 
 const STATUS_MAP: Record<LivePlanStatus, ScheduleStatus> = {
   PLANNED:     'CONFIRMED',
@@ -104,5 +86,46 @@ export class ScheduleService {
         totalPages: res.pageSize > 0 ? Math.ceil(res.total / res.pageSize) : 0,
       })),
     );
+  }
+
+  // ── Mutation restore (2026-05-10) — canonical live-plan command path ────
+
+  /** Manuel create: backend forced sourceType=MANUAL + eventKey=`manual:<uuid>`. */
+  createLivePlanEntry(dto: CreateLivePlanEntryDto): Observable<Schedule> {
+    return this.api.post<LivePlanEntry>('/live-plan', dto).pipe(
+      map(mapLivePlanEntryToSchedule),
+    );
+  }
+
+  /** OPTA seçim akışı: matches.opta_uid'den temel bilgi kopya. 409 default
+   *  duplicate engelleme caller tarafından snack ile gösterilir. */
+  createLivePlanFromOpta(dto: CreateLivePlanFromOptaDto): Observable<Schedule> {
+    return this.api.post<LivePlanEntry>('/live-plan/from-opta', dto).pipe(
+      map(mapLivePlanEntryToSchedule),
+    );
+  }
+
+  /** PATCH /live-plan/:id + If-Match: <version>. K9 — version conflict 412. */
+  updateLivePlanEntry(
+    id: number,
+    dto: UpdateLivePlanEntryDto,
+    version: number,
+  ): Observable<Schedule> {
+    return this.api.patch<LivePlanEntry>(`/live-plan/${id}`, dto, version).pipe(
+      map(mapLivePlanEntryToSchedule),
+    );
+  }
+
+  /** POST /live-plan/:id/duplicate — same eventKey kopya entry; status reset
+   *  PLANNED. 409 default duplicate engelleme caller snack ile gösterir. */
+  duplicateLivePlanEntry(id: number): Observable<Schedule> {
+    return this.api.post<LivePlanEntry>(`/live-plan/${id}/duplicate`, {}).pipe(
+      map(mapLivePlanEntryToSchedule),
+    );
+  }
+
+  /** DELETE /live-plan/:id + If-Match: <version>. Hard-delete (M5-B1 K-B3). */
+  deleteLivePlanEntry(id: number, version: number): Observable<void> {
+    return this.api.delete<void>(`/live-plan/${id}`, version);
   }
 }
