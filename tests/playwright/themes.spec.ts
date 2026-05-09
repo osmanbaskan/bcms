@@ -106,11 +106,17 @@ test.describe('light mode özel kurallar', () => {
   });
 
   test('time input bg — light (regression)', async ({ page }) => {
+    // SCHED-B5a (Y5-7, ikinci revize 2026-05-08): "Canlı Yayın Planından
+    // Ingest" flow disabled; ingest plan rows kalıcı boş ⇒ ingest-list
+    // `.time-input`'u render edilmez. Test Yayın Planlama broadcast form'una
+    // (`/yayin-planlama/new`) yönlendirildi — `input[type="time"]` orada
+    // aktif (mat-input). Regression hâlâ geçerli: light mode'da time
+    // input'un arka rengi beyaza yakın olmalı.
     await page.goto('/dashboard');
     await page.waitForLoadState('networkidle').catch(() => {});
     await setTheme(page, 'light');
-    await spaNav(page, '/ingest');
-    const ti = page.locator('.time-input').first();
+    await spaNav(page, '/yayin-planlama/new');
+    const ti = page.locator('input[type="time"]').first();
     await ti.waitFor({ state: 'attached', timeout: 10_000 });
     const styles = await ti.evaluate((el) => {
       const cs = getComputedStyle(el);

@@ -126,10 +126,6 @@ interface NavGroup {
             <button class="icon-btn" type="button" title="Hatırlatıcı">
               <mat-icon class="material-icons-outlined">schedule</mat-icon>
             </button>
-            <div class="t-divider"></div>
-            <button class="btn-primary" (click)="openNewBroadcast()" type="button">
-              + Yeni Yayın Kaydı
-            </button>
           </div>
 
           <bp-alert-popover [open]="alertsOpen()" [alerts]="alerts()" (close)="alertsOpen.set(false)" />
@@ -544,11 +540,13 @@ export class AppComponent implements OnInit, OnDestroy {
       label: 'OPERASYON',
       items: [
         { label: 'Genel Bakış',       icon: 'dashboard',           route: '/dashboard',          groups: [], exactMatch: true },
-        // SCHED-B5a (Y5-1 nihai): "Canlı Yayın Plan" sekmesi canonical
-        // /live-plan route'una bağlanır (M5 yeni domain). Eski /schedules
-        // schedule-list UI silindi; root /schedules artık /yayin-planlama
-        // redirect ediyor. "Live-Plan (yeni)" geçici label geri gelmez.
-        { label: 'Canlı Yayın Plan',  icon: 'play_circle',         route: '/live-plan',          groups: [] },
+        // SCHED-B5a (Y5-1 ikinci revize 2026-05-08): "Canlı Yayın Plan"
+        // sekmesi `/schedules` route'unda kalır (eski yer + arayüz hissi);
+        // schedule-list datasource ScheduleService wrapper üstünden
+        // `/api/v1/live-plan`. "Live-Plan (yeni)" nav item geri gelmez;
+        // `/live-plan` route arka planda korunur ama nav'da görünmez
+        // (M5-B10b ileride bu route üstünde çalışır).
+        { label: 'Canlı Yayın Plan',  icon: 'play_circle',         route: '/schedules',          groups: [] },
         { label: 'Yayın Planlama',    icon: 'event',               route: '/yayin-planlama',     groups: [] },
         { label: 'Stüdyo Planı',      icon: 'view_module',         route: '/studio-plan',        groups: [] },
         { label: 'Ingest',            icon: 'cloud_upload',        route: '/ingest',             groups: [GROUP.Admin, GROUP.Ingest] },
@@ -666,15 +664,6 @@ export class AppComponent implements OnInit, OnDestroy {
 
   toggleAlerts() {
     this.alertsOpen.update((v) => !v);
-  }
-
-  /** Yeni Yayın Kaydı — Aşama 2'de modal componenti yazılır; Aşama 1'de placeholder.
-   *  DÜŞÜK-FE-2.8.4 (2026-05-04): kullanıcıyı "yanlışlıkla yönlendirme" yerine
-   *  schedule listesine + create dialog'unu tetikleyecek query param ile gönder.
-   *  Schedule-list bu param'ı görünce Yeni Plan dialog'unu otomatik açıyor.
-   */
-  openNewBroadcast() {
-    this.router.navigate(['/schedules'], { queryParams: { new: '1' } });
   }
 
   logout() {

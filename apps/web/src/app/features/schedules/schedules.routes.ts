@@ -3,17 +3,17 @@ import { GROUP } from '@bcms/shared';
 import { AuthGuard } from '../../core/guards/auth.guard';
 
 /**
- * SCHED-B5a (2026-05-08): Eski schedule-list/form/detail bileşenleri silindi.
- * Kalan kapsam:
- *   - root path `/schedules` → `/yayin-planlama` redirect (Y5-1)
- *   - `/schedules/reporting` korunur (Admin-only; canonical refactor B5a backend
- *     /reports/live-plan*; UI redesign B5 dışı follow-up)
+ * SCHED-B5a (Y5-1, ikinci revize 2026-05-08): `/schedules` Canlı Yayın Plan
+ * UI'sı olarak korunur (eski görünüm); datasource ScheduleService wrapper
+ * üstünden `/api/v1/live-plan`. Mutation route'ları (`new`, `:id`, `:id/edit`)
+ * yok — Canlı Yayın Plan B5a'da liste odaklı / read-only. Reporting korunur
+ * (Admin-only; datasource schedule canonical, B5b'de canonicalize).
  */
 export const schedulesRoutes: Routes = [
   {
     path: '',
-    pathMatch: 'full',
-    redirectTo: '/yayin-planlama',
+    loadComponent: () =>
+      import('./schedule-list/schedule-list.component').then((m) => m.ScheduleListComponent),
   },
   {
     path: 'reporting',

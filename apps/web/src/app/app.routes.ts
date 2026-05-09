@@ -164,7 +164,7 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/login-error/login-error.component').then((m) => m.LoginErrorComponent),
   },
-  // SCHED-B5a (Y5-1 nihai): wildcard /yayin-planlama'ya yönlenir. Eski
-  // schedule-list silindi; /schedules root da /yayin-planlama'ya redirect.
-  { path: '**', redirectTo: '/yayin-planlama' },
+  // SCHED-B5a (Y5-1 ikinci revize 2026-05-08): wildcard /schedules'a
+  // yönlenir (Canlı Yayın Plan UI; datasource live-plan API).
+  { path: '**', redirectTo: '/schedules' },
 ];

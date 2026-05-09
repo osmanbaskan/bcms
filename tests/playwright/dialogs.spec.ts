@@ -2,9 +2,13 @@ import { test, expect, type Page } from '@playwright/test';
 
 /**
  * Dialog screenshots — light/dark her ikisinde:
- *  - Schedule "Yeni Ekle" dialog (add)
- *  - Schedule "Düzenle" dialog (edit, ilk schedule kaydı varsa)
  *  - Booking "Yeni İş" dialog
+ *  - Booking düzenle dialog
+ *
+ * SCHED-B5a (Y5-1 ikinci revize 2026-05-08): Schedule "Yeni Ekle" / "Düzenle"
+ * dialog'ları kaldırıldı (Canlı Yayın Plan B5a'da liste odaklı / read-only;
+ * create/edit Yayın Planlama'dan). Schedule add dialog test'leri ile lig
+ * dropdown test'i bu spec'ten silindi.
  *
  * Amaç: dialog formlarındaki light mode görünürlük sorunlarını yakala.
  */
@@ -25,28 +29,6 @@ async function spaNav(page: Page, route: string) {
 
 for (const theme of ['dark', 'light'] as const) {
   test.describe(`dialogs ${theme}`, () => {
-    test('schedule "Yeni Ekle" dialog screenshot', async ({ page }) => {
-      await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle').catch(() => {});
-      await setTheme(page, theme);
-      await spaNav(page, '/schedules');
-
-      // "Yeni Ekle" butonu
-      const addBtn = page.getByRole('button', { name: /Yeni Ekle/i }).first();
-      await addBtn.waitFor({ state: 'visible', timeout: 10_000 });
-      await addBtn.click();
-
-      // Dialog görünür olsun
-      const dialog = page.locator('mat-dialog-container').first();
-      await dialog.waitFor({ state: 'visible', timeout: 10_000 });
-      await page.waitForTimeout(400);
-
-      await page.screenshot({
-        path: `screenshots/${theme}-dialog-schedule-add.png`,
-        fullPage: false,
-      });
-    });
-
     test('booking "Yeni İş" dialog screenshot', async ({ page }) => {
       await page.goto('/dashboard');
       await page.waitForLoadState('networkidle').catch(() => {});
@@ -117,94 +99,6 @@ for (const theme of ['dark', 'light'] as const) {
   });
 }
 
-test.describe('schedule add dialog — lig dropdown', () => {
-  for (const theme of ['dark', 'light'] as const) {
-    test(`${theme} — lig option'larda vivid bg + beyaz metin`, async ({ page }) => {
-      await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle').catch(() => {});
-      await setTheme(page, theme);
-      await spaNav(page, '/schedules');
-
-      const addBtn = page.getByRole('button', { name: /Yeni Ekle/i }).first();
-      await addBtn.click();
-      const dlg = page.locator('mat-dialog-container').first();
-      await dlg.waitFor({ state: 'visible' });
-
-      // Adım 1: dialog içindeki ilk mat-select → "İçerik Türü" → "Maç"
-      await dlg.locator('mat-select').first().click();
-      await page.waitForTimeout(200);
-      const matchOpt = page.locator('.cdk-overlay-pane mat-option').filter({ hasText: /Müsabaka|Maç/i }).first();
-      const has = await matchOpt.count();
-      if (!has) test.skip(true, 'Müsabaka içerik türü mevcut değil');
-      await matchOpt.click();
-      await page.waitForTimeout(400);
-
-      // Adım 2: dialog içindeki Lig/Turnuva select (artık 2.veya sonraki select)
-      const selects = dlg.locator('mat-select');
-      const selCount = await selects.count();
-      if (selCount < 2) test.skip(true, 'lig select görünmedi');
-      await selects.nth(selCount - 1).click();
-      await page.waitForTimeout(400);
-
-      // mat-option.league-option'lar açılır panel içinde
-      const leagueOptions = page.locator('.cdk-overlay-pane mat-option.league-option, .cdk-overlay-pane mat-option[style*="background"]');
-      const optCount = await leagueOptions.count();
-      if (optCount === 0) test.skip(true, 'lig option yok');
-
-      // Screenshot
-      await page.screenshot({
-        path: `screenshots/${theme}-dialog-league-dropdown.png`,
-        fullPage: false,
-      });
-
-      // İlk 3 option'ın bg vivid (rgb sum < 600, koyu) ve text beyaz olmalı
-      const samples = await leagueOptions.evaluateAll((els) =>
-        els.slice(0, 3).map((el) => {
-          const cs = getComputedStyle(el as HTMLElement);
-          const text = el.querySelector('.mdc-list-item__primary-text, span') as HTMLElement | null;
-          const textCs = text ? getComputedStyle(text) : cs;
-          return { bg: cs.backgroundColor, color: textCs.color };
-        }));
-
-      for (const s of samples) {
-        const bgM = s.bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        const txtM = s.color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        if (!bgM || !txtM) continue;
-        const bgSum = +bgM[1] + +bgM[2] + +bgM[3];
-        const txtSum = +txtM[1] + +txtM[2] + +txtM[3];
-        expect(bgSum, `option bg=${s.bg} should be vivid (sum<500), got ${bgSum}`).toBeLessThan(500);
-        expect(txtSum, `option text=${s.color} should be white (sum>720), got ${txtSum}`).toBeGreaterThan(720);
-      }
-    });
-  }
-});
-
-test.describe('schedule list — lig bg theme switch', () => {
-  test('row bg vivid (mevcut kayıt varsa)', async ({ page }) => {
-    await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle').catch(() => {});
-    await setTheme(page, 'light');
-    await spaNav(page, '/schedules');
-    await page.waitForTimeout(800);
-
-    const rows = page.locator('tr.has-league-color');
-    const count = await rows.count();
-    if (count === 0) test.skip(true, 'no schedule rows with league color');
-
-    const samples = await rows.evaluateAll((els) =>
-      els.slice(0, 3).map((el) => {
-        const cs = getComputedStyle(el);
-        return { bg: cs.backgroundColor, color: cs.color };
-      }));
-
-    for (const s of samples) {
-      const bgM = s.bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-      const txtM = s.color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-      if (!bgM || !txtM) continue;
-      const bgSum = +bgM[1] + +bgM[2] + +bgM[3];
-      const txtSum = +txtM[1] + +txtM[2] + +txtM[3];
-      expect(bgSum, `row bg=${s.bg} should be vivid (sum<500)`).toBeLessThan(500);
-      expect(txtSum, `row text=${s.color} should be white`).toBeGreaterThan(720);
-    }
-  });
-});
+// SCHED-B5a (Y5-1 ikinci revize 2026-05-08): "schedule add dialog — lig
+// dropdown" + "schedule list — lig bg theme switch" test'leri silindi.
+// ScheduleAddDialog kaldırıldı; lig dropdown ve schedule add aksiyonları yok.

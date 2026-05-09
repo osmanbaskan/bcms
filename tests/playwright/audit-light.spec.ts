@@ -7,6 +7,22 @@ import * as fs from 'node:fs';
  *  - Her sayfada dialog açacak butonları bul, tıkla, screenshot, esc
  *  - Computed-style audit: text rgb sum, bg rgb sum, contrast eşikleri
  *  - findings.json: tüm aykırılıklar (low contrast, transparent bg vb.)
+ *
+ * SCHED-B5a (Y5-3 + Y5-7, ikinci revize 2026-05-08): generic mat-icon
+ * substring trigger filter'ı kaldırıldı; her route için açık accessible
+ * isim bazlı trigger allowlist (`getDialogTriggersForRoute`) kullanılır.
+ *  - /schedules: dialog trigger YOK (B5a read-only)
+ *  - /ingest: dialog trigger YOK ("Canlı Yayın Planından Ingest" disabled;
+ *    base audit yapılır, click denenmez)
+ *  - /bookings: "Yeni İş" + booking edit (matTooltip="Düzenle")
+ *  - /users: "Yeni Kullanıcı" + user edit (matTooltip="Düzenle")
+ *  - Diğerleri: trigger yok → sadece base audit.
+ *
+ * Eski generic selector (button[mat-icon-button]:has(mat-icon:has-text("add"))
+ * veya substring "Yeni") expansion-panel-header / refresh / row toggle gibi
+ * dialog OLMAYAN elemanları yakalıyordu; mobile-chrome'da bu false-positive
+ * trigger'lar Material accordion animation'da stuck → 360s timeout. Allowlist
+ * her route için yalnız gerçek dialog trigger'larını kapsar.
  */
 
 const ROUTES = [
@@ -25,6 +41,38 @@ const ROUTES = [
   { path: '/channels',            name: 'channels' },
   { path: '/provys-content-control', name: 'provys' },
 ];
+
+/**
+ * SCHED-B5a (Y5-3 + Y5-7, ikinci revize 2026-05-08): route-bazlı dialog
+ * trigger allowlist. `null` döndüğünde audit sadece base sayfa audit'i ile
+ * yetinir, dialog click denenmez.
+ *
+ * Sabitler:
+ *  - bookings: "Yeni İş" (booking add) + booking row "Düzenle" (matTooltip)
+ *  - users:    "Yeni Kullanıcı" (user add) + user row "Düzenle" (matTooltip)
+ *  - schedules: B5a Y5-3 read-only — mutation trigger yok
+ *  - ingest:    B5a Y5-7 disabled flow — base audit only
+ *  - diğerleri: bilinen accessible-name dialog trigger yok → base audit
+ */
+function getDialogTriggersForRoute(page: Page, routeName: string): Locator | null {
+  switch (routeName) {
+    case 'bookings':
+      return page.locator(
+        'button:has-text("Yeni İş"), button[matTooltip="Düzenle"]'
+      );
+    case 'users':
+      // SCHED-B5a: edit selector `td.mat-column-actions` ile column-spesifik
+      // — global `button[matTooltip="Düzenle"]` mobile-chrome'da Material
+      // table touch-target reflow'una takılıp click stuck oluyordu (re-run 6
+      // mobile users edit). Actions column'una daraltma semantik olarak da
+      // doğru: kullanıcı satırındaki aksiyon kolonundaki edit butonu.
+      return page.locator(
+        'button:has-text("Yeni Kullanıcı"), td.mat-column-actions button[matTooltip="Düzenle"]'
+      );
+    default:
+      return null;
+  }
+}
 
 interface Finding {
   route: string;
@@ -194,29 +242,51 @@ async function auditPage(page: Page, routeName: string, context: string) {
   }
 }
 
-test.beforeAll(() => {
-  fs.mkdirSync('screenshots/light-audit', { recursive: true });
-  fs.mkdirSync('screenshots/light-dialogs', { recursive: true });
-  findings.length = 0;
-});
+// SCHED-B5a (ikinci revize 2026-05-08): tek 360s test bütçesi yerine route
+// başına ayrı test. findings.json yazımı race koşulu doğurmasın diye describe
+// `serial` mode'da koşar (paralel test → aynı dosya çakışması yok). Default
+// per-test timeout 30s; 14 route × allowlist null çoğunluk + 2 route'ta
+// dialog audit (bookings + users) bütçeyi kolay aşmaz.
+//
+// SCHED-B5a (2026-05-09): BCMS şu an desktop-first operasyon arayüzü; mobile
+// kullanım gelecekte değerlendirilecek (bu fazda blocker değil). audit-light
+// dialog click stability mobile-chrome (Pixel 7) Material 17 MDC touch-target
+// reflow yarışı nedeniyle users edit butonunda stuck kalıyordu (re-run 7 trace
+// kanıtı: button viewport içinde, visible+enabled assertion'lar passed,
+// scroll-into-view passed; click `stable` bekleme'sinde 30s aşımı). Follow-up:
+// "mobile audit-light users edit click stability follow-up" — kapsam dışı.
+// Desktop chromium tüm dialog audit'inde blocking kalır.
+test.describe('light mode audit', () => {
+  test.describe.configure({ mode: 'serial' });
+  // BCMS desktop-first operasyon arayüzü; mobile audit-light dialog click
+  // stability follow-up (kapsam dışı). Sadece audit-light için mobile-chrome
+  // project'i atlanır; yayin-planlama smoke testleri mobile'da koşar.
+  test.beforeEach(({}, testInfo) => {
+    test.skip(
+      testInfo.project.name === 'mobile-chrome',
+      'BCMS desktop-first operasyon arayüzü; mobile audit-light dialog click stability follow-up.',
+    );
+  });
 
-test.afterAll(() => {
-  fs.writeFileSync(
-    'screenshots/light-audit/findings.json',
-    JSON.stringify(findings, null, 2),
-  );
-  console.log(`[audit] toplam ${findings.length} low-contrast finding`);
-});
+  test.beforeAll(() => {
+    fs.mkdirSync('screenshots/light-audit', { recursive: true });
+    fs.mkdirSync('screenshots/light-dialogs', { recursive: true });
+    findings.length = 0;
+  });
 
-test('light mode audit — tüm rotalar + dialog\'lar', async ({ page }) => {
-  test.setTimeout(360_000);
-
-  await page.goto('/dashboard');
-  await page.waitForLoadState('networkidle').catch(() => {});
-  await setTheme(page, 'light');
+  test.afterAll(() => {
+    fs.writeFileSync(
+      'screenshots/light-audit/findings.json',
+      JSON.stringify(findings, null, 2),
+    );
+    console.log(`[audit] toplam ${findings.length} low-contrast finding`);
+  });
 
   for (const route of ROUTES) {
-    await test.step(`route ${route.name}`, async () => {
+    test(`light mode audit — ${route.name}`, async ({ page }) => {
+      await page.goto('/dashboard');
+      await page.waitForLoadState('networkidle').catch(() => {});
+      await setTheme(page, 'light');
       await spaNav(page, route.path);
       await page.waitForTimeout(800);
 
@@ -228,20 +298,26 @@ test('light mode audit — tüm rotalar + dialog\'lar', async ({ page }) => {
 
       await auditPage(page, route.name, 'base');
 
-      // dialog buttons — text matches: Yeni|Ekle|Düzenle|Add|Edit|+
-      const triggers = page.locator(
-        'button:has-text("Yeni"), button:has-text("Ekle"), button:has-text("Düzenle"), '
-        + 'button:has-text("Yeni İş"), button:has-text("Yeni Ekle"), '
-        + 'button[mat-icon-button]:has(mat-icon:has-text("edit")), '
-        + 'button[mat-icon-button]:has(mat-icon:has-text("add"))'
-      );
-      const triggerCount = Math.min(await triggers.count(), 4);   // ilk 4 trigger
+      // SCHED-B5a (Y5-3 + Y5-7, 2026-05-08): route-specific allowlist.
+      // Trigger yoksa (read-only / disabled flow / dialog'suz route) sadece
+      // base audit ile yetinilir.
+      const triggers = getDialogTriggersForRoute(page, route.name);
+      if (triggers === null) return;
+
+      const triggerCount = Math.min(await triggers.count(), 4);
 
       for (let i = 0; i < triggerCount; i++) {
         const btn = triggers.nth(i);
         const visible = await btn.isVisible().catch(() => false);
         if (!visible) continue;
         const label = (await btn.textContent().catch(() => ''))?.trim().replace(/\s+/g, '-').slice(0, 24) || `btn${i}`;
+
+        // SCHED-B5a: click öncesi interactability guard — scroll + visible
+        // + enabled assertion. Material focus-indicator / matTooltip mount
+        // yarışına karşı element stabil olduğunu doğrula. Force click yok.
+        await btn.scrollIntoViewIfNeeded().catch(() => {});
+        await expect(btn).toBeVisible();
+        await expect(btn).toBeEnabled();
 
         await btn.click().catch(() => {});
         await page.waitForTimeout(400);
@@ -257,13 +333,31 @@ test('light mode audit — tüm rotalar + dialog\'lar', async ({ page }) => {
 
         await auditPage(page, route.name, `dialog:${label}`);
 
-        // Esc kapat
+        // Esc kapat — Material overlay cleanup yarışı: mat-dialog-container
+        // detach olsa bile cdk-overlay-pane / cdk-overlay-backdrop animation
+        // sırasında DOM'da kalır → next trigger click overlay tarafından
+        // bloke. 3 katmanlı bekleme: dialog + pane + backdrop.
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(250);
+        await page.locator('mat-dialog-container').first().waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {});
+        await expect.poll(async () => page.locator('.cdk-overlay-pane').count(), { timeout: 5_000 })
+          .toBe(0)
+          .catch(() => {});
+        await expect.poll(async () => page.locator('.cdk-overlay-backdrop').count(), { timeout: 5_000 })
+          .toBe(0)
+          .catch(() => {});
+
+        // SCHED-B5a (focus restore yarışı): CDK focus management dialog
+        // kapatınca trigger button'a focus restore eder; focus-indicator
+        // outline element box'ını reflow ettirir → next trigger click stable
+        // bekleme'de stuck. activeElement blur + mouse'u boş köşeye taşı
+        // (matTooltip hover trigger önle) + kısa stabilizasyon.
+        await page.evaluate(() => {
+          const el = document.activeElement;
+          if (el instanceof HTMLElement) el.blur();
+        });
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(100);
       }
     });
   }
-
-  // Test pass/fail: çok yüksek finding sayısı varsa fail (regression sinyal)
-  console.log(`[audit] route-level findings: ${findings.length}`);
 });

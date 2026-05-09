@@ -1,14 +1,16 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * SCHED-B4 (Y4-8 revize 2026-05-08) — Yayın Planlama Playwright e2e.
+ * SCHED-B5a (Y5-1 ikinci revize 2026-05-08) — Canlı Yayın Plan + Yayın
+ * Planlama Playwright e2e.
  *
  * Beklenen nav (kullanıcı algı süreklilik):
- *   • "Canlı Yayın Plan" → /schedules (eski schedule-list UI; B5'e kadar paralel)
- *   • "Live-Plan (yeni)" sekmesi YOK (kaldırıldı)
- *   • "Yayın Planlama"   → /yayin-planlama (yeni broadcast flow UI)
- *   • /schedules/reporting istisna (Y4-5; redirect'ten muaf)
- *   • Wildcard `**` → /schedules (eski default)
+ *   • "Canlı Yayın Plan" → /schedules (eski görünümlü schedule-list UI;
+ *     datasource ScheduleService wrapper üstünden /api/v1/live-plan)
+ *   • "Live-Plan (yeni)" sekmesi YOK
+ *   • "Yayın Planlama"   → /yayin-planlama (broadcast flow UI; ayrı kalır)
+ *   • /schedules/reporting istisna (Y4-5; korunur, schedule canonical datasource)
+ *   • Wildcard `**` → /schedules
  *
  * Test pattern: Angular SPA'da direct `page.goto(path)` Keycloak singleton'ı
  * re-init eder ve storageState ile race koşulu yaratır. Tüm flow'lar
@@ -41,15 +43,49 @@ test('nav: "Live-Plan (yeni)" YOK; "Canlı Yayın Plan" + "Yayın Planlama" gör
   await expect(page.locator('a', { hasText: 'Yayın Planlama' })).toBeVisible();
 });
 
-test('nav click: Canlı Yayın Plan → /live-plan canonical UI (Y5-1)', async ({ page }) => {
+test('nav click: Canlı Yayın Plan → /schedules (Y5-1 ikinci revize)', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
 
   const link = page.locator('a', { hasText: 'Canlı Yayın Plan' }).first();
   await link.click();
-  await page.waitForURL(/\/live-plan/);
-  expect(page.url()).toContain('/live-plan');
+  await page.waitForURL(/\/schedules$/);
+  expect(page.url()).toMatch(/\/schedules$/);
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});
+
+test('Canlı Yayın Plan datasource: /schedules ekranı /api/v1/live-plan çağırır, legacy /schedules?usage=live-plan ÇAĞIRMAZ', async ({ page }) => {
+  const legacyCalls: string[] = [];
+  page.on('requestfinished', (req) => {
+    const url = req.url();
+    if (/\/api\/v1\/schedules(\?|$)/.test(url) && /usage=live-plan/.test(url)) legacyCalls.push(url);
+  });
+
+  const livePlanResponsePromise = page.waitForResponse(
+    (res) => /\/api\/v1\/live-plan(\?|$)/.test(res.url()),
+    { timeout: 15_000 },
+  );
+
+  await page.locator('a', { hasText: 'Canlı Yayın Plan' }).first().click();
+  await page.waitForURL(/\/schedules$/);
+
+  const livePlanRes = await livePlanResponsePromise;
+  expect(livePlanRes.status(), `live-plan response status ${livePlanRes.status()}`).toBe(200);
+
+  await page.waitForLoadState('networkidle').catch(() => {});
+  expect(legacyCalls, `legacy /schedules?usage=live-plan çağrıldı: ${legacyCalls.join(', ')}`).toEqual([]);
+});
+
+test('Canlı Yayın Plan: mutation butonları görünmez (Yeni / Düzenle / Sil / Çoğalt / Teknik yok)', async ({ page }) => {
+  await page.locator('a', { hasText: 'Canlı Yayın Plan' }).first().click();
+  await page.waitForURL(/\/schedules$/);
+  await page.waitForLoadState('networkidle').catch(() => {});
+
+  await expect(page.locator('button', { hasText: /Yeni Ekle/ })).toHaveCount(0);
+  await expect(page.locator('button[matTooltip="Düzenle"]')).toHaveCount(0);
+  await expect(page.locator('button[matTooltip="Sil"]')).toHaveCount(0);
+  await expect(page.locator('button[matTooltip="Materyali çoğalt"]')).toHaveCount(0);
+  await expect(page.locator('button[matTooltip="Teknik Detayları Düzenle"]')).toHaveCount(0);
 });
 
 test('nav click: Yayın Planlama → /yayin-planlama ekranı', async ({ page }) => {
@@ -70,9 +106,9 @@ test('nav click: Yayın Planlama → /yayin-planlama ekranı', async ({ page }) 
   expect(networkErrors, networkErrors.join('\n')).toEqual([]);
 });
 
-test('reporting istisna: /schedules/reporting redirect olmaz (Y4-5)', async ({ page }) => {
+test('reporting istisna: /schedules/reporting korunur (Y4-5; schedule canonical datasource)', async ({ page }) => {
   await navigate(page, '/schedules/reporting');
-  expect(page.url()).not.toContain('/yayin-planlama');
+  expect(page.url()).toContain('/schedules/reporting');
 });
 
 test('Yayın Planlama form route + tüm alanlar render', async ({ page }) => {
