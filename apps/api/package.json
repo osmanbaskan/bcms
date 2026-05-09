@@ -13,6 +13,7 @@
     "db:migrate:prod": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
+    "backfill:ingest-plan-item-id": "tsx src/scripts/backfill-ingest-plan-item-id.ts",
     "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test:integration": "vitest run --config ./vitest.integration.config.ts",
     "test:integration:watch": "vitest --config ./vitest.integration.config.ts",
