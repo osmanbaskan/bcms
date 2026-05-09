@@ -25,6 +25,9 @@ const planQuerySchema = z.object({
 const createIngestSchema = z.object({
   sourcePath: z.string().min(1).max(4096),
   targetId:   z.number().int().positive().optional(),
+  // Phase A2 PR-2a (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-09):
+  // structured FK; transient metadata.ingestPlanSourceKey yerine canonical kaynak.
+  planItemId: z.number().int().positive().optional(),
   metadata:   z.record(z.unknown())
     .refine((m) => JSON.stringify(m).length <= 8 * 1024, 'metadata 8KB sınırını aşıyor')
     .optional(),

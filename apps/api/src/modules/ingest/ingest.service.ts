@@ -42,6 +42,12 @@ export function buildIngestCompletedKey(
 export interface TriggerManualIngestDto {
   sourcePath: string;
   targetId?:  number;
+  /** Phase A2 PR-2a (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-09):
+   *  structured FK; transient `metadata.ingestPlanSourceKey` yerine canonical
+   *  kaynak. Öncelik kuralı: `planItemId` verilirse kullanılır + metadata key
+   *  sessizce yok sayılır. Yalnız metadata key verilirse deprecated fallback
+   *  yolu (sourceKey → plan item lookup) çalışır; A4 sonrası kalkar. */
+  planItemId?: number;
   metadata?:  Record<string, unknown>;
 }
 
@@ -69,22 +75,51 @@ export async function triggerManualIngest(
     }
   }
 
-  const planSourceKey = typeof dto.metadata?.ingestPlanSourceKey === 'string'
-    ? dto.metadata.ingestPlanSourceKey
-    : null;
+  // Phase A2 PR-2a: planItemId resolution.
+  // 1) dto.planItemId verildiyse: var olduğunu doğrula → 400 erken-validasyon.
+  // 2) Aksi halde dto.metadata.ingestPlanSourceKey string ise: deprecated
+  //    fallback olarak plan item sourceKey lookup. Bulunamazsa yumuşak davranış
+  //    korunur (job create edilir, planItemId NULL kalır — A2 backward compat).
+  // 3) İkisi birlikte gelirse planItemId kazanır; metadata sessizce yok sayılır.
+  let resolvedPlanItemId: number | null = null;
+
+  if (dto.planItemId !== undefined) {
+    const planItem = await app.prisma.ingestPlanItem.findUnique({
+      where: { id: dto.planItemId },
+      select: { id: true },
+    });
+    if (!planItem) {
+      throw Object.assign(
+        new Error('Ingest plan item bulunamadı'),
+        { statusCode: 400 },
+      );
+    }
+    resolvedPlanItemId = planItem.id;
+  } else if (typeof dto.metadata?.ingestPlanSourceKey === 'string') {
+    const planItem = await app.prisma.ingestPlanItem.findUnique({
+      where: { sourceKey: dto.metadata.ingestPlanSourceKey },
+      select: { id: true },
+    });
+    resolvedPlanItemId = planItem?.id ?? null;
+  }
 
   const job = await app.prisma.$transaction(async (tx) => {
     const created = await tx.ingestJob.create({
       data: {
         sourcePath,
-        targetId: dto.targetId,
-        metadata: dto.metadata as Prisma.InputJsonValue,
+        targetId:   dto.targetId,
+        planItemId: resolvedPlanItemId,
+        metadata:   dto.metadata as Prisma.InputJsonValue,
       },
     });
 
-    if (planSourceKey) {
-      await tx.ingestPlanItem.updateMany({
-        where: { sourceKey: planSourceKey },
+    if (resolvedPlanItemId !== null) {
+      // Phase A2 PR-2a: id-based update (deterministic; tek satır kesin).
+      // Race senaryosunda P2025 fırlarsa $transaction rollback eder; mevcut
+      // route global error handler 404'a düşer. Erken-validasyon dış tx zaten
+      // var olduğunu kontrol etti; race penceresi pratikte dar.
+      await tx.ingestPlanItem.update({
+        where: { id: resolvedPlanItemId },
         data: {
           sourcePath,
           status: 'INGEST_STARTED',

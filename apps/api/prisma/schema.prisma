@@ -204,7 +204,13 @@ model IngestJob {
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at")
   deleted_at    DateTime?
-  planItems     IngestPlanItem[]
+  /// Phase A2 paritesi: mevcut "IngestPlanItem.job" reverse FK named relation
+  /// "IngestPlanItemJob" oldu. Aynı iki model arasında ikinci named relation
+  /// (`IngestJobPlanItem`, IngestJob.planItemId → IngestPlanItem.id) eklendi.
+  /// İki yön farklı semantic taşır:
+  ///   - planItems  (IngestPlanItemJob): "Bu job hangi plan satırlarını işledi"
+  ///   - planItem   (IngestJobPlanItem): "Bu job hangi plan satırından tetiklendi"
+  planItems     IngestPlanItem[] @relation("IngestPlanItemJob")
   qcReport      QcReport?
   /// Phase A1 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A1, 2026-05-09):
   /// IngestJob.targetId canonical olarak `live_plan_entries.id`'ye işaret eder
@@ -214,8 +220,18 @@ model IngestJob {
   /// targetId NULL'lanır).
   livePlanEntry LivePlanEntry?   @relation("IngestJobLivePlanEntry", fields: [targetId], references: [id], onDelete: SetNull)
 
+  /// Phase A2 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-09):
+  /// `IngestJob.planItemId` structured FK; transient `metadata.ingestPlanSourceKey`
+  /// yerine canonical kaynak. ON DELETE SET NULL: plan item hard-delete sonrası
+  /// IngestJob historik kaydı korunur (DECISION V1 §2/6 — operasyonel domain'de
+  /// cascade DELETE rapor sızıntısı yaratır). A4 sonrası metadata kolon DROP
+  /// edildiğinde tek canonical yol kalır.
+  planItemId Int?            @map("plan_item_id")
+  planItem   IngestPlanItem? @relation("IngestJobPlanItem", fields: [planItemId], references: [id], onDelete: SetNull)
+
   @@index([status])
   @@index([targetId])
+  @@index([planItemId])
   @@map("ingest_jobs")
 }
 
@@ -234,7 +250,14 @@ model IngestPlanItem {
   createdAt          DateTime             @default(now()) @map("created_at")
   updatedAt          DateTime             @updatedAt @map("updated_at")
   deleted_at         DateTime?
-  job                IngestJob?           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  /// Phase A2 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-09):
+  /// İki ayrı semantic için iki named relation (Prisma compile zorunluluğu;
+  /// aynı iki model arasında 2 relation):
+  ///   - `IngestPlanItemJob`: jobId → IngestJob (hangi job bu plan'ı işledi).
+  ///   - `IngestJobPlanItem`: jobsTriggered ← IngestJob.planItemId reverse
+  ///     (hangi job'lar bu plan'dan tetiklendi).
+  job                IngestJob?           @relation("IngestPlanItemJob", fields: [jobId], references: [id], onDelete: Cascade)
+  jobsTriggered      IngestJob[]          @relation("IngestJobPlanItem")
   ports              IngestPlanItemPort[]
 
   @@index([dayDate])

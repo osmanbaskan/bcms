@@ -34,6 +34,11 @@ export interface QcReport {
 export interface CreateIngestJobDto {
   sourcePath: string;
   targetId?: number;
+  /** Phase A2 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-09):
+   *  structured FK; transient `metadata.ingestPlanSourceKey` yerine canonical
+   *  kaynak. Backend `planItemId` öncelikli; ikisi de gelirse `metadata` sessizce
+   *  yok sayılır. A4 sonrası `metadata` field DROP. */
+  planItemId?: number;
   metadata?: Record<string, unknown>;
 }
 

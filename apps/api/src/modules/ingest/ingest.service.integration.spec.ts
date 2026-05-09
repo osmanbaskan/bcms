@@ -364,3 +364,156 @@ describe('IngestJob.targetId FK SetNull (Phase A1) — integration', () => {
     expect(entryAfter).toBeNull();
   });
 });
+
+/**
+ * Phase A2 PR-2a (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-09):
+ * IngestJob.planItemId structured FK; transient `metadata.ingestPlanSourceKey`
+ * deprecated fallback yolu A4'e kadar korunur.
+ *
+ * Karar matrisi (PR-2a):
+ *   ✓ planItemId canonical, doğrudan tek tx içinde set edilir.
+ *   ✓ planItemId + metadata birlikte → planItemId kazanır, metadata yok sayılır.
+ *   ✓ Geçersiz planItemId → 400 erken-validasyon (job/outbox/publish yok).
+ *   ✓ Sadece metadata fallback verilir + key DB'de yoksa → yumuşak davranış
+ *     (job create, planItemId NULL).
+ *   ✓ Plan item hard-delete → ON DELETE SET NULL (job korunur, planItemId NULL).
+ */
+describe('IngestJob.planItemId structured FK (Phase A2) — integration', () => {
+  let harness: TestAppHarness;
+
+  beforeEach(async () => {
+    await cleanupTransactional();
+    harness = makeAppHarness();
+  });
+
+  async function seedPlanItem(sourceKey: string): Promise<{ id: number; sourceKey: string }> {
+    const prisma = getRawPrisma();
+    const item = await prisma.ingestPlanItem.create({
+      data: {
+        sourceKey,
+        sourceType: 'manual',
+        dayDate:    new Date('2026-06-01'),
+        status:     'WAITING',
+      },
+    });
+    return { id: item.id, sourceKey: item.sourceKey };
+  }
+
+  test('planItemId canonical → job.planItemId set, planItem.jobId set, status INGEST_STARTED, sourcePath update', async () => {
+    const prisma = getRawPrisma();
+    const planItem = await seedPlanItem('a2-canonical-1');
+
+    const job = await triggerManualIngest(
+      harness.app as unknown as FastifyInstance,
+      { sourcePath: tmpFile, planItemId: planItem.id },
+    );
+
+    expect(job.planItemId).toBe(planItem.id);
+
+    const updatedItem = await prisma.ingestPlanItem.findUniqueOrThrow({ where: { id: planItem.id } });
+    expect(updatedItem.jobId).toBe(job.id);
+    expect(updatedItem.status).toBe('INGEST_STARTED');
+    expect(updatedItem.sourcePath).toBe(tmpFile);
+  });
+
+  test('deprecated metadata.ingestPlanSourceKey fallback → planItem lookup edilir, invariant aynı', async () => {
+    const prisma = getRawPrisma();
+    const planItem = await seedPlanItem('a2-fallback-1');
+
+    const job = await triggerManualIngest(
+      harness.app as unknown as FastifyInstance,
+      {
+        sourcePath: tmpFile,
+        metadata:   { ingestPlanSourceKey: planItem.sourceKey },
+      },
+    );
+
+    expect(job.planItemId).toBe(planItem.id);
+
+    const updatedItem = await prisma.ingestPlanItem.findUniqueOrThrow({ where: { id: planItem.id } });
+    expect(updatedItem.jobId).toBe(job.id);
+    expect(updatedItem.status).toBe('INGEST_STARTED');
+  });
+
+  test('planItemId + metadata birlikte → planItemId kazanır, metadata yok sayılır', async () => {
+    const prisma = getRawPrisma();
+    const winner = await seedPlanItem('a2-winner');
+    const ignored = await seedPlanItem('a2-ignored');
+
+    const job = await triggerManualIngest(
+      harness.app as unknown as FastifyInstance,
+      {
+        sourcePath: tmpFile,
+        planItemId: winner.id,
+        metadata:   { ingestPlanSourceKey: ignored.sourceKey },
+      },
+    );
+
+    expect(job.planItemId).toBe(winner.id);
+
+    const winnerItem = await prisma.ingestPlanItem.findUniqueOrThrow({ where: { id: winner.id } });
+    expect(winnerItem.jobId).toBe(job.id);
+    expect(winnerItem.status).toBe('INGEST_STARTED');
+
+    const ignoredItem = await prisma.ingestPlanItem.findUniqueOrThrow({ where: { id: ignored.id } });
+    expect(ignoredItem.jobId).toBeNull();
+    expect(ignoredItem.status).toBe('WAITING');
+  });
+
+  test('invalid explicit planItemId → 400 atomic (no job, no outbox, no publish)', async () => {
+    const prisma = getRawPrisma();
+    const NON_EXISTING_PI_ID = 999_999_999;
+
+    await expect(
+      triggerManualIngest(
+        harness.app as unknown as FastifyInstance,
+        { sourcePath: tmpFile, planItemId: NON_EXISTING_PI_ID },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(await prisma.ingestJob.count()).toBe(0);
+    expect(
+      await prisma.outboxEvent.count({ where: { aggregateType: 'IngestJob' } }),
+    ).toBe(0);
+    expect(
+      harness.publishedEvents.filter((e) => e.queue === 'queue.ingest.new'),
+    ).toHaveLength(0);
+  });
+
+  test('deprecated metadata sourceKey missing → yumuşak davranış (job create, planItemId NULL)', async () => {
+    const prisma = getRawPrisma();
+
+    const job = await triggerManualIngest(
+      harness.app as unknown as FastifyInstance,
+      {
+        sourcePath: tmpFile,
+        metadata:   { ingestPlanSourceKey: 'a2-nonexistent-key' },
+      },
+    );
+
+    expect(job.id).toBeGreaterThan(0);
+    expect(job.planItemId).toBeNull();
+
+    const planItemCount = await prisma.ingestPlanItem.count();
+    expect(planItemCount).toBe(0);
+  });
+
+  test('IngestPlanItem hard-delete → IngestJob.planItemId NULL (SET NULL cascade)', async () => {
+    const prisma = getRawPrisma();
+    const planItem = await seedPlanItem('a2-set-null-cascade');
+
+    const job = await triggerManualIngest(
+      harness.app as unknown as FastifyInstance,
+      { sourcePath: tmpFile, planItemId: planItem.id },
+    );
+    expect(job.planItemId).toBe(planItem.id);
+
+    // Hard-delete plan item. Mevcut "IngestPlanItem.jobId → IngestJob" CASCADE
+    // ters yön; bu silme işleminde plan item parent değil, child (IngestJob
+    // perspektifinden). FK ingest_jobs_plan_item_id_fkey ON DELETE SET NULL.
+    await prisma.ingestPlanItem.delete({ where: { id: planItem.id } });
+
+    const updated = await prisma.ingestJob.findUniqueOrThrow({ where: { id: job.id } });
+    expect(updated.planItemId).toBeNull();
+  });
+});
