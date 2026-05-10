@@ -58,6 +58,15 @@ The `audit-retention` job purges `audit_logs` rows older than `AUDIT_RETENTION_D
 - `schedules.metadata`, `schedules.start_time`, `schedules.end_time` — kept for `/schedules/reporting` until B5b reporting canonicalization.
 - `schedules.channel_id` + `schedules_channel_id_fkey` + `Schedule.channel` relation — kept for Playout/MCR coupling (Y5-8 follow-up; canonical is the 3-channel slot model).
 
+### Timezone Lock (canonical: Europe/Istanbul)
+- Canonical business timezone: **Europe/Istanbul** (IANA). All operational times — schedule, live-plan, ingest, OPTA, reporting, UI input/output, Excel/PDF exports — are Türkiye saati.
+- User-entered times in the UI are treated as Türkiye saati; rendered times are shown in Türkiye saati.
+- Browser TZ and server/Docker TZ are NOT trusted; route every conversion through a centralized helper.
+- DB: `@db.Timestamptz` columns store UTC instants — render/parse via `Europe/Istanbul` helper. `@db.Date / @db.Time` columns are interpreted as Türkiye-naive business date/time. `IngestPlanItem.plannedStartMinute/EndMinute` is a TZ-independent Türkiye day-minute.
+- **Forbidden**: `T${time}.000Z` compose for user-entered local times; `toLocaleString / toLocaleDateString / toLocaleTimeString` without an explicit `timeZone` argument.
+- `+03:00` literal is allowed only inside a helper as fallback/compose; never spread it into modules.
+- B5b reporting and any future time-bound refactor must comply with this lock.
+
 ### Rate Limiting
 Global rate limit is 300 req/min per IP. Exempt endpoints must set `config: { rateLimit: false }`. Currently exempt: `/health`, `/opta/sync` (Python watcher batch sync), and the ingest `/callback`. The rate-limit `keyGenerator` reads `X-Real-IP` first so nginx-forwarded IPs are preserved.
 

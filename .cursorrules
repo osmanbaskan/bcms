@@ -48,6 +48,14 @@ BCMS = Broadcast Content Management System. TypeScript monorepo: Fastify 5 backe
 - JSON/metadata is NOT canonical (K15 lock). Never filter by metadata JSON keys for canonical discrimination.
 - Legacy columns still present (B5b scope, do not rely on for new code): `schedules.metadata`, `start_time`, `end_time` (reporting); `channel_id` + relation (Playout/MCR, Y5-8).
 
+### Timezone Lock (canonical: Europe/Istanbul)
+- All operational times are Türkiye saati: schedule, live-plan, ingest, OPTA, reporting, UI input/output, Excel/PDF exports.
+- UI input is treated as Türkiye saati; UI output is rendered in Türkiye saati. Browser/server/Docker TZ is not trusted.
+- DB: `@db.Timestamptz` = UTC instant (render/parse via `Europe/Istanbul` helper). `@db.Date / @db.Time` = Türkiye-naive. `IngestPlanItem.plannedStart/EndMinute` = TZ-independent day-minute.
+- Forbidden: `T${time}.000Z` compose for user-entered local times; `toLocaleString/toLocaleDateString/toLocaleTimeString` without an explicit `timeZone` argument.
+- `+03:00` literal only inside a helper as fallback; never spread into modules.
+- B5b reporting and future time-bound refactors must comply.
+
 ## Frontend (Angular 21)
 
 - Standalone Components + Signals-first

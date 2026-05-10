@@ -7,9 +7,30 @@
 - ✓ Event Outbox Altyapısı (Phase 2 shadow + PR-C1 poller deployed non-authoritative)
 - ✓ Eski Schedule Kolonları Temizlendi (SCHED-B5a Block 2 apply done)
 - ✓ MCR Sekmesi Kaldırıldı (playout backend + frontend feature module silindi)
+- ✓ Timezone Lock Belirlendi (Europe/Istanbul)
+- ⏳ Timezone Helper PR
 - ⏸ Reporting DB Modeline Alınacak (SCHED-B5b — UI freeze altında BLOCKED; sahte canonical kabul edilmedi)
 - ⏳ Schedule.channelId Legacy DROP (Y5-8 follow-up; MCR sonrası Playout coupling kaldı; reporting/ingest/booking dolaylı bağımlılık ayrı tur)
 - ⏳ Live Plan Teknik Formu (M5-B10b — 76 alanlı technical-details form; M5-B10a segments-only scaffold done)
+
+## ⏱ Timezone Lock (canonical: Europe/Istanbul, 2026-05-11)
+
+**Why:** Operasyonel saatler tek bir kanonik zaman diliminde tutulur; tarayıcı/server/Docker yerel TZ'sine güvenilmez.
+
+- Canonical business timezone: **Europe/Istanbul** (IANA).
+- Tüm operasyonel saatler — schedule, live-plan, ingest, OPTA, reporting, UI input/output, Excel/PDF export — Türkiye saatiyle yorumlanır.
+- UI'da kullanıcının girdiği saat Türkiye saati kabul edilir; render edilen saat Türkiye saatidir.
+- Browser TZ ve server/Docker TZ kullanılmaz; tüm dönüşümler merkezi helper üzerinden olacak.
+- DB:
+  - `@db.Timestamptz` kolonlar UTC instant saklar; render/parse Europe/Istanbul helper'ından geçer.
+  - `@db.Date / @db.Time` kolonlar Türkiye-naive business date/time olarak yorumlanır.
+  - `IngestPlanItem.plannedStartMinute/EndMinute` Türkiye gün dakikası (TZ-bağımsız).
+- **Yasak pattern'ler**:
+  - `T${time}.000Z` ile kullanıcı saatini UTC sayan compose (örn. `live-plan-entry-add/edit-dialog`'da mevcut 3 saatlik kayma bug'ı).
+  - `toLocaleString / toLocaleDateString / toLocaleTimeString` `timeZone` parametresi olmadan kullanım.
+- `+03:00` literal sadece helper içinde fallback/compose için; modüllere dağılmaz.
+- B5b reporting refactor ve sonraki time-bound refactor'lar bu kilide uyacak.
+- Helper PR (`apps/api/src/core/tz.ts` + `apps/web/src/app/core/time/tz.helpers.ts`) bu doc'tan sonra ayrı küçük PR olarak gelecek.
 
 ## ⚠️ CRITICAL USER INTERACTION RULE
 

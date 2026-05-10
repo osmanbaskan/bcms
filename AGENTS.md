@@ -79,6 +79,15 @@ Before writing any code, follow the 4-phase discipline. Surface-level solutions 
 - Filter: use `eventKey: { not: null }` for broadcast row guarantee. Never filter by `usage_scope` (column gone) or via metadata JSON for canonical discrimination.
 - Legacy columns still present (B5b scope): `metadata`, `start_time`, `end_time` (reporting); `channel_id` + relation (Playout/MCR coupling, Y5-8 follow-up).
 
+### Timezone Lock (canonical: Europe/Istanbul)
+- Canonical business timezone: **Europe/Istanbul** (IANA). All operational times — schedule, live-plan, ingest, OPTA, reporting, UI input/output, Excel/PDF exports — are Türkiye saati.
+- User-entered times in the UI are treated as Türkiye saati; rendered times are shown in Türkiye saati.
+- Browser TZ and server/Docker TZ are NOT trusted; route every conversion through a centralized helper.
+- DB: `@db.Timestamptz` columns store UTC instants — render/parse via `Europe/Istanbul` helper. `@db.Date / @db.Time` columns are interpreted as Türkiye-naive business date/time. `IngestPlanItem.plannedStartMinute/EndMinute` is a TZ-independent Türkiye day-minute.
+- **Forbidden**: `T${time}.000Z` compose for user-entered local times; `toLocaleString / toLocaleDateString / toLocaleTimeString` without an explicit `timeZone` argument.
+- `+03:00` literal is allowed only inside a helper as fallback/compose; never spread it into modules.
+- B5b reporting and any future time-bound refactor must comply with this lock.
+
 ### Error Handling Matrix
 | Source | HTTP | Notes |
 |--------|------|-------|
