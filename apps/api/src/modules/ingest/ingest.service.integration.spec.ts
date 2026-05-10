@@ -9,6 +9,7 @@ import {
   processIngestCallback,
   triggerManualIngest,
 } from './ingest.service.js';
+import { sourceTypeSchema } from './ingest.routes.js';
 import {
   cleanupTransactional,
   getRawPrisma,
@@ -525,6 +526,88 @@ describe('IngestPlanItem partial-unique upsert regression — integration', () =
     });
     expect(updated.plannedStartMinute).toBe(510);
     expect(updated.status).toBe('RECEIVED');
+  });
+});
+
+/**
+ * Phase A5 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A5, 2026-05-10):
+ * IngestPlanItem.sourceType canonical literal set
+ * ('live-plan' | 'studio-plan' | 'ingest-plan' | 'manual').
+ *
+ * Native Prisma enum YERİNE Zod enum + Postgres CHECK constraint
+ * (`ingest_plan_items_source_type_check`, migration 20260510000001) +
+ * shared literal union. Wire format kebab-case korunur (frontend dokunulmadı).
+ *
+ * Karar matrisi (A5):
+ *   ✓ Canonical 4 değer Zod parse + Prisma create kabul eder.
+ *   ✓ Invalid sourceType Zod parse hata fırlatır (route 400 üretir).
+ *   ✓ Invalid sourceType Zod bypass'lı raw Prisma create → DB CHECK reddeder.
+ *   ✓ Mevcut PUT plan create/update path bozulmadı (regression spec'te).
+ */
+describe('IngestPlanItem.sourceType canonical set (Phase A5) — integration', () => {
+  beforeEach(async () => {
+    await cleanupTransactional();
+  });
+
+  test('canonical 4 değer Prisma create kabul eder', async () => {
+    const prisma = getRawPrisma();
+    const values: ReadonlyArray<string> = ['live-plan', 'studio-plan', 'ingest-plan', 'manual'];
+    for (const v of values) {
+      const item = await prisma.ingestPlanItem.create({
+        data: {
+          sourceKey:  `a5-${v}-key`,
+          sourceType: v,
+          dayDate:    new Date('2026-06-01'),
+          status:     'WAITING',
+        },
+      });
+      expect(item.sourceType).toBe(v);
+    }
+  });
+
+  test('invalid sourceType Zod schema reddeder (route 400 producer)', () => {
+    expect(sourceTypeSchema.safeParse('live-plan').success).toBe(true);
+    expect(sourceTypeSchema.safeParse('manual').success).toBe(true);
+    expect(sourceTypeSchema.safeParse('broadcast-flow').success).toBe(false);
+    expect(sourceTypeSchema.safeParse('LIVE_PLAN').success).toBe(false);
+    expect(sourceTypeSchema.safeParse('').success).toBe(false);
+  });
+
+  test('invalid sourceType DB CHECK constraint reddeder (Zod bypass)', async () => {
+    const prisma = getRawPrisma();
+    await expect(
+      prisma.ingestPlanItem.create({
+        data: {
+          sourceKey:  'a5-invalid-key',
+          sourceType: 'broadcast-flow',
+          dayDate:    new Date('2026-06-01'),
+          status:     'WAITING',
+        },
+      }),
+    ).rejects.toThrow(/ingest_plan_items_source_type_check|check constraint/i);
+  });
+
+  test('mevcut PUT-path equivalent: planItem upsert canonical sourceType ile çalışır (regression)', async () => {
+    // Route handler içindeki manual upsert pattern'ini taklit eder; A5 sonrası
+    // sourceType narrowing'ten bağımsız çalıştığını doğrular.
+    const prisma = getRawPrisma();
+    const sourceKey = 'live:a5-regression-1';
+    const created = await prisma.ingestPlanItem.create({
+      data: {
+        sourceKey,
+        sourceType: 'live-plan',
+        dayDate:    new Date('2026-06-01'),
+        plannedStartMinute: 540,
+        plannedEndMinute:   660,
+        status:     'WAITING',
+      },
+    });
+    const updated = await prisma.ingestPlanItem.update({
+      where: { id: created.id },
+      data:  { plannedStartMinute: 600, plannedEndMinute: 720 },
+    });
+    expect(updated.sourceType).toBe('live-plan');
+    expect(updated.plannedStartMinute).toBe(600);
   });
 });
 

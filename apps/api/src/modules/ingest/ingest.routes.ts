@@ -55,8 +55,15 @@ const callbackSchema = z.object({
   }).optional(),
 });
 
+// Phase A5 (DECISION V1 §4.A5, 2026-05-10): canonical sourceType literal set.
+// Native Prisma enum kullanılmadı (kebab-case korunsun, frontend dokunulmasın);
+// runtime validation Zod enum + DB seviyesi CHECK constraint
+// (`ingest_plan_items_source_type_check` migration 20260510000001).
+// Export edilmiş — test seviyesinde doğrudan parse'a izin verir.
+export const sourceTypeSchema = z.enum(['live-plan', 'studio-plan', 'ingest-plan', 'manual']);
+
 const savePlanItemSchema = z.object({
-  sourceType: z.string().min(1).max(30),
+  sourceType: sourceTypeSchema,
   day: dateSchema,
   sourcePath: z.string().trim().optional().nullable(),
   recordingPort: z.string().trim().max(50).optional().nullable(),

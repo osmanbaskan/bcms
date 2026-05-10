@@ -541,6 +541,30 @@ export async function applyScheduleBroadcastFlowConstraints(): Promise<void> {
 }
 
 /**
+ * Phase A5 interim helper (2026-05-10):
+ * `ingest_plan_items.source_type` CHECK constraint manuel reapply. Migration
+ * `20260510000001_ingest_plan_item_source_type_check` production'da uygulanır;
+ * test DB `prisma db push --force-reset` ile sync edildiği için CHECK
+ * constraint tüketilmez.
+ *
+ * Idempotent: DROP IF EXISTS + ADD.
+ *
+ * Madde 1 (migration baseline) sonrası kaldırılır.
+ */
+export async function applyIngestPlanItemSourceTypeConstraint(): Promise<void> {
+  const prisma = getRawPrisma();
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "ingest_plan_items"
+    DROP CONSTRAINT IF EXISTS "ingest_plan_items_source_type_check"
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "ingest_plan_items"
+    ADD CONSTRAINT "ingest_plan_items_source_type_check"
+    CHECK ("source_type" IN ('live-plan', 'studio-plan', 'ingest-plan', 'manual'))
+  `);
+}
+
+/**
  * Minimal seed — channels, broadcast_types, leagues. Booking spec için yeterli.
  * Idempotent: zaten varsa skip eder (CI'da migrate reset sonrası çalışır).
  */

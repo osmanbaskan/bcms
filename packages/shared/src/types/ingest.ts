@@ -47,9 +47,20 @@ export interface CreateIngestJobDto {
   planItemId?: number;
 }
 
+/**
+ * Phase A5 (DECISION V1 §4.A5, 2026-05-10): IngestPlanItem.sourceType canonical
+ * literal set. Native Prisma enum yerine Zod enum + Postgres CHECK constraint
+ * + shared literal union (kebab-case wire format korunur).
+ */
+export type IngestPlanItemSourceType =
+  | 'live-plan'
+  | 'studio-plan'
+  | 'ingest-plan'
+  | 'manual';
+
 export interface IngestPlanItem {
   id: number;
-  sourceType: 'live-plan' | 'studio-plan' | string;
+  sourceType: IngestPlanItemSourceType;
   sourceKey: string;
   dayDate: string;
   sourcePath?: string | null;
@@ -66,7 +77,7 @@ export interface IngestPlanItem {
 }
 
 export interface SaveIngestPlanItemDto {
-  sourceType: 'live-plan' | 'studio-plan' | string;
+  sourceType: IngestPlanItemSourceType;
   day: string;
   sourcePath?: string | null;
   recordingPort?: string | null;

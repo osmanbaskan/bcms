@@ -119,15 +119,32 @@ Patron emir: "A4 metadata DROP, A2 tamamlanmadan önerilemez." Doğru sıra:
 - Test: 3 metadata-only test silindi; spec başlığı revize.
 - Risk: data kaybı kalıcı (build-phase'de etkisiz).
 
-### A5 — `IngestPlanItem.sourceType` enum'a çevir — **ayrı gate**
+### A5 — `IngestPlanItem.sourceType` canonical literal set — **DONE 2026-05-10**
 
-- Mevcut: `sourceType String @db.VarChar(30)` — gerçek değerler `live` / `studio` / `manual` / `ingest-plan`.
-- Hedef: `IngestPlanItemSourceType` enum.
-- Migration: VARCHAR → enum + backfill + CHECK constraint.
-- Service: enum import; route validation.
-- Test: enum unhappy-path spec.
-- UI etkisi: yok.
-- Risk: legacy distinct değerler enum dışı varsa migration fail; pre-inventory.
+- Önkoşul (sağlandı): pre-inventory `SELECT DISTINCT source_type` 4 canonical değer döndü
+  (live-plan: 50, studio-plan: 17, ingest-plan: 2, manual: 1) — 0 invalid satır,
+  0 NULL/empty.
+- **Native Prisma enum YERİNE Postgres CHECK + Zod enum + shared literal union**
+  seçildi. Sebep: Prisma enum identifier kebab-case desteklemez (UPPER_SNAKE
+  gerektirir); enum'a geçiş wire format'ı `live-plan` → `LIVE_PLAN` yapardı,
+  bu hem mevcut 70 satırın UPDATE'ini hem de **frontend literal'lerinin
+  değişmesini** gerektirirdi. Karar: kebab-case wire format korunsun;
+  frontend (`apps/web`) dokunulmasın.
+- Migration: `20260510000001_ingest_plan_item_source_type_check` —
+  `ALTER TABLE ingest_plan_items ADD CONSTRAINT ingest_plan_items_source_type_check
+  CHECK (source_type IN ('live-plan', 'studio-plan', 'ingest-plan', 'manual'))`.
+- Service: `ingest.routes.ts` `sourceTypeSchema = z.enum(['live-plan', 'studio-plan',
+  'ingest-plan', 'manual'])` (export); `savePlanItemSchema.sourceType` Zod enum.
+- Shared: `IngestPlanItemSourceType` type alias; `IngestPlanItem.sourceType` ve
+  `SaveIngestPlanItemDto.sourceType` strict literal union (`| string` fallback
+  kalktı).
+- Test: A5 regression bloğu (canonical 4 Prisma create kabul + Zod safeParse
+  accept/reject + DB CHECK reject + PUT plan upsert regression).
+- Test DB helper: `applyIngestPlanItemSourceTypeConstraint` (db push CHECK'i
+  tüketmiyor; setup'ta reapply).
+- UI etkisi: **yok** (`apps/web` dokunulmadı; mevcut kebab-case literal'ler
+  daralmış union'a uyumlu).
+- Risk: yok (build-phase, 0 invalid satır, frontend kontrat değişmedi).
 
 ## 5. Studio Faz B (Plan)
 

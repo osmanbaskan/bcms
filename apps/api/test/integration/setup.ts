@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll } from 'vitest';
-import { applyLivePlanLookupConstraints, applyLivePlanTechnicalDetailsConstraints, applyLivePlanTransmissionSegmentsConstraints, applyOutboxConstraints, applyOutboxIdempotencyIndex, applyScheduleBroadcastFlowConstraints, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
+import { applyIngestPlanItemSourceTypeConstraint, applyLivePlanLookupConstraints, applyLivePlanTechnicalDetailsConstraints, applyLivePlanTransmissionSegmentsConstraints, applyOutboxConstraints, applyOutboxIdempotencyIndex, applyScheduleBroadcastFlowConstraints, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
 
 /**
  * Hybrid setup:
@@ -75,6 +75,8 @@ beforeAll(async () => {
   // unique reapply (3 channel slot duplicate yasak; source_type CHECK; 3
   // schedule lookup tablosu CHECK + partial unique).
   await applyScheduleBroadcastFlowConstraints();
+  // A5 (2026-05-10): IngestPlanItem.sourceType canonical literal set CHECK.
+  await applyIngestPlanItemSourceTypeConstraint();
 
   // Minimal seed
   await seedTestFixtures();
