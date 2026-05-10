@@ -37,26 +37,26 @@ const formatTime = (d: Date): string => formatIstanbulTime(d);
 export interface ExportOptions {
   from?:      string;
   to?:        string;
-  channelId?: number;
   league?:    string;
   season?:    string;
   week?:      number;
   title?:     string;   // Üst başlık: "TÜRKİYE SİGORTA BASKETBOL SÜPER LİGİ - (26. HAFTA)"
   // SCHED-B5a (Y5-4): legacy `usage` param kaldırıldı; canonical filter
   // (`eventKey IS NOT NULL`) export.ts buildExportWhere'de uygulanır.
+  // Y5-8 (2026-05-11): legacy `channelId` param kaldırıldı (single-channel
+  // FK + Schedule.channel relation DROP).
 }
 
 export async function exportSchedulesToStream(
   app: FastifyInstance,
   opts: ExportOptions,
 ): Promise<Buffer> {
-  const { from, to, channelId, league, season, week, title } = opts;
+  const { from, to, league, season, week, title } = opts;
 
   // DÜŞÜK-API-1.2.14 fix (2026-05-04): take cap. 50K+ schedule senaryosunda
   // belleğe sığmama riski; Excel export pratikte 5K-10K satır makul.
   const schedules = await app.prisma.schedule.findMany({
-    where: buildExportWhere({ from, to, channelId, league, season, week }),
-    include: { channel: { select: { name: true } } },
+    where: buildExportWhere({ from, to, league, season, week }),
     orderBy: { startTime: 'asc' }, // B5b'de canonical scheduleDate/Time order
     take: 50_000,
   });
@@ -83,7 +83,10 @@ export async function exportSchedulesToStream(
       formatTurkishDate(new Date(s.startTime)),
       formatTime(new Date(s.startTime)),
       sanitizeCell(s.title),
-      sanitizeCell(s.channel?.name ?? ''),
+      // Y5-8: legacy Schedule.channel relation kaldırıldı. KANAL kolonu boş
+      // bırakıldı; canonical 3-channel slot için ayrı join helper gerekir
+      // (ileride bir refactor).
+      '',
     ]),
   ];
 
@@ -108,13 +111,13 @@ export async function exportSchedulesToStream(
   return Buffer.from(arr);
 }
 
-function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'channelId' | 'league' | 'season' | 'week'>): Prisma.ScheduleWhereInput {
+function buildExportWhere(opts: Pick<ExportOptions, 'from' | 'to' | 'league' | 'season' | 'week'>): Prisma.ScheduleWhereInput {
   // SCHED-B5a (Y5-4): canonical filter — `eventKey IS NOT NULL` (broadcast
   // flow row guarantee). Legacy `usage_scope` filter kaldırıldı.
+  // Y5-8 (2026-05-11): legacy `channelId` filter kaldırıldı.
   return {
     eventKey: { not: null },
     status: { not: 'CANCELLED' },
-    ...(opts.channelId && { channelId: opts.channelId }),
     ...(opts.from && { startTime: { gte: new Date(opts.from) } }),
     ...(opts.to && { startTime: { lte: new Date(opts.to) } }),
     ...(opts.league && { reportLeague: opts.league }),

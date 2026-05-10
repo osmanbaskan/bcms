@@ -20,12 +20,11 @@ export class ScheduleService {
    *  `start_time/end_time` order ve filter B5b'de canonicalize. `metadata`
    *  okuma reporting tarafında korunur (B5b). */
   async findAll(query: ScheduleQuery) {
-    const { channel, from, to, status, league, season, week, page, pageSize } = query;
+    const { from, to, status, league, season, week, page, pageSize } = query;
     const skip = (page - 1) * pageSize;
 
     const where: Prisma.ScheduleWhereInput = {
       eventKey: { not: null }, // canonical broadcast row guarantee
-      ...(channel  && { channelId: channel }),
       ...(status   && { status }),
       ...(from && { endTime:   { gte: new Date(from) } }),
       ...(to   && { startTime: { lte: new Date(to)   } }),
@@ -37,7 +36,6 @@ export class ScheduleService {
     const [data, total] = await Promise.all([
       this.app.prisma.schedule.findMany({
         where,
-        include: { channel: true },
         orderBy: { startTime: 'asc' }, // B5b'de canonical scheduleDate/Time order
         skip,
         take: pageSize,
@@ -88,7 +86,6 @@ export class ScheduleService {
     const [data, total] = await Promise.all([
       this.app.prisma.schedule.findMany({
         where,
-        include: { channel: true },
         orderBy: [{ scheduleDate: 'asc' }, { scheduleTime: 'asc' }, { id: 'asc' }],
         skip,
         take: pageSize,
@@ -108,7 +105,7 @@ export class ScheduleService {
   async findById(id: number) {
     const schedule = await this.app.prisma.schedule.findUnique({
       where: { id },
-      include: { channel: true, bookings: true, incidents: true },
+      include: { bookings: true, incidents: true },
     });
     if (!schedule) {
       const err = Object.assign(new Error('Schedule not found'), { statusCode: 404 });

@@ -157,7 +157,7 @@ export class BookingService {
         where,
         skip,
         take: pageSize,
-        include: { team: true, schedule: { include: { channel: true } } },
+        include: { team: true, schedule: true },
         orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
       }),
       this.app.prisma.booking.count({ where }),
@@ -180,7 +180,7 @@ export class BookingService {
   async findById(id: number) {
     const booking = await this.app.prisma.booking.findUnique({
       where: { id },
-      include: { team: true, schedule: { include: { channel: true } } },
+      include: { team: true, schedule: true },
     });
     if (!booking) throw Object.assign(new Error('Booking not found'), { statusCode: 404 });
     return booking;
@@ -234,7 +234,7 @@ export class BookingService {
           notes:       dto.notes,
           metadata:    dto.metadata as Prisma.InputJsonValue,
         },
-        include: { team: true, schedule: { include: { channel: true } } },
+        include: { team: true, schedule: true },
       });
 
       // Madde 2+7 PR-B2 (audit doc): Phase 2 SHADOW outbox write.
@@ -361,7 +361,7 @@ export class BookingService {
 
       const refreshed = await tx.booking.findUniqueOrThrow({
         where: { id },
-        include: { team: true, schedule: { include: { channel: true } } },
+        include: { team: true, schedule: true },
       });
 
       // Madde 2+7 PR-B3a (audit doc): notification email shadow outbox write.

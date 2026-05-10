@@ -59,7 +59,7 @@ describe('BookingService — integration', () => {
   // ── create ────────────────────────────────────────────────────────────────
 
   test('create: scheduleId mevcutsa booking oluşur + RabbitMQ publish', async () => {
-    const sch = await createTestSchedule({ channelId: 1 });
+    const sch = await createTestSchedule();
     const user = makeUser({ username: 'tester', groups: ['Booking'] });
     const req = makeRequest(user);
 
@@ -116,7 +116,7 @@ describe('BookingService — integration', () => {
   // ── update: optimistic locking ────────────────────────────────────────────
 
   test('update: If-Match version uyumsuz → 412', async () => {
-    const sch = await createTestSchedule({ channelId: 1 });
+    const sch = await createTestSchedule();
     const user = makeUser({ username: 'tester', groups: ['Booking'] });
     const req = makeRequest(user);
 
@@ -134,7 +134,7 @@ describe('BookingService — integration', () => {
   // ── update: status transition validation ─────────────────────────────────
 
   test('update: geçersiz status geçişi → 409 (APPROVED → PENDING)', async () => {
-    const sch = await createTestSchedule({ channelId: 1 });
+    const sch = await createTestSchedule();
     const user = makeUser({ username: 'tester', groups: ['Booking'] });
     const req = makeRequest(user);
 
@@ -155,7 +155,7 @@ describe('BookingService — integration', () => {
   // ── update: merge-aware date check (e66b4b5 regression) ─────────────────
 
   test('update: sadece dueDate gönderilirse existing.startDate ile çakışma → 400', async () => {
-    const sch = await createTestSchedule({ channelId: 1 });
+    const sch = await createTestSchedule();
     const user = makeUser({ username: 'tester', groups: ['Booking'] });
     const req = makeRequest(user);
 
@@ -180,7 +180,7 @@ describe('BookingService — integration', () => {
   });
 
   test('update: sadece dueDate gönderilirse existing.startDate sonrasıysa OK', async () => {
-    const sch = await createTestSchedule({ channelId: 1 });
+    const sch = await createTestSchedule();
     const user = makeUser({ username: 'tester', groups: ['Booking'] });
     const req = makeRequest(user);
 
@@ -211,7 +211,7 @@ describe('BookingService — integration', () => {
   // var; status değişmediğinde → outbox yok.
 
   test('update + status APPROVED → notification.email_requested outbox + direct NOTIFICATIONS_EMAIL', async () => {
-    const sch = await createTestSchedule({ channelId: 1 });
+    const sch = await createTestSchedule();
     const user = makeUser({ username: 'tester', groups: ['Booking'] });
     const req = makeRequest(user);
 
@@ -258,7 +258,7 @@ describe('BookingService — integration', () => {
   });
 
   test('update without status change → no notification outbox (boundary)', async () => {
-    const sch = await createTestSchedule({ channelId: 1 });
+    const sch = await createTestSchedule();
     const user = makeUser({ username: 'tester', groups: ['Booking'] });
     const req = makeRequest(user);
 

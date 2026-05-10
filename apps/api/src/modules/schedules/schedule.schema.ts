@@ -12,8 +12,8 @@ const ScheduleStatusEnum = z.enum(['DRAFT', 'CONFIRMED', 'ON_AIR', 'COMPLETED', 
 
 // Reporting + export + ingest-candidates query (canonical filter; usage +
 // source param kaldırıldı; route handler default `eventKey IS NOT NULL` filter).
+// Y5-8 (2026-05-11): legacy `channel` filter kaldırıldı.
 export interface ScheduleQuery {
-  channel?:  number;
   from?:     string;
   to?:       string;
   status?:   z.infer<typeof ScheduleStatusEnum>;
@@ -27,12 +27,10 @@ export interface ScheduleQuery {
 export const exportQuerySchema = z.object({
   from:      z.string().datetime({ offset: true }).optional(),
   to:        z.string().datetime({ offset: true }).optional(),
-  channelId: z.coerce.number().int().positive().optional(),
   title:     z.string().optional(),
 });
 
 export const livePlanQuerySchema = z.object({
-  channelId: z.coerce.number().int().positive().optional(),
   from:      z.string().datetime({ offset: true }).optional(),
   to:        z.string().datetime({ offset: true }).optional(),
   league:    z.string().trim().min(1).optional(),

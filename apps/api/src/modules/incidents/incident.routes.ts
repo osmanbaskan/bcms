@@ -49,7 +49,7 @@ export async function incidentRoutes(app: FastifyInstance) {
     const [items, total] = await app.prisma.$transaction([
       app.prisma.incident.findMany({
         where,
-        include: { schedule: { select: { title: true, channelId: true } } },
+        include: { schedule: { select: { title: true } } },
         orderBy: { createdAt: 'desc' },
         skip: (q.page - 1) * q.pageSize,
         take: q.pageSize,

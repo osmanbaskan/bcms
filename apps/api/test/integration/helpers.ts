@@ -601,7 +601,6 @@ export async function seedTestFixtures(): Promise<void> {
  * Booking spec için ek fixture: schedule oluşturur (test'in ihtiyacına göre çağrılır).
  */
 export async function createTestSchedule(opts?: {
-  channelId?: number;
   startTime?: Date;
   endTime?: Date;
   title?: string;
@@ -613,12 +612,12 @@ export async function createTestSchedule(opts?: {
   const end = opts?.endTime ?? new Date(start.getTime() + 90 * 60 * 1000);    // +1.5h
   const created = await prisma.schedule.create({
     data: {
-      channelId: opts?.channelId ?? 1,
+      // SCHED-B5a (Y5-2a): usageScope kaldırıldı (DB default 'broadcast').
+      // Y5-8 (2026-05-11): legacy channelId field kaldırıldı (FK + relation DROP).
       startTime: start,
       endTime: end,
       title: opts?.title ?? 'Integration test schedule',
       status: opts?.status ?? 'CONFIRMED',
-      // SCHED-B5a (Y5-2a): usageScope kaldırıldı (DB default 'broadcast').
       createdBy: 'integration-test',
     },
   });

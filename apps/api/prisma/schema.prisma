@@ -72,7 +72,10 @@ model Channel {
   createdAt  DateTime          @default(now()) @map("created_at")
   updatedAt  DateTime          @updatedAt @map("updated_at")
   deleted_at DateTime?
-  schedules  Schedule[]
+  // Y5-8 (2026-05-11): Schedule.channelId legacy FK kaldırıldı;
+  // Schedule.channel back-relation kaldırıldı. Canonical 3-channel
+  // slot model (channel_1/2/3_id) Prisma'da named relation tanımlı değil
+  // (Int FK; ihtiyaç olursa ileride eklenebilir).
 
   @@map("channels")
 }
@@ -91,7 +94,10 @@ model BroadcastType {
 
 model Schedule {
   id               Int            @id @default(autoincrement())
-  channelId        Int?           @map("channel_id")
+  // Y5-8 (2026-05-11): legacy `channelId` field + `channel` relation
+  // kaldırıldı; canonical 3-channel slot (`channel_1/2/3_id`).
+  // DB kolonu + FK + index `20260511..._drop_legacy_schedule_channel_id`
+  // migration'ında DROP.
   startTime        DateTime       @map("start_time") @db.Timestamptz(6)
   endTime          DateTime       @map("end_time") @db.Timestamptz(6)
   title            String         @db.VarChar(500)
@@ -144,11 +150,9 @@ model Schedule {
   bookings       Booking[]
   incidents      Incident[]
   broadcastType  BroadcastType?  @relation(fields: [broadcastTypeId], references: [id])
-  channel        Channel?        @relation(fields: [channelId], references: [id])
   match          Match?          @relation(fields: [matchId], references: [id])
   timelineEvents TimelineEvent[]
 
-  @@index([channelId, startTime, endTime])
   @@index([status])
   // SCHED-B5a (Y5-2a): legacy `usageScope` index'leri Prisma model'den
   // kaldırıldı; DB'de B5a Block 2 migration'da DROP edilecek.

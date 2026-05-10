@@ -81,7 +81,6 @@ describe('ScheduleService — live-plan datasource wrapper', () => {
       expect(res.data[0].title).toBe('GS - FB');
       expect(res.data[0].startTime).toBe('2026-05-09T19:00:00Z');
       expect(res.data[0].endTime).toBe('2026-05-09T21:00:00Z');
-      expect(res.data[0].channelId).toBe(1);
       expect(res.data[0].channel1Id).toBe(1);
       expect(res.data[0].eventKey).toBe('manual:abc');
       expect(res.data[0].team1Name).toBe('GS');
@@ -243,9 +242,8 @@ describe('mapLivePlanEntryToSchedule', () => {
     expect(s.endTime).toBe('2026-05-09T21:00:00Z');
   });
 
-  it('channel1Id → channelId scalar fallback (channel objesi null)', () => {
+  it('channel1Id canonical slot; legacy channel relation null', () => {
     const s = mapLivePlanEntryToSchedule(entry({ channel1Id: 7 }));
-    expect(s.channelId).toBe(7);
     expect(s.channel1Id).toBe(7);
     expect(s.channel).toBeNull();
   });

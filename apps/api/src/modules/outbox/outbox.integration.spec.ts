@@ -17,13 +17,13 @@ describe('createEnvelope helper', () => {
       eventType: 'schedule.created',
       aggregateType: 'Schedule',
       aggregateId: 42,
-      payload: { scheduleId: 42, channelId: 1 },
+      payload: { scheduleId: 42, channel1Id: 1 },
     });
     expect(isValidEventId(env.eventId)).toBe(true);
     expect(env.aggregateId).toBe('42'); // number → string
     expect(env.schemaVersion).toBe(1);
     expect(new Date(env.occurredAt).toISOString()).toBe(env.occurredAt); // round-trip ISO
-    expect(env.payload).toEqual({ scheduleId: 42, channelId: 1 });
+    expect(env.payload).toEqual({ scheduleId: 42, channel1Id: 1 });
     expect(env.eventType).toBe('schedule.created');
   });
 

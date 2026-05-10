@@ -46,7 +46,6 @@ export async function scheduleRoutes(app: FastifyInstance) {
     const stream = await exportSchedulesToStream(app, {
       from:      q.from,
       to:        q.to,
-      channelId: q.channelId,
       title:     q.title,
     });
 
@@ -66,7 +65,6 @@ export async function scheduleRoutes(app: FastifyInstance) {
       querystring: {
         type: 'object',
         properties: {
-          channelId: { type: 'number' },
           from:      { type: 'string', format: 'date-time' },
           to:        { type: 'string', format: 'date-time' },
           page:      { type: 'number', default: 1 },
@@ -79,7 +77,6 @@ export async function scheduleRoutes(app: FastifyInstance) {
     // SCHED-B5a (Y5-4): canonical filter — `usageScope='live-plan'` yerine
     // `eventKey IS NOT NULL` (broadcast flow row guarantee).
     return svc.findAll({
-      channel:  q.channelId,
       from:     q.from,
       to:       q.to,
       page:     q.page,
@@ -150,7 +147,6 @@ export async function scheduleRoutes(app: FastifyInstance) {
       querystring: {
         type: 'object',
         properties: {
-          channelId: { type: 'number' },
           from:      { type: 'string', format: 'date-time' },
           to:        { type: 'string', format: 'date-time' },
           league:    { type: 'string' },
@@ -165,7 +161,6 @@ export async function scheduleRoutes(app: FastifyInstance) {
     const q = livePlanQuerySchema.parse(request.query);
     // SCHED-B5a (Y5-4 + §6.1): canonical filter; usage_scope kullanımı kaldırıldı.
     return svc.findAll({
-      channel:  q.channelId,
       from:     q.from,
       to:       q.to,
       league:   q.league,
@@ -189,7 +184,6 @@ export async function scheduleRoutes(app: FastifyInstance) {
     const stream = await exportSchedulesToStream(app, {
       from:      q.from,
       to:        q.to,
-      channelId: q.channelId,
       league:    q.league,
       season:    q.season,
       week:      q.week,

@@ -44,7 +44,6 @@ const STATUS_MAP: Record<LivePlanStatus, ScheduleStatus> = {
 export function mapLivePlanEntryToSchedule(entry: LivePlanEntry): Schedule {
   return {
     id:           entry.id,
-    channelId:    entry.channel1Id,
     matchId:      entry.matchId,
     startTime:    entry.eventStartTime,
     endTime:      entry.eventEndTime,

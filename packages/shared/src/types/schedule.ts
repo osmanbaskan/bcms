@@ -5,7 +5,6 @@ export type ScheduleStatus = 'DRAFT' | 'CONFIRMED' | 'ON_AIR' | 'COMPLETED' | 'C
 
 export interface Schedule {
   id: number;
-  channelId: number | null;
   /** OPTA müsabaka kaydına bağlantı; manuel girilen yayınlarda null (HIGH-SHARED-001 fix). */
   matchId?: number | null;
   startTime: string; // ISO 8601
@@ -15,6 +14,8 @@ export interface Schedule {
   broadcastTypeId?: number;
   status: ScheduleStatus;
   // SCHED-B5a (Y5-2a): `usageScope` field silindi.
+  // Y5-8 (2026-05-11): legacy `channelId` field silindi. Canonical:
+  // `channel1Id` / `channel2Id` / `channel3Id`.
   reportLeague?: string | null;
   reportSeason?: string | null;
   reportWeekNumber?: number | null;
@@ -24,6 +25,10 @@ export interface Schedule {
   createdAt: string;
   updatedAt: string;
   finishedAt?: string;
+  /** @deprecated Y5-8: backend Schedule.channel relation kaldırıldı; bu alan
+   *  artık API response'unda yer almaz. UI template'leri optional-chain ile
+   *  graceful fallback yapsın (`?.name ?? '-'`). Reporting UI B5b'de
+   *  canonical 3-channel slot rendering'e taşınacak. */
   channel?: { id: number; name: string; type: string } | null;
   /** Ingest sekmesinden read-only — canlı yayın için kayıt portu ataması */
   recordingPort?: string | null;
@@ -50,15 +55,7 @@ export interface Schedule {
 // SCHED-B5a (Y5-4): legacy CreateScheduleDto + UpdateScheduleDto silindi
 // (legacy POST/PATCH /api/v1/schedules endpoint'leriyle birlikte). Yeni
 // canonical: CreateBroadcastScheduleDto + UpdateBroadcastScheduleDto (B3a).
-
-export interface ScheduleConflict {
-  id: number;
-  channelId: number | null;
-  startTime: string;
-  endTime: string;
-  title: string;
-  status: ScheduleStatus;
-}
+// Y5-8 (2026-05-11): legacy `ScheduleConflict` tipi silindi (kullanım yok).
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCHED-B3a/B3b broadcast flow DTO'ları (backend Zod schema paritesi —

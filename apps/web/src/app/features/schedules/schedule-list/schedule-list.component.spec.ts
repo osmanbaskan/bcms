@@ -27,7 +27,6 @@ import type { Schedule } from '@bcms/shared';
 function makeSchedule(overrides: Partial<Schedule> = {}): Schedule {
   return {
     id:           42,
-    channelId:    null,
     matchId:      null,
     startTime:    '2026-05-09T19:00:00Z',
     endTime:      '2026-05-09T21:00:00Z',
