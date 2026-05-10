@@ -138,44 +138,10 @@ async function smokeBookingOptimisticLock() {
   }
 }
 
-async function smokePlayoutGuard() {
-  const now = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000);
-  const end = new Date(now.getTime() + 60 * 60 * 1000);
-  let scheduleId;
-
-  try {
-    const schedule = await expectStatus(
-      'playout schedule create',
-      request('/schedules', {
-        method: 'POST',
-        body: JSON.stringify({
-          channelId: null,
-          startTime: now.toISOString(),
-          endTime: end.toISOString(),
-          title: 'BCMS playout guard smoke',
-          usageScope: 'broadcast',
-          metadata: { source: 'smoke' },
-        }),
-      }),
-      201,
-    );
-    scheduleId = schedule.body.id;
-
-    await expectStatus(
-      'playout draft go-live guard',
-      request(`/playout/${scheduleId}/go-live`, { method: 'POST' }),
-      409,
-    );
-  } finally {
-    if (scheduleId) await request(`/schedules/${scheduleId}`, { method: 'DELETE' });
-  }
-}
-
 try {
   await smokeHealth();
   await smokeScheduleOptimisticLock();
   await smokeBookingOptimisticLock();
-  await smokePlayoutGuard();
   console.log('api smoke: ok');
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);

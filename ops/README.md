@@ -108,7 +108,6 @@ curl -fsS http://127.0.0.1:3000/health
 | Ekip İş Takip | Her grup kendi işleri; Admin tüm gruplar (SystemEng kendi grubu) |
 | Haftalık Shift | Her grup kendi shifti; supervisor kendi grubunu düzenler; Admin tüm gruplar (SystemEng kendi grubu) |
 | Ingest | Admin, SystemEng, Ingest |
-| MCR | Admin, SystemEng, MCR |
 | Provys, Kanallar, Monitoring | Admin, SystemEng |
 | Kullanıcılar, Ayarlar | Admin, SystemEng |
 
@@ -125,7 +124,6 @@ curl -fsS http://127.0.0.1:3000/health
 - `Ekip İş Takip` → `/bookings` (kullanıcı kendi grubu; `Admin` tüm gruplar; `SystemEng` kendi grubu)
 - `Haftalık Shift` → `/weekly-shift` (kullanıcı kendi grubu; supervisor kendi grubunu düzenler; `Admin` tüm gruplar; `SystemEng` kendi grubu)
 - `Ingest Planlama` → `/ingest` (plan tab + port görünümü tab) — `Ingest`; `Admin` auto-bypass — `SystemEng` OUT
-- `MCR` → `/mcr` — `MCR`; `Admin` auto-bypass — `SystemEng` OUT
 - `Provys İçerik Kontrol` → `/provys-content-control` — `Admin` only — `SystemEng` OUT
 - `Kanallar` → `/channels` — `Admin` only — `SystemEng` OUT
 - `Monitoring` → `/monitoring` — `Admin` only — `SystemEng` OUT

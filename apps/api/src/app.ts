@@ -26,7 +26,6 @@ import { bookingRoutes } from './modules/bookings/booking.routes.js';
 import { channelRoutes } from './modules/channels/channel.routes.js';
 import { ingestRoutes } from './modules/ingest/ingest.routes.js';
 import { incidentRoutes } from './modules/incidents/incident.routes.js';
-import { playoutRoutes } from './modules/playout/playout.routes.js';
 import { auditRoutes } from './modules/audit/audit.routes.js';
 import { matchRoutes } from './modules/matches/match.routes.js';
 import { optaRoutes }  from './modules/opta/opta.routes.js';
@@ -370,7 +369,6 @@ export async function buildApp() {
   await app.register(channelRoutes,  { prefix: '/api/v1/channels' });
   await app.register(ingestRoutes,   { prefix: '/api/v1/ingest' });
   await app.register(incidentRoutes, { prefix: '/api/v1/incidents' });
-  await app.register(playoutRoutes,  { prefix: '/api/v1/playout' });
   await app.register(auditRoutes,    { prefix: '/api/v1/audit' });
   await app.register(matchRoutes,    { prefix: '/api/v1/matches' });
   await app.register(optaRoutes,     { prefix: '/api/v1/opta' });

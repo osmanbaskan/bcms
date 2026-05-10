@@ -1,13 +1,14 @@
 # Notes For Future Codex Sessions
 
-## 🗺️ Roadmap (kısa başlıklar — durum 2026-05-10)
+## 🗺️ Roadmap (kısa başlıklar — durum 2026-05-11)
 
 - ✓ Live Plan DB'ye Taşındı (M5-B1..B5)
 - ✓ Lookup Yönetim Ekranı (M5-B6)
 - ✓ Event Outbox Altyapısı (Phase 2 shadow + PR-C1 poller deployed non-authoritative)
-- ⏳ Eski Schedule Kolonları Temizleniyor (SCHED-B5a Block 2 migration hazır; apply ayrı faz)
-- ⏳ Reporting DB Modeline Alınacak (SCHED-B5b — `metadata`/`start_time`/`end_time` canonicalize)
-- ⏳ MCR Kanal Yapısı Güncellenecek (Y5-8 — `Schedule.channelId` Playout/MCR refactor)
+- ✓ Eski Schedule Kolonları Temizlendi (SCHED-B5a Block 2 apply done)
+- ✓ MCR Sekmesi Kaldırıldı (playout backend + frontend feature module silindi)
+- ⏸ Reporting DB Modeline Alınacak (SCHED-B5b — UI freeze altında BLOCKED; sahte canonical kabul edilmedi)
+- ⏳ Schedule.channelId Legacy DROP (Y5-8 follow-up; MCR sonrası Playout coupling kaldı; reporting/ingest/booking dolaylı bağımlılık ayrı tur)
 - ⏳ Live Plan Teknik Formu (M5-B10b — 76 alanlı technical-details form; M5-B10a segments-only scaffold done)
 
 ## ⚠️ CRITICAL USER INTERACTION RULE
