@@ -16,7 +16,7 @@ Bu doc SCHED-B4 frontend rewiring scope lock'unu kayıt altına alır. **Read-on
 - **K-B3.1-K-B3.27**: backend broadcast flow contract (B3a/B3b) — UI bu API'ye bağlanır.
 - **KO1-KO14**: OPTA cascade (B3c) — frontend cascade'i tetiklemez ama response sayaçlarını okur.
 
-**AGENTS.md / CLAUDE.md `usageScope` notu**: AGENTS.md / CLAUDE.md içindeki `usageScope` "sole discriminator" ifadesi **stale** kabul edilir; SCHED requirement dokümanları üstün source of truth'tur. B5 destructive cleanup'ta `usage_scope` kolonu DROP edilecek; B4'te dokunulmaz. Ajan instruction dosyaları (AGENTS.md / CLAUDE.md) B5 turunda güncellenecek.
+**AGENTS.md / CLAUDE.md `usageScope` notu (RESOLVED 2026-05-10)**: B5a Block 2 migration `20260510120000_sched_b5a_block2_drop_legacy` ile `schedules.usage_scope` kolonu DROP edildi. AGENTS.md / CLAUDE.md / .cursorrules / ops/NOTES_FOR_CODEX.md / ops/README.md güncellendi: "sole discriminator" ifadesi kaldırıldı; broadcast canonical = `event_key IS NOT NULL`, live-plan canonical = `live_plan_entries`. Bu doc'taki tarihsel "stale" notu kayıt amaçlı korunur.
 
 ---
 

@@ -39,7 +39,7 @@ Bulgular:
 
 `docker-compose.yml:216`:
 ```
-BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention,audit-partition
+BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller
 ```
 
 → `ingest-worker` (Node, in-process) worker container'ında **canlı** ve `INGEST_COMPLETED`'i kendisi publish ediyor (W1/W2). Callback'i çağırmıyor.

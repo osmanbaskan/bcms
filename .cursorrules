@@ -41,9 +41,12 @@ BCMS = Broadcast Content Management System. TypeScript monorepo: Fastify 5 backe
 - worker container: background services only
 - Never merge roles
 
-### usageScope
-- DB column `usage_scope` is sole discriminator: `broadcast` | `live-plan`
-- Metadata JSON filtering is obsolete
+### Schedule vs Live-Plan domain split (post-B5a Block 2)
+- `schedules.usage_scope` is legacy — DROPPED in SCHED-B5a Block 2 (2026-05-10). No discriminator column.
+- Schedule (broadcast flow) canonical row marker: `event_key IS NOT NULL` + structured fields (`schedule_date`, `schedule_time`, `channel_1/2/3_id`, `commercial/logo/format_option_id`). Hard-delete domain.
+- Live-plan canonical: `live_plan_entries` + structured satellites; soft-delete preserved.
+- JSON/metadata is NOT canonical (K15 lock). Never filter by metadata JSON keys for canonical discrimination.
+- Legacy columns still present (B5b scope, do not rely on for new code): `schedules.metadata`, `start_time`, `end_time` (reporting); `channel_id` + relation (Playout/MCR, Y5-8).
 
 ## Frontend (Angular 21)
 

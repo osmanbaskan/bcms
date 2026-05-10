@@ -54,7 +54,7 @@ docker compose exec postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
 
 2. Worker durdur
    docker compose stop worker
-   → Background audit yazımları (notification, ingest, bxf, opta) durur
+   → Background audit yazımları (notification, ingest, opta) durur
 
 3. API durdur (write traffic kesin sıfır)
    docker compose stop api

@@ -41,12 +41,22 @@ Every route handler must validate input with Zod before touching Prisma. The glo
 | Unknown (prod) | 500 | Generic message, hide stack |
 
 ### API / Worker Split (Hard Rule)
-The `api` container runs `BCMS_BACKGROUND_SERVICES=none` (HTTP only). The `worker` container runs background services: `notifications`, `ingest-worker`, `ingest-watcher`, `bxf-watcher`, `audit-retention`. Never merge these roles. The OPTA watcher is a **separate Python container** (`bcms_opta_watcher`), not a Node background service.
+The `api` container runs `BCMS_BACKGROUND_SERVICES=none` (HTTP only). The `worker` container runs background services: `notifications`, `ingest-worker`, `ingest-watcher`, `audit-retention`, `audit-partition`, `outbox-poller`. Never merge these roles. The OPTA watcher is a **separate Python container** (`bcms_opta_watcher`), not a Node background service. BXF watcher (legacy) was removed in SCHED-B5a Block 2 (2026-05-10) — no replacement.
 
 The `audit-retention` job purges `audit_logs` rows older than `AUDIT_RETENTION_DAYS` (default 90) — see `apps/api/src/modules/audit/audit-retention.job.ts`. After changing background services, rebuild with `docker compose up -d --build api worker` — env updates alone don't reload running containers.
 
-### `usageScope` Canonicality
-The `schedules.usage_scope` DB column is the sole discriminator: `broadcast` vs `live-plan`. Do NOT use metadata JSON filtering for `usageScope` — that approach is obsolete.
+### Schedule vs Live-Plan Domain Split (post-B5a Block 2)
+
+`schedules.usage_scope` is **legacy**: removed in SCHED-B5a Block 2 (2026-05-10 migration `20260510120000_sched_b5a_block2_drop_legacy`). The `broadcast` vs `live-plan` discriminator no longer exists. Two separate canonical domains:
+
+- **Schedule (broadcast flow)** — `schedules` table; canonical row marker is `event_key IS NOT NULL`. Required structured fields: `event_key`, `selected_live_plan_entry_id`, `schedule_date`, `schedule_time`, plus 3 channel slots (`channel_1_id` / `channel_2_id` / `channel_3_id`) and 3 lookup options (`commercial_option_id`, `logo_option_id`, `format_option_id`). Hard-delete domain (no `deleted_at` column).
+- **Live-plan** — `live_plan_entries` table + structured satellite tables (`live_plan_technical_details`, `live_plan_transmission_segments`, 25 lookup tables). Soft-delete (`deleted_at`) preserved. JSON/metadata is **NOT** canonical (K15 lock); technical fields are structured DB columns or lookup FKs.
+
+**Filter pattern**: For broadcast row guarantee use `eventKey: { not: null }`. Never filter by `usage_scope` — column is gone. Never filter via metadata JSON keys for canonical discrimination.
+
+**Legacy columns still present (B5b scope, do NOT rely on for new code)**:
+- `schedules.metadata`, `schedules.start_time`, `schedules.end_time` — kept for `/schedules/reporting` until B5b reporting canonicalization.
+- `schedules.channel_id` + `schedules_channel_id_fkey` + `Schedule.channel` relation — kept for Playout/MCR coupling (Y5-8 follow-up; canonical is the 3-channel slot model).
 
 ### Rate Limiting
 Global rate limit is 300 req/min per IP. Exempt endpoints must set `config: { rateLimit: false }`. Currently exempt: `/health`, `/opta/sync` (Python watcher batch sync), and the ingest `/callback`. The rate-limit `keyGenerator` reads `X-Real-IP` first so nginx-forwarded IPs are preserved.

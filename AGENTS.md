@@ -50,7 +50,7 @@ Before writing any code, follow the 4-phase discipline. Surface-level solutions 
 
 ### API / Worker Split (Hard Rule)
 - `api` container: `BCMS_BACKGROUND_SERVICES=none` — HTTP only.
-- `worker` container: runs `notifications`, `ingest-worker`, `ingest-watcher`, `bxf-watcher`, `audit-retention`.
+- `worker` container: runs `notifications`, `ingest-worker`, `ingest-watcher`, `audit-retention`, `audit-partition`, `outbox-poller`. (BXF watcher removed in SCHED-B5a Block 2, 2026-05-10.)
 - The OPTA watcher is a **separate Python container** (`bcms_opta_watcher`), not a Node background service.
 - **Never merge these roles.**
 
@@ -72,9 +72,12 @@ Before writing any code, follow the 4-phase discipline. Surface-level solutions 
 - Never hardcode group strings in routes. Import from `@bcms/shared` `PERMISSIONS` map.
 - `app.requireGroup()` with no args = any authenticated user.
 
-### `usageScope` Canonicality
-- `schedules.usage_scope` DB column is the sole discriminator: `broadcast` vs `live-plan`.
-- Metadata JSON filtering for `usageScope` is obsolete. Use the DB column.
+### Schedule vs Live-Plan Domain Split (post-B5a Block 2)
+- `schedules.usage_scope` is **legacy** — removed in SCHED-B5a Block 2 (2026-05-10). No discriminator column.
+- **Schedule (broadcast flow)** canonical row marker: `event_key IS NOT NULL` + structured fields (`schedule_date`, `schedule_time`, `channel_1/2/3_id`, `commercial/logo/format_option_id`). Hard-delete domain.
+- **Live-plan** canonical: `live_plan_entries` + structured satellites (`live_plan_technical_details`, `live_plan_transmission_segments`, 25 lookup tables). Soft-delete preserved. JSON/metadata is NOT canonical (K15 lock).
+- Filter: use `eventKey: { not: null }` for broadcast row guarantee. Never filter by `usage_scope` (column gone) or via metadata JSON for canonical discrimination.
+- Legacy columns still present (B5b scope): `metadata`, `start_time`, `end_time` (reporting); `channel_id` + relation (Playout/MCR coupling, Y5-8 follow-up).
 
 ### Error Handling Matrix
 | Source | HTTP | Notes |

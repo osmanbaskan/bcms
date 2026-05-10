@@ -3,19 +3,20 @@ import { z } from 'zod';
 const ScheduleStatusEnum = z.enum(['DRAFT', 'CONFIRMED', 'ON_AIR', 'COMPLETED', 'CANCELLED']);
 
 // SCHED-B5a (Y5-4): legacy createScheduleSchema, updateScheduleSchema,
-// scheduleQuerySchema (`usage` field), importQuerySchema (BXF), schedule
-// `metadata` Zod helper silindi. Yerine canonical broadcast flow schemas
-// (aşağıda) ve reporting/export query'leri kalır. `metadata`/`start_time`/
-// `end_time` Prisma kolonları DURUR (B5b).
+// scheduleQuerySchema (`usage` field), schedule `metadata` Zod helper silindi.
+// SCHED-B5a Block 2 (2026-05-10): BXF tamamen kaldırıldı; importQuerySchema +
+// `source` query field + `'bxf'` enum silindi (Y5-6 BXF kapanışı).
+// Yerine canonical broadcast flow schemas (aşağıda) ve reporting/export
+// query'leri kalır. `metadata`/`start_time`/`end_time` Prisma kolonları
+// DURUR (B5b).
 
-// Reporting + export + ingest-candidates query (canonical filter; usage
-// param kaldırıldı; route handler default `eventKey IS NOT NULL` filter).
+// Reporting + export + ingest-candidates query (canonical filter; usage +
+// source param kaldırıldı; route handler default `eventKey IS NOT NULL` filter).
 export interface ScheduleQuery {
   channel?:  number;
   from?:     string;
   to?:       string;
   status?:   z.infer<typeof ScheduleStatusEnum>;
-  source?:   'manual' | 'bxf';
   league?:   string;
   season?:   string;
   week?:     number;

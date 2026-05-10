@@ -1,6 +1,6 @@
 # BCMS Operasyon — Docker Compose
 
-> Son güncelleme: 2026-05-06 — **Madde 5 strangler M5-B5 done** (5 implementation PR: B1 schema → B2 service/API → B3 K15 mapping doc → B4 lookup foundation + metadata DROP → B5 lookup management API). Yeni: `live_plan_entries`, 25 lookup tablo, `/api/v1/live-plan` + `/api/v1/live-plan/lookups/:type` API, K15 + L1-L12 lock'lar. Sıradaki: M5-B6 lookup admin UI (ilk frontend PR) → M5-B7 technical_details schema. Eş zamanlı **Outbox + DLQ V1 (Madde 2+7)**: Phase 2 shadow tüm domain'lerde; PR-C1 poller deployed non-authoritative; PR-C2/PR-D production soak gate pending. Önceki tur (2026-05-01): RBAC yeniden yapılandırma (Admin tek full-yetki); recording port normalize; OPTA cascade; auth 403 fix.
+> Son güncelleme: 2026-05-10 — **Madde 5 strangler M5-B1..B6 + M5-B7..B8 backend + M5-B10a done**. Yeni: `live_plan_entries` + `live_plan_technical_details` + `live_plan_transmission_segments` tabloları, 25 lookup tablo, `/api/v1/live-plan` + `/api/v1/live-plan/lookups/:type` + nested technical-details/segments API, K15 + L1-L12 + U1-U12 lock'lar, **Lookup Yönetim Ekranı** (`features/live-plan/admin-lookups/`), segments-only UI scaffold. Sıradaki frontend: **M5-B10b** (76 alanlı technical-details form). Eş zamanlı **SCHED-B5a Block 2** (2026-05-10): legacy `usage_scope` + `deleted_at` + `schedules_no_channel_time_overlap` GiST DROP migration hazır + BXF tamamen kaldırıldı (apply ayrı faz, backup şart). Eş zamanlı **Outbox + DLQ V1 (Madde 2+7)**: Phase 2 shadow tüm domain'lerde; PR-C1 poller deployed non-authoritative; PR-C2/PR-D production soak gate pending. Önceki turlar: RBAC yeniden yapılandırma (Admin tek full-yetki); recording port normalize; OPTA cascade; auth 403 fix.
 
 Proje tamamen **Docker Compose** ile yönetilmektedir. `systemd`, `ng serve`, `tsx watch` kullanılmaz.
 
@@ -41,7 +41,7 @@ npm run smoke:api
 | Servis | Konteyner | Görev | Durum |
 |---|---|---|---|
 | `api` | bcms_api | HTTP, Swagger, health — worker yok | `healthy` |
-| `worker` | bcms_worker | ingest, bxf, notifications consumer, audit retention/partition, **outbox-poller** (PR-C1 — `OUTBOX_POLLER_ENABLED` env-gated) | Healthcheck disabled — worker HTTP sunucusu çalıştırmaz |
+| `worker` | bcms_worker | ingest, notifications consumer, audit retention/partition, **outbox-poller** (PR-C1 — `OUTBOX_POLLER_ENABLED` env-gated) | Healthcheck disabled — worker HTTP sunucusu çalıştırmaz |
 | `opta-watcher` | bcms_opta_watcher | SMB → /api/v1/opta/sync, state `/data` volume | `healthy` |
 | `web` | bcms_web | Angular (nginx) | `healthy` |
 | `postgres` | bcms_postgres | PostgreSQL 16 | — |
@@ -242,14 +242,27 @@ ORDER BY id DESC LIMIT 20;
 - `ops/REQUIREMENTS-OUTBOX-PR-D-V1.md` — replay/retention/cleanup (PR-D)
 - `ops/DECISION-INGEST_COMPLETED-AUTHORITATIVE-PRODUCER.md` — sub-option B2 (idempotency_key)
 
-## Canli Yayin Plani Kapsami
+## Canli Yayin Plani Kapsami (post-B5a Block 2)
+
+`schedules.usage_scope` discriminator kolonu **artık YOK** (SCHED-B5a Block 2 migration `20260510120000_sched_b5a_block2_drop_legacy`, 2026-05-10). İki ayrı canonical domain var:
 
 ```text
-schedules.usage_scope = 'live-plan'   → Sadece Raporlama + Ingest
-schedules.usage_scope = 'broadcast'  → Normal yayın
+Schedule (broadcast flow)
+  → schedules tablosu, event_key IS NOT NULL satırlar
+  → structured alanlar: event_key + schedule_date/time + channel_1/2/3_id + 3 lookup option
+  → hard-delete (deleted_at da DROP edildi)
+
+Live-plan (event + operasyon + teknik detay)
+  → live_plan_entries (1:1 ile event)
+  → live_plan_technical_details (M5-B7 sırada, ~80 prefix'li kolon)
+  → live_plan_transmission_segments (M5-B8)
+  → 25 lookup tablo + /api/v1/live-plan/lookups/:type generic CRUD (M5-B5 done)
+  → soft-delete (deleted_at) korunur
 ```
 
-> **Madde 5 (2026-05-06)**: Live-plan kendi domain'inde — `live_plan_entries` (1:1 ile event), `live_plan_technical_details` (M5-B7 sırada, ~80 prefix'li kolon), `live_plan_transmission_segments` (M5-B8). 25 lookup tablo + `/api/v1/live-plan/lookups/:type` generic CRUD (M5-B5 done). PERMISSIONS namespace'leri: `livePlan` (entity CRUD) + `livePlanLookups` (master data — read all-auth, write/delete SystemEng+Admin). K15 prensibi: JSON canonical YOK. Strangler M5-B1..B5 done; B6 (lookup admin UI) sırada → B7..B14. Detay: `ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md` + `ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md`.
+> **Madde 5 (durum 2026-05-10)**: K15 prensibi — JSON canonical YOK; live-plan teknik detayları structured DB kolon/lookup FK. PERMISSIONS namespace'leri: `livePlan` (entity CRUD) + `livePlanLookups` (master data — read all-auth, write/delete SystemEng+Admin). Strangler durum: M5-B1..B6 done (schema + service/API + K15 mapping + lookup foundation + lookup management API + **Lookup Admin UI**); M5-B7..B8 backend done (technical_details + transmission_segments schema + nested API); M5-B10a UI scaffold done; **sıradaki M5-B10b (76 alanlı technical-details form)** → B11..B14. Detay: `ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md` + `ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md` + `ops/REQUIREMENTS-SCHEDULE-CLEANUP-V1.md`.
+
+> **B5b'ye kalan legacy schedule kolonları**: `schedules.metadata`, `start_time`, `end_time` (reporting `/schedules/reporting` bağımlı); `channel_id` + `Schedule.channel` relation (Playout/MCR coupling, Y5-8 follow-up). Yeni kod bu alanlara bağlanmasın.
 
 ## Web / Frontend
 

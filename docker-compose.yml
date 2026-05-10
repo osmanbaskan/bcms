@@ -193,7 +193,7 @@ services:
     networks:
       - bcms_net
 
-  # ── Worker (arka plan servisleri — ingest, bxf, notifications) ───────────────
+  # ── Worker (arka plan servisleri — ingest, notifications) ────────────────────
   worker:
     build:
       context: .
@@ -204,7 +204,7 @@ services:
     logging: *default-logging
     stop_grace_period: 60s
     # Bilinçli karar: worker arka plan job'ları (notifications, ingest-worker,
-    # bxf-watcher, audit-retention) için HTTP healthcheck endpoint'i yok; pgrep-tabanlı
+    # audit-retention) için HTTP healthcheck endpoint'i yok; pgrep-tabanlı
     # sahte healthcheck "(healthy)" sinyali aldatıcı olur (deadlock'ta da pass eder).
     # Gerçek liveness probe tasarımı: ops/REQUIREMENTS-HEALTHCHECK.md (commit 13ae22c)
     healthcheck:
@@ -213,7 +213,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       NODE_ENV: production
-      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention,audit-partition,outbox-poller
+      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller
       OUTBOX_POLLER_ENABLED: ${OUTBOX_POLLER_ENABLED:-false}
       OUTBOX_POLLER_DRY_RUN: ${OUTBOX_POLLER_DRY_RUN:-false}
       AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-90}
@@ -235,11 +235,9 @@ services:
       SMTP_SECURE: "false"
       SMTP_FROM: ${SMTP_FROM:-noreply@bcms.local}
       STORAGE_HOST: ${STORAGE_HOST}
-      BXF_WATCH_DIR: ${BXF_WATCH_DIR:-/app/tmp/bxf}
       WATCH_FOLDER: /app/tmp/watch
     volumes:
       - ingest_watch:/app/tmp/watch
-      - bxf_watch:/app/tmp/bxf
     # HIGH-INF-017 (kapatıldı 2026-05-05): `api`'ye depends_on kaldırıldı.
     # Worker'ın API'ye runtime bağımlılığı yok; aynı imajdan farklı entry'lerle
     # çalışıyorlar. depends_on sadece startup ordering kontrol eder, ama buradaki
@@ -420,7 +418,6 @@ volumes:
   grafana_data:
   opta_data:
   ingest_watch:
-  bxf_watch:
   opta_watcher_state:
 
 networks:

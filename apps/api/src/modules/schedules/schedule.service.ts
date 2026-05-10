@@ -20,7 +20,7 @@ export class ScheduleService {
    *  `start_time/end_time` order ve filter B5b'de canonicalize. `metadata`
    *  okuma reporting tarafında korunur (B5b). */
   async findAll(query: ScheduleQuery) {
-    const { channel, from, to, status, source, league, season, week, page, pageSize } = query;
+    const { channel, from, to, status, league, season, week, page, pageSize } = query;
     const skip = (page - 1) * pageSize;
 
     const where: Prisma.ScheduleWhereInput = {
@@ -29,8 +29,6 @@ export class ScheduleService {
       ...(status   && { status }),
       ...(from && { endTime:   { gte: new Date(from) } }),
       ...(to   && { startTime: { lte: new Date(to)   } }),
-      ...(source === 'manual' && { createdBy: { not: 'bxf-importer' } }),
-      ...(source === 'bxf'    && { createdBy: 'bxf-importer' }),
       ...(league && { reportLeague: league }),
       ...(season && { reportSeason: season }),
       ...(week && { reportWeekNumber: week }),

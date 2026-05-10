@@ -118,10 +118,14 @@ model Schedule {
   metadata         Json?
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
-  deleted_at       DateTime?
+  // SCHED-B5a Block 2 (2026-05-10): legacy `deleted_at` Schedule field +
+  // DB kolonu + `schedules_deleted_at_idx` DROP (hard-delete domain;
+  // soft-delete kalıntısı kaldırıldı). LivePlanEntry ve lookup tabloları
+  // soft-delete pattern'ini koruyor (M5 lock).
 
   // SCHED-B2 (decision sec.3.5 K16, 2026-05-07): broadcast flow yeni alanlar.
-  // Eski usage_scope/start_time/end_time/channel_id/metadata SCHED-B5'te DROP.
+  // Eski usage_scope/start_time/end_time/metadata B5'te DROP. channel_id
+  // Playout/MCR coupling nedeniyle Y5-8 follow-up'ta DROP olacak.
   // Yeni FK'ler scalar-only Prisma model'inde (47 lookup FK reverse field
   // patlamasini onlemek pragmatik; live_plan_technical_details paritesi).
   eventKey                String?   @unique @map("event_key") @db.VarChar(120)

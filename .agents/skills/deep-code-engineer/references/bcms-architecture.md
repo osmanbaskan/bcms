@@ -22,7 +22,7 @@ Load this reference when designing new backend modules, infrastructure changes, 
 ## API / Worker Split (Hard Rule)
 
 - `api` container: `BCMS_BACKGROUND_SERVICES=none` — serves HTTP only.
-- `worker` container: runs `notifications`, `ingest-worker`, `ingest-watcher`, `bxf-watcher`, `opta-watcher`.
+- `worker` container: runs `notifications`, `ingest-worker`, `ingest-watcher`, `audit-retention`, `audit-partition`, `outbox-poller`. OPTA watcher is a separate Python container. BXF watcher removed in SCHED-B5a Block 2 (2026-05-10).
 - **Never** merge these roles. The `app.ts` factory uses `enabledBackgroundServices()` parsed from `BCMS_BACKGROUND_SERVICES` env.
 
 ## RabbitMQ Queues (Durable)

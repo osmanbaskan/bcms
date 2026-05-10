@@ -38,7 +38,6 @@ import { weeklyShiftRoutes } from './modules/weekly-shifts/weekly-shift.routes.j
 import { startNotificationConsumer } from './modules/notifications/notification.consumer.js';
 import { startIngestWorker } from './modules/ingest/ingest.worker.js';
 import { startIngestWatcher } from './modules/ingest/ingest.watcher.js';
-import { startBxfWatcher } from './modules/bxf/bxf.watcher.js';
 import { startOptaWatcher, getOptaWatcherStatus } from './modules/opta/opta.watcher.js';
 import { startAuditRetentionJob } from './modules/audit/audit-retention.job.js';
 import { startAuditPartitionJob } from './modules/audit/audit-partition.job.js';
@@ -48,7 +47,6 @@ const BACKGROUND_SERVICES = [
   'notifications',
   'ingest-worker',
   'ingest-watcher',
-  'bxf-watcher',
   'opta-watcher',
   'audit-retention',
   'audit-partition',
@@ -132,7 +130,6 @@ async function startBackgroundServices(app: FastifyInstance): Promise<void> {
   await run('notifications', () => startNotificationConsumer(app));
   await run('ingest-worker', () => startIngestWorker(app));
   await run('ingest-watcher', () => startIngestWatcher(app));
-  await run('bxf-watcher', () => startBxfWatcher(app));
   await run('opta-watcher', () => startOptaWatcher(app));
   await run('audit-retention', () => startAuditRetentionJob(app));
   await run('audit-partition', () => startAuditPartitionJob(app));

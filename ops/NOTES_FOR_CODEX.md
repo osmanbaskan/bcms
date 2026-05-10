@@ -1,5 +1,15 @@
 # Notes For Future Codex Sessions
 
+## 🗺️ Roadmap (kısa başlıklar — durum 2026-05-10)
+
+- ✓ Live Plan DB'ye Taşındı (M5-B1..B5)
+- ✓ Lookup Yönetim Ekranı (M5-B6)
+- ✓ Event Outbox Altyapısı (Phase 2 shadow + PR-C1 poller deployed non-authoritative)
+- ⏳ Eski Schedule Kolonları Temizleniyor (SCHED-B5a Block 2 migration hazır; apply ayrı faz)
+- ⏳ Reporting DB Modeline Alınacak (SCHED-B5b — `metadata`/`start_time`/`end_time` canonicalize)
+- ⏳ MCR Kanal Yapısı Güncellenecek (Y5-8 — `Schedule.channelId` Playout/MCR refactor)
+- ⏳ Live Plan Teknik Formu (M5-B10b — 76 alanlı technical-details form; M5-B10a segments-only scaffold done)
+
 ## ⚠️ CRITICAL USER INTERACTION RULE
 
 **NEVER take any action before stating what you will do and receiving explicit user confirmation.**
@@ -10,10 +20,17 @@ This applies to all destructive operations (`git checkout`, `git reset`, `rm`, `
 
 ## Mimari Kurallar (Değiştirilmez)
 
-1. **API/Worker ayrıştırması**: `api` servisi `BCMS_BACKGROUND_SERVICES=none` ile çalışır. Worker servisi `notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention,audit-partition,outbox-poller` çalıştırır (2026-05-06 itibariyle outbox-poller eklendi). OPTA Python watcher ayrı konteyner. Bu ayrım bozulmamalı.
+1. **API/Worker ayrıştırması**: `api` servisi `BCMS_BACKGROUND_SERVICES=none` ile çalışır. Worker servisi `notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller` çalıştırır (2026-05-06 itibariyle outbox-poller eklendi; 2026-05-10 SCHED-B5a Block 2: bxf-watcher kaldırıldı). OPTA Python watcher ayrı konteyner. Bu ayrım bozulmamalı.
 2. **Prisma connection limit**: API `connection_limit=10`, Worker `connection_limit=5`, `pool_timeout=20`. `apps/api/src/plugins/prisma.ts`'te `BCMS_BACKGROUND_SERVICES` env değişkenine göre ayarlanır.
 2. **Graceful shutdown**: `server.ts`'de SIGTERM/SIGINT → `app.close()` → 30 sn timeout. Worker için 60 sn. `--force` veya anında kill önerilmez.
-3. **usageScope kanonik** + **Madde 5 strangler aktif**: `schedules.usage_scope` DB kolonudur (broadcast/live-plan); metadata JSON filtresi YOK; ham SQL köprüsü YOK. **Madde 5 strangler M5-B1..B5 done** (2026-05-06): live-plan kendi domain'inde — `live_plan_entries` (1:1), 25 lookup tablo (`transmission_*`, `technical_companies`, `live_plan_*`, `fiber_*`), `/api/v1/live-plan` + `/api/v1/live-plan/lookups/:type` API. K15 prensibi: **JSON canonical YOK** (live-plan teknik detayları structured DB kolon/lookup FK; metadata kolonu live_plan_entries'ten DROP). M5-B6 (lookup admin UI) sırada; M5-B7 (technical_details schema, ~80 kolon prefix'li) sonraki. Yeni PERMISSIONS namespace'leri: `livePlan` (Schedule.write/delete clone) + `livePlanLookups` (read all-auth, write/delete SystemEng + Admin). **`channel_id NULL` bug değil**, workflow state. Detay: `ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md` + `ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md`.
+3. **Schedule vs live-plan domain split** (SCHED-B5a Block 2 sonrası, 2026-05-10) + **Madde 5 strangler aktif**:
+   - `schedules.usage_scope` artık YOK — B5a Block 2 migration'ı (`20260510120000_sched_b5a_block2_drop_legacy`) ile DROP edildi. Discriminator kolonu yok.
+   - **Schedule (broadcast flow) canonical**: `event_key IS NOT NULL` + structured alanlar (`schedule_date`, `schedule_time`, `channel_1/2/3_id`, `commercial/logo/format_option_id`). Hard-delete domain (`deleted_at` da DROP edildi).
+   - **Live-plan canonical** (M5-B1..B5 done, 2026-05-06): kendi domain'inde — `live_plan_entries` (1:1), 25 lookup tablo (`transmission_*`, `technical_companies`, `live_plan_*`, `fiber_*`), `/api/v1/live-plan` + `/api/v1/live-plan/lookups/:type` API. Soft-delete (`deleted_at`) korunur. K15 prensibi: **JSON canonical YOK** (live-plan teknik detayları structured DB kolon/lookup FK; metadata kolonu live_plan_entries'ten DROP).
+   - Filter: broadcast row guarantee için `eventKey: { not: null }`. Asla `usage_scope` ile filter etme; metadata JSON filtresi YOK; ham SQL köprüsü YOK.
+   - **Hâlâ legacy duran kolonlar (B5b'ye kadar; yeni kod bunlara bağlanmasın)**: `schedules.metadata`, `start_time`, `end_time` — reporting `/schedules/reporting` bağımlı; `channel_id` + `Schedule.channel` relation — Playout/MCR coupling (Y5-8 follow-up).
+   - M5-B6 (lookup admin UI) **done** (`apps/web/src/app/features/live-plan/admin-lookups/`, commit `aa168f1` + shape fix `96fc38f`). M5-B10a (segments-only UI scaffold) **done** (`a7457ff`). Sıradaki: **M5-B10b (technical-details form, ~76 alanlı yeni Ekle/Düzenle UI; ApiService cache + Y2 REVIZE schedule-list disable pending)**. M5-B7 technical_details schema + M5-B8 segments backend done (`20260507000000_live_plan_technical_details_foundation` + `20260507000001_live_plan_transmission_segments_foundation`). Yeni PERMISSIONS namespace'leri: `livePlan` (Schedule.write/delete clone) + `livePlanLookups` (read all-auth, write/delete SystemEng + Admin). **`live_plan_entries.channel_id NULL` bug değil**, workflow state.
+   - Detay: `ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md` + `ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md` + `ops/REQUIREMENTS-SCHEDULE-CLEANUP-V1.md`.
 4. **Nginx static serve**: Angular dosyaları `infra/docker/web.Dockerfile` → nginx:alpine ile sunulur.
 5. **Audit log**: `apps/api/src/plugins/audit.ts` Prisma `$extends` ile tüm write işlemlerini loglar. Bu plugin'i devre dışı bırakma.
 6. **Angular production environment**: `apps/web/angular.json` production konfigürasyonunda `fileReplacements` ile `environment.ts` → `environment.prod.ts` değişimi tanımlı olmalı.
@@ -47,7 +64,7 @@ Adresler:
 
 ```
 api              → BCMS_BACKGROUND_SERVICES=none (HTTP only)
-worker           → BCMS_BACKGROUND_SERVICES=notifications,ingest-worker,ingest-watcher,bxf-watcher,audit-retention,audit-partition,outbox-poller
+worker           → BCMS_BACKGROUND_SERVICES=notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller
 opta-watcher     → Python, SMB → POST /api/v1/opta/sync
 web              → nginx, Angular statik
 postgres         → PostgreSQL 16
@@ -416,3 +433,9 @@ OPTA sync schedule cascade'i version conflict yaşadığında **kalıcı drift o
 3. Kullanıcının PERMISSIONS'a göre gerekli grupta olduğundan emin ol
 
 **Schedule-list /channels endpoint sorunu**: `PERMISSIONS.channels.read=['SystemEng']` ama Tekyon kullanıcısı schedule edit'te kanal seçmek istiyor. Kanal seçim için API permission ya da read-only public endpoint follow-up gerekli (loop fix ile karışmamak için ayrı tutuldu).
+
+## Canonical Data Storage / UI Freeze (2026-05-10)
+
+Kullanıcı kararı: Kalıcı/canonical kaynak olarak JSON dosyaları istenmiyor. Taşınması gereken yapılandırma veya operasyonel veri DB üzerine taşınacak. JSON yalnızca geçici import/export, migration girdisi veya seed benzeri ara format olarak kullanılabilir; runtime canonical source DB olmalıdır.
+
+Bu fazda arayüz üzerinde değişiklik istenmiyor. Yeni işler mümkün olduğunca backend, data model, migration, service ve API katmanlarında tutulmalı. UI değişikliği gerçekten kaçınılmazsa önce kullanıcıya açıkça sorulmalı; varsayım yapılmamalı.
