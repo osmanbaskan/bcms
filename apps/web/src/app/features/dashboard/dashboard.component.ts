@@ -548,10 +548,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private loadStudios() {
     this.loadingStudios.set(true);
     const today = this.isoToday();
-    this.api.get<StudioSlot[] | { data: StudioSlot[] }>(`/studio-plan?date=${today}`).subscribe({
-      next: (res) => {
-        const arr = Array.isArray(res) ? res : (res?.data ?? []);
-        this.todayStudios.set(arr);
+    const weekStart = this.mondayOf(today);
+    // Backend canonical: /api/v1/studio-plans/:weekStart (Monday-based weekly plan
+    // with embedded slots). Dashboard widget bugünkü slot'ları flatten + map eder.
+    this.api.get<{ slots?: Array<{ id: number; dayDate: string; studio: string; startMinute: number; program: string }> }>(
+      `/studio-plans/${weekStart}`,
+    ).subscribe({
+      next: (plan) => {
+        const todaySlots: StudioSlot[] = (plan?.slots ?? [])
+          .filter((s) => s.dayDate === today)
+          .map((s) => ({
+            id: s.id,
+            studio: s.studio,
+            programName: s.program,
+            startTime: this.minuteToTime(s.startMinute),
+            endTime: this.minuteToTime(s.startMinute + 30),
+          }));
+        this.todayStudios.set(todaySlots);
         this.loadingStudios.set(false);
       },
       error: () => {
@@ -563,7 +576,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private loadPorts() {
     this.loadingPorts.set(true);
-    this.api.get<IngestPort[]>(`/recording-ports`).subscribe({
+    this.api.get<IngestPort[]>(`/ingest/recording-ports`).subscribe({
       next: (res) => {
         // beINport mockup 40 port grid; mevcut BCMS'te 8-12 port olabilir.
         // active alanı yoksa varsayılan true.
@@ -582,5 +595,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // "IRD-12" → "12", "FIBER-3" → "3"
     const parts = name.split(/[-\s]/);
     return parts[parts.length - 1] || name.slice(0, 3);
+  }
+
+  /** YYYY-MM-DD → o haftanın pazartesi YYYY-MM-DD. */
+  private mondayOf(dateIso: string): string {
+    const d = new Date(`${dateIso}T00:00:00`);
+    const day = d.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const offset = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + offset);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  private minuteToTime(minute: number): string {
+    const hour = Math.floor(minute / 60) % 24;
+    const min = minute % 60;
+    return `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
   }
 }
