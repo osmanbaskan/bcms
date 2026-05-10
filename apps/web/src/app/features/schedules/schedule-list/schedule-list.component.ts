@@ -5,7 +5,7 @@ import { KeycloakService } from 'keycloak-angular';
 import { Router } from '@angular/router';
 import { environment } from '../../../../environments/environment';
 import { isSkipAuthAllowed } from '../../../core/auth/skip-auth';
-import { formatIstanbulDateTr, formatIstanbulTime, istanbulDayRangeUtc } from '../../../core/time/tz.helpers';
+import { formatIstanbulDateTr, formatIstanbulTime, istanbulDayRangeUtc, istanbulTodayDate } from '../../../core/time/tz.helpers';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -509,7 +509,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   total            = signal(0);
   loading          = signal(false);
   currentTime      = signal(Date.now());
-  selectedDate     = new Date().toISOString().slice(0, 10);
+  selectedDate     = istanbulTodayDate();
   fullscreenActive = signal(false);
   private _userGroups = signal<string[]>([]);
 
@@ -615,7 +615,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   }
 
   goToday() {
-    this.selectedDate = new Date().toISOString().slice(0, 10);
+    this.selectedDate = istanbulTodayDate();
     this.page = 1; this.load();
   }
 
