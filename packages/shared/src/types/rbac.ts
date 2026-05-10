@@ -118,10 +118,6 @@ export const PERMISSIONS = {
     delete:      ['SystemEng'] as BcmsGroup[],
     reportIssue: ['SystemEng', 'Tekyon', 'Transmisyon'] as BcmsGroup[],
   },
-  monitoring: {
-    read:   ['Admin'] as BcmsGroup[],                      // SystemEng OUT — sadece Admin
-    write:  ['Admin'] as BcmsGroup[],
-  },
   auditLogs: {
     read:   ['SystemEng'] as BcmsGroup[],
   },

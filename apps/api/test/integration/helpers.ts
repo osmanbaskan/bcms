@@ -22,7 +22,6 @@ const TRANSACTIONAL_TABLES = [
   'ingest_plan_items',
   'ingest_jobs',
   'qc_reports',
-  'signal_telemetry',
   'shift_assignments',
   'studio_plan_slots',
   'studio_plans',

@@ -73,7 +73,6 @@ model Channel {
   updatedAt  DateTime          @updatedAt @map("updated_at")
   deleted_at DateTime?
   schedules  Schedule[]
-  telemetry  SignalTelemetry[]
 
   @@map("channels")
 }
@@ -425,23 +424,6 @@ model StudioPlanColor {
   @@map("studio_plan_colors")
 }
 
-model SignalTelemetry {
-  id         Int                     @id @default(autoincrement())
-  channelId  Int                     @map("channel_id")
-  signalDb   Float?                  @map("signal_db")
-  snr        Float?
-  ber        Float?
-  audioLufs  Float?                  @map("audio_lufs")
-  status     signal_telemetry_status @default(OK)
-  source     String?                 @db.VarChar(50)
-  measuredAt DateTime                @default(now()) @map("measured_at")
-  deleted_at DateTime?
-  channel    Channel                 @relation(fields: [channelId], references: [id], onDelete: Cascade)
-
-  @@index([channelId, measuredAt])
-  @@map("signal_telemetry")
-}
-
 /// Madde 1 PR-1A (audit doc): declarative range partitioning by `timestamp` (monthly).
 /// Migration: 20260505000002_audit_log_partition_v1.
 /// PG kuralı: partition key tüm PK/UNIQUE constraint'lerinde olmalı → composite
@@ -721,12 +703,6 @@ enum field_type {
   json
   asset
   relation
-}
-
-enum signal_telemetry_status {
-  OK
-  DEGRADED
-  LOST
 }
 
 enum workspace_role {
