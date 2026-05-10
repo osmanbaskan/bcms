@@ -514,30 +514,43 @@ export async function ingestRoutes(app: FastifyInstance) {
         if (recordingPort)        await checkConflict(recordingPort);
         if (backupRecordingPort)  await checkConflict(backupRecordingPort);
 
-        const planItem = await tx.ingestPlanItem.upsert({
-          where: { sourceKey },
-          update: {
-            sourceType: dto.sourceType,
-            dayDate: parseDate(dto.day),
-            sourcePath,
-            plannedStartMinute,
-            plannedEndMinute,
-            status: dto.status ?? undefined,
-            note: dto.note?.trim() || null,
-            updatedBy: user,
-          },
-          create: {
-            sourceKey,
-            sourceType: dto.sourceType,
-            dayDate: parseDate(dto.day),
-            sourcePath,
-            plannedStartMinute,
-            plannedEndMinute,
-            status: dto.status ?? 'WAITING',
-            note: dto.note?.trim() || null,
-            updatedBy: user,
-          },
+        // Manual upsert (Prisma `upsert({ where: { sourceKey } })` migration
+        // 20260505000000 sonrası `ingest_plan_items_source_key_key` partial
+        // unique index'e [WHERE deleted_at IS NULL AND source_key IS NOT NULL]
+        // çevrildi; Postgres `ON CONFLICT (source_key)` partial index'i
+        // çözümleyemiyor (42P10). Bu yüzden findFirst + update/create branch
+        // ile partial unique semantiğine uygun manual upsert.
+        const existing = await tx.ingestPlanItem.findFirst({
+          where: { sourceKey, deleted_at: null },
+          select: { id: true },
         });
+        const planItem = existing
+          ? await tx.ingestPlanItem.update({
+              where: { id: existing.id },
+              data: {
+                sourceType: dto.sourceType,
+                dayDate: parseDate(dto.day),
+                sourcePath,
+                plannedStartMinute,
+                plannedEndMinute,
+                status: dto.status ?? undefined,
+                note: dto.note?.trim() || null,
+                updatedBy: user,
+              },
+            })
+          : await tx.ingestPlanItem.create({
+              data: {
+                sourceKey,
+                sourceType: dto.sourceType,
+                dayDate: parseDate(dto.day),
+                sourcePath,
+                plannedStartMinute,
+                plannedEndMinute,
+                status: dto.status ?? 'WAITING',
+                note: dto.note?.trim() || null,
+                updatedBy: user,
+              },
+            });
 
         // Replace strategy: tüm port atamalarını silip yenisini yaz.
         // Port-time sync transaction içinde garanti — yarım state olamaz.
