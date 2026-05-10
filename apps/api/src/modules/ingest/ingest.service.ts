@@ -35,8 +35,8 @@ export function buildIngestCompletedKey(
  *
  * Domain flow watcher'dan ayrı tutulur (guard #2): her ikisi de aynı outbox
  * helper'ını (writeShadowEvent) kullanır ama kendi $transaction akışını korur.
- * Manual path metadata + ingestPlanItem.updateMany() ek işlemler içerebilir;
- * watcher path saf yeni job creation.
+ * Manual path planItemId çözümlemesi + ingestPlanItem.updateMany() ek işlem
+ * içerebilir; watcher path saf yeni job creation.
  *
  * Route handler bu fonksiyonu çağırır. Auth (preHandler requireGroup
  * PERMISSIONS.ingest.write) route layer'ında kalır.
@@ -47,21 +47,11 @@ export function buildIngestCompletedKey(
 export interface TriggerManualIngestDto {
   sourcePath: string;
   targetId?:  number;
-  /** Phase A2 PR-2c (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-10):
-   *  IngestPlanItem'a structured FK; tek canonical resolver yolu. Önceki
-   *  `metadata.ingestPlanSourceKey` fallback PR-2c'de kaldırıldı. metadata
-   *  alanı hâlâ generic body olarak kabul edilir ama hiçbir resolver path'i
-   *  yoktur — body'de eşleşen sourceKey olsa bile planItemId NULL kalır.
-   *  Kolon A4'te DROP edilecek.
-   *
-   *  Production merge gate: PR-2c bu fallback'in kaldırılmasını içerir;
-   *  production'a deploy edilmeden ÖNCE PR-2b backfill (`docker exec bcms_api
-   *  node dist/scripts/backfill-ingest-plan-item-id.js --execute`) tamamlanmış
-   *  ve runbook §8 post-validation 0/0 dönmüş olmalıdır. Aksi halde legacy
-   *  `planItemId IS NULL + metadata.ingestPlanSourceKey set` satırlar canonical
-   *  FK'ye bağlanmadan kalır. */
+  /** Phase A2 + A4 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2/§4.A4):
+   *  IngestPlanItem'a structured FK; tek canonical resolver yolu. A2 PR-2c
+   *  metadata.ingestPlanSourceKey fallback'ini, A4 metadata kolonunun kendisini
+   *  kaldırdı. Manual ingest body'sinde yalnız `planItemId` resolve eder. */
   planItemId?: number;
-  metadata?:  Record<string, unknown>;
 }
 
 export async function triggerManualIngest(
@@ -88,10 +78,10 @@ export async function triggerManualIngest(
     }
   }
 
-  // Phase A2 PR-2c: planItemId tek canonical resolver yolu. Verildiyse var
+  // Phase A2 + A4: planItemId tek canonical resolver yolu. Verildiyse var
   // olduğunu doğrula (400 erken-validasyon). Verilmediyse `resolvedPlanItemId`
-  // NULL kalır; metadata generic body olarak yazılır ama resolver path'i YOK
-  // (`metadata.ingestPlanSourceKey` fallback PR-2c'de kaldırıldı).
+  // NULL kalır; metadata kolonu A4'te DROP edildiği için fallback resolver
+  // path'i yoktur.
   let resolvedPlanItemId: number | null = null;
 
   if (dto.planItemId !== undefined) {
@@ -114,7 +104,6 @@ export async function triggerManualIngest(
         sourcePath,
         targetId:   dto.targetId,
         planItemId: resolvedPlanItemId,
-        metadata:   dto.metadata as Prisma.InputJsonValue,
       },
     });
 

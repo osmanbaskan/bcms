@@ -9,6 +9,12 @@ export interface IngestJob {
   checksum?: string;
   proxyPath?: string;
   errorMsg?: string;
+  /**
+   * @deprecated A4 (DECISION V1 §4.A4, 2026-05-10) — backend artık metadata'yı
+   * persiste etmiyor ve API response'unda dönmüyor (kolon DROP edildi). Alan
+   * sadece frontend cleanup PR'ı atılana kadar geçici compile uyumluluğu için
+   * korunuyor. Yeni kod metadata field'ına bağımlılık eklemesin.
+   */
   metadata?: Record<string, unknown>;
   startedAt?: string;
   finishedAt?: string;
@@ -34,14 +40,11 @@ export interface QcReport {
 export interface CreateIngestJobDto {
   sourcePath: string;
   targetId?: number;
-  /** Phase A2 PR-2c (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-10):
-   *  IngestPlanItem'a structured FK; tek canonical resolver yolu. Önceki
-   *  `metadata.ingestPlanSourceKey` fallback PR-2c'de kaldırıldı. metadata
-   *  alanı hâlâ generic body olarak kabul edilir ama resolver path'i YOK
-   *  (body'de eşleşen sourceKey olsa bile planItemId NULL kalır). A4 sonrası
-   *  metadata field DROP. */
+  /** Phase A2 + A4 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2/§4.A4):
+   *  IngestPlanItem'a tek canonical FK. A2 PR-2c metadata.ingestPlanSourceKey
+   *  fallback'ini, A4 metadata kolonunun kendisini kaldırdı; manuel ingest
+   *  body'sinde tek resolver path. */
   planItemId?: number;
-  metadata?: Record<string, unknown>;
 }
 
 export interface IngestPlanItem {

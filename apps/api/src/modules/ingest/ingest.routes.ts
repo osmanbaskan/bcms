@@ -20,19 +20,17 @@ const planQuerySchema = z.object({
   date: dateSchema.optional(),
 });
 
-// ORTA-DB-3.1.6 fix (2026-05-04): IngestJob path/metadata application-side cap.
+// ORTA-DB-3.1.6 fix (2026-05-04): IngestJob.sourcePath application-side cap.
 // DB unbounded TEXT; uygulama gerçekçi 4KB sınırı koyar. Linux PATH_MAX 4096.
 const createIngestSchema = z.object({
   sourcePath: z.string().min(1).max(4096),
   targetId:   z.number().int().positive().optional(),
-  // Phase A2 PR-2c (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-10):
-  // IngestPlanItem'a structured FK; tek canonical resolver yolu.
-  // metadata.ingestPlanSourceKey fallback PR-2c'de kaldırıldı; metadata hâlâ
-  // generic body olarak kabul edilir, A4'te DROP.
+  // Phase A2 + A4 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2/§4.A4):
+  // IngestPlanItem'a tek canonical FK. A4 ile body'deki `metadata` alanı
+  // schema'dan kaldırıldı (kolon DROP); Zod default davranışı extra key'leri
+  // sessizce strip eder, dolayısıyla eski caller'lar metadata gönderirse 400
+  // dönmez ama alan persiste edilmez (kolon yok).
   planItemId: z.number().int().positive().optional(),
-  metadata:   z.record(z.unknown())
-    .refine((m) => JSON.stringify(m).length <= 8 * 1024, 'metadata 8KB sınırını aşıyor')
-    .optional(),
 });
 
 const callbackSchema = z.object({

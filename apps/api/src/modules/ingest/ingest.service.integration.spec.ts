@@ -372,24 +372,17 @@ describe('IngestJob.targetId FK SetNull (Phase A1) — integration', () => {
 });
 
 /**
- * Phase A2 PR-2c (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-10):
- * IngestJob.planItemId tek canonical resolver yolu. Önceki
- * `metadata.ingestPlanSourceKey` fallback PR-2c'de kaldırıldı; metadata alanı
- * generic body olarak hâlâ kabul edilir ama resolver path'i YOK.
+ * Phase A2 + A4 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2/§4.A4, 2026-05-10):
+ * IngestJob.planItemId tek canonical resolver yolu. A2 PR-2c metadata
+ * fallback'ini, A4 metadata kolonunun kendisini kaldırdı; DTO/Zod/Prisma
+ * her üç katmanda da `metadata` field artık yok.
  *
- * Karar matrisi (PR-2c):
+ * Karar matrisi (A4):
  *   ✓ planItemId canonical, doğrudan tek tx içinde set edilir.
- *   ✓ planItemId + metadata birlikte → planItemId kazanır, metadata yok sayılır.
  *   ✓ Geçersiz planItemId → 400 erken-validasyon (job/outbox/publish yok).
- *   ✓ Sadece metadata.ingestPlanSourceKey verilir (eşleşen planItem olsa bile)
- *     → planItemId NULL kalır (fallback resolver YOK; PR-2c).
  *   ✓ Plan item hard-delete → ON DELETE SET NULL (job korunur, planItemId NULL).
- *
- * Production merge gate: PR-2c production'a deploy edilmeden önce PR-2b
- * backfill execute + post-validation 0/0 tamamlanmış olmalı (legacy NULL FK
- * satırlar canonical FK'ye bağlandı).
  */
-describe('IngestJob.planItemId structured FK (Phase A2) — integration', () => {
+describe('IngestJob.planItemId structured FK (Phase A2 + A4) — integration', () => {
   let harness: TestAppHarness;
 
   beforeEach(async () => {
@@ -427,60 +420,6 @@ describe('IngestJob.planItemId structured FK (Phase A2) — integration', () => 
     expect(updatedItem.sourcePath).toBe(tmpFile);
   });
 
-  test('PR-2c: metadata.ingestPlanSourceKey body\'de gelse de resolver YOK; planItemId NULL ve eşleşen planItem unchanged', async () => {
-    const prisma = getRawPrisma();
-    const planItem = await seedPlanItem('a2-pr2c-no-fallback');
-
-    const job = await triggerManualIngest(
-      harness.app as unknown as FastifyInstance,
-      {
-        sourcePath: tmpFile,
-        // PR-2a'da bu key planItem'ı resolve ederdi; PR-2c sonrası metadata
-        // tek başına hiçbir resolver path'i tetiklemez. Body kabul edilir,
-        // generic JSON olarak yazılır, A4'te kolon DROP edilecek.
-        metadata:   { ingestPlanSourceKey: planItem.sourceKey },
-      },
-    );
-
-    expect(job.id).toBeGreaterThan(0);
-    expect(job.planItemId).toBeNull();
-
-    // Eşleşen planItem değişmedi (jobId NULL kaldı, status WAITING).
-    const unchangedItem = await prisma.ingestPlanItem.findUniqueOrThrow({ where: { id: planItem.id } });
-    expect(unchangedItem.jobId).toBeNull();
-    expect(unchangedItem.status).toBe('WAITING');
-  });
-
-  test('planItemId + metadata birlikte → planItemId kazanır, metadata resolver path\'i değil', async () => {
-    // PR-2c: Önceden bu test "ikisi birlikte → planItemId kazanır + metadata
-    // sessizce yok sayılır" (öncelik kuralı) idi. PR-2c sonrası metadata
-    // resolver yolu olmadığı için "öncelik" kavramı da kalktı; metadata sadece
-    // generic JSON body. Davranış aynı (planItemId set, ignored unchanged) —
-    // gerekçe değişti.
-    const prisma = getRawPrisma();
-    const winner = await seedPlanItem('a2-winner');
-    const ignored = await seedPlanItem('a2-ignored');
-
-    const job = await triggerManualIngest(
-      harness.app as unknown as FastifyInstance,
-      {
-        sourcePath: tmpFile,
-        planItemId: winner.id,
-        metadata:   { ingestPlanSourceKey: ignored.sourceKey },
-      },
-    );
-
-    expect(job.planItemId).toBe(winner.id);
-
-    const winnerItem = await prisma.ingestPlanItem.findUniqueOrThrow({ where: { id: winner.id } });
-    expect(winnerItem.jobId).toBe(job.id);
-    expect(winnerItem.status).toBe('INGEST_STARTED');
-
-    const ignoredItem = await prisma.ingestPlanItem.findUniqueOrThrow({ where: { id: ignored.id } });
-    expect(ignoredItem.jobId).toBeNull();
-    expect(ignoredItem.status).toBe('WAITING');
-  });
-
   test('invalid explicit planItemId → 400 atomic (no job, no outbox, no publish)', async () => {
     const prisma = getRawPrisma();
     const NON_EXISTING_PI_ID = 999_999_999;
@@ -499,29 +438,6 @@ describe('IngestJob.planItemId structured FK (Phase A2) — integration', () => 
     expect(
       harness.publishedEvents.filter((e) => e.queue === 'queue.ingest.new'),
     ).toHaveLength(0);
-  });
-
-  test('PR-2c: metadata key DB\'de eşleşmese de davranış aynı (planItemId NULL, job create)', async () => {
-    // PR-2a'da bu durum "yumuşak fallback" olarak adlandırılırdı (lookup boş
-    // → planItemId NULL). PR-2c sonrası "fallback" diye bir şey yok; metadata
-    // ister eşleşen ister eşleşmeyen sourceKey içersin, sonuç aynı:
-    // planItemId NULL kalır, job create edilir, metadata generic body olarak
-    // saklanır (A4'te kolon DROP).
-    const prisma = getRawPrisma();
-
-    const job = await triggerManualIngest(
-      harness.app as unknown as FastifyInstance,
-      {
-        sourcePath: tmpFile,
-        metadata:   { ingestPlanSourceKey: 'a2-nonexistent-key' },
-      },
-    );
-
-    expect(job.id).toBeGreaterThan(0);
-    expect(job.planItemId).toBeNull();
-
-    const planItemCount = await prisma.ingestPlanItem.count();
-    expect(planItemCount).toBe(0);
   });
 
   test('IngestPlanItem hard-delete → IngestJob.planItemId NULL (SET NULL cascade)', async () => {

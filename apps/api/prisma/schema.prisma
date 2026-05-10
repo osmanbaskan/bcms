@@ -197,7 +197,6 @@ model IngestJob {
   status        IngestStatus     @default(PENDING)
   checksum      String?          @db.VarChar(64)
   proxyPath     String?          @map("proxy_path")
-  metadata      Json?
   errorMsg      String?          @map("error_msg")
   startedAt     DateTime?        @map("started_at")
   finishedAt    DateTime?        @map("finished_at")
@@ -228,12 +227,12 @@ model IngestJob {
   /// targetId NULL'lanır).
   livePlanEntry LivePlanEntry?   @relation("IngestJobLivePlanEntry", fields: [targetId], references: [id], onDelete: SetNull)
 
-  /// Phase A2 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-09):
-  /// `IngestJob.planItemId` structured FK; transient `metadata.ingestPlanSourceKey`
-  /// yerine canonical kaynak. ON DELETE SET NULL: plan item hard-delete sonrası
+  /// Phase A2 + A4 (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2/§4.A4):
+  /// `IngestJob.planItemId` IngestPlanItem'a tek canonical FK. A2 PR-2c
+  /// metadata.ingestPlanSourceKey resolver path'ini, A4 metadata kolonunun
+  /// kendisini kaldırdı. ON DELETE SET NULL: plan item hard-delete sonrası
   /// IngestJob historik kaydı korunur (DECISION V1 §2/6 — operasyonel domain'de
-  /// cascade DELETE rapor sızıntısı yaratır). A4 sonrası metadata kolon DROP
-  /// edildiğinde tek canonical yol kalır.
+  /// cascade DELETE rapor sızıntısı yaratır).
   planItemId Int?            @map("plan_item_id")
   planItem   IngestPlanItem? @relation("IngestJobPlanItem", fields: [planItemId], references: [id], onDelete: SetNull)
 

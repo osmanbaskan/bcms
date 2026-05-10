@@ -106,14 +106,18 @@ Patron emir: "A4 metadata DROP, A2 tamamlanmadan önerilemez." Doğru sıra:
 - UI etkisi: yok.
 - Risk: external worker callback kontratı If-Match header eklenirse ayrı koordinasyon (Avid capture tarafı).
 
-### A4 — `IngestJob.metadata` DROP — **A2 tamamlandıktan SONRA ayrı gate**
+### A4 — `IngestJob.metadata` DROP — **DONE 2026-05-10**
 
-- Önkoşul: A2 production'da geçildikten sonra; backend `dto.metadata` referansı kalmadığı doğrulanır.
-- Migration: DROP COLUMN.
-- Service: `Prisma.InputJsonValue` cast kaldırılır.
-- Test: kalmaz; mevcut spec metadata referansları temizlenir.
-- UI etkisi: yok.
-- Risk: rollback için backup; data kaybı kalıcı.
+- Önkoşul (sağlandı): A2 PR-2c production-role'de yerleşik; runtime grep `sourceKey` no match; PR-2b post-validation `null_fk_matchable=0` + `metadata_only_after_pr2a=0`.
+- Build-phase notu (2026-05-10): proje hâlâ inşa aşamasında; ingest_jobs içindeki veriler operasyonel olarak önemsiz. 7 günlük gözlem süresi atlandı; observation runbook bu PR'da silindi.
+- Migration: `20260510000000_drop_ingest_job_metadata` — `ALTER TABLE ingest_jobs DROP COLUMN metadata`.
+- Service: `dto.metadata` field + `Prisma.InputJsonValue` cast + create payload `metadata` kaldırıldı. Zod `createIngestSchema.metadata` kaldırıldı.
+- Shared: `CreateIngestJobDto.metadata` kaldırıldı. `IngestJob.metadata` **geçici compatibility için optional korundu** (`@deprecated` JSDoc); frontend cleanup PR'ı atılana kadar; backend persiste/return etmiyor.
+- Frontend: bu PR `apps/web` altında değişiklik içermiyor. `ingest-list.component.ts:425` `j.metadata?.['scheduleTitle']` referansı runtime'da `undefined` döner ve `'#' + j.targetId` fallback'i devreye girer (kozmetik regresyon kabul). Disabled `triggerLivePlanJob()` panel + state alanı cleanup ayrı follow-up PR'da.
+- Backfill artifact'leri (`apps/api/src/scripts/backfill-ingest-plan-item-id.*`, `prisma-factory.ts`, `package.json` entry, `ops/runbooks/A2-PR2B-INGEST-PLAN-ITEM-BACKFILL.md`): silindi. Tarihçe git history (PR-2b commit `438fa09`) üzerinden ulaşılabilir.
+- Observation runbook (`ops/runbooks/A4-INGEST-METADATA-DROP-OBSERVATION.md`): silindi (gözlem atlandığı için).
+- Test: 3 metadata-only test silindi; spec başlığı revize.
+- Risk: data kaybı kalıcı (build-phase'de etkisiz).
 
 ### A5 — `IngestPlanItem.sourceType` enum'a çevir — **ayrı gate**
 
