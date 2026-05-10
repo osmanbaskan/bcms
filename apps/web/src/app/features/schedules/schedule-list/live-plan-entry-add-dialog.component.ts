@@ -13,6 +13,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatDividerModule } from '@angular/material/divider';
 
 import { ScheduleService } from '../../../core/services/schedule.service';
+import { composeIstanbulIso } from '../../../core/time/tz.helpers';
 
 /**
  * Mutation restore (2026-05-10): Canlı Yayın Plan "Yeni Ekle" canonical
@@ -209,8 +210,11 @@ export class LivePlanEntryAddDialogComponent {
     }
 
     const m = this.manual;
-    const startISO = new Date(`${m.startDate}T${m.startTime}:00.000Z`).toISOString();
-    const endISO   = new Date(`${m.endDate}T${m.endTime}:00.000Z`).toISOString();
+    // Timezone Lock: kullanıcı girdiği saat Türkiye saatidir; UTC instant'a
+    // çevirmek için composeIstanbulIso kullan (önceki `T${time}.000Z` pattern
+    // 3 saatlik kayma yaratıyordu).
+    const startISO = composeIstanbulIso(m.startDate, m.startTime);
+    const endISO   = composeIstanbulIso(m.endDate, m.endTime);
 
     this.service.createLivePlanEntry({
       title:           m.title.trim(),

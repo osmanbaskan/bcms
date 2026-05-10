@@ -6,6 +6,7 @@ import { KeycloakService } from 'keycloak-angular';
 import { Subject, Subscription, debounceTime, switchMap, finalize, tap } from 'rxjs';
 import ExcelJS from 'exceljs';
 import { StudioPlanService } from '../../core/services/studio-plan.service';
+import { formatIstanbulTime } from '../../core/time/tz.helpers';
 import { GROUP } from '@bcms/shared';
 import type { StudioPlan, StudioPlanSlot } from '@bcms/shared';
 import { StudioPlanListComponent } from './components/studio-plan-list.component';
@@ -762,11 +763,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   }
 
   private formatSaveTime(value: string): string {
-    return new Intl.DateTimeFormat('tr-TR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(new Date(value));
+    return formatIstanbulTime(value);
   }
 
   private endTimeForSlotIndex(index: number): string {

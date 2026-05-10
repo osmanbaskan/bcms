@@ -11,6 +11,7 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { ApiService } from '../../core/services/api.service';
+import { composeIstanbulIso, dateOnlyToIstanbul } from '../../core/time/tz.helpers';
 
 /** JSON value tipi — `any` yerine güvenli union (HIGH-FE-001 fix 2026-05-05). */
 type JsonPrimitive = string | number | boolean | null;
@@ -379,11 +380,13 @@ export class AuditLogComponent implements OnInit {
     if (this.filterAction)     params['action']     = this.filterAction;
     if (this.filterUser?.trim()) params['user']     = this.filterUser.trim();
     if (this.filterEntityId)   params['entityId']   = this.filterEntityId;
-    if (this.filterFrom)       params['from']       = this.filterFrom.toISOString();
+    if (this.filterFrom) {
+      // Datepicker browser local Date verir; Türkiye gün başlangıcı UTC'ye çevir.
+      params['from'] = composeIstanbulIso(dateOnlyToIstanbul(this.filterFrom), '00:00:00');
+    }
     if (this.filterTo) {
-      const to = new Date(this.filterTo);
-      to.setHours(23, 59, 59, 999);
-      params['to'] = to.toISOString();
+      // Türkiye günü sonu 23:59:59 UTC'ye.
+      params['to'] = composeIstanbulIso(dateOnlyToIstanbul(this.filterTo), '23:59:59');
     }
 
     this.api.get<AuditResponse>('/audit', params).subscribe({

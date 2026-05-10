@@ -14,6 +14,7 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test:unit": "vitest run --config ./vitest.unit.config.ts",
     "test:integration": "vitest run --config ./vitest.integration.config.ts",
     "test:integration:watch": "vitest --config ./vitest.integration.config.ts",
     "test:integration:coverage": "vitest run --config ./vitest.integration.config.ts --coverage"

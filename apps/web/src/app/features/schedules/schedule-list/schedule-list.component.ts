@@ -5,6 +5,7 @@ import { KeycloakService } from 'keycloak-angular';
 import { Router } from '@angular/router';
 import { environment } from '../../../../environments/environment';
 import { isSkipAuthAllowed } from '../../../core/auth/skip-auth';
+import { formatIstanbulDateTr, formatIstanbulTime, istanbulDayRangeUtc } from '../../../core/time/tz.helpers';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -141,10 +142,10 @@ export class ReportIssueDialogComponent {
   description = '';
 
   formatDate(iso: string): string {
-    return new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(iso));
+    return formatIstanbulDateTr(iso);
   }
   formatTime(iso: string): string {
-    return new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
+    return formatIstanbulTime(iso);
   }
 
   save() {
@@ -583,8 +584,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
 
   load() {
     this.loading.set(true);
-    const from = new Date(`${this.selectedDate}T00:00:00${environment.utcOffset}`).toISOString();
-    const to   = new Date(`${this.selectedDate}T23:59:59${environment.utcOffset}`).toISOString();
+    const { from, to } = istanbulDayRangeUtc(this.selectedDate);
 
     const params: ScheduleFilter = { from, to, page: this.page, pageSize: this.pageSize };
 

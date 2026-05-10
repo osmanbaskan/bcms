@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { dropPartition, findExpiredPartitions, isTablePartitioned } from './audit-retention.helpers.js';
+import { ISTANBUL_TZ } from '../../core/tz.js';
 
 const BATCH_SIZE = 10_000;
 const DEFAULT_RETENTION_DAYS = 90;
-const TR_TIMEZONE = 'Europe/Istanbul';
+const TR_TIMEZONE = ISTANBUL_TZ;
 
 function isDryRun(): boolean {
   return process.env.AUDIT_RETENTION_DRY_RUN === 'true';

@@ -9,6 +9,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
+import { formatIstanbulDate, formatIstanbulDateTime } from '../../core/time/tz.helpers';
 
 interface ShiftDay {
   index: number;
@@ -585,9 +586,12 @@ export class WeeklyShiftComponent implements OnInit {
 
   private printableHtml(data: ShiftResponse): string {
     const weekStartTR = this.formatDateTR(data.weekStart);
-    const weekEnd = new Date(`${data.weekStart}T00:00:00`);
-    weekEnd.setDate(weekEnd.getDate() + 6);
-    const weekEndStr = this.formatDateTR(weekEnd.toISOString().slice(0, 10));
+    // weekStart "YYYY-MM-DD" Türkiye-naive gün; +6 gün ekle, yine Türkiye-naive
+    // string olarak kalsın. Date.UTC ile browser TZ'sinden bağımsız.
+    const [y, m, d] = data.weekStart.split('-').map(Number);
+    const weekEnd = new Date(Date.UTC(y, m - 1, d + 6));
+    const weekEndYmd = `${weekEnd.getUTCFullYear()}-${String(weekEnd.getUTCMonth() + 1).padStart(2, '0')}-${String(weekEnd.getUTCDate()).padStart(2, '0')}`;
+    const weekEndStr = this.formatDateTR(weekEndYmd);
 
     const styles = `
       <style>
@@ -759,7 +763,7 @@ export class WeeklyShiftComponent implements OnInit {
           <div class="header-date"><span>${weekStartTR}</span> → <span>${weekEndStr}</span></div>
         </div>
         ${sections}
-        <div class="footer">BCMS · ${new Date().toLocaleString('tr-TR')}</div>
+        <div class="footer">BCMS · ${formatIstanbulDateTime(new Date())}</div>
       </body>
     </html>`;
   }

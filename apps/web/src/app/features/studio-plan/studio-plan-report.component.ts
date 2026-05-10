@@ -8,6 +8,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../core/services/api.service';
+import { formatIstanbulDate, istanbulTodayDate } from '../../core/time/tz.helpers';
 
 interface UsageRow {
   program: string;
@@ -19,13 +20,13 @@ interface UsageRow {
 }
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return istanbulTodayDate();
 }
 
 function monthsAgoStr(n: number): string {
   const d = new Date();
   d.setMonth(d.getMonth() - n);
-  return d.toISOString().slice(0, 10);
+  return formatIstanbulDate(d);
 }
 
 function formatHours(minutes: number): string {

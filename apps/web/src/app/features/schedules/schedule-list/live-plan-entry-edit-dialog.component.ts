@@ -11,6 +11,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 
 import { ScheduleService } from '../../../core/services/schedule.service';
+import { composeIstanbulIso } from '../../../core/time/tz.helpers';
 import type { Schedule } from '@bcms/shared';
 
 /**
@@ -178,8 +179,11 @@ export class LivePlanEntryEditDialogComponent {
 
     const s = this.data.schedule;
     const f = this.form;
-    const startISO = new Date(`${f.startDate}T${f.startTime}:00.000Z`).toISOString();
-    const endISO   = new Date(`${f.endDate}T${f.endTime}:00.000Z`).toISOString();
+    // Timezone Lock: kullanıcı girdiği saat Türkiye saatidir; UTC instant'a
+    // çevirmek için composeIstanbulIso kullan (önceki `T${time}.000Z` pattern
+    // 3 saatlik kayma yaratıyordu).
+    const startISO = composeIstanbulIso(f.startDate, f.startTime);
+    const endISO   = composeIstanbulIso(f.endDate, f.endTime);
 
     this.service.updateLivePlanEntry(s.id, {
       title:           f.title.trim(),

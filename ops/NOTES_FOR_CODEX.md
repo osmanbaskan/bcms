@@ -8,7 +8,8 @@
 - ✓ Eski Schedule Kolonları Temizlendi (SCHED-B5a Block 2 apply done)
 - ✓ MCR Sekmesi Kaldırıldı (playout backend + frontend feature module silindi)
 - ✓ Timezone Lock Belirlendi (Europe/Istanbul)
-- ⏳ Timezone Helper PR
+- ✓ Timezone Helper PR
+- ⏸ Reporting TZ drift B5b ile çözülecek
 - ⏸ Reporting DB Modeline Alınacak (SCHED-B5b — UI freeze altında BLOCKED; sahte canonical kabul edilmedi)
 - ⏳ Schedule.channelId Legacy DROP (Y5-8 follow-up; MCR sonrası Playout coupling kaldı; reporting/ingest/booking dolaylı bağımlılık ayrı tur)
 - ⏳ Live Plan Teknik Formu (M5-B10b — 76 alanlı technical-details form; M5-B10a segments-only scaffold done)

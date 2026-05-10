@@ -18,6 +18,7 @@ import { environment } from '../../../../environments/environment';
 import { isSkipAuthAllowed } from '../../../core/auth/skip-auth';
 
 import { ApiService } from '../../../core/services/api.service';
+import { istanbulTodayDate } from '../../../core/time/tz.helpers';
 import { GROUP } from '@bcms/shared';
 import type { Booking, BookingStatus, PaginatedResponse } from '@bcms/shared';
 import type { BcmsTokenParsed } from '../../../core/types/auth';
@@ -47,7 +48,7 @@ function dateOnly(value?: string | null): string {
 }
 
 function todayDateOnly(): string {
-  return new Date().toLocaleDateString('en-CA');
+  return istanbulTodayDate();
 }
 
 @Component({

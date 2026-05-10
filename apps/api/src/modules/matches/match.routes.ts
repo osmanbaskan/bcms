@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { PERMISSIONS } from '@bcms/shared';
+import { ISTANBUL_TZ } from '../../core/tz.js';
 
 const matchListQuerySchema = z.object({
   leagueId: z.coerce.number().int().positive().optional(),
@@ -75,7 +76,7 @@ export async function matchRoutes(app: FastifyInstance) {
 const MATCH_TR_MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
 function buildLabel(home: string, away: string, date: Date, week: number | null): string {
   const parts = new Intl.DateTimeFormat('tr-TR', {
-    timeZone: 'Europe/Istanbul', day: '2-digit', month: 'numeric',
+    timeZone: ISTANBUL_TZ, day: '2-digit', month: 'numeric',
     year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
   }).formatToParts(date);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';

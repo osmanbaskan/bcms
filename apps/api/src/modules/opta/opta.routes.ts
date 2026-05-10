@@ -5,6 +5,7 @@ import { buildCompetitionList, loadMatches, clearOptaCache, buildFixtureCompetit
 import { getOptaWatcherStatus } from './opta.watcher.js';
 import { readSmbConfig, writeSmbConfig, type SmbConfig } from './opta.smb-config.js';
 import { PERMISSIONS } from '@bcms/shared';
+import { formatIstanbulDateTr } from '../../core/tz.js';
 
 const matchesQuerySchema = z.object({
   competitionId: z.string().min(1),
@@ -198,7 +199,7 @@ export async function optaRoutes(app: FastifyInstance) {
       awayTeamName:    m.awayTeamName,
       matchDate:       m.matchDate.toISOString(),
       weekNumber:      m.weekNumber,
-      label:           `${m.homeTeamName} - ${m.awayTeamName} (${m.matchDate.toLocaleDateString('tr-TR')})`,
+      label:           `${m.homeTeamName} - ${m.awayTeamName} (${formatIstanbulDateTr(m.matchDate)})`,
     }));
   });
 

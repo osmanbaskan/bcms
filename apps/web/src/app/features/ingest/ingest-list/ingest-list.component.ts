@@ -19,6 +19,7 @@ import { interval, Subscription, timer } from 'rxjs';
 import { switchMap, take } from 'rxjs/operators';
 
 import { ApiService } from '../../../core/services/api.service';
+import { formatIstanbulDateTr, formatIstanbulTime, istanbulDayRangeUtc } from '../../../core/time/tz.helpers';
 import { LoggerService } from '../../../core/services/logger.service';
 import {
   IngestPortBoardColumnView,
@@ -1052,8 +1053,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   loadPortBoardData(dateValue: string) {
     this.portBoardLoadError.set(null);
-    const from = new Date(`${dateValue}T00:00:00${environment.utcOffset}`).toISOString();
-    const to = new Date(`${dateValue}T23:59:59${environment.utcOffset}`).toISOString();
+    const { from, to } = istanbulDayRangeUtc(dateValue);
     this.api.get<PaginatedResponse<Schedule>>('/schedules/ingest-candidates', { from, to, page: 1, pageSize: 200 }).subscribe({
       next: (res) => this.portBoardLivePlan.set(res.data ?? []),
       error: () => this.portBoardLoadError.set('Canlı yayın planı yüklenemedi'),
@@ -1195,8 +1195,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
   }
 
   loadLivePlanCandidates() {
-    const from = new Date(`${this.livePlanDate}T00:00:00${environment.utcOffset}`).toISOString();
-    const to = new Date(`${this.livePlanDate}T23:59:59${environment.utcOffset}`).toISOString();
+    const { from, to } = istanbulDayRangeUtc(this.livePlanDate);
     const params: Record<string, string | number> = {
       from,
       to,
@@ -1329,11 +1328,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
   }
 
   private formatTime(value: string): string {
-    return new Intl.DateTimeFormat('tr-TR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(new Date(value));
+    return formatIstanbulTime(value);
   }
 
   private minuteToTime(value: number): string {
@@ -1553,11 +1548,10 @@ export class IngestListComponent implements OnInit, OnDestroy {
   }
 
   private formatBoardDateLabel(): string {
-    return new Intl.DateTimeFormat('tr-TR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    }).format(new Date(`${this.portBoardDate()}T12:00:00`));
+    // portBoardDate() = "YYYY-MM-DD" Türkiye-naive günü. String split yeter;
+    // TZ dönüşümü gereksiz.
+    const [y, m, d] = this.portBoardDate().split('-');
+    return `${d}.${m}.${y}`;
   }
 
   private escapeHtml(value: string): string {

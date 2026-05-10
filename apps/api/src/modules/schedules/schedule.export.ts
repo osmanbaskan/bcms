@@ -3,6 +3,8 @@ import ExcelJS from 'exceljs';
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
 
+import { ISTANBUL_TZ, formatIstanbulTime } from '../../core/tz.js';
+
 // ── Türkçe ay ve gün adları ───────────────────────────────────────────────────
 const TR_MONTHS = [
   'Ocak','Şubat','Mart','Nisan','Mayıs','Haziran',
@@ -20,11 +22,9 @@ function sanitizeCell(value: string): string {
 // LOW-API-014 fix (2026-05-05): yerel zaman yerine Istanbul zaman dilimi
 // (TR yayıncılık standardı). Sunucu saat dilimi farklı olsa bile doğru tarih
 // gösterir.
-const TR_TIMEZONE = 'Europe/Istanbul';
-
 function formatTurkishDate(d: Date): string {
   const parts = new Intl.DateTimeFormat('tr-TR', {
-    timeZone: TR_TIMEZONE, day: 'numeric', month: 'numeric',
+    timeZone: ISTANBUL_TZ, day: 'numeric', month: 'numeric',
     year: 'numeric', weekday: 'long',
   }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
@@ -32,11 +32,7 @@ function formatTurkishDate(d: Date): string {
   return `${get('day')} ${TR_MONTHS[month - 1]} ${get('year')} ${get('weekday')}`;
 }
 
-function formatTime(d: Date): string {
-  return new Intl.DateTimeFormat('tr-TR', {
-    timeZone: TR_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false,
-  }).format(d);
-}
+const formatTime = (d: Date): string => formatIstanbulTime(d);
 
 export interface ExportOptions {
   from?:      string;

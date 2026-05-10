@@ -1,17 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ScheduleService } from './schedule.service.js';
-
-const TR_TIMEZONE = 'Europe/Istanbul';
+import { istanbulTodayDate } from '../../core/tz.js';
 
 // ORTA-API-1.2.4 fix (2026-05-04): export filename Istanbul saatine göre.
 // Eski hâl: new Date().toISOString().slice(0,10) UTC; Türkiye akşam 22:00
 // = UTC 19:00, ama 02:00'da UTC 23:00 → tarih 1 gün geride.
-function istanbulDateOnly(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TR_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date());
-}
+const istanbulDateOnly = istanbulTodayDate;
 
 import {
   exportQuerySchema,

@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
 
+import { ISTANBUL_TZ } from '../../core/tz.js';
+
 export const OPTA_DIR = process.env.OPTA_DIR ?? '/mnt/opta-backups/OPTAfromFTP20511';
 
 // Yayın hakkı olan ligler (srml competition_id → görünen ad override)
@@ -72,7 +74,7 @@ const fixtureCache      = new Map<string, OptaFixture[]>();
 const teamNameCache     = new Map<string, CachedTeamMap>();
 let   fixtureCompCache: FixtureCompetition[] | null = null;
 
-const TR_TIMEZONE = 'Europe/Istanbul';
+const TR_TIMEZONE = ISTANBUL_TZ;
 
 const xmlParser = new XMLParser({
   ignoreAttributes:    false,
