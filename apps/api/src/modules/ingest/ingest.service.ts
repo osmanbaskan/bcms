@@ -47,11 +47,19 @@ export function buildIngestCompletedKey(
 export interface TriggerManualIngestDto {
   sourcePath: string;
   targetId?:  number;
-  /** Phase A2 PR-2a (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-09):
-   *  structured FK; transient `metadata.ingestPlanSourceKey` yerine canonical
-   *  kaynak. Öncelik kuralı: `planItemId` verilirse kullanılır + metadata key
-   *  sessizce yok sayılır. Yalnız metadata key verilirse deprecated fallback
-   *  yolu (sourceKey → plan item lookup) çalışır; A4 sonrası kalkar. */
+  /** Phase A2 PR-2c (DECISION-BACKEND-CANONICAL-DATA-MODEL-V1 §4.A2, 2026-05-10):
+   *  IngestPlanItem'a structured FK; tek canonical resolver yolu. Önceki
+   *  `metadata.ingestPlanSourceKey` fallback PR-2c'de kaldırıldı. metadata
+   *  alanı hâlâ generic body olarak kabul edilir ama hiçbir resolver path'i
+   *  yoktur — body'de eşleşen sourceKey olsa bile planItemId NULL kalır.
+   *  Kolon A4'te DROP edilecek.
+   *
+   *  Production merge gate: PR-2c bu fallback'in kaldırılmasını içerir;
+   *  production'a deploy edilmeden ÖNCE PR-2b backfill (`docker exec bcms_api
+   *  node dist/scripts/backfill-ingest-plan-item-id.js --execute`) tamamlanmış
+   *  ve runbook §8 post-validation 0/0 dönmüş olmalıdır. Aksi halde legacy
+   *  `planItemId IS NULL + metadata.ingestPlanSourceKey set` satırlar canonical
+   *  FK'ye bağlanmadan kalır. */
   planItemId?: number;
   metadata?:  Record<string, unknown>;
 }
@@ -80,12 +88,10 @@ export async function triggerManualIngest(
     }
   }
 
-  // Phase A2 PR-2a: planItemId resolution.
-  // 1) dto.planItemId verildiyse: var olduğunu doğrula → 400 erken-validasyon.
-  // 2) Aksi halde dto.metadata.ingestPlanSourceKey string ise: deprecated
-  //    fallback olarak plan item sourceKey lookup. Bulunamazsa yumuşak davranış
-  //    korunur (job create edilir, planItemId NULL kalır — A2 backward compat).
-  // 3) İkisi birlikte gelirse planItemId kazanır; metadata sessizce yok sayılır.
+  // Phase A2 PR-2c: planItemId tek canonical resolver yolu. Verildiyse var
+  // olduğunu doğrula (400 erken-validasyon). Verilmediyse `resolvedPlanItemId`
+  // NULL kalır; metadata generic body olarak yazılır ama resolver path'i YOK
+  // (`metadata.ingestPlanSourceKey` fallback PR-2c'de kaldırıldı).
   let resolvedPlanItemId: number | null = null;
 
   if (dto.planItemId !== undefined) {
@@ -100,12 +106,6 @@ export async function triggerManualIngest(
       );
     }
     resolvedPlanItemId = planItem.id;
-  } else if (typeof dto.metadata?.ingestPlanSourceKey === 'string') {
-    const planItem = await app.prisma.ingestPlanItem.findUnique({
-      where: { sourceKey: dto.metadata.ingestPlanSourceKey },
-      select: { id: true },
-    });
-    resolvedPlanItemId = planItem?.id ?? null;
   }
 
   const job = await app.prisma.$transaction(async (tx) => {

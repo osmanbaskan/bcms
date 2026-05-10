@@ -184,23 +184,32 @@ describe('backfill-ingest-plan-item-id — runBackfill', () => {
     expect(second.updated).toBe(0);
   });
 
-  test('metadata fallback runtime service\'te hâlâ korunur (PR-2c\'ye kadar)', async () => {
-    // Bu test — backfill script'in ingest.service.ts'in deprecated fallback
-    // yolunu ETKİLEMEDİĞİNİ kanıtlar. Service yolunda metadata.ingestPlanSourceKey
-    // string ise plan item lookup edilir + planItemId set edilir.
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bcms-bf-fallback-'));
-    const tmpFile = path.join(tmpRoot, 'fallback.mp4');
+  test('PR-2c: triggerManualIngest metadata-only çağrısı planItemId NULL bırakır (fallback kaldırıldı)', async () => {
+    // PR-2c'de service-layer fallback resolver kaldırıldı. Eşleşen sourceKey
+    // body'de gelse bile triggerManualIngest planItemId set ETMEZ; planItem
+    // unchanged kalır. Backfill script ise hâlâ DB'deki legacy metadata key'leri
+    // tarayabilir (bu spec'in diğer testleri kanıtlıyor) — script <-> service
+    // sözleşmesi ayrıştı: legacy onarım için script, yeni request'ler için
+    // canonical planItemId.
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bcms-bf-pr2c-'));
+    const tmpFile = path.join(tmpRoot, 'pr2c.mp4');
     fs.writeFileSync(tmpFile, Buffer.alloc(16, 0));
     const prevAllowedRoots = process.env.INGEST_ALLOWED_ROOTS;
     process.env.INGEST_ALLOWED_ROOTS = tmpRoot;
     try {
-      const planItem = await seedPlanItem('bf-fallback-runtime-1');
+      const planItem = await seedPlanItem('bf-pr2c-no-fallback');
       const harness = makeAppHarness();
       const job = await triggerManualIngest(
         harness.app as unknown as FastifyInstance,
-        { sourcePath: tmpFile, metadata: { ingestPlanSourceKey: 'bf-fallback-runtime-1' } },
+        { sourcePath: tmpFile, metadata: { ingestPlanSourceKey: 'bf-pr2c-no-fallback' } },
       );
-      expect(job.planItemId).toBe(planItem.id);
+      expect(job.id).toBeGreaterThan(0);
+      expect(job.planItemId).toBeNull();
+
+      const prisma = getRawPrisma();
+      const unchanged = await prisma.ingestPlanItem.findUniqueOrThrow({ where: { id: planItem.id } });
+      expect(unchanged.jobId).toBeNull();
+      expect(unchanged.status).toBe('WAITING');
     } finally {
       if (prevAllowedRoots === undefined) delete process.env.INGEST_ALLOWED_ROOTS;
       else process.env.INGEST_ALLOWED_ROOTS = prevAllowedRoots;
