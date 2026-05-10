@@ -56,7 +56,7 @@ The `audit-retention` job purges `audit_logs` rows older than `AUDIT_RETENTION_D
 
 **Legacy columns still present (B5b scope, do NOT rely on for new code)**:
 - `schedules.metadata`, `schedules.start_time`, `schedules.end_time` — kept for `/schedules/reporting` until B5b reporting canonicalization.
-- `schedules.channel_id` + `schedules_channel_id_fkey` + `Schedule.channel` relation — kept for Playout/MCR coupling (Y5-8 follow-up; canonical is the 3-channel slot model).
+- `schedules.channel_id` + `schedules_channel_id_fkey` + composite index are dropped from the Prisma model (Y5-8 commit `70a7150`, 2026-05-11); the matching DB migration `20260511120000_drop_legacy_schedule_channel_id` is pending runtime apply. Canonical is the 3-channel slot model (`channel_1/2/3_id`). `Schedule.channel` shared type remains as `@deprecated` optional so UI fallbacks compile under the UI freeze; backend response no longer includes it.
 
 ### Timezone Lock (canonical: Europe/Istanbul)
 - Canonical business timezone: **Europe/Istanbul** (IANA). All operational times — schedule, live-plan, ingest, OPTA, reporting, UI input/output, Excel/PDF exports — are Türkiye saati.

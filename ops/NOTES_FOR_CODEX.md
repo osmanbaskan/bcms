@@ -9,10 +9,14 @@
 - ✓ MCR Sekmesi Kaldırıldı (playout backend + frontend feature module silindi)
 - ✓ Timezone Lock Belirlendi (Europe/Istanbul)
 - ✓ Timezone Helper PR
+- ✓ TZ Hardening (kalan refs)
+- ✓ Smoke Script Canonical Hizalama (`/health` minimal)
+- ✓ Schedule.channelId Legacy DROP — Prisma + kod (`70a7150`); DB migration `20260511120000_drop_legacy_schedule_channel_id` runtime apply bekliyor
+- 📋 ON_AIR Status Model Rethink Preflight (`ops/REQUIREMENTS-STATUS-MODEL-RETHINK-V1.md` — kullanıcı kararı bekliyor)
+- 📋 B5b Reporting Decision Doc (`ops/REQUIREMENTS-REPORTING-CANONICALIZATION-B5B.md` — UI freeze altında BLOCKED)
+- 📋 M5-B10b Technical Form Preflight (`ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FORM-M5-B10B.md` — UI APPROVAL bekliyor)
 - ⏸ Reporting TZ drift B5b ile çözülecek
 - ⏸ Reporting DB Modeline Alınacak (SCHED-B5b — UI freeze altında BLOCKED; sahte canonical kabul edilmedi)
-- ⏳ Schedule.channelId Legacy DROP (Y5-8 follow-up; MCR sonrası Playout coupling kaldı; reporting/ingest/booking dolaylı bağımlılık ayrı tur)
-- ⏳ Live Plan Teknik Formu (M5-B10b — 76 alanlı technical-details form; M5-B10a segments-only scaffold done)
 
 ## ⏱ Timezone Lock (canonical: Europe/Istanbul, 2026-05-11)
 
@@ -51,8 +55,8 @@ This applies to all destructive operations (`git checkout`, `git reset`, `rm`, `
    - **Schedule (broadcast flow) canonical**: `event_key IS NOT NULL` + structured alanlar (`schedule_date`, `schedule_time`, `channel_1/2/3_id`, `commercial/logo/format_option_id`). Hard-delete domain (`deleted_at` da DROP edildi).
    - **Live-plan canonical** (M5-B1..B5 done, 2026-05-06): kendi domain'inde — `live_plan_entries` (1:1), 25 lookup tablo (`transmission_*`, `technical_companies`, `live_plan_*`, `fiber_*`), `/api/v1/live-plan` + `/api/v1/live-plan/lookups/:type` API. Soft-delete (`deleted_at`) korunur. K15 prensibi: **JSON canonical YOK** (live-plan teknik detayları structured DB kolon/lookup FK; metadata kolonu live_plan_entries'ten DROP).
    - Filter: broadcast row guarantee için `eventKey: { not: null }`. Asla `usage_scope` ile filter etme; metadata JSON filtresi YOK; ham SQL köprüsü YOK.
-   - **Hâlâ legacy duran kolonlar (B5b'ye kadar; yeni kod bunlara bağlanmasın)**: `schedules.metadata`, `start_time`, `end_time` — reporting `/schedules/reporting` bağımlı; `channel_id` + `Schedule.channel` relation — Playout/MCR coupling (Y5-8 follow-up).
-   - M5-B6 (lookup admin UI) **done** (`apps/web/src/app/features/live-plan/admin-lookups/`, commit `aa168f1` + shape fix `96fc38f`). M5-B10a (segments-only UI scaffold) **done** (`a7457ff`). Sıradaki: **M5-B10b (technical-details form, ~76 alanlı yeni Ekle/Düzenle UI; ApiService cache + Y2 REVIZE schedule-list disable pending)**. M5-B7 technical_details schema + M5-B8 segments backend done (`20260507000000_live_plan_technical_details_foundation` + `20260507000001_live_plan_transmission_segments_foundation`). Yeni PERMISSIONS namespace'leri: `livePlan` (Schedule.write/delete clone) + `livePlanLookups` (read all-auth, write/delete SystemEng + Admin). **`live_plan_entries.channel_id NULL` bug değil**, workflow state.
+   - **Hâlâ legacy duran kolonlar (B5b'ye kadar; yeni kod bunlara bağlanmasın)**: `schedules.metadata`, `start_time`, `end_time` — reporting `/schedules/reporting` bağımlı (UI freeze altında BLOCKED — `ops/REQUIREMENTS-REPORTING-CANONICALIZATION-B5B.md`). `channel_id` + `Schedule.channel` relation Y5-8 (`70a7150`, 2026-05-11) ile Prisma'dan kaldırıldı; DB migration `20260511120000_drop_legacy_schedule_channel_id` runtime apply bekliyor. `Schedule.channel` shared type'ında `@deprecated` optional olarak duruyor (UI fallback compile).
+   - M5-B6 (lookup admin UI) **done** (`apps/web/src/app/features/live-plan/admin-lookups/`, commit `aa168f1` + shape fix `96fc38f`). M5-B10a (segments-only UI scaffold) **done** (`a7457ff`). Sıradaki: **M5-B10b (technical-details form, 73 alanlı yeni Düzenle UI; preflight doc `ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FORM-M5-B10B.md` UI APPROVAL bekliyor)**. M5-B7 technical_details schema + M5-B8 segments backend done (`20260507000000_live_plan_technical_details_foundation` + `20260507000001_live_plan_transmission_segments_foundation`). Yeni PERMISSIONS namespace'leri: `livePlan` (Schedule.write/delete clone) + `livePlanLookups` (read all-auth, write/delete SystemEng + Admin). **`live_plan_entries.channel_id NULL` bug değil**, workflow state.
    - Detay: `ops/DECISION-LIVE-PLAN-DATA-MODEL-V1.md` + `ops/REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md` + `ops/REQUIREMENTS-SCHEDULE-CLEANUP-V1.md`.
 4. **Nginx static serve**: Angular dosyaları `infra/docker/web.Dockerfile` → nginx:alpine ile sunulur.
 5. **Audit log**: `apps/api/src/plugins/audit.ts` Prisma `$extends` ile tüm write işlemlerini loglar. Bu plugin'i devre dışı bırakma.

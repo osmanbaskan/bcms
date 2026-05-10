@@ -77,7 +77,7 @@ Before writing any code, follow the 4-phase discipline. Surface-level solutions 
 - **Schedule (broadcast flow)** canonical row marker: `event_key IS NOT NULL` + structured fields (`schedule_date`, `schedule_time`, `channel_1/2/3_id`, `commercial/logo/format_option_id`). Hard-delete domain.
 - **Live-plan** canonical: `live_plan_entries` + structured satellites (`live_plan_technical_details`, `live_plan_transmission_segments`, 25 lookup tables). Soft-delete preserved. JSON/metadata is NOT canonical (K15 lock).
 - Filter: use `eventKey: { not: null }` for broadcast row guarantee. Never filter by `usage_scope` (column gone) or via metadata JSON for canonical discrimination.
-- Legacy columns still present (B5b scope): `metadata`, `start_time`, `end_time` (reporting); `channel_id` + relation (Playout/MCR coupling, Y5-8 follow-up).
+- Legacy columns still present (B5b scope): `metadata`, `start_time`, `end_time` (reporting). `channel_id` + relation dropped from Prisma in Y5-8 (`70a7150`, 2026-05-11); DB migration `20260511120000_drop_legacy_schedule_channel_id` pending runtime apply.
 
 ### Timezone Lock (canonical: Europe/Istanbul)
 - Canonical business timezone: **Europe/Istanbul** (IANA). All operational times — schedule, live-plan, ingest, OPTA, reporting, UI input/output, Excel/PDF exports — are Türkiye saati.
