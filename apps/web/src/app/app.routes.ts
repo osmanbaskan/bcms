@@ -76,14 +76,6 @@ export const routes: Routes = [
     data: { groups: [GROUP.Admin, GROUP.Ingest] },
   },
   {
-    path: 'monitoring',
-    loadChildren: () =>
-      import('./features/monitoring/monitoring.routes').then((m) => m.monitoringRoutes),
-    canActivate: [AuthGuard],
-    canActivateChild: [AuthGuard],
-    data: { groups: [GROUP.Admin] },
-  },
-  {
     path: 'mcr',
     loadChildren: () =>
       import('./features/mcr/mcr.routes').then((m) => m.mcrRoutes),

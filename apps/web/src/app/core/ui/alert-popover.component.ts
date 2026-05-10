@@ -24,7 +24,6 @@ export interface AlertItem {
       <div class="popover" (mouseleave)="close.emit()">
         <header class="head">
           <span>Aktif uyarılar</span>
-          <a class="all-link" routerLink="/monitoring">Hepsi →</a>
         </header>
         @for (a of alerts().slice(0, 5); track a.msg) {
           <div class="row">

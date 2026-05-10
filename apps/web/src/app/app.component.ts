@@ -551,7 +551,6 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Stüdyo Planı',      icon: 'view_module',         route: '/studio-plan',        groups: [] },
         { label: 'Ingest',            icon: 'cloud_upload',        route: '/ingest',             groups: [GROUP.Admin, GROUP.Ingest] },
         { label: 'MCR',               icon: 'videocam',            route: '/mcr',                groups: [GROUP.Admin, GROUP.MCR] },
-        { label: 'Monitoring',        icon: 'monitor_heart',       route: '/monitoring',         groups: [GROUP.Admin] },
         { label: 'Provys',            icon: 'fact_check',          route: '/provys-content-control', groups: [GROUP.Admin] },
       ],
     },
