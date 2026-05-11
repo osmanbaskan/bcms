@@ -20,15 +20,16 @@ import {
   type LivePlanEntry,
 } from '../live-plan.types';
 import { TransmissionSegmentsComponent } from './transmission-segments.component';
+import { TechnicalDetailsFormComponent } from './technical-details-form.component';
 
 /**
- * Madde 5 M5-B10a — Live-Plan Detail page (iskelet).
+ * Madde 5 M5-B10a/B10b — Live-Plan Detay sayfası.
  *
  * Y10: Detay ayrı sayfa (modal değil).
- * Y11: 6 mat-tab full form **M5-B10b'de** gelir; M5-B10a'da sadece:
- *   - "Genel Bilgi" sekmesi (entry meta read-only)
- *   - "Transmisyon Süreleri" sekmesi (full CRUD)
- *   - "Teknik Detay" sekmesi placeholder ("M5-B10b'de eklenecek")
+ * Y11: 3 mat-tab:
+ *   - "Genel Bilgi" — entry meta read-only
+ *   - "Transmisyon Süreleri" — full CRUD (M5-B10a)
+ *   - "Teknik Detay" — 73 alan 6 grup accordion (M5-B10b)
  *
  * Auth: page read all-auth; write/delete butonları role-check.
  */
@@ -40,6 +41,7 @@ import { TransmissionSegmentsComponent } from './transmission-segments.component
     MatButtonModule, MatIconModule, MatChipsModule, MatTabsModule,
     MatProgressSpinnerModule, MatSnackBarModule, MatDividerModule,
     TransmissionSegmentsComponent,
+    TechnicalDetailsFormComponent,
   ],
   template: `
     <div class="page-header">
@@ -71,10 +73,6 @@ import { TransmissionSegmentsComponent } from './transmission-segments.component
               <div><b>Versiyon</b></div><div>v{{ entry()!.version }}</div>
               <div><b>Notlar</b></div><div>{{ entry()!.operationNotes ?? '—' }}</div>
             </div>
-            <p class="hint">
-              Düzenleme + 73 alan teknik detay formu M5-B10b PR'ında eklenecek.
-              Bu PR yalnız iskelet + Transmisyon Süreleri.
-            </p>
           </div>
         </mat-tab>
 
@@ -88,10 +86,13 @@ import { TransmissionSegmentsComponent } from './transmission-segments.component
           </div>
         </mat-tab>
 
-        <mat-tab label="Teknik Detay" disabled>
-          <div class="tab-pad placeholder">
-            76 alan teknik detay formu (Yayın/OB · Ortak · IRD/Fiber · Ana Feed ·
-            Yedek Feed · Fiber Format) M5-B10b PR'ında eklenecek.
+        <mat-tab label="Teknik Detay">
+          <div class="tab-pad">
+            <app-technical-details-form
+              [entryId]="entryId()!"
+              [canWrite]="canWrite()"
+              [canDelete]="canDelete()">
+            </app-technical-details-form>
           </div>
         </mat-tab>
       </mat-tab-group>
