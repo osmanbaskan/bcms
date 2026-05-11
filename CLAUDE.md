@@ -41,7 +41,7 @@ Every route handler must validate input with Zod before touching Prisma. The glo
 | Unknown (prod) | 500 | Generic message, hide stack |
 
 ### API / Worker Split (Hard Rule)
-The `api` container runs `BCMS_BACKGROUND_SERVICES=none` (HTTP only). The `worker` container runs background services: `notifications`, `ingest-worker`, `ingest-watcher`, `audit-retention`, `audit-partition`, `outbox-poller`. Never merge these roles. The OPTA watcher is a **separate Python container** (`bcms_opta_watcher`), not a Node background service. BXF watcher (legacy) was removed in SCHED-B5a Block 2 (2026-05-10) — no replacement.
+The `api` container runs `BCMS_BACKGROUND_SERVICES=none` (HTTP only). The `worker` container runs background services: `notifications`, `ingest-worker`, `ingest-watcher`, `audit-retention`, `audit-partition`, `outbox-poller`. Never merge these roles. The OPTA watcher is a **separate Python container** (`bcms_opta_watcher`), not a Node background service.
 
 The `audit-retention` job purges `audit_logs` rows older than `AUDIT_RETENTION_DAYS` (default 90) — see `apps/api/src/modules/audit/audit-retention.job.ts`. After changing background services, rebuild with `docker compose up -d --build api worker` — env updates alone don't reload running containers.
 

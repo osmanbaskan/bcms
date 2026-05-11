@@ -16,8 +16,6 @@ import {
   updateBroadcastScheduleSchema,
   broadcastScheduleListQuerySchema,
 } from './schedule.schema.js';
-// SCHED-B5a (Y5-6): legacy BXF importer (`schedule.import.ts`) silindi.
-// Replacement broadcast flow canonical importer ayrı PR'da.
 import { exportSchedulesToStream } from './schedule.export.js';
 import { PERMISSIONS } from '@bcms/shared';
 
@@ -30,12 +28,11 @@ interface LivePlanFilterEntry {
 export async function scheduleRoutes(app: FastifyInstance) {
   const svc = new ScheduleService(app);
 
-  // SCHED-B5a (Y5-2a + Y5-4 + Y5-6): legacy GET / (list) + POST /import (BXF
-  // importer) + POST / + PATCH /:id + DELETE /:id endpoint'leri silindi.
-  // Yeni canonical broadcast flow: /broadcast (POST/PATCH/DELETE/GET) +
-  // /broadcast/:id. Reporting `/reports/live-plan*` korunur (canonical filter).
-  // GET /:id korunur (yayin-planlama detail bağımlı). BXF importer follow-up
-  // PR'da broadcast flow canonical'a göre yeniden tasarlanır.
+  // SCHED-B5a (Y5-2a + Y5-4): legacy GET / (list) + POST / + PATCH /:id +
+  // DELETE /:id + POST /import endpoint'leri silindi. Yeni canonical broadcast
+  // flow: /broadcast (POST/PATCH/DELETE/GET) + /broadcast/:id. Reporting
+  // `/reports/live-plan*` korunur (canonical filter). GET /:id korunur
+  // (yayin-planlama detail bağımlı).
 
   // GET /api/v1/schedules/export — Programları Türkçe Excel formatında indir
   app.get('/export', {

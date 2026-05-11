@@ -47,7 +47,7 @@ This applies to all destructive operations (`git checkout`, `git reset`, `rm`, `
 
 ## Mimari Kurallar (Değiştirilmez)
 
-1. **API/Worker ayrıştırması**: `api` servisi `BCMS_BACKGROUND_SERVICES=none` ile çalışır. Worker servisi `notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller` çalıştırır (2026-05-06 itibariyle outbox-poller eklendi; 2026-05-10 SCHED-B5a Block 2: bxf-watcher kaldırıldı). OPTA Python watcher ayrı konteyner. Bu ayrım bozulmamalı.
+1. **API/Worker ayrıştırması**: `api` servisi `BCMS_BACKGROUND_SERVICES=none` ile çalışır. Worker servisi `notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller` çalıştırır. OPTA Python watcher ayrı konteyner. Bu ayrım bozulmamalı.
 2. **Prisma connection limit**: API `connection_limit=10`, Worker `connection_limit=5`, `pool_timeout=20`. `apps/api/src/plugins/prisma.ts`'te `BCMS_BACKGROUND_SERVICES` env değişkenine göre ayarlanır.
 2. **Graceful shutdown**: `server.ts`'de SIGTERM/SIGINT → `app.close()` → 30 sn timeout. Worker için 60 sn. `--force` veya anında kill önerilmez.
 3. **Schedule vs live-plan domain split** (SCHED-B5a Block 2 sonrası, 2026-05-10) + **Madde 5 strangler aktif**:

@@ -493,9 +493,9 @@ export function clearOptaCache() {
   f1FixtureCache   = null;
 }
 
-// ORTA-API-1.7.6 fix (2026-05-04): XML size limit guard (1.7.6 BXF; opta da
-// aynı tehdit yüzeyine sahip). Dosya istatistiği ile MAX_XML_SIZE kontrol.
-// Çağıran fonksiyonlar try'da fs.readFileSync kullandığından buradan helper
-// olarak çağrılır; mevcut çağrıları değiştirmek bu commit'in kapsamı dışı
-// (refactor cascading touch). Kullanım için ileride cf. clearOptaCache yan ek.
+// ORTA-API-1.7.6 fix (2026-05-04): OPTA XML size limit guard. Dosya
+// istatistiği ile MAX_XML_SIZE kontrol; OPTA fixture XML payload'ları
+// 100MB altında. Çağıran fonksiyonlar try'da fs.readFileSync kullandığından
+// buradan helper olarak çağrılır; mevcut çağrıları değiştirmek bu commit'in
+// kapsamı dışı (refactor cascading touch).
 export const MAX_XML_BYTES = 100 * 1024 * 1024; // 100MB OPTA'da büyük olabilir

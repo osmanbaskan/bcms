@@ -4,8 +4,6 @@ const ScheduleStatusEnum = z.enum(['DRAFT', 'CONFIRMED', 'COMPLETED', 'CANCELLED
 
 // SCHED-B5a (Y5-4): legacy createScheduleSchema, updateScheduleSchema,
 // scheduleQuerySchema (`usage` field), schedule `metadata` Zod helper silindi.
-// SCHED-B5a Block 2 (2026-05-10): BXF tamamen kaldırıldı; importQuerySchema +
-// `source` query field + `'bxf'` enum silindi (Y5-6 BXF kapanışı).
 // Yerine canonical broadcast flow schemas (aşağıda) ve reporting/export
 // query'leri kalır. `metadata`/`start_time`/`end_time` Prisma kolonları
 // DURUR (B5b).

@@ -50,7 +50,7 @@ Before writing any code, follow the 4-phase discipline. Surface-level solutions 
 
 ### API / Worker Split (Hard Rule)
 - `api` container: `BCMS_BACKGROUND_SERVICES=none` — HTTP only.
-- `worker` container: runs `notifications`, `ingest-worker`, `ingest-watcher`, `audit-retention`, `audit-partition`, `outbox-poller`. (BXF watcher removed in SCHED-B5a Block 2, 2026-05-10.)
+- `worker` container: runs `notifications`, `ingest-worker`, `ingest-watcher`, `audit-retention`, `audit-partition`, `outbox-poller`.
 - The OPTA watcher is a **separate Python container** (`bcms_opta_watcher`), not a Node background service.
 - **Never merge these roles.**
 
