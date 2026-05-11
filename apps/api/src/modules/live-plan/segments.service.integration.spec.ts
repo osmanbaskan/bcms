@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { LivePlanService } from './live-plan.service.js';
 import { LivePlanTechnicalDetailService } from './technical-details.service.js';
 import { LivePlanTransmissionSegmentService } from './segments.service.js';
+import { isOutboxPollerAuthoritative } from '../outbox/outbox.helpers.js';
 import {
   cleanupTransactional,
   getRawPrisma,
@@ -11,6 +12,9 @@ import {
   makeUser,
   type TestAppHarness,
 } from '../../../test/integration/helpers.js';
+
+/** PR-C2 env-aware: authoritative=true → 'pending'; aksi → 'published'. */
+const EXPECTED_OUTBOX_STATUS = isOutboxPollerAuthoritative() ? 'pending' : 'published';
 
 /**
  * Madde 5 M5-B9 spec — segments service davranışı + entry hard-delete cascade
@@ -76,7 +80,7 @@ describe('LivePlanTransmissionSegmentService — integration', () => {
     });
     expect(events).toHaveLength(1);
     expect(events[0].eventType).toBe('live_plan.segment.created');
-    expect(events[0].status).toBe('published');
+    expect(events[0].status).toBe(EXPECTED_OUTBOX_STATUS);
   });
 
   test('POST: entry yoksa → 404', async () => {

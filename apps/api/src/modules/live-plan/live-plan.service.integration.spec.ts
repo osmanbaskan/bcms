@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { LivePlanService } from './live-plan.service.js';
+import { isOutboxPollerAuthoritative } from '../outbox/outbox.helpers.js';
 import {
   cleanupTransactional,
   getRawPrisma,
@@ -9,6 +10,9 @@ import {
   makeUser,
   type TestAppHarness,
 } from '../../../test/integration/helpers.js';
+
+/** PR-C2 env-aware: authoritative=true → 'pending'; aksi (Phase 2 shadow) → 'published'. */
+const EXPECTED_OUTBOX_STATUS = isOutboxPollerAuthoritative() ? 'pending' : 'published';
 
 /**
  * Madde 5 M5-B2 spec — live-plan service/API davranış doğrulamaları.
@@ -66,7 +70,7 @@ describe('LivePlanService — integration', () => {
     });
     expect(outboxRows).toHaveLength(1);
     expect(outboxRows[0].eventType).toBe('live_plan.created');
-    expect(outboxRows[0].status).toBe('published'); // Phase 2 invariant
+    expect(outboxRows[0].status).toBe(EXPECTED_OUTBOX_STATUS);
     const payload = outboxRows[0].payload as Record<string, unknown>;
     expect(payload.livePlanEntryId).toBe(created.id);
   });

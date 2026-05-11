@@ -227,6 +227,36 @@ describe('LivePlanTechnicalDetail — schema foundation (DB integration)', () =>
     ).rejects.toThrow();
   });
 
+  // ── §6b. secondLanguageId (Yabancı Dil — 2026-05-11 add column) ─────────
+  test('secondLanguageId: aynı live_plan_languages lookup ile yazılır', async () => {
+    const prisma  = getRawPrisma();
+    const entryId = await makeEntry();
+    const lang    = await prisma.livePlanLanguage.create({ data: { label: 'LANG-MAIN' } });
+    const second  = await prisma.livePlanLanguage.create({ data: { label: 'LANG-SECOND' } });
+
+    const td = await prisma.livePlanTechnicalDetail.create({
+      data: {
+        livePlanEntryId:  entryId,
+        languageId:       lang.id,
+        secondLanguageId: second.id,
+      },
+    });
+    expect(td.languageId).toBe(lang.id);
+    expect(td.secondLanguageId).toBe(second.id);
+  });
+
+  test('secondLanguageId FK RESTRICT: referanslı language hard-delete reddedilir', async () => {
+    const prisma  = getRawPrisma();
+    const entryId = await makeEntry();
+    const lang    = await prisma.livePlanLanguage.create({ data: { label: 'LANG-RESTRICT' } });
+    await prisma.livePlanTechnicalDetail.create({
+      data: { livePlanEntryId: entryId, secondLanguageId: lang.id },
+    });
+    await expect(
+      prisma.$executeRawUnsafe(`DELETE FROM live_plan_languages WHERE id = ${lang.id}`),
+    ).rejects.toThrow();
+  });
+
   // ── §7. Soft delete pattern ─────────────────────────────────────────────
   test('soft delete: deletedAt set edilebilir, satır okunmaya devam eder', async () => {
     const prisma  = getRawPrisma();

@@ -1,6 +1,8 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
+import { forkJoin, of, Observable } from 'rxjs';
 
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -9,167 +11,294 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatSelectModule } from '@angular/material/select';
 
-import { ScheduleService } from '../../../core/services/schedule.service';
-import { composeIstanbulIso } from '../../../core/time/tz.helpers';
-import type { Schedule } from '@bcms/shared';
+import { ApiService } from '../../../core/services/api.service';
+import {
+  composeIstanbulIso,
+  formatIstanbulDate,
+  formatIstanbulTime,
+} from '../../../core/time/tz.helpers';
+import { LookupSelectComponent } from '../../live-plan/live-plan-detail/lookup-select.component';
+import { livePlanEndpoint, type LivePlanEntry } from '../../live-plan/live-plan.types';
+import type {
+  TechnicalDetailsRow,
+  UpdateTechnicalDetailsBody,
+} from '../../live-plan/live-plan-detail/technical-details.types';
+import type { Channel, Schedule } from '@bcms/shared';
 
 /**
- * Mutation restore (2026-05-10): Canlı Yayın Plan "Düzenle" canonical dialog.
- * PATCH /api/v1/live-plan/:id + If-Match: <version>. K9 invariant — version
- * mismatch 412 → snack + caller load() ile taze veri çeker.
+ * Düzenle dialog (2026-05-11): görsel kompakt grid + canonical 3-channel slot
+ * model. Tek "Kaydet" arkası iki ayrı PATCH:
+ *   1) PATCH /live-plan/:id          + If-Match livePlanVersion
+ *   2) PATCH /technical-details      + If-Match technicalDetailsVersion
+ *     (yoksa önce POST {} ile satır create edilir)
  *
- * JSON/metadata YOK. Channel slot form'da YOK (K-B3.11/12 reverse sync).
+ * Lig OPTA read-only (Match.league.name join'i; backend GET response). Kayıt
+ * Yeri YOK. Yabancı Dil canonical (`secondLanguageId` → live_plan_languages).
+ *
+ * Partial failure UX: E1 412 → entry+tech reload; E1 OK + E2 412 → tech reload,
+ * tech dirty kalır; 400/403 → snack mesajı.
  */
+
+type EntryDiff = {
+  title?:          string;
+  eventStartTime?: string;
+  eventEndTime?:   string;
+  operationNotes?: string | null;
+  channel1Id?:     number | null;
+  channel2Id?:     number | null;
+  channel3Id?:     number | null;
+};
+
+const TECH_FIELD_KEYS = [
+  'modulationTypeId', 'videoCodingId',
+  'ird1Id', 'ird2Id', 'ird3Id',
+  'fiber1Id', 'fiber2Id', 'demodId',
+  'tieId', 'virtualResourceId',
+  'hdvgResourceId', 'int1ResourceId', 'int2ResourceId',
+  'offTubeId', 'languageId', 'secondLanguageId',
+] as const;
+type TechFieldKey = typeof TECH_FIELD_KEYS[number];
+
 @Component({
   selector: 'app-live-plan-entry-edit-dialog',
   standalone: true,
   imports: [
     CommonModule, FormsModule,
-    MatFormFieldModule, MatInputModule,
+    MatFormFieldModule, MatInputModule, MatSelectModule,
     MatButtonModule, MatIconModule,
     MatDialogModule, MatProgressSpinnerModule,
     MatSnackBarModule,
+    LookupSelectComponent,
   ],
   template: `
-    <h2 mat-dialog-title>Yayın Kaydını Düzenle</h2>
+    <h2 mat-dialog-title>Kaydı Düzenle</h2>
     <mat-dialog-content class="edit-dialog-content">
-      <mat-form-field appearance="outline" style="width:100%">
-        <mat-label>Yayın Adı</mat-label>
-        <input matInput
-               [(ngModel)]="form.title"
-               [ngModelOptions]="{standalone:true}"
-               maxlength="500"
-               required>
-      </mat-form-field>
+      @if (loading()) {
+        <div class="loading"><mat-spinner diameter="32"></mat-spinner></div>
+      } @else {
+        <!-- Satır 1: Yayın Adı + Lig (read-only) -->
+        <div class="row">
+          <mat-form-field appearance="outline" class="grow">
+            <mat-label>Yayın Adı</mat-label>
+            <input matInput required maxlength="500"
+                   [(ngModel)]="form.title"
+                   [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="grow" floatLabel="always">
+            <mat-label>Lig</mat-label>
+            <input matInput readonly
+                   [value]="form.leagueName || '—'">
+          </mat-form-field>
+        </div>
 
-      <div class="row">
-        <mat-form-field appearance="outline" class="half">
-          <mat-label>Başlangıç Tarihi</mat-label>
-          <input matInput type="date"
-                 [(ngModel)]="form.startDate"
-                 [ngModelOptions]="{standalone:true}"
-                 required>
-        </mat-form-field>
-        <mat-form-field appearance="outline" class="half">
-          <mat-label>Başlangıç Saati</mat-label>
-          <input matInput type="time"
-                 [(ngModel)]="form.startTime"
-                 [ngModelOptions]="{standalone:true}"
-                 required>
-        </mat-form-field>
-      </div>
+        <!-- Satır 2: Kanal 1/2/3, Tarih, Başlangıç, Bitiş -->
+        <div class="row compact">
+          <mat-form-field appearance="outline">
+            <mat-label>Kanal 1</mat-label>
+            <mat-select [(ngModel)]="form.channel1Id"
+                        [ngModelOptions]="{standalone:true}"
+                        [compareWith]="compareById">
+              <mat-option [value]="null">— Seçilmedi —</mat-option>
+              @for (ch of channels(); track ch.id) {
+                <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Kanal 2</mat-label>
+            <mat-select [(ngModel)]="form.channel2Id"
+                        [ngModelOptions]="{standalone:true}"
+                        [compareWith]="compareById">
+              <mat-option [value]="null">— Seçilmedi —</mat-option>
+              @for (ch of channels(); track ch.id) {
+                <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Kanal 3</mat-label>
+            <mat-select [(ngModel)]="form.channel3Id"
+                        [ngModelOptions]="{standalone:true}"
+                        [compareWith]="compareById">
+              <mat-option [value]="null">— Seçilmedi —</mat-option>
+              @for (ch of channels(); track ch.id) {
+                <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Tarih</mat-label>
+            <input matInput required type="date"
+                   [(ngModel)]="form.startDate"
+                   [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Başlangıç</mat-label>
+            <input matInput required type="time"
+                   [(ngModel)]="form.startTime"
+                   [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Bitiş</mat-label>
+            <input matInput required type="time"
+                   [(ngModel)]="form.endTime"
+                   [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+        </div>
 
-      <div class="row">
-        <mat-form-field appearance="outline" class="half">
-          <mat-label>Bitiş Tarihi</mat-label>
-          <input matInput type="date"
-                 [(ngModel)]="form.endDate"
-                 [ngModelOptions]="{standalone:true}"
-                 required>
-        </mat-form-field>
-        <mat-form-field appearance="outline" class="half">
-          <mat-label>Bitiş Saati</mat-label>
-          <input matInput type="time"
-                 [(ngModel)]="form.endTime"
-                 [ngModelOptions]="{standalone:true}"
-                 required>
-        </mat-form-field>
-      </div>
+        <!-- Teknik FK grid (16 alan) -->
+        <div class="grid">
+          <app-lookup-select label="Mod Tipi"      lookupType="transmission_modulation_types"
+                             [value]="tech.modulationTypeId"   (valueChange)="onTech('modulationTypeId',  $event)"></app-lookup-select>
+          <app-lookup-select label="Coding Tipi"   lookupType="transmission_video_codings"
+                             [value]="tech.videoCodingId"      (valueChange)="onTech('videoCodingId',     $event)"></app-lookup-select>
+          <app-lookup-select label="IRD1"          lookupType="transmission_irds"
+                             [value]="tech.ird1Id"             (valueChange)="onTech('ird1Id',            $event)"></app-lookup-select>
+          <app-lookup-select label="IRD2"          lookupType="transmission_irds"
+                             [value]="tech.ird2Id"             (valueChange)="onTech('ird2Id',            $event)"></app-lookup-select>
+          <app-lookup-select label="IRD3"          lookupType="transmission_irds"
+                             [value]="tech.ird3Id"             (valueChange)="onTech('ird3Id',            $event)"></app-lookup-select>
+          <app-lookup-select label="FIBER 1"       lookupType="transmission_fibers"
+                             [value]="tech.fiber1Id"           (valueChange)="onTech('fiber1Id',          $event)"></app-lookup-select>
+          <app-lookup-select label="FIBER 2"       lookupType="transmission_fibers"
+                             [value]="tech.fiber2Id"           (valueChange)="onTech('fiber2Id',          $event)"></app-lookup-select>
+          <app-lookup-select label="Demod"         lookupType="transmission_demod_options"
+                             [value]="tech.demodId"            (valueChange)="onTech('demodId',           $event)"></app-lookup-select>
+          <app-lookup-select label="TTE"           lookupType="transmission_tie_options"
+                             [value]="tech.tieId"              (valueChange)="onTech('tieId',             $event)"></app-lookup-select>
+          <app-lookup-select label="Sana"          lookupType="transmission_virtual_resources"
+                             [value]="tech.virtualResourceId"  (valueChange)="onTech('virtualResourceId', $event)"></app-lookup-select>
+          <app-lookup-select label="HDVG"          lookupType="transmission_int_resources"
+                             [value]="tech.hdvgResourceId"     (valueChange)="onTech('hdvgResourceId',    $event)"></app-lookup-select>
+          <app-lookup-select label="Int"           lookupType="transmission_int_resources"
+                             [value]="tech.int1ResourceId"     (valueChange)="onTech('int1ResourceId',    $event)"></app-lookup-select>
+          <app-lookup-select label="Int 2"         lookupType="transmission_int_resources"
+                             [value]="tech.int2ResourceId"     (valueChange)="onTech('int2ResourceId',    $event)"></app-lookup-select>
+          <app-lookup-select label="Off Tube"      lookupType="live_plan_off_tube_options"
+                             [value]="tech.offTubeId"          (valueChange)="onTech('offTubeId',         $event)"></app-lookup-select>
+          <app-lookup-select label="Dil"           lookupType="live_plan_languages"
+                             [value]="tech.languageId"         (valueChange)="onTech('languageId',        $event)"></app-lookup-select>
+          <app-lookup-select label="Yabancı Dil"   lookupType="live_plan_languages"
+                             [value]="tech.secondLanguageId"   (valueChange)="onTech('secondLanguageId',  $event)"></app-lookup-select>
+        </div>
 
-      <div class="row">
-        <mat-form-field appearance="outline" class="half">
-          <mat-label>Takım 1</mat-label>
-          <input matInput
-                 [(ngModel)]="form.team1Name"
-                 [ngModelOptions]="{standalone:true}"
-                 maxlength="200">
+        <!-- Notlar -->
+        <mat-form-field appearance="outline" class="full">
+          <mat-label>Açıklama ve Notlar</mat-label>
+          <textarea matInput rows="3" maxlength="8000"
+                    [(ngModel)]="form.operationNotes"
+                    [ngModelOptions]="{standalone:true}"></textarea>
         </mat-form-field>
-        <mat-form-field appearance="outline" class="half">
-          <mat-label>Takım 2</mat-label>
-          <input matInput
-                 [(ngModel)]="form.team2Name"
-                 [ngModelOptions]="{standalone:true}"
-                 maxlength="200">
-        </mat-form-field>
-      </div>
 
-      <mat-form-field appearance="outline" style="width:100%">
-        <mat-label>Operasyon Notları</mat-label>
-        <textarea matInput
-                  [(ngModel)]="form.operationNotes"
-                  [ngModelOptions]="{standalone:true}"
-                  rows="3"
-                  maxlength="8000"></textarea>
-      </mat-form-field>
-
-      @if (errorMsg()) {
-        <p class="err">{{ errorMsg() }}</p>
+        @if (errorMsg(); as e) { <p class="err">{{ e }}</p> }
       }
     </mat-dialog-content>
 
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>İptal</button>
       <button mat-raised-button color="primary"
-              [disabled]="saving() || !canSave()"
+              [disabled]="loading() || saving() || !canSave()"
               (click)="save()">
-        @if (saving()) { <mat-spinner diameter="18" style="display:inline-block"></mat-spinner> }
-        @else { Kaydet }
+        @if (saving()) {
+          <mat-spinner diameter="18" style="display:inline-block; vertical-align:middle"></mat-spinner>
+        } @else { Kaydet }
       </button>
     </mat-dialog-actions>
   `,
   styles: [`
-    .edit-dialog-content { min-width: 520px; max-width: 720px; padding: 12px 16px 8px; }
-    .row { display: flex; gap: 8px; }
-    .half { flex: 1 1 0; }
+    .edit-dialog-content { min-width: 1100px; max-width: 98vw; padding: 12px 16px 8px; }
+    .loading { display:flex; justify-content:center; padding: 32px; }
+    .row { display:flex; gap: 8px; margin-bottom: 4px; }
+    .row.compact mat-form-field { flex: 1 1 0; min-width: 0; }
+    .grow { flex: 1 1 0; min-width: 0; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      gap: 8px;
+      margin: 4px 0 8px;
+    }
+    .grid app-lookup-select { display:block; min-width: 0; }
+    .full { width: 100%; }
     .err  { color: #f44336; font-size: 12px; margin: 4px 0 0; }
+    mat-form-field { width: 100%; }
   `],
 })
-export class LivePlanEntryEditDialogComponent {
-  data      = inject<{ schedule: Schedule }>(MAT_DIALOG_DATA);
-  private dialogRef = inject(MatDialogRef<LivePlanEntryEditDialogComponent>);
-  private service   = inject(ScheduleService);
-  private snack     = inject(MatSnackBar);
+export class LivePlanEntryEditDialogComponent implements OnInit {
+  data       = inject<{ schedule: Schedule }>(MAT_DIALOG_DATA);
+  dialogRef  = inject(MatDialogRef<LivePlanEntryEditDialogComponent>);
+  private api   = inject(ApiService);
+  private snack = inject(MatSnackBar);
 
-  saving    = signal(false);
-  errorMsg  = signal('');
+  loading  = signal(true);
+  saving   = signal(false);
+  errorMsg = signal('');
 
-  form: {
-    title:          string;
-    startDate:      string;
-    startTime:      string;
-    endDate:        string;
-    endTime:        string;
-    team1Name:      string;
-    team2Name:      string;
-    operationNotes: string;
+  channels = signal<Channel[]>([]);
+  entry    = signal<LivePlanEntry | null>(null);
+  techRow  = signal<TechnicalDetailsRow | null>(null);
+
+  /** Original snapshots (dirty diff için). */
+  private originalEntry: LivePlanEntry | null = null;
+  private originalTech: TechnicalDetailsRow | null = null;
+
+  form = {
+    title:          '',
+    leagueName:     '',
+    channel1Id:     null as number | null,
+    channel2Id:     null as number | null,
+    channel3Id:     null as number | null,
+    startDate:      '',
+    startTime:      '',
+    endTime:        '',
+    operationNotes: '' as string | null,
   };
 
-  constructor() {
-    const s = this.data.schedule;
-    const start = new Date(s.startTime);
-    const end   = new Date(s.endTime);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const dateOf = (d: Date) =>
-      `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-    const timeOf = (d: Date) =>
-      `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  tech: Record<TechFieldKey, number | null> = this.emptyTech();
 
-    this.form = {
-      title:          s.title ?? '',
-      startDate:      dateOf(start),
-      startTime:      timeOf(start),
-      endDate:        dateOf(end),
-      endTime:        timeOf(end),
-      team1Name:      s.team1Name ?? '',
-      team2Name:      s.team2Name ?? '',
-      operationNotes: '',
-    };
+  /** Tek event handler — child component'lerden gelen FK değişimi state'e patch. */
+  onTech(key: TechFieldKey, value: number | null): void {
+    this.tech = { ...this.tech, [key]: value };
   }
 
-  canSave(): boolean {
+  compareById = (a: number | null, b: number | null): boolean => a === b;
+
+  canSave = computed(() => {
     const f = this.form;
-    return !!(f.title.trim() && f.startDate && f.startTime && f.endDate && f.endTime);
+    return !this.loading() && !!f.title.trim() && !!f.startDate && !!f.startTime && !!f.endTime;
+  });
+
+  ngOnInit(): void {
+    this.load();
+  }
+
+  load(): void {
+    this.loading.set(true);
+    this.errorMsg.set('');
+    const entryId = this.data.schedule.id;
+    forkJoin({
+      entry:    this.api.get<LivePlanEntry>(livePlanEndpoint.detail(entryId)),
+      tech:     this.api.get<TechnicalDetailsRow | null>(livePlanEndpoint.technicalDetails(entryId)),
+      channels: this.api.get<Channel[]>('/channels/catalog'),
+    }).subscribe({
+      next: ({ entry, tech, channels }) => {
+        this.entry.set(entry);
+        this.originalEntry = entry;
+        this.applyEntryToForm(entry);
+
+        this.techRow.set(tech);
+        this.originalTech = tech;
+        this.applyTechToForm(tech);
+
+        this.channels.set(Array.isArray(channels) ? channels : []);
+        this.loading.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        this.loading.set(false);
+        this.errorMsg.set(e?.error?.message ?? 'Kayıt yüklenemedi');
+      },
+    });
   }
 
   save(): void {
@@ -177,34 +306,193 @@ export class LivePlanEntryEditDialogComponent {
     this.saving.set(true);
     this.errorMsg.set('');
 
-    const s = this.data.schedule;
-    const f = this.form;
-    // Timezone Lock: kullanıcı girdiği saat Türkiye saatidir; UTC instant'a
-    // çevirmek için composeIstanbulIso kullan (önceki `T${time}.000Z` pattern
-    // 3 saatlik kayma yaratıyordu).
-    const startISO = composeIstanbulIso(f.startDate, f.startTime);
-    const endISO   = composeIstanbulIso(f.endDate, f.endTime);
+    const entryDiff = this.buildEntryDiff();
+    const techDiff  = this.buildTechDiff();
+    const entryId   = this.data.schedule.id;
 
-    this.service.updateLivePlanEntry(s.id, {
-      title:           f.title.trim(),
-      eventStartTime:  startISO,
-      eventEndTime:    endISO,
-      team1Name:       f.team1Name.trim() || null,
-      team2Name:       f.team2Name.trim() || null,
-      operationNotes:  f.operationNotes.trim() || null,
-    }, s.version).subscribe({
-      next:  (updated) => { this.saving.set(false); this.dialogRef.close(updated); },
-      error: (e)       => {
-        this.saving.set(false);
-        const msg = e?.status === 412
-          ? 'Kayıt başka biri tarafından güncellendi; lütfen yenileyip tekrar deneyin'
-          : (e?.error?.message ?? e?.message ?? 'Güncelleme başarısız');
-        this.errorMsg.set(msg);
-        this.snack.open(msg, 'Kapat', { duration: 4000 });
-        if (e?.status === 412) {
-          this.dialogRef.close({ stale: true });
-        }
+    // Sıralı RxJS chain (`of()` synchronous emit; spec timing'i deterministic).
+    this.runEntryStep$(entryDiff, entryId).subscribe({
+      next: () => {
+        this.runTechStep$(techDiff, entryId).subscribe({
+          next: () => this.finalizeSave(),
+          error: (e: HttpErrorResponse) => this.handleSaveError(e),
+        });
       },
+      error: (e: HttpErrorResponse) => this.handleSaveError(e),
     });
+  }
+
+  private runEntryStep$(diff: EntryDiff, entryId: number): Observable<void> {
+    if (Object.keys(diff).length === 0) return of(void 0);
+    const version = this.originalEntry?.version ?? 0;
+    return new Observable<void>((sub) => {
+      this.api.patch<LivePlanEntry>(
+        livePlanEndpoint.detail(entryId),
+        diff,
+        version,
+      ).subscribe({
+        next: (updated) => {
+          this.entry.set(updated);
+          this.originalEntry = updated;
+          sub.next(void 0); sub.complete();
+        },
+        error: (e) => sub.error(e),
+      });
+    });
+  }
+
+  private runTechStep$(diff: UpdateTechnicalDetailsBody, entryId: number): Observable<void> {
+    if (Object.keys(diff).length === 0) return of(void 0);
+    return new Observable<void>((sub) => {
+      const sendPatch = (rowVersion: number): void => {
+        this.api.patch<TechnicalDetailsRow>(
+          livePlanEndpoint.technicalDetails(entryId),
+          diff,
+          rowVersion,
+        ).subscribe({
+          next: (updated) => {
+            this.techRow.set(updated);
+            this.originalTech = updated;
+            sub.next(void 0); sub.complete();
+          },
+          error: (e) => sub.error(e),
+        });
+      };
+      const existing = this.techRow();
+      if (existing) {
+        sendPatch(existing.version);
+      } else {
+        this.api.post<TechnicalDetailsRow>(
+          livePlanEndpoint.technicalDetails(entryId),
+          {},
+        ).subscribe({
+          next: (created) => {
+            this.techRow.set(created);
+            this.originalTech = created;
+            sendPatch(created.version);
+          },
+          error: (e) => sub.error(e),
+        });
+      }
+    });
+  }
+
+  private finalizeSave(): void {
+    this.saving.set(false);
+    this.snack.open('Kayıt güncellendi', 'Kapat', { duration: 3000 });
+    this.dialogRef.close({ updated: this.entry() });
+  }
+
+  private handleSaveError(err: HttpErrorResponse): void {
+    this.saving.set(false);
+    const status = err?.status;
+    if (status === 412) {
+      this.snack.open(
+        'Kayıt başka biri tarafından güncellenmiş; form yenileniyor',
+        'Kapat',
+        { duration: 5000 },
+      );
+      this.load();
+      return;
+    }
+    if (status === 403) {
+      this.errorMsg.set('Bu kaydı düzenleme yetkisi yok');
+      this.snack.open('Yetkisiz', 'Kapat', { duration: 4000 });
+      return;
+    }
+    if (status === 400) {
+      const issues = err?.error?.issues;
+      const msg = Array.isArray(issues) && issues.length > 0
+        ? `Doğrulama hatası: ${issues[0]?.message ?? 'alan değerini kontrol edin'}`
+        : (err?.error?.message ?? 'Doğrulama hatası');
+      this.errorMsg.set(msg);
+      this.snack.open(msg, 'Kapat', { duration: 5000 });
+      return;
+    }
+    if (status === 409) {
+      this.errorMsg.set('Geçersiz seçim — seçimleri kontrol edin');
+      this.snack.open('Çakışma / geçersiz referans', 'Kapat', { duration: 5000 });
+      return;
+    }
+    const msg = err?.error?.message ?? err?.message ?? 'Kaydedilemedi';
+    this.errorMsg.set(msg);
+    this.snack.open(msg, 'Kapat', { duration: 4000 });
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  private applyEntryToForm(e: LivePlanEntry): void {
+    this.form.title          = e.title ?? '';
+    this.form.leagueName     = e.leagueName ?? '';
+    this.form.channel1Id     = e.channel1Id ?? null;
+    this.form.channel2Id     = e.channel2Id ?? null;
+    this.form.channel3Id     = e.channel3Id ?? null;
+    this.form.startDate      = formatIstanbulDate(e.eventStartTime);
+    this.form.startTime      = formatIstanbulTime(e.eventStartTime);
+    this.form.endTime        = formatIstanbulTime(e.eventEndTime);
+    this.form.operationNotes = e.operationNotes ?? '';
+  }
+
+  private applyTechToForm(r: TechnicalDetailsRow | null): void {
+    if (!r) { this.tech = this.emptyTech(); return; }
+    const next = this.emptyTech();
+    for (const k of TECH_FIELD_KEYS) {
+      const v = (r as unknown as Record<string, unknown>)[k];
+      next[k] = typeof v === 'number' ? v : null;
+    }
+    this.tech = next;
+  }
+
+  private emptyTech(): Record<TechFieldKey, number | null> {
+    const out: Record<TechFieldKey, number | null> = {} as Record<TechFieldKey, number | null>;
+    for (const k of TECH_FIELD_KEYS) out[k] = null;
+    return out;
+  }
+
+  private buildEntryDiff(): EntryDiff {
+    const out: EntryDiff = {};
+    const orig = this.originalEntry;
+    if (!orig) return out;
+    const f = this.form;
+
+    const titleNext = f.title.trim();
+    if (titleNext !== (orig.title ?? '')) out.title = titleNext;
+
+    const notesNext = (f.operationNotes ?? '').trim();
+    const origNotes = orig.operationNotes ?? '';
+    if (notesNext !== origNotes) {
+      out.operationNotes = notesNext === '' ? null : notesNext;
+    }
+
+    if ((f.channel1Id ?? null) !== (orig.channel1Id ?? null)) out.channel1Id = f.channel1Id ?? null;
+    if ((f.channel2Id ?? null) !== (orig.channel2Id ?? null)) out.channel2Id = f.channel2Id ?? null;
+    if ((f.channel3Id ?? null) !== (orig.channel3Id ?? null)) out.channel3Id = f.channel3Id ?? null;
+
+    // Tarih/saat tek alanmış gibi: birleştir, compose. Bitiş tarihi = başlangıç
+    // tarihiyle aynı (görsel tek tarih; eğer 24:00'i geçerse start+1d UI kapsam dışı).
+    const origStartDate = formatIstanbulDate(orig.eventStartTime);
+    const origStartTime = formatIstanbulTime(orig.eventStartTime);
+    const origEndTime   = formatIstanbulTime(orig.eventEndTime);
+
+    if (f.startDate !== origStartDate || f.startTime !== origStartTime) {
+      out.eventStartTime = composeIstanbulIso(f.startDate, f.startTime);
+    }
+    if (f.startDate !== origStartDate || f.endTime !== origEndTime) {
+      // End date = start date (görsel tek tarih). Çapraz gece geçişleri kapsam dışı.
+      out.eventEndTime = composeIstanbulIso(f.startDate, f.endTime);
+    }
+
+    return out;
+  }
+
+  private buildTechDiff(): UpdateTechnicalDetailsBody {
+    const out: Record<string, number | null> = {};
+    const orig = this.originalTech;
+    for (const k of TECH_FIELD_KEYS) {
+      const before = orig ? ((orig as unknown as Record<string, unknown>)[k] as number | null) : null;
+      const after  = this.tech[k];
+      if ((before ?? null) === (after ?? null)) continue;
+      out[k] = after;
+    }
+    return out as UpdateTechnicalDetailsBody;
   }
 }

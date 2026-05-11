@@ -40,6 +40,8 @@ export interface LivePlanEntry {
   channel1Id?: number | null;
   channel2Id?: number | null;
   channel3Id?: number | null;
+  /** OPTA Match.league.name join'i (read-only; 2026-05-11). Yazma yok. */
+  leagueName?: string | null;
 }
 
 export interface LivePlanListResponse {

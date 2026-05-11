@@ -8,7 +8,8 @@ import { z } from 'zod';
  * U7: PATCH partial — `.optional()` + lookup FK alanları `.nullable().optional()`.
  *     undefined → değiştirme; null → kolonu temizle; service explicit data builder.
  *
- * 73 domain alanı + version (schema'da yok; If-Match header'dan geliyor).
+ * 74 domain alanı + version (schema'da yok; If-Match header'dan geliyor).
+ * 2026-05-11: secondLanguageId §5.2 grubuna eklendi (Düzenle form Yabancı Dil).
  */
 
 const id        = z.number().int().positive();
@@ -47,6 +48,7 @@ export const createTechnicalDetailsSchema = z.object({
   int2ResourceId:                id.optional(),
   offTubeId:                     id.optional(),
   languageId:                    id.optional(),
+  secondLanguageId:              id.optional(),
   demodId:                       id.optional(),
   tieId:                         id.optional(),
   virtualResourceId:             id.optional(),
@@ -141,6 +143,7 @@ export const updateTechnicalDetailsSchema = z.object({
   int2ResourceId:                idNullable.optional(),
   offTubeId:                     idNullable.optional(),
   languageId:                    idNullable.optional(),
+  secondLanguageId:              idNullable.optional(),
   demodId:                       idNullable.optional(),
   tieId:                         idNullable.optional(),
   virtualResourceId:             idNullable.optional(),

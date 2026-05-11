@@ -1089,6 +1089,10 @@ model LivePlanTechnicalDetail {
   int2ResourceId    Int?      @map("int2_resource_id")
   offTubeId         Int?      @map("off_tube_id")
   languageId        Int?      @map("language_id")
+  /// "Yabancı Dil" — canonical FK live_plan_languages (aynı lookup, ana dil
+  /// `language_id` ile ortak tablo). Migration 20260511193759. Düzenle
+  /// formu (2026-05-11) editable alan; metadata JSON YASAK.
+  secondLanguageId  Int?      @map("second_language_id")
   demodId           Int?      @map("demod_id")
   tieId             Int?      @map("tie_id")
   virtualResourceId Int?      @map("virtual_resource_id")

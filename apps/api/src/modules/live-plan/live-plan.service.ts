@@ -30,8 +30,26 @@ import type {
 
 const SHADOW_AGGREGATE_TYPE = 'LivePlanEntry';
 
+/**
+ * 2026-05-11: Read response'a `leagueName` join'i — Lig OPTA değer (Match
+ * relation üzerinden). Editable DEĞİL; write payload'a girmez. Migration yok.
+ * Null'lar: matchId null veya match.league null senaryosu.
+ */
+export type LivePlanEntryWithLeague = LivePlanEntry & { leagueName: string | null };
+
+const MATCH_LEAGUE_INCLUDE = {
+  match: { include: { league: { select: { name: true } } } },
+} as const satisfies Prisma.LivePlanEntryInclude;
+
+function flattenLeagueName<T extends LivePlanEntry & { match?: { league?: { name?: string } | null } | null }>(
+  row: T,
+): LivePlanEntryWithLeague {
+  const { match, ...rest } = row;
+  return { ...(rest as LivePlanEntry), leagueName: match?.league?.name ?? null };
+}
+
 export interface ListLivePlanResult {
-  items:    LivePlanEntry[];
+  items:    LivePlanEntryWithLeague[];
   total:    number;
   page:     number;
   pageSize: number;
@@ -53,6 +71,7 @@ export class LivePlanService {
     const [items, total] = await Promise.all([
       this.app.prisma.livePlanEntry.findMany({
         where,
+        include: MATCH_LEAGUE_INCLUDE,
         orderBy: { eventStartTime: 'asc' },
         skip:  (query.page - 1) * query.pageSize,
         take:  query.pageSize,
@@ -60,16 +79,24 @@ export class LivePlanService {
       this.app.prisma.livePlanEntry.count({ where }),
     ]);
 
-    return { items, total, page: query.page, pageSize: query.pageSize };
+    return {
+      items:    items.map(flattenLeagueName),
+      total,
+      page:     query.page,
+      pageSize: query.pageSize,
+    };
   }
 
   // ── Detail ─────────────────────────────────────────────────────────────────
-  async getById(id: number): Promise<LivePlanEntry> {
-    const row = await this.app.prisma.livePlanEntry.findUnique({ where: { id } });
+  async getById(id: number): Promise<LivePlanEntryWithLeague> {
+    const row = await this.app.prisma.livePlanEntry.findUnique({
+      where: { id },
+      include: MATCH_LEAGUE_INCLUDE,
+    });
     if (!row || row.deletedAt !== null) {
       throw Object.assign(new Error('Live-plan not found'), { statusCode: 404 });
     }
-    return row;
+    return flattenLeagueName(row);
   }
 
   // ── Create ─────────────────────────────────────────────────────────────────
@@ -154,6 +181,11 @@ export class LivePlanService {
         // K-B3.20 follow-up: team_1/2 update (null → temizle).
         ...(dto.team1Name !== undefined && { team1Name: dto.team1Name }),
         ...(dto.team2Name !== undefined && { team2Name: dto.team2Name }),
+        // 3-channel slot canonical (2026-05-11). syncScheduleFromLivePlan
+        // channel'a dokunmaz (K-B3.12 schedule kanonik).
+        ...(dto.channel1Id !== undefined && { channel1Id: dto.channel1Id }),
+        ...(dto.channel2Id !== undefined && { channel2Id: dto.channel2Id }),
+        ...(dto.channel3Id !== undefined && { channel3Id: dto.channel3Id }),
         // metadata kolonu M5-B4'te DROP edildi (K15.1).
         version: { increment: 1 },
       };
@@ -490,6 +522,23 @@ export class LivePlanService {
       // Legacy dual-write (SCHED-B5'e kadar):
       data.startTime = newStart;
       data.endTime   = new Date(newStart.getTime() + 2 * 3600 * 1000); // ⚠ legacy placeholder
+      needSync = true;
+    }
+    // 2026-05-11: Düzenle formundan gelen 3-channel slot değişimi schedule
+    // satırına da yansıtılır (kullanıcı beklentisi: iki domain'de aynı kanal).
+    // Schedule modelinde channel relation tanımlı değil (scalar-only); direkt
+    // FK kolon set'i. dto'da undefined alan schedule satırına dokunmaz.
+    // FK validation Prisma `update` ile P2003 üzerinden yakalanır.
+    if (dto.channel1Id !== undefined) {
+      data.channel1Id = dto.channel1Id;
+      needSync = true;
+    }
+    if (dto.channel2Id !== undefined) {
+      data.channel2Id = dto.channel2Id;
+      needSync = true;
+    }
+    if (dto.channel3Id !== undefined) {
+      data.channel3Id = dto.channel3Id;
       needSync = true;
     }
     if (!needSync) return;

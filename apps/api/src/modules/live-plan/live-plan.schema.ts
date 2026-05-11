@@ -75,6 +75,12 @@ export const updateLivePlanSchema = z.object({
   // K-B3.20 follow-up (2026-05-07): null → kolonu temizle.
   team1Name:       z.string().trim().min(1).max(200).nullable().optional(),
   team2Name:       z.string().trim().min(1).max(200).nullable().optional(),
+  // 2026-05-11: Düzenle formu 3-channel slot canonical model üzerinden
+  // kanal yazımı; her slot bağımsız (channel1/2/3). Reverse-sync (live-plan →
+  // schedule) channel'a dokunmaz; schedule kanonik kalır (K-B3.12).
+  channel1Id:      z.number().int().positive().nullable().optional(),
+  channel2Id:      z.number().int().positive().nullable().optional(),
+  channel3Id:      z.number().int().positive().nullable().optional(),
   // Madde 5 K15.1 (M5-B4): metadata JSONB kolonu kaldırıldı.
 }).refine((d) => Object.keys(d).length > 0, {
   message: 'En az bir field güncellenmeli',

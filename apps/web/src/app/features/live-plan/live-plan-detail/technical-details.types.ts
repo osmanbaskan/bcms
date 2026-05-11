@@ -48,6 +48,8 @@ export interface TechnicalDetailsRow {
   int2ResourceId:        number | null;
   offTubeId:             number | null;
   languageId:            number | null;
+  /** Yabancı Dil — 2026-05-11 canonical kolon (live_plan_languages FK). */
+  secondLanguageId:      number | null;
   demodId:               number | null;
   tieId:                 number | null;
   virtualResourceId:     number | null;
@@ -198,7 +200,7 @@ export const FIELD_GROUPS: readonly FieldGroupDef[] = [
   {
     id: 'ortak',
     title: 'Ortak (Edit Üst)',
-    hint: '10 alan — transmisyon başlangıç/bitiş ve INT/dil/demod.',
+    hint: '11 alan — transmisyon başlangıç/bitiş, INT/dil/demod + yabancı dil.',
     fields: [
       { key: 'plannedStartTime',  label: 'Trans. Başlangıç', kind: 'datetime' },
       { key: 'plannedEndTime',    label: 'Trans. Bitiş',     kind: 'datetime' },
@@ -207,6 +209,7 @@ export const FIELD_GROUPS: readonly FieldGroupDef[] = [
       { key: 'int2ResourceId',    label: 'Int 2',            kind: 'fk', lookupType: 'transmission_int_resources' },
       { key: 'offTubeId',         label: 'Off Tube',         kind: 'fk', lookupType: 'live_plan_off_tube_options' },
       { key: 'languageId',        label: 'Dil',              kind: 'fk', lookupType: 'live_plan_languages' },
+      { key: 'secondLanguageId',  label: 'Yabancı Dil',      kind: 'fk', lookupType: 'live_plan_languages' },
       { key: 'demodId',           label: 'Demod',            kind: 'fk', lookupType: 'transmission_demod_options' },
       { key: 'tieId',             label: 'TIE',              kind: 'fk', lookupType: 'transmission_tie_options' },
       { key: 'virtualResourceId', label: 'Sanal',            kind: 'fk', lookupType: 'transmission_virtual_resources' },

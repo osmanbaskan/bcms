@@ -308,6 +308,7 @@ export async function applyLivePlanTechnicalDetailsConstraints(): Promise<void> 
     ['lpt_int2_resource_fkey',              'int2_resource_id',              'transmission_int_resources'],
     ['lpt_off_tube_fkey',                   'off_tube_id',                   'live_plan_off_tube_options'],
     ['lpt_language_fkey',                   'language_id',                   'live_plan_languages'],
+    ['lpt_second_language_fkey',            'second_language_id',            'live_plan_languages'],
     ['lpt_demod_fkey',                      'demod_id',                      'transmission_demod_options'],
     ['lpt_tie_fkey',                        'tie_id',                        'transmission_tie_options'],
     ['lpt_virtual_resource_fkey',           'virtual_resource_id',           'transmission_virtual_resources'],

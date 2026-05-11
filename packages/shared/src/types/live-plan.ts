@@ -46,6 +46,9 @@ export interface LivePlanEntry {
   channel3Id:     number | null;
   team1Name:      string | null;
   team2Name:      string | null;
+  /** OPTA Match.league.name join'i (read-only; 2026-05-11). Yazma payload'a
+   *  girmez; UI read-only chip. matchId null veya match.league null ise null. */
+  leagueName?:    string | null;
 }
 
 /**
@@ -79,6 +82,11 @@ export interface UpdateLivePlanEntryDto {
   operationNotes?:  string | null;
   team1Name?:       string | null;
   team2Name?:       string | null;
+  /** 2026-05-11: 3-channel slot canonical. live-plan PATCH live_plan_entries
+   *  kolonlarını günceller; syncScheduleFromLivePlan channel'a dokunmaz. */
+  channel1Id?:      number | null;
+  channel2Id?:      number | null;
+  channel3Id?:      number | null;
 }
 
 /** OPTA seçim akışı; matches.opta_uid'den temel bilgi kopya. */

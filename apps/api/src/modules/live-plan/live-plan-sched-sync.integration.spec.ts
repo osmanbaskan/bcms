@@ -110,6 +110,45 @@ describe('LivePlanService SCHED-B3b — sched sync + duplicate + from-opta', () 
     expect(refreshed.endTime.getTime() - refreshed.startTime.getTime()).toBe(2 * 3600 * 1000);
   });
 
+  test('update: channel1/2/3Id değişimi → schedule satırına da yansır (2026-05-11)', async () => {
+    const prisma = getRawPrisma();
+    await prisma.match.create({
+      data: {
+        leagueId: 1, optaUid: 'b3b-channel-sync', homeTeamName: 'H',
+        awayTeamName: 'A', matchDate: new Date('2026-06-01T19:00:00Z'),
+        season: '2025-2026',
+      },
+    });
+    const e = await svc.createFromOpta('b3b-channel-sync', user());
+    const ek = e.eventKey!;
+    // Channel slot kullanmak için broadcast schedule yarat; ek varsayılan channel'lar
+    // schedule.createBroadcastFlow tarafından NULL olarak set edilir.
+    const sched = await schedSvc.createBroadcastFlow(
+      {
+        eventKey: ek, selectedLivePlanEntryId: e.id,
+        scheduleDate: '2026-06-01', scheduleTime: '19:00',
+      },
+      user(),
+    );
+
+    // Channel slot dirty: ID 1 set, ID 2 set, 3 explicit null. Seed fixture
+    // channel'ları (seedTestFixtures: id=1 ve id=2 upsert) kullanılır.
+    const updated = await svc.update(
+      e.id,
+      { channel1Id: 1, channel2Id: 2, channel3Id: null },
+      e.version,
+      user(),
+    );
+    expect(updated.channel1Id).toBe(1);
+    expect(updated.channel2Id).toBe(2);
+    expect(updated.channel3Id).toBeNull();
+
+    const refreshed = await prisma.schedule.findUniqueOrThrow({ where: { id: sched.id } });
+    expect(refreshed.channel1Id).toBe(1);
+    expect(refreshed.channel2Id).toBe(2);
+    expect(refreshed.channel3Id).toBeNull();
+  });
+
   test('update: eventKey yoksa schedule sync atılır (legacy entry; service bypass ile yarat)', async () => {
     // Yeni manuel create her zaman eventKey üretir (anti-bypass). Legacy
     // entry simulasyonu için Prisma direct create.

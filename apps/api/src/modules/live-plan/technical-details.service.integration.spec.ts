@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { LivePlanService } from './live-plan.service.js';
 import { LivePlanTechnicalDetailService } from './technical-details.service.js';
+import { isOutboxPollerAuthoritative } from '../outbox/outbox.helpers.js';
 import {
   cleanupTransactional,
   getRawPrisma,
@@ -10,6 +11,9 @@ import {
   makeUser,
   type TestAppHarness,
 } from '../../../test/integration/helpers.js';
+
+/** PR-C2 env-aware: authoritative=true → 'pending'; aksi → 'published'. */
+const EXPECTED_OUTBOX_STATUS = isOutboxPollerAuthoritative() ? 'pending' : 'published';
 
 /**
  * Madde 5 M5-B9 spec — technical details service davranışı.
@@ -67,7 +71,7 @@ describe('LivePlanTechnicalDetailService — integration', () => {
     });
     expect(events).toHaveLength(1);
     expect(events[0].eventType).toBe('live_plan.technical.created');
-    expect(events[0].status).toBe('published');
+    expect(events[0].status).toBe(EXPECTED_OUTBOX_STATUS);
   });
 
   test('POST: 1:1 enforce — ikinci POST aynı entry için → 409', async () => {

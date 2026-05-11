@@ -53,6 +53,7 @@ const FIELD_REGISTRY: readonly FieldRef[] = [
   { field: 'int2ResourceId',        delegate: 'transmissionIntResource' },
   { field: 'offTubeId',             delegate: 'livePlanOffTubeOption' },
   { field: 'languageId',            delegate: 'livePlanLanguage' },
+  { field: 'secondLanguageId',      delegate: 'livePlanLanguage' },
   { field: 'demodId',               delegate: 'transmissionDemodOption' },
   { field: 'tieId',                 delegate: 'transmissionTieOption' },
   { field: 'virtualResourceId',     delegate: 'transmissionVirtualResource' },
