@@ -2,7 +2,7 @@ import path from 'node:path';
 import chokidar from 'chokidar';
 import type { FastifyInstance } from 'fastify';
 import { QUEUES } from '../../plugins/rabbitmq.js';
-import { writeShadowEvent } from '../outbox/outbox.helpers.js';
+import { isOutboxPollerAuthoritative, writeShadowEvent } from '../outbox/outbox.helpers.js';
 import { validateIngestSourcePath, VIDEO_EXTENSIONS } from './ingest.paths.js';
 
 const WATCH_FOLDER    = process.env.WATCH_FOLDER ?? './tmp/watch';
@@ -43,10 +43,17 @@ export function startIngestWatcher(app: FastifyInstance): void {
         return created;
       });
 
-      await app.rabbitmq.publish(QUEUES.INGEST_NEW, {
-        jobId:      job.id,
-        sourcePath,
-      });
+      if (!isOutboxPollerAuthoritative()) {
+        await app.rabbitmq.publish(QUEUES.INGEST_NEW, {
+          jobId:      job.id,
+          sourcePath,
+        });
+      } else {
+        app.log.debug(
+          { domain: 'ingest', queue: QUEUES.INGEST_NEW, eventType: 'ingest.job_started' },
+          'direct publish skipped — outbox poller authoritative',
+        );
+      }
 
       app.log.info({ jobId: job.id, sourcePath }, 'Ingest job kuyruğa eklendi');
     } catch (err) {

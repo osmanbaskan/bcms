@@ -6,6 +6,7 @@ import { QUEUES } from '../../plugins/rabbitmq.js';
 import { optaLeagueSyncTotal } from '../../plugins/metrics.js';
 import { als } from '../../plugins/audit.js';
 import { cascadeOptaUpdates, type CascadeMatchUpdate } from './opta-cascade.service.js';
+import { isOutboxPollerAuthoritative } from '../outbox/outbox.helpers.js';
 
 const matchItemSchema = z.object({
   matchUid:   z.string().min(1),
@@ -323,11 +324,10 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
         );
       }
 
-      // RabbitMQ direct publish (KO + B3c korunur, source='opta-sync'). Outbox
-      // shadow event'leri zaten cascade service'te yazıldı (Phase 2 status=
-      // published). PR-C2 cut-over sonrası direct publish kaldırılır; B3c
-      // kapsamı dışı.
-      if (cascadedSchedules > 0) {
+      // PR-C2 cut-over (2026-05-11): OUTBOX_POLLER_AUTHORITATIVE=true ise
+      // outbox poller authoritative; cascade service'in yazdığı pending event
+      // poller tarafından publish edilir, buradan direct publish skip.
+      if (cascadedSchedules > 0 && !isOutboxPollerAuthoritative()) {
         try {
           await fastify.rabbitmq.publish(QUEUES.SCHEDULE_UPDATED, {
             cascadedSchedules,
@@ -339,6 +339,11 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
             'OPTA sync — SCHEDULE_UPDATED publish failed (cascade success kept)',
           );
         }
+      } else if (cascadedSchedules > 0) {
+        fastify.log.debug(
+          { domain: 'opta', queue: QUEUES.SCHEDULE_UPDATED, eventType: 'schedule.updated', cascadedSchedules },
+          'direct publish skipped — outbox poller authoritative',
+        );
       }
 
       const manualReconcileRequired = livePlanCascadeConflicts > 0 || cascadeError != null;

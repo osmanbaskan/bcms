@@ -9,8 +9,11 @@ import { createEnvelope, type OutboxEnvelope } from './outbox.types.js';
  * mekaniğini tek noktaya çeker. Watcher ve route kendi $transaction akışlarını
  * koruyarak bu helper'ı çağırır.
  *
- * status='published' + publishedAt=now() ile yazılır (Phase 2 shadow):
- * direct publish hâlâ aktif, outbox satırı yalnız tarihçe.
+ * PR-C2 cut-over (2026-05-11): `OUTBOX_POLLER_AUTHORITATIVE=true` set
+ * edildiğinde shadow yazımı status='pending' + publishedAt=null ile gelir.
+ * Poller bu satırı pick eder ve authoritative publish yapar; direct publish
+ * call site'ları aynı env flag ile skip edilir. Flag unset/false ise
+ * Phase 2 shadow davranışı (status='published') korunur — rollback yolu.
  *
  * idempotencyKey verildiğinde:
  * - Format kontrolü: 1..160 char, boş string null-equivalent (insert atılmaz
@@ -31,6 +34,19 @@ import { createEnvelope, type OutboxEnvelope } from './outbox.types.js';
 type TxClient = Prisma.TransactionClient;
 
 const IDEMPOTENCY_KEY_MAX = 160;
+
+/**
+ * PR-C2 cut-over flag. `true` → shadow status='pending' (poller pick eder);
+ * `false`/unset → 'published' (Phase 2 shadow, direct publish hâlâ aktif).
+ *
+ * Service-level direct publish call site'ları aynı flag ile env-gated skip
+ * eder; eski Phase 2 davranışı `false`/unset ile geri alınır (rollback).
+ */
+export function isOutboxPollerAuthoritative(): boolean {
+  return (process.env.OUTBOX_POLLER_AUTHORITATIVE ?? '').toLowerCase() === 'true';
+}
+
+const isPollerAuthoritative = isOutboxPollerAuthoritative;
 
 export interface ShadowEventInput<P extends Record<string, unknown>> {
   eventType: string;
@@ -80,6 +96,7 @@ export async function writeShadowEvent<P extends Record<string, unknown>>(
     return writeWithIdempotency(tx, env, key);
   }
 
+  const authoritative = isPollerAuthoritative();
   await tx.outboxEvent.create({
     data: {
       eventId:       env.eventId,
@@ -89,8 +106,8 @@ export async function writeShadowEvent<P extends Record<string, unknown>>(
       schemaVersion: env.schemaVersion,
       payload:       env.payload as Prisma.InputJsonValue,
       occurredAt:    new Date(env.occurredAt),
-      status:        'published',
-      publishedAt:   new Date(),
+      status:        authoritative ? 'pending' : 'published',
+      publishedAt:   authoritative ? null : new Date(),
     },
   });
   return { inserted: true, eventId: env.eventId };
@@ -109,6 +126,9 @@ async function writeWithIdempotency<P extends Record<string, unknown>>(
   key: string,
 ): Promise<ShadowEventResult> {
   const now = new Date();
+  const authoritative = isPollerAuthoritative();
+  const status = authoritative ? 'pending' : 'published';
+  const publishedAt = authoritative ? null : now;
   const inserted = await tx.$queryRaw<Array<{ event_id: string }>>`
     INSERT INTO "outbox_events" (
       "event_id", "event_type", "aggregate_type", "aggregate_id",
@@ -116,8 +136,8 @@ async function writeWithIdempotency<P extends Record<string, unknown>>(
       "next_attempt_at", "idempotency_key"
     ) VALUES (
       ${env.eventId}, ${env.eventType}, ${env.aggregateType}, ${env.aggregateId},
-      ${env.schemaVersion}, ${JSON.stringify(env.payload)}::jsonb, 'published',
-      ${new Date(env.occurredAt)}, ${now}, ${now}, ${key}
+      ${env.schemaVersion}, ${JSON.stringify(env.payload)}::jsonb, ${status},
+      ${new Date(env.occurredAt)}, ${publishedAt}, ${now}, ${key}
     )
     ON CONFLICT ("idempotency_key") WHERE "idempotency_key" IS NOT NULL DO NOTHING
     RETURNING "event_id"

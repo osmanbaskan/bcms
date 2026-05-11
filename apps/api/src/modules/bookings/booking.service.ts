@@ -4,6 +4,7 @@ import { BCMS_GROUPS, GROUP, type BcmsGroup, type JwtPayload } from '@bcms/share
 import type { CreateBookingDto, UpdateBookingDto } from './booking.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { createEnvelope } from '../outbox/outbox.types.js';
+import { isOutboxPollerAuthoritative } from '../outbox/outbox.helpers.js';
 import type { EmailPayload } from '../notifications/notification.consumer.js';
 import { readFirstWorksheetRows, rowsToObjects } from '../../lib/excel.js';
 import { kcFetch } from '../../core/keycloak-admin.client.js';
@@ -271,7 +272,14 @@ export class BookingService {
       return created;
     });
 
-    await this.app.rabbitmq.publish(QUEUES.BOOKING_CREATED, { bookingId: booking.id, scheduleId: booking.scheduleId });
+    if (!isOutboxPollerAuthoritative()) {
+      await this.app.rabbitmq.publish(QUEUES.BOOKING_CREATED, { bookingId: booking.id, scheduleId: booking.scheduleId });
+    } else {
+      this.app.log.debug(
+        { domain: 'booking', queue: QUEUES.BOOKING_CREATED, eventType: 'booking.created' },
+        'direct publish skipped — outbox poller authoritative',
+      );
+    }
 
     return booking;
   }
@@ -410,7 +418,14 @@ export class BookingService {
         subject: `İş kaydınız ${label}`,
         body: `Merhaba ${existing.requestedBy},\n\n${id} numaralı iş kaydınız ${label}.\n\nBCMS`,
       };
-      await this.app.rabbitmq.publish(QUEUES.NOTIFICATIONS_EMAIL, emailPayload);
+      if (!isOutboxPollerAuthoritative()) {
+        await this.app.rabbitmq.publish(QUEUES.NOTIFICATIONS_EMAIL, emailPayload);
+      } else {
+        this.app.log.debug(
+          { domain: 'booking', queue: QUEUES.NOTIFICATIONS_EMAIL, eventType: 'notification.email_requested' },
+          'direct publish skipped — outbox poller authoritative',
+        );
+      }
     }
 
     return updated;
@@ -526,13 +541,23 @@ export class BookingService {
         return rows;
       });
 
-      // Direct publish — tx dışı, mevcut payload formatı 1:1 (Phase 2 invariant).
+      // Direct publish — tx dışı (Phase 2 invariant). PR-C2 cut-over:
+      // OUTBOX_POLLER_AUTHORITATIVE=true ise poller authoritative; burası skip.
+      const authoritative = isOutboxPollerAuthoritative();
       for (let i = 0; i < created.length; i++) {
-        await this.app.rabbitmq.publish(QUEUES.BOOKING_CREATED, {
-          bookingId: created[i].id,
-          scheduleId: validRows[i].scheduleId,
-        });
+        if (!authoritative) {
+          await this.app.rabbitmq.publish(QUEUES.BOOKING_CREATED, {
+            bookingId: created[i].id,
+            scheduleId: validRows[i].scheduleId,
+          });
+        }
         result.created++;
+      }
+      if (authoritative) {
+        this.app.log.debug(
+          { domain: 'booking', queue: QUEUES.BOOKING_CREATED, eventType: 'booking.created', count: created.length },
+          'direct publish skipped — outbox poller authoritative',
+        );
       }
     } catch (err) {
       result.errors.push({ row: 0, reason: `Toplu işlem başarısız: ${(err as Error).message}` });

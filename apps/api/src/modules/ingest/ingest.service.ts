@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma, type IngestJob, type IngestStatus } from '@prisma/client';
 import { QUEUES } from '../../plugins/rabbitmq.js';
-import { writeShadowEvent } from '../outbox/outbox.helpers.js';
+import { isOutboxPollerAuthoritative, writeShadowEvent } from '../outbox/outbox.helpers.js';
 import { validateIngestSourcePath } from './ingest.paths.js';
 
 /**
@@ -136,11 +136,21 @@ export async function triggerManualIngest(
     return created;
   });
 
-  await app.rabbitmq.publish(QUEUES.INGEST_NEW, {
-    jobId:      job.id,
-    sourcePath: job.sourcePath,
-    targetId:   job.targetId,
-  });
+  // PR-C2 cut-over: direct publish env-gated. AUTHORITATIVE=true ise outbox
+  // poller authoritative (shadow status='pending' yazılır); buradan publish
+  // yapılmaz. Flag false/unset ise Phase 2 davranışı korunur.
+  if (!isOutboxPollerAuthoritative()) {
+    await app.rabbitmq.publish(QUEUES.INGEST_NEW, {
+      jobId:      job.id,
+      sourcePath: job.sourcePath,
+      targetId:   job.targetId,
+    });
+  } else {
+    app.log.debug(
+      { domain: 'ingest', queue: QUEUES.INGEST_NEW, eventType: 'ingest.job_started' },
+      'direct publish skipped — outbox poller authoritative',
+    );
+  }
 
   return job;
 }
@@ -216,10 +226,17 @@ export async function finalizeIngestJob(
   });
 
   if (applied) {
-    await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, {
-      jobId,
-      status: terminalStatus,
-    });
+    if (!isOutboxPollerAuthoritative()) {
+      await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, {
+        jobId,
+        status: terminalStatus,
+      });
+    } else {
+      app.log.debug(
+        { domain: 'ingest', queue: QUEUES.INGEST_COMPLETED, eventType: 'ingest.job_completed' },
+        'direct publish skipped — outbox poller authoritative',
+      );
+    }
   }
 }
 
@@ -386,10 +403,17 @@ export async function processIngestCallback(
   });
 
   if (applied) {
-    await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, {
-      jobId:  dto.jobId,
-      status: dto.status,
-    });
+    if (!isOutboxPollerAuthoritative()) {
+      await app.rabbitmq.publish(QUEUES.INGEST_COMPLETED, {
+        jobId:  dto.jobId,
+        status: dto.status,
+      });
+    } else {
+      app.log.debug(
+        { domain: 'ingest', queue: QUEUES.INGEST_COMPLETED, eventType: 'ingest.job_completed' },
+        'direct publish skipped — outbox poller authoritative',
+      );
+    }
   }
 
   return job;
