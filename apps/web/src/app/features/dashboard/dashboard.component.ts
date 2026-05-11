@@ -483,15 +483,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   todayStudios = signal<StudioSlot[]>([]);
   ports = signal<IngestPort[]>([]);
 
-  heroBroadcast = computed<ScheduleRow | undefined>(() =>
-    this.todayBroadcasts().find((b) => b.status === 'ON_AIR'),
-  );
+  // Hard delete (2026-05-11): ScheduleStatus.ON_AIR enum'dan çıkarıldı.
+  // MCR/playout silindiği için ON_AIR'a geçiren mekanizma yok. Hero card
+  // computed'i her zaman undefined döner → template empty state gösterir.
+  // Sahte mapping (CONFIRMED'i canlı saymak) yasak.
+  heroBroadcast = computed<ScheduleRow | undefined>(() => undefined);
 
   // ─── KPIs ────────────────────────────────────────────────────────────────
   kpiTodayTotal = computed(() => this.todayBroadcasts().length);
-  kpiLive = computed(() =>
-    this.todayBroadcasts().filter((b) => b.status === 'ON_AIR' || b.status === 'CONFIRMED').length,
-  );
+  // ON_AIR hard-deleted; "canlı yayın" sayacı her zaman 0 (sahte mapping yasak).
+  kpiLive = computed(() => 0);
   kpiActivePorts = computed(() => this.ports().filter((p) => p.active).length);
   kpiTotalPorts = computed(() => this.ports().length);
   kpiStudios = computed(() => this.todayStudios().length);

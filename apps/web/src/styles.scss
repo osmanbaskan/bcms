@@ -86,8 +86,7 @@ app-root {
 
   &.DRAFT     { background: var(--bp-status-DRAFT-bg);     color: var(--bp-status-DRAFT-fg); }
   &.CONFIRMED { background: var(--bp-status-CONFIRMED-bg); color: var(--bp-status-CONFIRMED-fg); }
-  &.ON_AIR    { background: var(--bp-status-ON_AIR-bg);    color: var(--bp-status-ON_AIR-fg);
-                animation: bp-pulse var(--bp-dur-pulse) infinite; }
+  // ON_AIR hard-deleted 2026-05-11.
   &.COMPLETED { background: var(--bp-status-COMPLETED-bg); color: var(--bp-status-COMPLETED-fg); }
   &.CANCELLED { background: var(--bp-status-CANCELLED-bg); color: var(--bp-status-CANCELLED-fg); }
   &.PENDING   { background: var(--bp-status-PENDING-bg);   color: var(--bp-status-PENDING-fg); }

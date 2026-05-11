@@ -53,7 +53,7 @@ describe('ScheduleService.findBroadcastList — SCHED-B4-prep', () => {
     overrides: Partial<{
       scheduleDate: Date | null;
       scheduleTime: Date | null;
-      status:       'DRAFT' | 'CONFIRMED' | 'ON_AIR' | 'COMPLETED' | 'CANCELLED';
+      status:       'DRAFT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
       title:        string;
     }> = {},
   ) {

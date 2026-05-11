@@ -15,7 +15,8 @@ import { writeShadowEvent } from '../outbox/outbox.helpers.js';
  *     optaMatchId (match.optaUid canonical), matchId, version++           (KO9)
  *   - Conflict skip YOK; concurrent user write varsa son commit kazanır   (KO1)
  * - Existing schedules (eventKey='opta:<uid>') güncelle (canonical alanlar).
- *   - Filtre: status NOT IN ('COMPLETED', 'CANCELLED', 'ON_AIR')         (KO14)
+ *   - Filtre: status NOT IN ('COMPLETED', 'CANCELLED')                  (KO14)
+ *     [ON_AIR hard delete 2026-05-11; enum'dan çıkarıldı]
  *   - Alanlar: title (`<home> vs <away>`), team_1/2_name, schedule_date,
  *     schedule_time, version++                                            (KO3)
  *   - Legacy start_time/end_time placeholder dual-write (canonical değil;
@@ -35,7 +36,7 @@ import { writeShadowEvent } from '../outbox/outbox.helpers.js';
  */
 
 const FROZEN_LIVE_PLAN_STATUSES = ['COMPLETED', 'CANCELLED'] as const;
-const FROZEN_SCHEDULE_STATUSES  = ['COMPLETED', 'CANCELLED', 'ON_AIR'] as const;
+const FROZEN_SCHEDULE_STATUSES  = ['COMPLETED', 'CANCELLED'] as const;
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
 export interface CascadeMatchUpdate {

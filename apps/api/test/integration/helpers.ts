@@ -604,7 +604,7 @@ export async function createTestSchedule(opts?: {
   startTime?: Date;
   endTime?: Date;
   title?: string;
-  status?: 'DRAFT' | 'CONFIRMED' | 'ON_AIR' | 'COMPLETED' | 'CANCELLED';
+  status?: 'DRAFT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
 }): Promise<{ id: number }> {
   const prisma = getRawPrisma();
   const now = new Date();

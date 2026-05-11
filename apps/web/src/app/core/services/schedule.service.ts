@@ -33,10 +33,15 @@ export interface ScheduleFilter {
 // canonical endpoint'lerine bağlanır; legacy `/schedules` mutation YOK,
 // JSON/metadata YOK. Display'e döndüğünde mapper Schedule shape'ine çevirir.
 
+// Hard delete (2026-05-11): ScheduleStatus.ON_AIR kaldırıldı. LivePlanEntry
+// IN_PROGRESS canlı yayın source-of-truth'unu temsil eder; Schedule
+// projeksiyonu IN_PROGRESS değerini CONFIRMED'a düşürmez (sahte mapping
+// yasak) — mapper IN_PROGRESS için Schedule shape'inde CONFIRMED bırakır,
+// "canlı" durumu LivePlanEntry tarafından ayrıca okunur.
 const STATUS_MAP: Record<LivePlanStatus, ScheduleStatus> = {
   PLANNED:     'CONFIRMED',
   READY:       'CONFIRMED',
-  IN_PROGRESS: 'ON_AIR',
+  IN_PROGRESS: 'CONFIRMED',
   COMPLETED:   'COMPLETED',
   CANCELLED:   'CANCELLED',
 };

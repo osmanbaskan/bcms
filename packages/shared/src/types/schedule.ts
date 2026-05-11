@@ -1,4 +1,6 @@
-export type ScheduleStatus = 'DRAFT' | 'CONFIRMED' | 'ON_AIR' | 'COMPLETED' | 'CANCELLED';
+// Hard delete (2026-05-11): ON_AIR kaldırıldı. MCR/playout sekmesi silindiği için
+// ON_AIR'a geçişi tetikleyen yol kalmadı; LivePlanEntry IN_PROGRESS source-of-truth.
+export type ScheduleStatus = 'DRAFT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
 
 // SCHED-B5a (Y5-2a): legacy `ScheduleUsageScope` ve `ScheduleUsage` type'ları
 // silindi (usage_scope kod dependency sıfırlama; B5b'de kolon DROP).

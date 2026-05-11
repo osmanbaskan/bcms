@@ -19,8 +19,7 @@ const STATUS_MAP: Record<string, StatusDef> = {
   queued:  { label: 'BEKLEMEDE', bg: 'rgba(245,158,11,0.16)', fg: '#fbbf24', dot: false },
   done:    { label: 'TAMAM',     bg: 'rgba(16,185,129,0.16)', fg: '#6ee7b7', dot: false },
   draft:   { label: 'TASLAK',    bg: 'rgba(107,114,128,0.20)',fg: '#9ca3af', dot: false },
-  // BCMS legacy enum aliases
-  ON_AIR:    { label: 'YAYINDA',   bg: 'rgba(239,68,68,0.18)',  fg: '#fca5a5', dot: true },
+  // BCMS legacy enum aliases (ON_AIR hard-deleted 2026-05-11)
   COMPLETED: { label: 'TAMAM',     bg: 'rgba(16,185,129,0.16)', fg: '#6ee7b7', dot: false },
   DRAFT:     { label: 'TASLAK',    bg: 'rgba(107,114,128,0.20)',fg: '#9ca3af', dot: false },
   CONFIRMED: { label: 'ONAYLI',    bg: 'rgba(59,130,246,0.16)', fg: '#93c5fd', dot: false },

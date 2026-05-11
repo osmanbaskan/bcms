@@ -676,9 +676,11 @@ enum AuditLogAction {
 }
 
 enum ScheduleStatus {
+  // Hard delete (2026-05-11): ON_AIR kaldırıldı. MCR/playout sekmesi
+  // silindiği için ON_AIR'a geçişi tetikleyen yol kalmadı; LivePlanEntry
+  // IN_PROGRESS source-of-truth (frontend mapper kaldırıldı).
   DRAFT
   CONFIRMED
-  ON_AIR
   COMPLETED
   CANCELLED
 

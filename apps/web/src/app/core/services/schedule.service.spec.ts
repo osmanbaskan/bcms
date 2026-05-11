@@ -224,8 +224,8 @@ describe('mapLivePlanEntryToSchedule', () => {
     expect(mapLivePlanEntryToSchedule(entry({ status: 'READY' })).status).toBe('CONFIRMED');
   });
 
-  it('IN_PROGRESS → ON_AIR', () => {
-    expect(mapLivePlanEntryToSchedule(entry({ status: 'IN_PROGRESS' })).status).toBe('ON_AIR');
+  it('IN_PROGRESS → CONFIRMED (ON_AIR hard-deleted; sahte mapping yasak)', () => {
+    expect(mapLivePlanEntryToSchedule(entry({ status: 'IN_PROGRESS' })).status).toBe('CONFIRMED');
   });
 
   it('COMPLETED ve CANCELLED birebir', () => {

@@ -50,7 +50,7 @@ async function buildOptaTestApp(): Promise<FastifyInstance> {
  *   ✓ T6  live-plan COMPLETED → SKIP (KO14)
  *   ✓ T7  live-plan CANCELLED → SKIP (KO14)
  *   ✓ T8  live-plan IN_PROGRESS → UPDATE OK (KO14)
- *   ✓ T9  schedule ON_AIR → SKIP (KO14)
+ *   ✓ T9  schedule COMPLETED → SKIP (KO14)
  *   ✓ T10 Only-changed-fields: diff yok → update YOK + outbox YOK (KO12)
  *   ✓ T11 Outbox `live_plan.updated` payload (livePlanEntryId, matchId,
  *         matchUid, source:'opta-sync', changedFields[]) (KO11)
@@ -147,7 +147,7 @@ async function makeOptaLivePlanEntry(opts: {
 
 async function makeOptaSchedule(opts: {
   optaUid: string;
-  status?: 'DRAFT' | 'CONFIRMED' | 'ON_AIR' | 'COMPLETED' | 'CANCELLED';
+  status?: 'DRAFT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
   team1Name?: string;
   team2Name?: string;
   title?: string;
@@ -396,10 +396,12 @@ describe('OPTA sync cascade — SCHED-B3c (KO1-KO14)', () => {
     expect(after.version).toBe(entry.version + 1);
   });
 
-  test('T9: schedule ON_AIR → SKIP (KO14)', async () => {
+  test('T9: schedule COMPLETED → SKIP (KO14)', async () => {
+    // ON_AIR enum hard-deleted (2026-05-11). KO14 frozen filter şu an
+    // ['COMPLETED', 'CANCELLED']; COMPLETED case'i bu testin yerini alır.
     const league = await makeLeague();
     const match  = await makeMatch({ leagueId: league.id, optaUid: 'M-T9' });
-    const sch    = await makeOptaSchedule({ optaUid: 'M-T9', status: 'ON_AIR', team1Name: 'A' });
+    const sch    = await makeOptaSchedule({ optaUid: 'M-T9', status: 'COMPLETED', team1Name: 'A' });
 
     const r = await cascadeOptaUpdates(app, [{
       matchId: match.id, matchUid: 'M-T9', newMatchDate: null,

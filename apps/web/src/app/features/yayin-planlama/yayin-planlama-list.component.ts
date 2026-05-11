@@ -83,7 +83,6 @@ const PAGE_SIZE_DEFAULT = 25;
             <mat-option [value]="null">(hepsi)</mat-option>
             <mat-option value="DRAFT">Taslak</mat-option>
             <mat-option value="CONFIRMED">Onaylı</mat-option>
-            <mat-option value="ON_AIR">Yayında</mat-option>
             <mat-option value="COMPLETED">Tamamlandı</mat-option>
             <mat-option value="CANCELLED">İptal</mat-option>
           </mat-select>

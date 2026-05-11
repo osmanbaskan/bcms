@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const ScheduleStatusEnum = z.enum(['DRAFT', 'CONFIRMED', 'ON_AIR', 'COMPLETED', 'CANCELLED']);
+const ScheduleStatusEnum = z.enum(['DRAFT', 'CONFIRMED', 'COMPLETED', 'CANCELLED']);
 
 // SCHED-B5a (Y5-4): legacy createScheduleSchema, updateScheduleSchema,
 // scheduleQuerySchema (`usage` field), schedule `metadata` Zod helper silindi.
