@@ -67,6 +67,10 @@ export function mapLivePlanEntryToSchedule(entry: LivePlanEntry): Schedule {
     channel2Id:   entry.channel2Id,
     channel3Id:   entry.channel3Id,
     channel:      null,
+    // 2026-05-11: liste display alanları — backend list response'tan flatten.
+    leagueName:       entry.leagueName ?? null,
+    technicalDetails: entry.technicalDetails ?? null,
+    operationNotes:   entry.operationNotes ?? null,
   };
 }
 

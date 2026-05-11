@@ -2,6 +2,10 @@
 // ON_AIR'a geçişi tetikleyen yol kalmadı; LivePlanEntry IN_PROGRESS source-of-truth.
 export type ScheduleStatus = 'DRAFT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
 
+// Re-export live-plan display tipi — schedule-list template'i bunu kullanır.
+export type { TechnicalDetailsDisplay } from './live-plan.js';
+import type { TechnicalDetailsDisplay as TechnicalDetailsDisplayInternal } from './live-plan.js';
+
 // SCHED-B5a (Y5-2a): legacy `ScheduleUsageScope` ve `ScheduleUsage` type'ları
 // silindi (usage_scope kod dependency sıfırlama; B5b'de kolon DROP).
 
@@ -49,6 +53,12 @@ export interface Schedule {
   channel1Id?: number | null;
   channel2Id?: number | null;
   channel3Id?: number | null;
+  /** 2026-05-11: Liste display zenginleştirmesi. Backend list/getById
+   *  response'unda gelen 14 FK için (id + resolved name) çiftleri. Frontend
+   *  schedule-list template'i bu alanları render eder. Boş satırlarda null. */
+  leagueName?: string | null;
+  technicalDetails?: TechnicalDetailsDisplayInternal | null;
+  operationNotes?: string | null;
   commercialOptionId?: number | null;
   logoOptionId?: number | null;
   formatOptionId?: number | null;

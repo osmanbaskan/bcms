@@ -252,6 +252,43 @@ describe('mapLivePlanEntryToSchedule', () => {
     expect(mapLivePlanEntryToSchedule(entry({ createdBy: null })).createdBy).toBe('');
   });
 
+  // 2026-05-11: liste display alanları mapper'da düşürülmemeli.
+  it('leagueName ve technicalDetails Schedule\'a aktarılır', () => {
+    const techDisplay = {
+      modulationTypeId: 1, modulationTypeName: 'MOD-A',
+      videoCodingId: null, videoCodingName: null,
+      ird1Id: 7, ird1Name: 'IRD-7', ird2Id: null, ird2Name: null,
+      ird3Id: null, ird3Name: null,
+      fiber1Id: null, fiber1Name: null, fiber2Id: null, fiber2Name: null,
+      demodId: null, demodName: null, tieId: null, tieName: null,
+      virtualResourceId: null, virtualResourceName: null,
+      hdvgResourceId: null, hdvgResourceName: null,
+      int1ResourceId: null, int1ResourceName: null,
+      int2ResourceId: null, int2ResourceName: null,
+      offTubeId: null, offTubeName: null,
+      languageId: 3, languageName: 'TR',
+      secondLanguageId: 4, secondLanguageName: 'EN',
+    };
+    const s = mapLivePlanEntryToSchedule(entry({
+      leagueName:       'Süper Lig',
+      technicalDetails: techDisplay,
+      operationNotes:   'note',
+    }));
+    expect(s.leagueName).toBe('Süper Lig');
+    expect(s.technicalDetails).toBe(techDisplay);
+    expect(s.technicalDetails?.modulationTypeName).toBe('MOD-A');
+    expect(s.technicalDetails?.ird1Name).toBe('IRD-7');
+    expect(s.technicalDetails?.secondLanguageName).toBe('EN');
+    expect(s.operationNotes).toBe('note');
+  });
+
+  it('leagueName/technicalDetails yoksa null aktarılır (Schedule shape stable)', () => {
+    const s = mapLivePlanEntryToSchedule(entry());
+    expect(s.leagueName).toBeNull();
+    expect(s.technicalDetails).toBeNull();
+    expect(s.operationNotes).toBeNull();
+  });
+
   it('metadata her zaman boş obje', () => {
     expect(mapLivePlanEntryToSchedule(entry()).metadata).toEqual({});
   });

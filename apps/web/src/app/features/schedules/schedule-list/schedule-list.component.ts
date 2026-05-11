@@ -257,22 +257,22 @@ export class ReportIssueDialogComponent {
                   <td class="td-trans">{{ s.startTime | date:'HH:mm' }}</td>
                   <td class="td-trans">{{ s.endTime   | date:'HH:mm' }}</td>
                   <td class="td-mod">
-                    <div></div>
-                    <div class="td-mod-sub"></div>
+                    <div>{{ s.technicalDetails?.modulationTypeName ?? '—' }}</div>
+                    <div class="td-mod-sub">{{ s.technicalDetails?.videoCodingName ?? '—' }}</div>
                   </td>
-                  <td class="td-mono td-stack"></td>
-                  <td class="td-mono td-stack"></td>
-                  <td class="td-mono"></td>
+                  <td class="td-mono td-stack">{{ techStack3(s.technicalDetails?.ird1Name, s.technicalDetails?.ird2Name, s.technicalDetails?.ird3Name) }}</td>
+                  <td class="td-mono td-stack">{{ techStack2(s.technicalDetails?.fiber1Name, s.technicalDetails?.fiber2Name) }}</td>
+                  <td class="td-mono">{{ s.technicalDetails?.demodName ?? '—' }}</td>
                   <td class="td-mono td-record-location">{{ formatRecordingPorts(s) }}</td>
-                  <td class="td-mono"></td>
-                  <td class="td-mono"></td>
-                  <td class="td-mono"></td>
-                  <td class="td-mono"></td>
-                  <td class="td-mono"></td>
-                  <td class="td-lang">Yok</td>
-                  <td class="td-channel">{{ channelName(s.channel1Id) }}</td>
-                  <td class="td-league"></td>
-                  <td class="td-notes"></td>
+                  <td class="td-mono">{{ s.technicalDetails?.tieName ?? '—' }}</td>
+                  <td class="td-mono">{{ s.technicalDetails?.virtualResourceName ?? '—' }}</td>
+                  <td class="td-mono">{{ s.technicalDetails?.hdvgResourceName ?? '—' }}</td>
+                  <td class="td-mono">{{ techStack2(s.technicalDetails?.int1ResourceName, s.technicalDetails?.int2ResourceName) }}</td>
+                  <td class="td-mono">{{ s.technicalDetails?.offTubeName ?? '—' }}</td>
+                  <td class="td-lang">{{ langPair(s.technicalDetails?.languageName, s.technicalDetails?.secondLanguageName) }}</td>
+                  <td class="td-channel">{{ channelTriplet(s) }}</td>
+                  <td class="td-league">{{ s.leagueName ?? '—' }}</td>
+                  <td class="td-notes">{{ s.operationNotes ?? '—' }}</td>
                   <td class="td-actions">
                     @if (canEdit()) {
                       <button mat-icon-button
@@ -580,6 +580,31 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
     if (primary && backup) return `${primary} - ${backup}`;
     if (primary) return primary;
     return '';
+  }
+
+  /** 2026-05-11: liste display yardımcıları — technicalDetails alanlarını
+   *  görsel kompakt formata sokar. Tüm değerler null ise "—" döner. */
+  channelTriplet(s: Schedule): string {
+    const parts = [s.channel1Id, s.channel2Id, s.channel3Id]
+      .map((id) => this.channelName(id));
+    if (parts.every((p) => p === '—')) return '—';
+    return parts.join(' / ');
+  }
+
+  techStack2(a: string | null | undefined, b: string | null | undefined): string {
+    const vals = [a, b].filter((v): v is string => !!v && v.length > 0);
+    return vals.length ? vals.join(' / ') : '—';
+  }
+
+  techStack3(a: string | null | undefined, b: string | null | undefined, c: string | null | undefined): string {
+    const vals = [a, b, c].filter((v): v is string => !!v && v.length > 0);
+    return vals.length ? vals.join(' / ') : '—';
+  }
+
+  langPair(main: string | null | undefined, second: string | null | undefined): string {
+    if (!main && !second) return '—';
+    if (main && second)   return `${main} / ${second}`;
+    return (main ?? second) as string;
   }
 
   load() {

@@ -34,18 +34,110 @@ const SHADOW_AGGREGATE_TYPE = 'LivePlanEntry';
  * 2026-05-11: Read response'a `leagueName` join'i — Lig OPTA değer (Match
  * relation üzerinden). Editable DEĞİL; write payload'a girmez. Migration yok.
  * Null'lar: matchId null veya match.league null senaryosu.
+ *
+ * Aynı tarihte (2026-05-11): list + detail response'unda `technicalDetails`
+ * display objesi flatten edilir. 14 FK için (id + name) çiftleri; isimler
+ * 10 farklı lookup tablosundan **batch fetch** ile resolve edilir (N+1 yok;
+ * list boyutundan bağımsız 10 query). Prisma schema'da 47 FK için relation
+ * tanımlı olmadığından (pragmatik tercih) include yerine ID toplama + tek
+ * findMany pattern'i kullanılır.
  */
-export type LivePlanEntryWithLeague = LivePlanEntry & { leagueName: string | null };
+export interface TechnicalDetailsDisplay {
+  modulationTypeId:     number | null; modulationTypeName:     string | null;
+  videoCodingId:        number | null; videoCodingName:        string | null;
+  ird1Id:               number | null; ird1Name:               string | null;
+  ird2Id:               number | null; ird2Name:               string | null;
+  ird3Id:               number | null; ird3Name:               string | null;
+  fiber1Id:             number | null; fiber1Name:             string | null;
+  fiber2Id:             number | null; fiber2Name:             string | null;
+  demodId:              number | null; demodName:              string | null;
+  tieId:                number | null; tieName:                string | null;
+  virtualResourceId:    number | null; virtualResourceName:    string | null;
+  hdvgResourceId:       number | null; hdvgResourceName:       string | null;
+  int1ResourceId:       number | null; int1ResourceName:       string | null;
+  int2ResourceId:       number | null; int2ResourceName:       string | null;
+  offTubeId:            number | null; offTubeName:            string | null;
+  languageId:           number | null; languageName:           string | null;
+  secondLanguageId:     number | null; secondLanguageName:     string | null;
+}
+
+export type LivePlanEntryWithLeague = LivePlanEntry & {
+  leagueName:       string | null;
+  technicalDetails: TechnicalDetailsDisplay | null;
+};
 
 const MATCH_LEAGUE_INCLUDE = {
   match: { include: { league: { select: { name: true } } } },
+  technicalDetails: true,
 } as const satisfies Prisma.LivePlanEntryInclude;
 
-function flattenLeagueName<T extends LivePlanEntry & { match?: { league?: { name?: string } | null } | null }>(
-  row: T,
-): LivePlanEntryWithLeague {
-  const { match, ...rest } = row;
-  return { ...(rest as LivePlanEntry), leagueName: match?.league?.name ?? null };
+type EntryWithIncludes = Prisma.LivePlanEntryGetPayload<{ include: typeof MATCH_LEAGUE_INCLUDE }>;
+
+function flattenLeagueOnly(row: EntryWithIncludes): { leagueName: string | null } {
+  return { leagueName: row.match?.league?.name ?? null };
+}
+
+/**
+ * 14 display alanı için (techRow → entry başına) name resolve. Lookup tablo
+ * gruplaması: 10 distinct prisma delegate.
+ *
+ * Çağıran fonksiyon batch'i kuruyor; bu helper sadece map yapıyor.
+ */
+type NameMap = Map<number, string>;
+
+interface NameMaps {
+  modulationType: NameMap;
+  videoCoding:    NameMap;
+  ird:            NameMap;
+  fiber:          NameMap;
+  demod:          NameMap;
+  tie:            NameMap;
+  virtualResource:NameMap;
+  intResource:    NameMap;
+  offTube:        NameMap;
+  language:       NameMap;
+}
+
+function emptyNameMaps(): NameMaps {
+  return {
+    modulationType: new Map(), videoCoding: new Map(), ird: new Map(),
+    fiber: new Map(), demod: new Map(), tie: new Map(),
+    virtualResource: new Map(), intResource: new Map(), offTube: new Map(),
+    language: new Map(),
+  };
+}
+
+function buildTechnicalDisplay(
+  tech: EntryWithIncludes['technicalDetails'],
+  names: NameMaps,
+): TechnicalDetailsDisplay | null {
+  if (!tech || tech.deletedAt !== null) return null;
+  const m = (map: NameMap, id: number | null) => (id === null ? null : map.get(id) ?? null);
+  return {
+    modulationTypeId:    tech.modulationTypeId,
+    modulationTypeName:  m(names.modulationType, tech.modulationTypeId),
+    videoCodingId:       tech.videoCodingId,
+    videoCodingName:     m(names.videoCoding, tech.videoCodingId),
+    ird1Id:              tech.ird1Id, ird1Name: m(names.ird, tech.ird1Id),
+    ird2Id:              tech.ird2Id, ird2Name: m(names.ird, tech.ird2Id),
+    ird3Id:              tech.ird3Id, ird3Name: m(names.ird, tech.ird3Id),
+    fiber1Id:            tech.fiber1Id, fiber1Name: m(names.fiber, tech.fiber1Id),
+    fiber2Id:            tech.fiber2Id, fiber2Name: m(names.fiber, tech.fiber2Id),
+    demodId:             tech.demodId, demodName: m(names.demod, tech.demodId),
+    tieId:               tech.tieId, tieName: m(names.tie, tech.tieId),
+    virtualResourceId:   tech.virtualResourceId,
+    virtualResourceName: m(names.virtualResource, tech.virtualResourceId),
+    hdvgResourceId:      tech.hdvgResourceId,
+    hdvgResourceName:    m(names.intResource, tech.hdvgResourceId),
+    int1ResourceId:      tech.int1ResourceId,
+    int1ResourceName:    m(names.intResource, tech.int1ResourceId),
+    int2ResourceId:      tech.int2ResourceId,
+    int2ResourceName:    m(names.intResource, tech.int2ResourceId),
+    offTubeId:           tech.offTubeId, offTubeName: m(names.offTube, tech.offTubeId),
+    languageId:          tech.languageId, languageName: m(names.language, tech.languageId),
+    secondLanguageId:    tech.secondLanguageId,
+    secondLanguageName:  m(names.language, tech.secondLanguageId),
+  };
 }
 
 export interface ListLivePlanResult {
@@ -79,8 +171,10 @@ export class LivePlanService {
       this.app.prisma.livePlanEntry.count({ where }),
     ]);
 
+    const names = await this.loadTechnicalNames(items);
+
     return {
-      items:    items.map(flattenLeagueName),
+      items:    items.map((row) => this.composeEntry(row, names)),
       total,
       page:     query.page,
       pageSize: query.pageSize,
@@ -96,7 +190,85 @@ export class LivePlanService {
     if (!row || row.deletedAt !== null) {
       throw Object.assign(new Error('Live-plan not found'), { statusCode: 404 });
     }
-    return flattenLeagueName(row);
+    const names = await this.loadTechnicalNames([row]);
+    return this.composeEntry(row, names);
+  }
+
+  /**
+   * 1 entry + technicalDetails include sonrası, 14 FK alanı için distinct ID
+   * setlerini topla; 10 lookup tablosundan tek findMany ile name çek.
+   * O(distinct lookup tablo) = 10 query — listede 100 satır için bile sabit.
+   */
+  private async loadTechnicalNames(rows: EntryWithIncludes[]): Promise<NameMaps> {
+    const ids = {
+      modulationType: new Set<number>(), videoCoding: new Set<number>(),
+      ird: new Set<number>(), fiber: new Set<number>(),
+      demod: new Set<number>(), tie: new Set<number>(),
+      virtualResource: new Set<number>(), intResource: new Set<number>(),
+      offTube: new Set<number>(), language: new Set<number>(),
+    };
+    const add = (s: Set<number>, v: number | null) => { if (v !== null) s.add(v); };
+    for (const r of rows) {
+      const t = r.technicalDetails;
+      if (!t || t.deletedAt !== null) continue;
+      add(ids.modulationType, t.modulationTypeId);
+      add(ids.videoCoding,    t.videoCodingId);
+      add(ids.ird,            t.ird1Id); add(ids.ird, t.ird2Id); add(ids.ird, t.ird3Id);
+      add(ids.fiber,          t.fiber1Id); add(ids.fiber, t.fiber2Id);
+      add(ids.demod,          t.demodId);
+      add(ids.tie,            t.tieId);
+      add(ids.virtualResource,t.virtualResourceId);
+      add(ids.intResource,    t.hdvgResourceId); add(ids.intResource, t.int1ResourceId); add(ids.intResource, t.int2ResourceId);
+      add(ids.offTube,        t.offTubeId);
+      add(ids.language,       t.languageId); add(ids.language, t.secondLanguageId);
+    }
+
+    const out = emptyNameMaps();
+    const prisma = this.app.prisma;
+    const fetchAndFill = async (
+      set: Set<number>,
+      target: NameMap,
+      finder: (ids: number[]) => Promise<Array<{ id: number; label: string }>>,
+    ): Promise<void> => {
+      if (set.size === 0) return;
+      const rows = await finder(Array.from(set));
+      for (const r of rows) target.set(r.id, r.label);
+    };
+
+    await Promise.all([
+      fetchAndFill(ids.modulationType, out.modulationType, (idsIn) =>
+        prisma.transmissionModulationType.findMany({ where: { id: { in: idsIn } }, select: { id: true, label: true } })),
+      fetchAndFill(ids.videoCoding, out.videoCoding, (idsIn) =>
+        prisma.transmissionVideoCoding.findMany({ where: { id: { in: idsIn } }, select: { id: true, label: true } })),
+      fetchAndFill(ids.ird, out.ird, (idsIn) =>
+        prisma.transmissionIrd.findMany({ where: { id: { in: idsIn } }, select: { id: true, label: true } })),
+      fetchAndFill(ids.fiber, out.fiber, (idsIn) =>
+        prisma.transmissionFiber.findMany({ where: { id: { in: idsIn } }, select: { id: true, label: true } })),
+      fetchAndFill(ids.demod, out.demod, (idsIn) =>
+        prisma.transmissionDemodOption.findMany({ where: { id: { in: idsIn } }, select: { id: true, label: true } })),
+      fetchAndFill(ids.tie, out.tie, (idsIn) =>
+        prisma.transmissionTieOption.findMany({ where: { id: { in: idsIn } }, select: { id: true, label: true } })),
+      fetchAndFill(ids.virtualResource, out.virtualResource, (idsIn) =>
+        prisma.transmissionVirtualResource.findMany({ where: { id: { in: idsIn } }, select: { id: true, label: true } })),
+      fetchAndFill(ids.intResource, out.intResource, (idsIn) =>
+        prisma.transmissionIntResource.findMany({ where: { id: { in: idsIn } }, select: { id: true, label: true } })),
+      fetchAndFill(ids.offTube, out.offTube, (idsIn) =>
+        prisma.livePlanOffTubeOption.findMany({ where: { id: { in: idsIn } }, select: { id: true, label: true } })),
+      fetchAndFill(ids.language, out.language, (idsIn) =>
+        prisma.livePlanLanguage.findMany({ where: { id: { in: idsIn } }, select: { id: true, label: true } })),
+    ]);
+
+    return out;
+  }
+
+  private composeEntry(row: EntryWithIncludes, names: NameMaps): LivePlanEntryWithLeague {
+    const { match, technicalDetails, ...rest } = row;
+    void match;
+    return {
+      ...(rest as LivePlanEntry),
+      ...flattenLeagueOnly(row),
+      technicalDetails: buildTechnicalDisplay(technicalDetails, names),
+    };
   }
 
   // ── Create ─────────────────────────────────────────────────────────────────

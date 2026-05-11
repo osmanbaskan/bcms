@@ -49,6 +49,29 @@ export interface LivePlanEntry {
   /** OPTA Match.league.name join'i (read-only; 2026-05-11). Yazma payload'a
    *  girmez; UI read-only chip. matchId null veya match.league null ise null. */
   leagueName?:    string | null;
+  /** 2026-05-11: list/getById response zenginleştirmesi. 14 FK için (id +
+   *  resolved name) çiftleri; isimler 10 lookup tablosundan batch-fetch ile
+   *  backend tarafında resolve edilir. technical_details satırı yoksa null. */
+  technicalDetails?: TechnicalDetailsDisplay | null;
+}
+
+export interface TechnicalDetailsDisplay {
+  modulationTypeId:     number | null; modulationTypeName:     string | null;
+  videoCodingId:        number | null; videoCodingName:        string | null;
+  ird1Id:               number | null; ird1Name:               string | null;
+  ird2Id:               number | null; ird2Name:               string | null;
+  ird3Id:               number | null; ird3Name:               string | null;
+  fiber1Id:             number | null; fiber1Name:             string | null;
+  fiber2Id:             number | null; fiber2Name:             string | null;
+  demodId:              number | null; demodName:              string | null;
+  tieId:                number | null; tieName:                string | null;
+  virtualResourceId:    number | null; virtualResourceName:    string | null;
+  hdvgResourceId:       number | null; hdvgResourceName:       string | null;
+  int1ResourceId:       number | null; int1ResourceName:       string | null;
+  int2ResourceId:       number | null; int2ResourceName:       string | null;
+  offTubeId:            number | null; offTubeName:            string | null;
+  languageId:           number | null; languageName:           string | null;
+  secondLanguageId:     number | null; secondLanguageName:     string | null;
 }
 
 /**

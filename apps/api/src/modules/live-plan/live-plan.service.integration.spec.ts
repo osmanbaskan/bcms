@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { LivePlanService } from './live-plan.service.js';
+import type { ListLivePlanQuery } from './live-plan.schema.js';
 import { isOutboxPollerAuthoritative } from '../outbox/outbox.helpers.js';
 import {
   cleanupTransactional,
@@ -353,6 +354,79 @@ describe('LivePlanService — integration', () => {
 
   test('getById: not-found → 404', async () => {
     await expect(svc.getById(999_999)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // ── 2026-05-11: list/getById response display zenginleştirme ─────────────
+  test('list+getById: leagueName + technicalDetails display name çiftleri döner', async () => {
+    const prisma = getRawPrisma();
+    // Match + League (seed'de id=1 var; opta_uid ile yeni match yarat)
+    const m = await prisma.match.create({
+      data: {
+        leagueId:    1, // 'Süper Lig'
+        optaUid:     'b10-display',
+        homeTeamName:'H', awayTeamName:'A',
+        matchDate:   new Date('2026-06-01T19:00:00Z'),
+        season:      '2025-2026',
+      },
+    });
+    // Lookup'lar
+    const mod   = await prisma.transmissionModulationType.create({ data: { label: 'MOD-X' } });
+    const ird   = await prisma.transmissionIrd.create({ data: { label: 'IRD-Z' } });
+    const lang1 = await prisma.livePlanLanguage.create({ data: { label: 'LANG-MAIN' } });
+    const lang2 = await prisma.livePlanLanguage.create({ data: { label: 'LANG-SECOND' } });
+
+    // OPTA path entry (matchId + optaMatchId Match'e bağlı; leagueName join'i gelir)
+    const entry = await svc.createFromOpta(
+      'b10-display',
+      makeRequest(makeUser({ username: 'disp', groups: ['Booking'] })),
+    );
+    expect(entry.matchId).toBe(m.id);
+
+    // Technical details: 4 alan dolu, geri kalan null
+    await prisma.livePlanTechnicalDetail.create({
+      data: {
+        livePlanEntryId: entry.id,
+        modulationTypeId: mod.id,
+        ird1Id:           ird.id,
+        languageId:       lang1.id,
+        secondLanguageId: lang2.id,
+      },
+    });
+
+    // List response
+    const listed = await svc.list({ page: 1, pageSize: 50 } as ListLivePlanQuery);
+    const row = listed.items.find((r) => r.id === entry.id);
+    expect(row).toBeDefined();
+    expect(row!.leagueName).toBe('Süper Lig');
+    expect(row!.technicalDetails).not.toBeNull();
+    expect(row!.technicalDetails!.modulationTypeId).toBe(mod.id);
+    expect(row!.technicalDetails!.modulationTypeName).toBe('MOD-X');
+    expect(row!.technicalDetails!.ird1Id).toBe(ird.id);
+    expect(row!.technicalDetails!.ird1Name).toBe('IRD-Z');
+    expect(row!.technicalDetails!.ird2Id).toBeNull();
+    expect(row!.technicalDetails!.ird2Name).toBeNull();
+    expect(row!.technicalDetails!.languageId).toBe(lang1.id);
+    expect(row!.technicalDetails!.languageName).toBe('LANG-MAIN');
+    expect(row!.technicalDetails!.secondLanguageId).toBe(lang2.id);
+    expect(row!.technicalDetails!.secondLanguageName).toBe('LANG-SECOND');
+
+    // Detail response (getById) aynı shape
+    const detail = await svc.getById(entry.id);
+    expect(detail.leagueName).toBe('Süper Lig');
+    expect(detail.technicalDetails?.modulationTypeName).toBe('MOD-X');
+    expect(detail.technicalDetails?.secondLanguageName).toBe('LANG-SECOND');
+  });
+
+  test('list: technicalDetails satırı yoksa display = null', async () => {
+    const req = makeRequest(makeUser({ username: 'no-tech', groups: ['Booking'] }));
+    const e = await svc.create(
+      { title: 'NoTech', eventStartTime: '2026-06-01T19:00:00Z', eventEndTime: '2026-06-01T21:00:00Z' },
+      req,
+    );
+    const listed = await svc.list({ page: 1, pageSize: 50 } as ListLivePlanQuery);
+    const row = listed.items.find((r) => r.id === e.id);
+    expect(row?.technicalDetails).toBeNull();
+    expect(row?.leagueName).toBeNull();
   });
 
   test('getById: deleted → 404 (K11 hard-delete sonrası row gone)', async () => {
