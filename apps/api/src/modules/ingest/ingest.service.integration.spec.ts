@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   buildIngestCompletedKey,
   finalizeIngestJob,
+  loadLivePlanIngestCandidates,
   processIngestCallback,
   triggerManualIngest,
 } from './ingest.service.js';
@@ -790,5 +791,155 @@ describe('IngestJob.version optimistic locking (Phase A3) — integration', () =
         'COMPLETED',
       ),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 2026-05-11: live-plan → Ingest read-only projection
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('loadLivePlanIngestCandidates — integration', () => {
+  let harness: TestAppHarness;
+
+  beforeEach(async () => {
+    await cleanupTransactional();
+    harness = makeAppHarness();
+  });
+
+  test('seçili Türkiye gün: deletedAt IS NULL olan TÜM entry\'ler döner (channel/eventKey/job/planItem filtresi YOK)', async () => {
+    const prisma = getRawPrisma();
+    const app    = harness.app as unknown as FastifyInstance;
+
+    // Türkiye 2026-06-01 00:00 → UTC 2026-05-31 21:00
+    // Türkiye 2026-06-01 23:59 → UTC 2026-06-01 20:59
+    // Entry 1: gün içinde, kanal hiç yok, eventKey null (legacy)
+    const e1 = await prisma.livePlanEntry.create({
+      data: {
+        title:          'NoChannelNoEventKey',
+        eventStartTime: new Date('2026-05-31T22:00:00Z'), // TR 01:00
+        eventEndTime:   new Date('2026-05-31T23:30:00Z'),
+        // eventKey YOK; channel* YOK
+      },
+    });
+    // Entry 2: gün içinde, kanallı, eventKey set
+    const e2 = await prisma.livePlanEntry.create({
+      data: {
+        title:          'WithChannels',
+        eventStartTime: new Date('2026-06-01T17:00:00Z'), // TR 20:00
+        eventEndTime:   new Date('2026-06-01T19:00:00Z'),
+        eventKey:       'manual:abc',
+        channel1Id:     1, channel2Id: 2,
+      },
+    });
+    // Entry 3: gün DIŞINDA (önceki gün TR)
+    await prisma.livePlanEntry.create({
+      data: {
+        title:          'PreviousDay',
+        eventStartTime: new Date('2026-05-30T22:00:00Z'),
+        eventEndTime:   new Date('2026-05-30T23:00:00Z'),
+      },
+    });
+    // Entry 4: soft-deleted (filtrelenmeli)
+    await prisma.livePlanEntry.create({
+      data: {
+        title:          'DeletedEntry',
+        eventStartTime: new Date('2026-06-01T17:00:00Z'),
+        eventEndTime:   new Date('2026-06-01T19:00:00Z'),
+        deletedAt:      new Date(),
+      },
+    });
+
+    const result = await loadLivePlanIngestCandidates(app, '2026-06-01');
+    const ids = result.map((r) => r.livePlanEntryId).sort((a, b) => a - b);
+    expect(ids).toEqual([e1.id, e2.id].sort((a, b) => a - b));
+
+    const r1 = result.find((r) => r.livePlanEntryId === e1.id)!;
+    expect(r1.channel1Id).toBeNull();
+    expect(r1.channel2Id).toBeNull();
+    expect(r1.channel3Id).toBeNull();
+    expect(r1.eventKey).toBeNull();
+    expect(r1.planItem).toBeNull();
+    expect(r1.ingestJob).toBeNull();
+    expect(r1.hasBroadcastSchedule).toBe(false);
+
+    const r2 = result.find((r) => r.livePlanEntryId === e2.id)!;
+    expect(r2.channel1Id).toBe(1);
+    expect(r2.channel2Id).toBe(2);
+    expect(r2.channel3Id).toBeNull();
+  });
+
+  test('eşli planItem (sourceKey=liveplan:<id>) + ingestJob (targetId) join edilir', async () => {
+    const prisma = getRawPrisma();
+    const app    = harness.app as unknown as FastifyInstance;
+
+    const entry = await prisma.livePlanEntry.create({
+      data: {
+        title:          'WithBridge',
+        eventStartTime: new Date('2026-06-01T17:00:00Z'),
+        eventEndTime:   new Date('2026-06-01T19:00:00Z'),
+      },
+    });
+
+    await prisma.ingestPlanItem.create({
+      data: {
+        sourceType:         'live-plan',
+        sourceKey:          `liveplan:${entry.id}`,
+        dayDate:            new Date('2026-06-01'),
+        plannedStartMinute: 1200,
+        plannedEndMinute:   1320,
+        status:             'WAITING',
+      },
+    });
+
+    // Need filesystem source; use stable tmpFile created in beforeAll.
+    const job = await triggerManualIngest(app, { sourcePath: tmpFile, targetId: entry.id });
+
+    const result = await loadLivePlanIngestCandidates(app, '2026-06-01');
+    const row = result.find((r) => r.livePlanEntryId === entry.id);
+    expect(row).toBeDefined();
+    expect(row!.planItem).not.toBeNull();
+    expect(row!.planItem!.sourceKey).toBe(`liveplan:${entry.id}`);
+    expect(row!.planItem!.plannedStartMinute).toBe(1200);
+    expect(row!.ingestJob).not.toBeNull();
+    expect(row!.ingestJob!.id).toBe(job.id);
+    expect(row!.ingestJob!.status).toBe(job.status);
+  });
+
+  test('hasBroadcastSchedule bilgi alanı — filtre değil, scheduleId döner', async () => {
+    const prisma = getRawPrisma();
+    const app    = harness.app as unknown as FastifyInstance;
+
+    const entry = await prisma.livePlanEntry.create({
+      data: {
+        title:          'WithSchedule',
+        eventStartTime: new Date('2026-06-01T17:00:00Z'),
+        eventEndTime:   new Date('2026-06-01T19:00:00Z'),
+        eventKey:       'manual:bridge-sched',
+      },
+    });
+    // Same eventKey'li schedule row simüle et (B3a createBroadcastFlow yerine direct).
+    const sched = await prisma.schedule.create({
+      data: {
+        title:        'Schedule mirror',
+        startTime:    entry.eventStartTime,
+        endTime:      entry.eventEndTime,
+        scheduleDate: new Date('2026-06-01T00:00:00.000Z'),
+        scheduleTime: new Date('1970-01-01T17:00:00.000Z'),
+        status:       'CONFIRMED',
+        eventKey:     'manual:bridge-sched',
+        createdBy:    'spec',
+      },
+    });
+
+    const result = await loadLivePlanIngestCandidates(app, '2026-06-01');
+    const row = result.find((r) => r.livePlanEntryId === entry.id);
+    expect(row!.hasBroadcastSchedule).toBe(true);
+    expect(row!.scheduleId).toBe(sched.id);
+  });
+
+  test('boş gün → [] (empty list)', async () => {
+    const app = harness.app as unknown as FastifyInstance;
+    const result = await loadLivePlanIngestCandidates(app, '2030-01-01');
+    expect(result).toEqual([]);
   });
 });

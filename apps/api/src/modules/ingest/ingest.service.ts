@@ -3,6 +3,7 @@ import { Prisma, type IngestJob, type IngestStatus } from '@prisma/client';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { isOutboxPollerAuthoritative, writeShadowEvent } from '../outbox/outbox.helpers.js';
 import { validateIngestSourcePath } from './ingest.paths.js';
+import { istanbulDayRangeUtc } from '../../core/tz.js';
 
 /**
  * Madde 2+7 PR-B3b-2 (audit doc): cross-producer idempotency key.
@@ -417,4 +418,143 @@ export async function processIngestCallback(
   }
 
   return job;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 2026-05-11: Live-plan entry → Ingest Planlama read-only projection.
+//
+// Ürün kuralı: Canlı Yayın Plan'daki her live_plan_entries kaydı seçilen gün
+// için Ingest sekmesinde görünmeli. Filtre yalnız `deletedAt IS NULL` +
+// Türkiye gün aralığı (`eventStartTime` Türkiye 00:00..23:59:59.999 UTC).
+// channel/eventKey/schedule/technicalDetails/job/planItem var-yok HİÇBİRİ
+// filtre değildir — bilgi alanı olarak döner.
+//
+// DB write YOK. Otomatik schedule / planItem / ingestJob create YOK.
+// Domain ownership Y3-Y4 lock korunur (live-plan ≠ ingest); köprü read-only.
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface LivePlanIngestCandidate {
+  livePlanEntryId: number;
+  eventKey:        string | null;
+  title:           string;
+  eventStartTime:  string; // ISO
+  eventEndTime:    string; // ISO
+  status:          string; // LivePlanStatus
+  channel1Id:      number | null;
+  channel2Id:      number | null;
+  channel3Id:      number | null;
+  leagueName:      string | null;
+  planItem: {
+    sourceKey:           string; // 'liveplan:<entryId>'
+    recordingPort:       string | null;
+    backupRecordingPort: string | null;
+    status:              string;
+    plannedStartMinute:  number | null;
+    plannedEndMinute:    number | null;
+    note:                string | null;
+    jobId:               number | null;
+  } | null;
+  ingestJob: {
+    id:         number;
+    status:     IngestStatus;
+    sourcePath: string;
+  } | null;
+  /** Bilgi alanı (filtre değil); aynı entry'nin köprüsünü gösteren broadcast
+   *  schedule satırı varsa id. */
+  scheduleId:           number | null;
+  hasBroadcastSchedule: boolean;
+}
+
+export async function loadLivePlanIngestCandidates(
+  app: FastifyInstance,
+  date: string,
+): Promise<LivePlanIngestCandidate[]> {
+  const range = istanbulDayRangeUtc(date);
+
+  // 1) Tüm entry'ler (HİÇBİR side-table filtresi yok).
+  const entries = await app.prisma.livePlanEntry.findMany({
+    where: {
+      deletedAt:      null,
+      eventStartTime: { gte: range.gte, lte: range.lte },
+    },
+    include: {
+      match: { include: { league: { select: { name: true } } } },
+    },
+    orderBy: { eventStartTime: 'asc' },
+  });
+
+  if (entries.length === 0) return [];
+
+  const entryIds  = entries.map((e) => e.id);
+  const sourceKeys = entries.map((e) => `liveplan:${e.id}`);
+  const eventKeys  = entries.map((e) => e.eventKey).filter((k): k is string => !!k);
+
+  // 2) Batch joins — N+1 yok.
+  const [planItems, ingestJobs, schedules] = await Promise.all([
+    app.prisma.ingestPlanItem.findMany({
+      where: { sourceKey: { in: sourceKeys } },
+      include: { ports: { select: { portName: true, role: true } } },
+    }),
+    // Her entry için son ingest_job; targetId eşli + en yeni.
+    app.prisma.ingestJob.findMany({
+      where: { targetId: { in: entryIds } },
+      orderBy: { id: 'desc' },
+    }),
+    eventKeys.length === 0
+      ? Promise.resolve([] as Array<{ id: number; eventKey: string | null }>)
+      : app.prisma.schedule.findMany({
+          where: { eventKey: { in: eventKeys } },
+          select: { id: true, eventKey: true },
+        }),
+  ]);
+
+  // 3) Lookup map'ler.
+  const planBySourceKey = new Map(planItems.map((p) => [p.sourceKey, p]));
+  const jobByEntryId    = new Map<number, typeof ingestJobs[number]>();
+  for (const j of ingestJobs) {
+    if (j.targetId !== null && !jobByEntryId.has(j.targetId)) {
+      jobByEntryId.set(j.targetId, j); // ordered DESC → en yeni ilk
+    }
+  }
+  const scheduleByEventKey = new Map<string, number>();
+  for (const s of schedules) {
+    if (s.eventKey) scheduleByEventKey.set(s.eventKey, s.id);
+  }
+
+  // 4) Compose.
+  return entries.map((e) => {
+    const planItem = planBySourceKey.get(`liveplan:${e.id}`);
+    const job      = jobByEntryId.get(e.id);
+    const schedId  = e.eventKey ? scheduleByEventKey.get(e.eventKey) ?? null : null;
+
+    return {
+      livePlanEntryId: e.id,
+      eventKey:        e.eventKey,
+      title:           e.title,
+      eventStartTime:  e.eventStartTime.toISOString(),
+      eventEndTime:    e.eventEndTime.toISOString(),
+      status:          e.status,
+      channel1Id:      e.channel1Id,
+      channel2Id:      e.channel2Id,
+      channel3Id:      e.channel3Id,
+      leagueName:      e.match?.league?.name ?? null,
+      planItem: planItem
+        ? {
+            sourceKey:           planItem.sourceKey,
+            recordingPort:       planItem.ports.find((p) => p.role === 'primary')?.portName ?? null,
+            backupRecordingPort: planItem.ports.find((p) => p.role === 'backup')?.portName ?? null,
+            status:              planItem.status,
+            plannedStartMinute:  planItem.plannedStartMinute,
+            plannedEndMinute:    planItem.plannedEndMinute,
+            note:                planItem.note,
+            jobId:               planItem.jobId,
+          }
+        : null,
+      ingestJob: job
+        ? { id: job.id, status: job.status, sourcePath: job.sourcePath }
+        : null,
+      scheduleId:           schedId,
+      hasBroadcastSchedule: schedId !== null,
+    };
+  });
 }

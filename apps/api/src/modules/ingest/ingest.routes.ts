@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { Prisma, IngestStatus } from '@prisma/client';
 import { PERMISSIONS, type SaveIngestPlanItemDto, type SaveRecordingPortsDto } from '@bcms/shared';
-import { processIngestCallback, triggerManualIngest } from './ingest.service.js';
+import { processIngestCallback, triggerManualIngest, loadLivePlanIngestCandidates } from './ingest.service.js';
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const ingestPlanStatusSchema = z.enum(['WAITING', 'RECEIVED', 'INGEST_STARTED', 'COMPLETED', 'ISSUE']);
@@ -14,6 +14,10 @@ const listQuerySchema = z.object({
   status:   z.enum(['PENDING','PROCESSING','PROXY_GEN','QC','COMPLETED','FAILED']).optional(),
   page:     z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(50),
+});
+
+const livePlanCandidatesQuerySchema = z.object({
+  date: dateSchema,
 });
 
 const planQuerySchema = z.object({
@@ -448,6 +452,22 @@ export async function ingestRoutes(app: FastifyInstance) {
       orderBy: [{ sourceType: 'asc' }, { sourceKey: 'asc' }],
     });
     return items.map(mapPlanItem);
+  });
+
+  // GET /api/v1/ingest/live-plan-candidates?date=YYYY-MM-DD
+  //
+  // 2026-05-11 ürün kuralı: Canlı Yayın Plan sekmesindeki her live_plan_entries
+  // kaydı Ingest Planlama sekmesinde de görünmeli. Read-only projection; DB
+  // write yok. Filtre yalnızca `deletedAt IS NULL` + Türkiye gün aralığı —
+  // channel/eventKey/schedule/technicalDetails/job/planItem var-yok HİÇBİRİ
+  // filtre olarak kullanılmaz. scheduleId + hasBroadcastSchedule sadece
+  // bilgilendirme. Otomatik schedule / planItem / ingestJob create YOK.
+  app.get('/live-plan-candidates', {
+    preHandler: app.requireGroup(...PERMISSIONS.ingest.read),
+    schema: { tags: ['Ingest'], summary: 'Live-plan entries projeksiyonu (Ingest Planlama için)' },
+  }, async (request) => {
+    const q = livePlanCandidatesQuerySchema.parse(request.query);
+    return loadLivePlanIngestCandidates(app, q.date);
   });
 
   // PUT /api/v1/ingest/plan/:sourceKey — Kaynak dosya ve operasyon durumunu kaydet

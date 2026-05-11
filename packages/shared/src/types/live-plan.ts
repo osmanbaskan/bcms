@@ -55,6 +55,46 @@ export interface LivePlanEntry {
   technicalDetails?: TechnicalDetailsDisplay | null;
 }
 
+/**
+ * 2026-05-11: Ingest Planlama sekmesinde live-plan kayıtlarının read-only
+ * projection'u. Filtre: sadece `deletedAt IS NULL` + Türkiye gün aralığı.
+ * channel/eventKey/schedule/technicalDetails/job/planItem var-yok HİÇBİRİ
+ * filtre değildir; bilgi alanı olarak döner. UI tüm günlük entry'leri gösterir.
+ */
+export interface LivePlanIngestCandidate {
+  livePlanEntryId: number;
+  eventKey:        string | null;
+  title:           string;
+  eventStartTime:  string; // ISO 8601 UTC
+  eventEndTime:    string;
+  status:          LivePlanStatus;
+  channel1Id:      number | null;
+  channel2Id:      number | null;
+  channel3Id:      number | null;
+  leagueName:      string | null;
+  /** Eşli ingest_plan_items satırı (`sourceKey='liveplan:<entryId>'`). Yoksa null. */
+  planItem: {
+    sourceKey:           string;
+    recordingPort:       string | null;
+    backupRecordingPort: string | null;
+    status:              string; // IngestPlanStatus
+    plannedStartMinute:  number | null;
+    plannedEndMinute:    number | null;
+    note:                string | null;
+    jobId:               number | null;
+  } | null;
+  /** Eşli ingest_jobs (targetId) en yeni satır. Yoksa null. */
+  ingestJob: {
+    id:         number;
+    status:     'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELED';
+    sourcePath: string;
+  } | null;
+  /** Aynı eventKey'li broadcast schedule satırı varsa id; sadece bilgi alanı,
+   *  duplicate guard için kullanılır, FİLTRE değildir. */
+  scheduleId:           number | null;
+  hasBroadcastSchedule: boolean;
+}
+
 export interface TechnicalDetailsDisplay {
   modulationTypeId:     number | null; modulationTypeName:     string | null;
   videoCodingId:        number | null; videoCodingName:        string | null;

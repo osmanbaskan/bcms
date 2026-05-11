@@ -28,9 +28,11 @@ import {
   IngestPortBoardTimeLabel,
 } from '../ingest-port-board/ingest-port-board.component';
 import type {
+  Channel,
   IngestJob,
   IngestPlanItem,
   IngestPlanStatus,
+  LivePlanIngestCandidate,
   PaginatedResponse,
   RecordingPort,
   Schedule,
@@ -631,6 +633,11 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   jobs        = signal<IngestJob[]>([]);
   livePlanCandidates = signal<Schedule[]>([]);
+  /** 2026-05-11: live_plan_entries projeksiyonu (read-only). Tüm günlük
+   *  entry'ler — channel/eventKey/schedule/job/planItem filtresi YOK. */
+  liveEntryCandidates = signal<LivePlanIngestCandidate[]>([]);
+  /** Channel catalog name resolve için. */
+  channels = signal<Channel[]>([]);
   studioPlanSlots = signal<StudioPlanSlot[]>([]);
   ingestPlanItems = signal<IngestPlanItem[]>([]);
   recordingPorts = signal<RecordingPort[]>([]);
@@ -703,7 +710,50 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   planningRows = computed<IngestPlanRow[]>(() => {
     const planItemMap = new Map(this.ingestPlanItems().map((item) => [item.sourceKey, item]));
-    const liveRows = this.livePlanCandidates().map((schedule) => {
+
+    // 2026-05-11: birincil kaynak — live_plan_entries doğrudan projeksiyon.
+    // Tüm günlük entry'ler kanal/eventKey/job/planItem var-yok ayrımı olmadan
+    // listelenir. Channel display: kanal yoksa veya katalogtan ad bulunamazsa
+    // '—'.
+    const liveEntryRows: IngestPlanRow[] = this.liveEntryCandidates().map((c) => {
+      const startMin = this.sortMinuteFromDate(c.eventStartTime);
+      const endMin   = this.sortMinuteFromDate(c.eventEndTime);
+      const planMin  = c.planItem?.plannedStartMinute ?? startMin;
+      const planEnd  = c.planItem?.plannedEndMinute   ?? endMin;
+      return {
+        id:                  `liveplan-${c.livePlanEntryId}`,
+        source:              'live-plan' as const,
+        sourceLabel:         'Canlı Yayın',
+        sourceKey:           `liveplan:${c.livePlanEntryId}`,
+        day:                 this.livePlanDate,
+        sortMinute:          planMin,
+        endMinute:           planEnd,
+        startTime:           this.minuteToTime(planMin),
+        endTime:             this.minuteToTime(planEnd),
+        title:               c.title,
+        location:            this.channelTripletNames(c.channel1Id, c.channel2Id, c.channel3Id),
+        note:                c.leagueName ?? '—',
+        recordingPort:       c.planItem?.recordingPort ?? '',
+        backupRecordingPort: c.planItem?.backupRecordingPort ?? '',
+        status: (c.planItem?.status as IngestPlanStatus | undefined)
+              ?? (c.ingestJob ? this.deriveStatusFromJob(c.ingestJob.status) : 'WAITING'),
+        planNote:            c.planItem?.note ?? '',
+        jobId:               c.planItem?.jobId ?? c.ingestJob?.id ?? undefined,
+        scheduleId:          c.scheduleId ?? undefined,
+      };
+    });
+
+    // Mevcut schedule-kaynaklı candidate'lar (eski akış; sourceKey=`live:<scheduleId>`).
+    // Duplicate guard: aynı schedule.id liveEntryCandidates.scheduleId'de varsa
+    // yine yine (live-plan kaynağı önceliklidir; aynı entry/schedule iki kez görünmesin).
+    const dupScheduleIds = new Set(
+      this.liveEntryCandidates()
+        .map((c) => c.scheduleId)
+        .filter((id): id is number => id !== null),
+    );
+    const liveRows = this.livePlanCandidates()
+      .filter((s) => !dupScheduleIds.has(s.id))
+      .map((schedule) => {
       const planItem = planItemMap.get(`live:${schedule.id}`);
       const srcStart = this.sortMinuteFromDate(schedule.startTime);
       const srcEnd = this.sortMinuteFromDate(schedule.endTime);
@@ -760,8 +810,29 @@ export class IngestListComponent implements OnInit, OnDestroy {
         };
       });
 
-    return [...liveRows, ...this.studioPlanRows(), ...manualRows].sort((a, b) => a.sortMinute - b.sortMinute);
+    // 2026-05-11: liveEntryRows birincil; livePlanCandidates (schedule-kaynaklı)
+    // duplicate guard sonrası geriye dönük olarak korunur.
+    return [...liveEntryRows, ...liveRows, ...this.studioPlanRows(), ...manualRows]
+      .sort((a, b) => a.sortMinute - b.sortMinute);
   });
+
+  /** Channel id triplet → name string. Hepsi null/eksikse '—'. */
+  private channelTripletNames(c1: number | null, c2: number | null, c3: number | null): string {
+    const names = [c1, c2, c3]
+      .map((id) => (id == null ? null : this.channels().find((ch) => ch.id === id)?.name ?? null))
+      .filter((n): n is string => n !== null && n.length > 0);
+    return names.length ? names.join(' / ') : '—';
+  }
+
+  /** ingest_jobs.status → IngestPlanStatus map (UI display için). */
+  private deriveStatusFromJob(jobStatus: string): IngestPlanStatus {
+    switch (jobStatus) {
+      case 'PROCESSING': return 'INGEST_STARTED';
+      case 'COMPLETED':  return 'COMPLETED';
+      case 'FAILED':     return 'ISSUE';
+      default:           return 'WAITING';
+    }
+  }
 
   filteredPlanningRows = computed<IngestPlanRow[]>(() => {
     let rows = this.planningRows();
@@ -943,6 +1014,11 @@ export class IngestListComponent implements OnInit, OnDestroy {
   constructor(private api: ApiService, private snack: MatSnackBar, private logger: LoggerService) {}
 
   ngOnInit() {
+    // 2026-05-11: channel catalog (channel id → name resolve için).
+    this.api.get<Channel[]>('/channels/catalog').subscribe({
+      next: (res) => this.channels.set(Array.isArray(res) ? res : []),
+    });
+
     this.loadLivePlanCandidates();
     this.loadRecordingPorts();
     this.load();
@@ -1196,7 +1272,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
 
   loadLivePlanCandidates() {
     const { from, to } = istanbulDayRangeUtc(this.livePlanDate);
-    const params: Record<string, string | number> = {
+    const scheduleParams: Record<string, string | number> = {
       from,
       to,
       page: 1,
@@ -1206,7 +1282,19 @@ export class IngestListComponent implements OnInit, OnDestroy {
     this.livePlanLoading.set(true);
     this.loadStudioPlanForDate(this.livePlanDate);
     this.loadIngestPlanItems(this.livePlanDate);
-    this.api.get<PaginatedResponse<Schedule>>('/schedules/ingest-candidates', params).subscribe({
+
+    // 2026-05-11: yeni read-only projection — live_plan_entries doğrudan.
+    // Tüm günlük entry'ler (channel/eventKey/job/planItem var-yok filtresi YOK).
+    this.api.get<LivePlanIngestCandidate[]>('/ingest/live-plan-candidates', { date: this.livePlanDate }).subscribe({
+      next: (rows) => this.liveEntryCandidates.set(Array.isArray(rows) ? rows : []),
+      error: (err) => {
+        this.liveEntryCandidates.set([]);
+        this.snack.open(`Canlı yayın planı kayıtları alınamadı: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+      },
+    });
+
+    // Mevcut schedule-kaynaklı candidate'lar (geriye dönük; duplicate guard'la birlikte korunur).
+    this.api.get<PaginatedResponse<Schedule>>('/schedules/ingest-candidates', scheduleParams).subscribe({
       next: (res) => {
         this.livePlanCandidates.set(res.data ?? []);
         if (this.selectedScheduleId && !res.data.some((schedule) => schedule.id === this.selectedScheduleId)) {
