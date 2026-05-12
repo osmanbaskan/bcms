@@ -15,8 +15,10 @@ import {
  *   ✓ create eventKey match'lerse schedule kanal slot otomatik kopya (K-B3.12)
  *   ✓ update title/team/eventStart → schedule sync; eventEnd schedule'a gitmez
  *     (K-B3.21/K-B3.22/K-B3.23)
- *   ✓ duplicate temel bilgi kopya + technical_details/segments KOPYALANMAZ
- *     + status reset PLANNED + operationNotes null (K-B3.11)
+ *   ✓ duplicate **snapshot kopya** (2026-05-13 domain revizyonu):
+ *     temel bilgi + operationNotes + technical_details satırı bağımsız
+ *     yeni row olarak kopya; transmission_segments scope dışı; status
+ *     reset PLANNED; iki kayıt update'lerde bağımsız (K-B3.11)
  *   ✓ createFromOpta matches.opta_uid'den kopya
  *   ✓ createFromOpta matchDate NULL → 400 (default tarih üretmez)
  *   ✓ createFromOpta default duplicate (aktif) → 409
@@ -168,8 +170,8 @@ describe('LivePlanService SCHED-B3b — sched sync + duplicate + from-opta', () 
     expect(updated.title).toBe('Yeni');
   });
 
-  // ── §C. duplicate (K-B3.4, K-B3.11) ─────────────────────────────────────
-  test('duplicate: temel bilgi kopya, technical_details/segments KOPYALANMAZ, status reset', async () => {
+  // ── §C. duplicate (K-B3.4, K-B3.11) — snapshot kopya 2026-05-13 ─────────
+  test('duplicate: temel bilgi + operationNotes + technical_details snapshot; segments KOPYALANMAZ; status reset', async () => {
     // OPTA path üzerinden source entry (anti-bypass; manuel create eventKey
     // body'den almaz)
     const prisma = getRawPrisma();
@@ -182,17 +184,29 @@ describe('LivePlanService SCHED-B3b — sched sync + duplicate + from-opta', () 
     });
     const source = await svc.createFromOpta('b3b-dup', user());
     // Source entry'yi IN_PROGRESS + operasyon notu ile güncelle (status
-    // reset + operationNotes null kopyalanmadığını doğrulamak için).
+    // reset + operationNotes kopya doğrulamak için).
     await svc.update(source.id, {
       status: 'IN_PROGRESS',
-      operationNotes: 'Source operasyon notu (kopyalanmamalı)',
+      operationNotes: 'Source operasyon notu (snapshot kopya)',
     }, source.version, user());
     const updatedSource = await prisma.livePlanEntry.findUniqueOrThrow({ where: { id: source.id } });
     const ek = updatedSource.eventKey!;
 
-    // Kaynak entry'ye technical_details + segment yarat
-    await prisma.livePlanTechnicalDetail.create({
-      data: { livePlanEntryId: source.id, fixedPhone1: '+90 555 1' },
+    // Kaynak entry'ye technical_details: planned* zaman + serbest string +
+    // FK olmayan int alanları (lookup tablo seed gerekmesin). Snapshot
+    // bağımsızlık testi için string/int alan değişimi yeterli; FK alanları
+    // ayrı integration spec'lerinde lookup seed ile test edilir.
+    const srcTech = await prisma.livePlanTechnicalDetail.create({
+      data: {
+        livePlanEntryId:  source.id,
+        fixedPhone1:      '+90 555 1',
+        fixedPhone2:      '+90 555 2',
+        cameraCount:      8,
+        txp:              'TXP-A',
+        symbolRate:       '27500',
+        plannedStartTime: new Date('2026-06-01T18:45:00Z'),
+        plannedEndTime:   new Date('2026-06-01T21:15:00Z'),
+      },
     });
     await prisma.livePlanTransmissionSegment.create({
       data: {
@@ -218,7 +232,7 @@ describe('LivePlanService SCHED-B3b — sched sync + duplicate + from-opta', () 
     const dup = await svc.duplicate(source.id, user());
 
     expect(dup.id).not.toBe(source.id);
-    // Kopyalanan
+    // Kopyalanan — temel bilgi
     expect(dup.eventKey).toBe(ek);
     expect(dup.sourceType).toBe('OPTA');
     expect(dup.title).toBe('Team A vs Team B');
@@ -229,30 +243,119 @@ describe('LivePlanService SCHED-B3b — sched sync + duplicate + from-opta', () 
     // Schedule kanal slotu otomatik kopya (K-B3.12)
     expect(dup.channel1Id).toBe(1);
     expect(dup.channel2Id).toBe(2);
+    // 2026-05-13 snapshot revizyonu: operationNotes kopyalanır
+    expect(dup.operationNotes).toBe('Source operasyon notu (snapshot kopya)');
     // Reset
     expect(dup.status).toBe('PLANNED');
-    expect(dup.operationNotes).toBeNull();
     expect(dup.version).toBe(1);
 
-    // KOPYALANMAYAN: technical_details + segments yeni entry'de YOK
+    // KOPYALANAN: technical_details snapshot — yeni satır, aynı değerler
     const dupTd = await prisma.livePlanTechnicalDetail.findUnique({
       where: { livePlanEntryId: dup.id },
     });
-    expect(dupTd).toBeNull();
+    expect(dupTd).not.toBeNull();
+    expect(dupTd!.id).not.toBe(srcTech.id);
+    expect(dupTd!.livePlanEntryId).toBe(dup.id);
+    expect(dupTd!.version).toBe(1);
+    expect(dupTd!.fixedPhone1).toBe('+90 555 1');
+    expect(dupTd!.fixedPhone2).toBe('+90 555 2');
+    expect(dupTd!.cameraCount).toBe(8);
+    expect(dupTd!.txp).toBe('TXP-A');
+    expect(dupTd!.symbolRate).toBe('27500');
+    expect(dupTd!.plannedStartTime?.toISOString()).toBe('2026-06-01T18:45:00.000Z');
+    expect(dupTd!.plannedEndTime?.toISOString()).toBe('2026-06-01T21:15:00.000Z');
+
+    // Source tech satırı dokunulmadı (aynı id, kendi entry'sine bağlı)
+    const srcTdAfter = await prisma.livePlanTechnicalDetail.findUnique({
+      where: { livePlanEntryId: source.id },
+    });
+    expect(srcTdAfter).not.toBeNull();
+    expect(srcTdAfter!.id).toBe(srcTech.id);
+    expect(srcTdAfter!.livePlanEntryId).toBe(source.id);
+
+    // KOPYALANMAYAN: transmission_segments scope dışı (V1)
     const dupSegs = await prisma.livePlanTransmissionSegment.findMany({
       where: { livePlanEntryId: dup.id, deletedAt: null },
     });
     expect(dupSegs).toHaveLength(0);
-
-    // Source entry kayıtlarına dokunulmadı
-    const srcTd = await prisma.livePlanTechnicalDetail.findUnique({
-      where: { livePlanEntryId: source.id },
-    });
-    expect(srcTd).not.toBeNull();
+    // Source segment satırı dokunulmadı
     const srcSegs = await prisma.livePlanTransmissionSegment.findMany({
       where: { livePlanEntryId: source.id, deletedAt: null },
     });
     expect(srcSegs).toHaveLength(1);
+  });
+
+  test('duplicate: snapshot bağımsızlık — source ↔ dup technical_details update\'leri birbirine yansımaz', async () => {
+    const prisma = getRawPrisma();
+    await prisma.match.create({
+      data: {
+        leagueId: 1, optaUid: 'b3b-dup-indep', homeTeamName: 'X',
+        awayTeamName: 'Y', matchDate: new Date('2026-06-10T19:00:00Z'),
+        season: '2025-2026',
+      },
+    });
+    const source = await svc.createFromOpta('b3b-dup-indep', user());
+    await prisma.livePlanTechnicalDetail.create({
+      data: {
+        livePlanEntryId:  source.id,
+        fixedPhone1:      'orig-source-phone',
+        cameraCount:      4,
+      },
+    });
+
+    const dup = await svc.duplicate(source.id, user());
+
+    // Yön 1: source.tech update → dup.tech değişmez
+    await prisma.livePlanTechnicalDetail.update({
+      where: { livePlanEntryId: source.id },
+      data:  { fixedPhone1: 'changed-source', cameraCount: 99 },
+    });
+    const dupTdAfterSourceChange = await prisma.livePlanTechnicalDetail.findUniqueOrThrow({
+      where: { livePlanEntryId: dup.id },
+    });
+    expect(dupTdAfterSourceChange.fixedPhone1).toBe('orig-source-phone');
+    expect(dupTdAfterSourceChange.cameraCount).toBe(4);
+
+    // Yön 2: dup.tech update → source.tech değişmez
+    await prisma.livePlanTechnicalDetail.update({
+      where: { livePlanEntryId: dup.id },
+      data:  { fixedPhone1: 'changed-dup', cameraCount: 77 },
+    });
+    const srcTdAfterDupChange = await prisma.livePlanTechnicalDetail.findUniqueOrThrow({
+      where: { livePlanEntryId: source.id },
+    });
+    // Source son hâl: kendi update'iyle değişti ('changed-source'/99),
+    // ama dup'ın update'i ('changed-dup'/77) source'a yansımadı.
+    expect(srcTdAfterDupChange.fixedPhone1).toBe('changed-source');
+    expect(srcTdAfterDupChange.cameraCount).toBe(99);
+
+    // Satır id'leri ayrı (aynı row paylaşılmıyor)
+    expect(dupTdAfterSourceChange.id).not.toBe(srcTdAfterDupChange.id);
+  });
+
+  test('duplicate: source technical_details YOKSA dup için de tech satırı oluşmaz', async () => {
+    const prisma = getRawPrisma();
+    await prisma.match.create({
+      data: {
+        leagueId: 1, optaUid: 'b3b-dup-notech', homeTeamName: 'P',
+        awayTeamName: 'Q', matchDate: new Date('2026-06-12T19:00:00Z'),
+        season: '2025-2026',
+      },
+    });
+    const source = await svc.createFromOpta('b3b-dup-notech', user());
+    // İntentional: tech satırı yaratılmadı
+
+    const dup = await svc.duplicate(source.id, user());
+
+    const dupTd = await prisma.livePlanTechnicalDetail.findUnique({
+      where: { livePlanEntryId: dup.id },
+    });
+    expect(dupTd).toBeNull();
+
+    const srcTd = await prisma.livePlanTechnicalDetail.findUnique({
+      where: { livePlanEntryId: source.id },
+    });
+    expect(srcTd).toBeNull();
   });
 
   test('duplicate: source bulunamazsa → 404', async () => {

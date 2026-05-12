@@ -497,12 +497,32 @@ export class LivePlanService {
 
   /**
    * + duplicate (K-B3.4, K-B3.5, K-B3.10, K-B3.11): aynı eventKey için yeni
-   * live-plan entry. Kopyalanan: event identity (eventKey/source_type/
-   * optaMatchId/matchId), title/team_1/2, eventStart/EndTime, channel slot
-   * (event_key match'leyen schedule varsa schedule'dan; yoksa source'tan).
-   * Kopyalanmayan: technical_details, transmission_segments, ingest, audit
-   * history, version (default 1), createdBy (yeni), operationNotes; status
-   * resetlenir → PLANNED.
+   * live-plan entry. **Snapshot kopya** (2026-05-13 domain revizyonu):
+   * kaynak kaydın o andaki bilgileri yeni kayda aktarılır; iki kayıt
+   * çoğaltma sonrası **bağımsız yaşar** (kaynak veya kopya üzerindeki
+   * sonraki update'ler diğerine yansımaz). Aynı `live_plan_technical_details`
+   * satırı ASLA paylaşılmaz — yeni id + yeni `livePlanEntryId` ile satır
+   * snapshot olarak çoğaltılır; FK lookup id'leri (modulation, video coding,
+   * IRD, fiber vb.) master tablo referansı olduğundan aynı kalır, child row
+   * bağımsızdır.
+   *
+   * Kopyalanan:
+   *   - Event identity: eventKey, sourceType, optaMatchId, matchId
+   *   - Temel bilgi: title, team1Name, team2Name, eventStartTime, eventEndTime
+   *   - Channel slot: event_key match'leyen schedule varsa schedule'dan
+   *     kanonik (K-B3.12 reverse), yoksa source'tan kopya
+   *   - operationNotes (Açıklama / Notlar)
+   *   - technical_details: source'ta deletedAt=null satır varsa snapshot
+   *     yeni satır olarak yaratılır (id/version/timestamps reset)
+   *
+   * Kopyalanmayan:
+   *   - transmission_segments (scope dışı — V1 bilinçli; ayrı PR'da
+   *     ele alınır)
+   *   - ingest plan items, audit history
+   *   - version → 1 default (yeni kayıt)
+   *   - createdBy → yeni operatör
+   *   - status → PLANNED reset (K-B3.11 operasyon paterni:
+   *     duplicate yeni planlama instance'ı)
    */
   async duplicate(id: number, request: FastifyRequest): Promise<LivePlanEntry> {
     const source = await this.app.prisma.livePlanEntry.findUnique({ where: { id } });
@@ -537,14 +557,34 @@ export class LivePlanService {
           channel1Id:      channelSlots.channel1Id,
           channel2Id:      channelSlots.channel2Id,
           channel3Id:      channelSlots.channel3Id,
+          // 2026-05-13 snapshot revizyonu: operasyon notu kopyalanır
+          operationNotes:  source.operationNotes,
           // Reset / yeni instance:
           status:          'PLANNED', // K-B3.11 status reset
-          operationNotes:  null,      // operasyon notu kopyalanmaz
           createdBy:       user,
-          // version default 1; technical_details + transmission_segments
-          // ayrı tablolar, otomatik kopyalanmaz.
+          // version default 1.
         },
       });
+
+      // Technical details snapshot (2026-05-13): kaynakta aktif satır varsa
+      // yeni entry için bağımsız child row create. FK lookup id'leri aynı
+      // kalır (master referans); satır id + livePlanEntryId + version + ts
+      // alanları yeni kayıt için reset edilir. Audit plugin Prisma create
+      // üzerinden otomatik yakalar; raw SQL yok.
+      const sourceTech = await tx.livePlanTechnicalDetail.findUnique({
+        where: { livePlanEntryId: source.id },
+      });
+      if (sourceTech && sourceTech.deletedAt === null) {
+        const {
+          id: _id, livePlanEntryId: _e, version: _v,
+          createdAt: _c, updatedAt: _u, deletedAt: _d,
+          ...techData
+        } = sourceTech;
+        void _id; void _e; void _v; void _c; void _u; void _d;
+        await tx.livePlanTechnicalDetail.create({
+          data: { livePlanEntryId: created.id, ...techData },
+        });
+      }
 
       await writeShadowEvent(tx, {
         eventType:     'live_plan.created',
