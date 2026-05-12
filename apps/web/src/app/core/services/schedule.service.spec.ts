@@ -268,6 +268,7 @@ describe('mapLivePlanEntryToSchedule', () => {
       offTubeId: null, offTubeName: null,
       languageId: 3, languageName: 'TR',
       secondLanguageId: 4, secondLanguageName: 'EN',
+      plannedStartTime: null, plannedEndTime: null,
     };
     const s = mapLivePlanEntryToSchedule(entry({
       leagueName:       'Süper Lig',

@@ -59,6 +59,12 @@ export interface TechnicalDetailsDisplay {
   offTubeId:            number | null; offTubeName:            string | null;
   languageId:           number | null; languageName:           string | null;
   secondLanguageId:     number | null; secondLanguageName:     string | null;
+  /** 2026-05-12: Transmisyon süresi — list/detail response'unda gerçek ISO
+   *  değerleriyle döner. Schedule-list "Transmisyon Başlangıç / Bitiş"
+   *  kolonları bu alanlardan beslenir. UTC ISO; UI tarafı Türkiye saatine
+   *  formatlar. Null = teknik detay satırı yok veya alan boş. */
+  plannedStartTime:     string | null;
+  plannedEndTime:       string | null;
 }
 
 export type LivePlanEntryWithLeague = LivePlanEntry & {
@@ -137,6 +143,8 @@ function buildTechnicalDisplay(
     languageId:          tech.languageId, languageName: m(names.language, tech.languageId),
     secondLanguageId:    tech.secondLanguageId,
     secondLanguageName:  m(names.language, tech.secondLanguageId),
+    plannedStartTime:    tech.plannedStartTime ? tech.plannedStartTime.toISOString() : null,
+    plannedEndTime:      tech.plannedEndTime   ? tech.plannedEndTime.toISOString()   : null,
   };
 }
 
@@ -342,10 +350,20 @@ export class LivePlanService {
 
     // 3. Tx içi update + outbox shadow.
     return this.app.prisma.$transaction(async (tx) => {
+      // Domain karari (2026-05-12): karsilasma bitis saati UI'da yok.
+      // eventEndTime kolonu NOT NULL oldugu icin yalniz eventStartTime
+      // gonderildiginde backend +2h placeholder ile birlikte yazar
+      // (createFromOpta default duration paritesi). Boylece dto bos kalmaz
+      // ve merge-check uyumlu kalir.
+      const autoEndForStartOnly = (dto.eventStartTime !== undefined && dto.eventEndTime === undefined)
+        ? new Date(new Date(dto.eventStartTime).getTime() + 2 * 60 * 60 * 1000)
+        : undefined;
+
       const data: Prisma.LivePlanEntryUpdateInput = {
         ...(dto.title !== undefined && { title: dto.title }),
         ...(dto.eventStartTime !== undefined && { eventStartTime: new Date(dto.eventStartTime) }),
         ...(dto.eventEndTime !== undefined && { eventEndTime: new Date(dto.eventEndTime) }),
+        ...(autoEndForStartOnly !== undefined && { eventEndTime: autoEndForStartOnly }),
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.matchId !== undefined && { matchId: dto.matchId }),
         ...(dto.optaMatchId !== undefined && { optaMatchId: dto.optaMatchId }),
@@ -454,6 +472,12 @@ export class LivePlanService {
     const endProvided   = dto.eventEndTime   !== undefined;
 
     if (startProvided === endProvided) return; // ikisi yoksa veya ikisi varsa skip
+
+    // Domain karari (2026-05-12): yalniz eventStartTime gönderildiyse backend
+    // eventEndTime'i +2h placeholder ile birlikte yazar (update() data builder).
+    // Bu durumda mergedEnd > mergedStart deterministik olarak korunur; merge
+    // check skip — eski existing.eventEndTime'i kullanarak yanlis 400 atmaz.
+    if (startProvided && !endProvided) return;
 
     const mergedStart = startProvided ? new Date(dto.eventStartTime!) : existing.eventStartTime;
     const mergedEnd   = endProvided   ? new Date(dto.eventEndTime!)   : existing.eventEndTime;

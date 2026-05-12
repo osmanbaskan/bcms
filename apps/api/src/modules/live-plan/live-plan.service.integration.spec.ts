@@ -158,7 +158,7 @@ describe('LivePlanService — integration', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  test('update: merge-aware date check (sadece eventStartTime gönderilirse) — invalid → 400', async () => {
+  test('update: yalniz eventStartTime gonderilirse backend eventEndTime +2h placeholder atar (domain karari 2026-05-12)', async () => {
     const user = makeUser({ username: 'ops-6', groups: ['Booking'] });
     const req = makeRequest(user);
 
@@ -172,16 +172,24 @@ describe('LivePlanService — integration', () => {
       req,
     );
 
-    // existing.eventEndTime = 21:00; new eventStartTime = 22:00 → invalid
-    await expect(
-      svc.update(
-        created.id,
-        { eventStartTime: '2026-06-01T22:00:00Z' },
-        created.version,
-        req,
-      ),
-    ).rejects.toMatchObject({ statusCode: 400 });
+    // Yeni eventStartTime existing.eventEndTime'dan SONRA — eskiden 400 atilirdi
+    // (merge-aware reject). Domain karari sonrasi: karsilasma bitis kullanilmiyor;
+    // backend otomatik olarak eventEndTime'i yeni start + 2h ile birlikte yazar.
+    const updated = await svc.update(
+      created.id,
+      { eventStartTime: '2026-06-01T22:00:00Z' },
+      created.version,
+      req,
+    );
+
+    expect(updated.eventStartTime.toISOString()).toBe('2026-06-01T22:00:00.000Z');
+    expect(updated.eventEndTime.toISOString()).toBe('2026-06-02T00:00:00.000Z');
   });
+
+  // Not: eventStartTime+eventEndTime end<=start case'i Zod refine
+  // (updateLivePlanSchema) ile route layer'da yakalanir; svc.update direkt
+  // cagrildiginda Zod skip olur. Bu davranis ayri route-handler spec
+  // kapsamindadir; service-direct test scope'unda degil.
 
   // ── Hard delete ────────────────────────────────────────────────────────────
 

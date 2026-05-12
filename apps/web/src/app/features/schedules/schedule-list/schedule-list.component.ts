@@ -219,9 +219,9 @@ export class ReportIssueDialogComponent {
           <table class="broadcast-table">
             <thead>
               <tr>
-                <th>Saat</th>
+                <th>Karşılaşma Başlangıç</th>
                 <th>Yayın Adı</th>
-                <th colspan="2">Trans. Saati</th>
+                <th colspan="2">Transmisyon Başlangıç / Bitiş</th>
                 <th>Mod Tipi /<br>Coding Tipi</th>
                 <th>IRD</th>
                 <th>Fiber</th>
@@ -254,8 +254,12 @@ export class ReportIssueDialogComponent {
                   <td class="td-title">
                     <span class="content-main">{{ displayTitle(s) }}</span>
                   </td>
-                  <td class="td-trans">{{ s.startTime | date:'HH:mm' }}</td>
-                  <td class="td-trans">{{ s.endTime   | date:'HH:mm' }}</td>
+                  <!-- Transmisyon Başlangıç / Bitiş — live_plan_technical_details
+                       .planned_*_time gerçek değerler; backend list response
+                       2026-05-12 itibarıyla bu alanları ISO olarak döner.
+                       Boş ise '—' (teknik detay yok veya alan null). -->
+                  <td class="td-trans">{{ plannedTimeDisplay(s.technicalDetails?.plannedStartTime) }}</td>
+                  <td class="td-trans">{{ plannedTimeDisplay(s.technicalDetails?.plannedEndTime) }}</td>
                   <td class="td-mod">
                     <div>{{ s.technicalDetails?.modulationTypeName ?? '—' }}</div>
                     <div class="td-mod-sub">{{ s.technicalDetails?.videoCodingName ?? '—' }}</div>
@@ -615,6 +619,13 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
 
   /** 2026-05-11: liste display yardımcıları — technicalDetails alanlarını
    *  görsel kompakt formata sokar. Tüm değerler null ise "—" döner. */
+  /** 2026-05-12: Transmisyon süresi ISO (UTC) → Türkiye saati "HH:mm".
+   *  Null veya boş ise '—'. */
+  plannedTimeDisplay(iso: string | null | undefined): string {
+    if (!iso) return '—';
+    try { return formatIstanbulTime(iso); } catch { return '—'; }
+  }
+
   /** 2026-05-12: Yayın Adı hücresi — title `" vs "` separator'ı içeriyorsa
    *  takımlar alt alta render edilir (OPTA createFromOpta paterni). Title
    *  manuel girildiyse veya `" vs "` içermiyorsa olduğu gibi gösterilir. */

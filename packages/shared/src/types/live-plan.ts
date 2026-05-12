@@ -112,6 +112,11 @@ export interface TechnicalDetailsDisplay {
   offTubeId:            number | null; offTubeName:            string | null;
   languageId:           number | null; languageName:           string | null;
   secondLanguageId:     number | null; secondLanguageName:     string | null;
+  /** 2026-05-12: Transmisyon süresi ISO (UTC) — list/detail response'unda
+   *  gerçek değer; schedule-list "Transmisyon Başlangıç / Bitiş" kolonu
+   *  bunlardan beslenir. Null = teknik detay yok veya alan boş. */
+  plannedStartTime:     string | null;
+  plannedEndTime:       string | null;
 }
 
 /**

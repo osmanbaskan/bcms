@@ -111,7 +111,9 @@ describe('LivePlanEntryEditDialogComponent', () => {
     expect(component.form.leagueName).toBe('Türkiye Basketbol Ligi');
     expect(component.form.channel1Id).toBe(11);
     expect(component.form.startTime).toBe('20:00');
-    expect(component.form.endTime).toBe('22:00');
+    // 2026-05-12: Karşılaşma bitiş saati UI'dan kaldırıldı (domain kararı);
+    // form'da endTime alanı yok.
+    expect((component.form as Record<string, unknown>)['endTime']).toBeUndefined();
   });
 
   it('dirty entry alanı → tek PATCH /live-plan/:id ile If-Match version', () => {
@@ -188,5 +190,83 @@ describe('LivePlanEntryEditDialogComponent', () => {
 
     const body = api.patch.calls.mostRecent().args[1] as Record<string, unknown>;
     expect('leagueName' in body).toBeFalse();
+  });
+
+  it('Karşılaşma Başlangıç değişimi: sadece eventStartTime entry PATCH body\'sinde gider (eventEndTime YOK)', () => {
+    (api.get as unknown as jasmine.Spy).and.callFake((path: string) => {
+      if (path.startsWith('/live-plan/lookups/')) {
+        return of({ items: [], total: 0, page: 1, pageSize: 200 });
+      }
+      if (path.endsWith('/technical-details')) return of(emptyTechRow(1));
+      return of(ENTRY_FIXTURE);
+    });
+    fixture.detectChanges();
+
+    // Original: eventStartTime 2026-06-01T17:00 UTC (TR 20:00); form.startTime=20:00
+    // Yeni saat: 21:30 → eventStartTime = TR 21:30 = UTC 18:30
+    component.form.startTime = '21:30';
+    component.save();
+
+    expect(api.patch).toHaveBeenCalled();
+    const body = api.patch.calls.first().args[1] as Record<string, unknown>;
+    expect(body['eventStartTime']).toBe('2026-06-01T18:30:00.000Z');
+    // Karşılaşma bitiş UI'da YOK; frontend payload'a eventEndTime KOYMAZ.
+    // Backend service update tarafı +2h placeholder bağımsız atar.
+    expect('eventEndTime' in body).toBeFalse();
+  });
+
+  it('Transmisyon süresi dirty: plannedStartTime / plannedEndTime technical-details PATCH ile gider', () => {
+    (api.get as unknown as jasmine.Spy).and.callFake((path: string) => {
+      if (path.startsWith('/live-plan/lookups/')) {
+        return of({ items: [], total: 0, page: 1, pageSize: 200 });
+      }
+      if (path.endsWith('/technical-details')) return of(emptyTechRow(1));
+      return of(ENTRY_FIXTURE);
+    });
+    fixture.detectChanges();
+
+    component.form.plannedStartDate = '2026-06-01';
+    component.form.plannedStartTime = '19:30';
+    component.form.plannedEndDate   = '2026-06-01';
+    component.form.plannedEndTime   = '22:00';
+
+    component.save();
+
+    // Entry diff boş; entry PATCH atılmamalı
+    const entryCall = api.patch.calls.allArgs().find((args) => args[0] === '/live-plan/42');
+    expect(entryCall).toBeUndefined();
+
+    const techCall = api.patch.calls.allArgs().find((args) => args[0] === '/live-plan/42/technical-details');
+    expect(techCall).toBeDefined();
+    const techBody = techCall![1] as Record<string, unknown>;
+    expect(techBody['plannedStartTime']).toBe('2026-06-01T16:30:00.000Z'); // TR 19:30 → UTC
+    expect(techBody['plannedEndTime']).toBe('2026-06-01T19:00:00.000Z');   // TR 22:00 → UTC
+  });
+
+  it('Transmisyon süresi temizleme: alanlar boşaltılırsa technical-details PATCH null gönderir', () => {
+    // Original: planned* dolu — sonra boşalt → null gönder.
+    const orig = emptyTechRow(1);
+    (orig as unknown as Record<string, unknown>)['plannedStartTime'] = '2026-06-01T17:00:00.000Z';
+    (orig as unknown as Record<string, unknown>)['plannedEndTime']   = '2026-06-01T19:00:00.000Z';
+    (api.get as unknown as jasmine.Spy).and.callFake((path: string) => {
+      if (path.startsWith('/live-plan/lookups/')) {
+        return of({ items: [], total: 0, page: 1, pageSize: 200 });
+      }
+      if (path.endsWith('/technical-details')) return of(orig);
+      return of(ENTRY_FIXTURE);
+    });
+    fixture.detectChanges();
+
+    component.form.plannedStartDate = '';
+    component.form.plannedStartTime = '';
+    component.form.plannedEndDate   = '';
+    component.form.plannedEndTime   = '';
+    component.save();
+
+    const techCall = api.patch.calls.allArgs().find((args) => args[0] === '/live-plan/42/technical-details');
+    expect(techCall).toBeDefined();
+    const techBody = techCall![1] as Record<string, unknown>;
+    expect(techBody['plannedStartTime']).toBeNull();
+    expect(techBody['plannedEndTime']).toBeNull();
   });
 });

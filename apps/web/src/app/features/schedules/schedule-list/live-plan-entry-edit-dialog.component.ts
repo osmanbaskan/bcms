@@ -51,6 +51,15 @@ type EntryDiff = {
   channel3Id?:     number | null;
 };
 
+/** İki ISO instant string'i aynı zaman anına işaret ediyor mu (string eşitliği
+ *  yetmez; backend `2026-06-01T17:00:00.000Z` döndürürken compose
+ *  `2026-06-01T17:00:00Z` üretebilir). Date.getTime() ile normalize karşılaştırma. */
+function sameIsoInstant(a: string | null, b: string | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return new Date(a).getTime() === new Date(b).getTime();
+}
+
 const TECH_FIELD_KEYS = [
   'modulationTypeId', 'videoCodingId',
   'ird1Id', 'ird2Id', 'ird3Id',
@@ -129,21 +138,45 @@ type TechFieldKey = typeof TECH_FIELD_KEYS[number];
             </mat-select>
           </mat-form-field>
           <mat-form-field appearance="outline">
-            <mat-label>Tarih</mat-label>
+            <mat-label>Karşılaşma Tarihi</mat-label>
             <input matInput required type="date"
                    [(ngModel)]="form.startDate"
                    [ngModelOptions]="{standalone:true}">
           </mat-form-field>
           <mat-form-field appearance="outline">
-            <mat-label>Başlangıç</mat-label>
+            <mat-label>Karşılaşma Başlangıç</mat-label>
             <input matInput required type="time"
                    [(ngModel)]="form.startTime"
                    [ngModelOptions]="{standalone:true}">
           </mat-form-field>
+        </div>
+
+        <!-- Transmisyon süresi — live_plan_technical_details.planned_*_time
+             (M5-B10b §5.2 "Trans. Başlangıç" / "Trans. Bitiş"). Karşılaşma
+             bitiş saati domain kararıyla UI'da YOK. -->
+        <div class="row">
           <mat-form-field appearance="outline">
-            <mat-label>Bitiş</mat-label>
-            <input matInput required type="time"
-                   [(ngModel)]="form.endTime"
+            <mat-label>Transmisyon Başlangıç Tarihi</mat-label>
+            <input matInput type="date"
+                   [(ngModel)]="form.plannedStartDate"
+                   [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Transmisyon Başlangıç Saati</mat-label>
+            <input matInput type="time"
+                   [(ngModel)]="form.plannedStartTime"
+                   [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Transmisyon Bitiş Tarihi</mat-label>
+            <input matInput type="date"
+                   [(ngModel)]="form.plannedEndDate"
+                   [ngModelOptions]="{standalone:true}">
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Transmisyon Bitiş Saati</mat-label>
+            <input matInput type="time"
+                   [(ngModel)]="form.plannedEndTime"
                    [ngModelOptions]="{standalone:true}">
           </mat-form-field>
         </div>
@@ -269,15 +302,20 @@ export class LivePlanEntryEditDialogComponent implements OnInit {
   private originalTech: TechnicalDetailsRow | null = null;
 
   form = {
-    title:          '',
-    leagueName:     '',
-    channel1Id:     null as number | null,
-    channel2Id:     null as number | null,
-    channel3Id:     null as number | null,
-    startDate:      '',
-    startTime:      '',
-    endTime:        '',
-    operationNotes: '' as string | null,
+    title:             '',
+    leagueName:        '',
+    channel1Id:        null as number | null,
+    channel2Id:        null as number | null,
+    channel3Id:        null as number | null,
+    // Karşılaşma Başlangıç → live_plan_entries.event_start_time
+    startDate:         '',
+    startTime:         '',
+    // Transmisyon → live_plan_technical_details.planned_*_time
+    plannedStartDate:  '',
+    plannedStartTime:  '',
+    plannedEndDate:    '',
+    plannedEndTime:    '',
+    operationNotes:    '' as string | null,
   };
 
   tech: Record<TechFieldKey, number | null> = this.emptyTech();
@@ -291,7 +329,7 @@ export class LivePlanEntryEditDialogComponent implements OnInit {
 
   canSave = computed(() => {
     const f = this.form;
-    return !this.loading() && !!f.title.trim() && !!f.startDate && !!f.startTime && !!f.endTime;
+    return !this.loading() && !!f.title.trim() && !!f.startDate && !!f.startTime;
   });
 
   ngOnInit(): void {
@@ -453,18 +491,29 @@ export class LivePlanEntryEditDialogComponent implements OnInit {
     this.form.channel3Id     = e.channel3Id ?? null;
     this.form.startDate      = formatIstanbulDate(e.eventStartTime);
     this.form.startTime      = formatIstanbulTime(e.eventStartTime);
-    this.form.endTime        = formatIstanbulTime(e.eventEndTime);
     this.form.operationNotes = e.operationNotes ?? '';
   }
 
   private applyTechToForm(r: TechnicalDetailsRow | null): void {
-    if (!r) { this.tech = this.emptyTech(); return; }
+    if (!r) {
+      this.tech = this.emptyTech();
+      this.form.plannedStartDate = '';
+      this.form.plannedStartTime = '';
+      this.form.plannedEndDate   = '';
+      this.form.plannedEndTime   = '';
+      return;
+    }
     const next = this.emptyTech();
     for (const k of TECH_FIELD_KEYS) {
       const v = (r as unknown as Record<string, unknown>)[k];
       next[k] = typeof v === 'number' ? v : null;
     }
     this.tech = next;
+    // Transmisyon süresi → Türkiye saatine split (ISO UTC stored).
+    this.form.plannedStartDate = r.plannedStartTime ? formatIstanbulDate(r.plannedStartTime) : '';
+    this.form.plannedStartTime = r.plannedStartTime ? formatIstanbulTime(r.plannedStartTime) : '';
+    this.form.plannedEndDate   = r.plannedEndTime   ? formatIstanbulDate(r.plannedEndTime)   : '';
+    this.form.plannedEndTime   = r.plannedEndTime   ? formatIstanbulTime(r.plannedEndTime)   : '';
   }
 
   private emptyTech(): Record<TechFieldKey, number | null> {
@@ -492,25 +541,24 @@ export class LivePlanEntryEditDialogComponent implements OnInit {
     if ((f.channel2Id ?? null) !== (orig.channel2Id ?? null)) out.channel2Id = f.channel2Id ?? null;
     if ((f.channel3Id ?? null) !== (orig.channel3Id ?? null)) out.channel3Id = f.channel3Id ?? null;
 
-    // Tarih/saat tek alanmış gibi: birleştir, compose. Bitiş tarihi = başlangıç
-    // tarihiyle aynı (görsel tek tarih; eğer 24:00'i geçerse start+1d UI kapsam dışı).
+    // Karşılaşma Başlangıç Saati (eventStartTime) — operatör değiştirir.
+    // Karşılaşma bitiş saati UI'da YOK (domain kararı 2026-05-12); frontend
+    // yalnız eventStartTime gönderir. Backend service update tarafı
+    // eventEndTime'ı (+2h) bağımsız olarak ayarlar (live-plan.service.ts
+    // autoEndForStartOnly bloğu), bu sayede payload'da uydurma placeholder
+    // göndermek gerekmez.
     const origStartDate = formatIstanbulDate(orig.eventStartTime);
     const origStartTime = formatIstanbulTime(orig.eventStartTime);
-    const origEndTime   = formatIstanbulTime(orig.eventEndTime);
 
     if (f.startDate !== origStartDate || f.startTime !== origStartTime) {
       out.eventStartTime = composeIstanbulIso(f.startDate, f.startTime);
-    }
-    if (f.startDate !== origStartDate || f.endTime !== origEndTime) {
-      // End date = start date (görsel tek tarih). Çapraz gece geçişleri kapsam dışı.
-      out.eventEndTime = composeIstanbulIso(f.startDate, f.endTime);
     }
 
     return out;
   }
 
   private buildTechDiff(): UpdateTechnicalDetailsBody {
-    const out: Record<string, number | null> = {};
+    const out: Record<string, number | string | null> = {};
     const orig = this.originalTech;
     for (const k of TECH_FIELD_KEYS) {
       const before = orig ? ((orig as unknown as Record<string, unknown>)[k] as number | null) : null;
@@ -518,6 +566,20 @@ export class LivePlanEntryEditDialogComponent implements OnInit {
       if ((before ?? null) === (after ?? null)) continue;
       out[k] = after;
     }
+    // Transmisyon süreleri (plannedStartTime / plannedEndTime, DateTime ISO):
+    // form'da ayrı date+time alan; gönderirken Türkiye saatinden UTC ISO compose.
+    // null gönderimi backend U7 ile "kolonu temizle"; boş input → null.
+    const f = this.form;
+    const origStartIso = orig?.plannedStartTime ?? null;
+    const origEndIso   = orig?.plannedEndTime   ?? null;
+    const nextStartIso = (f.plannedStartDate && f.plannedStartTime)
+      ? composeIstanbulIso(f.plannedStartDate, f.plannedStartTime)
+      : null;
+    const nextEndIso = (f.plannedEndDate && f.plannedEndTime)
+      ? composeIstanbulIso(f.plannedEndDate, f.plannedEndTime)
+      : null;
+    if (!sameIsoInstant(origStartIso, nextStartIso)) out['plannedStartTime'] = nextStartIso;
+    if (!sameIsoInstant(origEndIso,   nextEndIso))   out['plannedEndTime']   = nextEndIso;
     return out as UpdateTechnicalDetailsBody;
   }
 }
