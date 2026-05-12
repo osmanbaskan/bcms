@@ -14,6 +14,7 @@ import {
 } from './schedule-list.component';
 import { LivePlanEntryAddDialogComponent } from './live-plan-entry-add-dialog.component';
 import { LivePlanEntryEditDialogComponent } from './live-plan-entry-edit-dialog.component';
+import { LivePlanTechnicalEditDialogComponent } from './live-plan-technical-edit-dialog.component';
 import { ScheduleService } from '../../../core/services/schedule.service';
 import { ApiService } from '../../../core/services/api.service';
 import type { Schedule } from '@bcms/shared';
@@ -250,11 +251,37 @@ describe('ScheduleListComponent — mutation restore (2026-05-10)', () => {
       expect((config as { data: { schedule: Schedule } }).data.schedule).toEqual(s);
     });
 
-    it('openTechnicalDialog → router.navigate(["/live-plan", id])', () => {
+    it('openTechnicalDialog → MatDialog.open(LivePlanTechnicalEditDialogComponent) + data; router.navigate ÇAĞRILMAZ', () => {
       const s = makeSchedule({ id: 11 });
       ctx.component.openTechnicalDialog(s);
-      expect(ctx.router.navigate).toHaveBeenCalledWith(['/live-plan', 11]);
+      expect(ctx.dialogSpy).toHaveBeenCalled();
+      const [component, config] = ctx.dialogSpy.calls.mostRecent().args;
+      expect(component).toBe(LivePlanTechnicalEditDialogComponent);
+      const data = (config as { data: { entryId: number; canWrite: boolean; canDelete: boolean } }).data;
+      expect(data.entryId).toBe(11);
+      expect(data.canWrite).toBeTrue();
+      expect(data.canDelete).toBeTrue();
+      // Route navigate kaldırıldı — modal dialog UX (Faz 1+2)
+      expect(ctx.router.navigate).not.toHaveBeenCalledWith(['/live-plan', 11]);
     });
+
+    it('openTechnicalDialog afterClosed "saved" → load() çağrılır', fakeAsync(() => {
+      ctx.dialogRefSpy.afterClosed.and.returnValue(of('saved'));
+      ctx.scheduleSvcSpy.getSchedules.calls.reset();
+      const s = makeSchedule({ id: 12 });
+      ctx.component.openTechnicalDialog(s);
+      tick();
+      expect(ctx.scheduleSvcSpy.getSchedules).toHaveBeenCalled();
+    }));
+
+    it('openTechnicalDialog afterClosed undefined (Kapat/Escape) → load() ÇAĞRILMAZ', fakeAsync(() => {
+      ctx.dialogRefSpy.afterClosed.and.returnValue(of(undefined));
+      ctx.scheduleSvcSpy.getSchedules.calls.reset();
+      const s = makeSchedule({ id: 13 });
+      ctx.component.openTechnicalDialog(s);
+      tick();
+      expect(ctx.scheduleSvcSpy.getSchedules).not.toHaveBeenCalled();
+    }));
 
     it('duplicateSchedule confirm dialog → ok → scheduleSvc.duplicateLivePlanEntry(s.id) (legacy /schedules YOK)', fakeAsync(() => {
       // 2026-05-12: snackbar action yerine MatDialog confirm; afterClosed

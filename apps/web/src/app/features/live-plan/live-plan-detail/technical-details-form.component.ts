@@ -1,5 +1,5 @@
 import {
-  ChangeDetectionStrategy, Component, Input, OnChanges, OnInit,
+  ChangeDetectionStrategy, Component, EventEmitter, Input, OnChanges, OnInit, Output,
   SimpleChanges, computed, inject, signal,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -218,6 +218,13 @@ export class TechnicalDetailsFormComponent implements OnInit, OnChanges {
   @Input() canWrite = false;
   @Input() canDelete = false;
 
+  /**
+   * 2026-05-13: Wrapper dialog (LivePlanTechnicalEditDialogComponent) auto-close
+   * için. Mevcut page wrapper (LivePlanDetailComponent) bunu bind etmediği için
+   * davranışı bozmaz. Emit: create / save / delete success callback'leri.
+   */
+  @Output() saved = new EventEmitter<void>();
+
   readonly groups: readonly FieldGroupDef[] = FIELD_GROUPS;
 
   loading  = signal(true);
@@ -277,6 +284,7 @@ export class TechnicalDetailsFormComponent implements OnInit, OnChanges {
         this.creating.set(false);
         this.applyRow(r);
         this.snack.open('Teknik detay oluşturuldu', 'Kapat', { duration: 3000 });
+        this.saved.emit();
       },
       error: (e: HttpErrorResponse) => {
         this.creating.set(false);
@@ -306,6 +314,7 @@ export class TechnicalDetailsFormComponent implements OnInit, OnChanges {
         this.applyRow(r);
         this.lastSaved.set(formatIstanbulTime(new Date(), true));
         this.snack.open(`Kaydedildi (v${r.version})`, 'Kapat', { duration: 3000 });
+        this.saved.emit();
       },
       error: (e: HttpErrorResponse) => {
         this.saving.set(false);
@@ -353,6 +362,7 @@ export class TechnicalDetailsFormComponent implements OnInit, OnChanges {
         this.original = null;
         this.state.set(this.emptyState());
         this.snack.open('Teknik detay silindi', 'Kapat', { duration: 3000 });
+        this.saved.emit();
       },
       error: (e: HttpErrorResponse) => {
         this.saving.set(false);

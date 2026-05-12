@@ -198,4 +198,63 @@ describe('TechnicalDetailsFormComponent', () => {
     expect(component.dirty()).toBeFalse();
     expect(component.stringValue('txp')).toBe('orig');
   });
+
+  // ── 2026-05-13: Faz 1+2 (wrapper dialog auto-close) ────────────────────
+  it('save() success → saved EventEmitter fire eder', () => {
+    (api.get as unknown as jasmine.Spy).and.callFake((path: string) => {
+      if (path.startsWith('/live-plan/lookups/')) {
+        return of({ items: [], total: 0, page: 1, pageSize: 200 });
+      }
+      return of(makeRow());
+    });
+    fixture.detectChanges();
+
+    const savedSpy = jasmine.createSpy('saved');
+    component.saved.subscribe(savedSpy);
+
+    component.onChangeNumber('cameraCount', 9);
+    component.save();
+    expect(savedSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('create() success → saved EventEmitter fire eder', () => {
+    fixture.detectChanges();
+    const savedSpy = jasmine.createSpy('saved');
+    component.saved.subscribe(savedSpy);
+
+    component.create();
+    expect(savedSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirmDelete confirm success → saved EventEmitter fire eder', () => {
+    (api.get as unknown as jasmine.Spy).and.callFake((path: string) => {
+      if (path.startsWith('/live-plan/lookups/')) {
+        return of({ items: [], total: 0, page: 1, pageSize: 200 });
+      }
+      return of(makeRow());
+    });
+    fixture.detectChanges();
+    const savedSpy = jasmine.createSpy('saved');
+    component.saved.subscribe(savedSpy);
+
+    confirmResult = true;
+    component.confirmDelete();
+    expect(savedSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirmDelete cancel → saved fire ETMEZ', () => {
+    (api.get as unknown as jasmine.Spy).and.callFake((path: string) => {
+      if (path.startsWith('/live-plan/lookups/')) {
+        return of({ items: [], total: 0, page: 1, pageSize: 200 });
+      }
+      return of(makeRow());
+    });
+    fixture.detectChanges();
+    const savedSpy = jasmine.createSpy('saved');
+    component.saved.subscribe(savedSpy);
+
+    confirmResult = false;
+    component.confirmDelete();
+    expect(savedSpy).not.toHaveBeenCalled();
+  });
 });

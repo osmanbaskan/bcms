@@ -29,6 +29,7 @@ import type { Schedule } from '@bcms/shared';
 import type { BcmsTokenParsed } from '../../../core/types/auth';
 import { LivePlanEntryAddDialogComponent } from './live-plan-entry-add-dialog.component';
 import { LivePlanEntryEditDialogComponent } from './live-plan-entry-edit-dialog.component';
+import { LivePlanTechnicalEditDialogComponent } from './live-plan-technical-edit-dialog.component';
 import { SegmentConfirmDialogComponent } from '../../live-plan/live-plan-detail/confirm-dialog.component';
 
 // Mutation restore (2026-05-10): Canlı Yayın Plan mutation aksiyonları
@@ -37,7 +38,9 @@ import { SegmentConfirmDialogComponent } from '../../live-plan/live-plan-detail/
 // `/schedules` mutation YOK, JSON/metadata YOK).
 //   - Add → POST /live-plan veya /live-plan/from-opta (LivePlanEntryAddDialog)
 //   - Edit → PATCH /live-plan/:id + If-Match (LivePlanEntryEditDialog)
-//   - Technical → router.navigate(['/live-plan', s.id])  (M5-B10b form orada)
+//   - Technical → LivePlanTechnicalEditDialogComponent (2026-05-13: route navigate
+//     yerine modal dialog; aynı M5-B10b form reusable child olarak kullanılır;
+//     `/live-plan/:entryId` page route'u deeplink olarak korunur)
 //   - Duplicate → POST /live-plan/:id/duplicate
 //   - Delete → DELETE /live-plan/:id + If-Match (hard-delete)
 //   - ReportIssue → mevcut /api/v1/incidents/report (korunur)
@@ -758,9 +761,23 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   }
 
   openTechnicalDialog(s: Schedule) {
-    // Mutation restore (2026-05-10) — Teknik buton M5-B10b form route'una
-    // navigate eder. Disabled/no-op DEĞİL; gerçek aksiyon (route navigate).
-    this.router.navigate(['/live-plan', s.id]);
+    // 2026-05-13: route navigate yerine modal dialog (Faz 1+2). Form reusable
+    // child olarak `LivePlanTechnicalEditDialogComponent` içinde reuse edilir.
+    // Save sonrası dialog `'saved'` ile auto-close eder; afterClosed truthy
+    // ise liste reload. Kapat/Escape `undefined` döner, reload yapılmaz.
+    const ref = this.dialog.open(LivePlanTechnicalEditDialogComponent, {
+      data: {
+        entryId:   s.id,
+        canWrite:  this.canTechnicalEdit(),
+        canDelete: this.canDelete(),
+      },
+      width: '1240px',
+      maxWidth: '98vw',
+      panelClass: 'dark-dialog',
+    });
+    ref.afterClosed().subscribe((result) => {
+      if (result) this.load();
+    });
   }
 
   // 2026-05-12: snackbar-action onayı (ekran altı, 5sn, kolayca kaçırılıyor)
