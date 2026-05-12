@@ -215,11 +215,16 @@ type TechFieldKey = typeof TECH_FIELD_KEYS[number];
          min-height ile boş form bile dolu görünür; max-height viewport sınırı. */
       min-height: 78vh;
       max-height: 92vh;
-      /* padding-top: mat-form-field (outlined) label notch'u dialog content'in
-         üst sınırına temas edip kırpılıyordu (Yayın Adı / Lig label'ları kesik
-         görünüyordu). 24px üst boşluk label'a nefes verir. */
-      padding: 24px 16px 12px;
       overflow: auto;
+    }
+    /* Playwright probe (2026-05-12): mat-dialog-content Material MDC default
+       padding rule (.mat-mdc-dialog-content padding: 20px 24px) component
+       CSS override edip padding-top 0 yapiyordu. Yayin Adi / Lig outlined
+       label notch dialog ust kenarinin 6.75px ustune cikti, overflow:auto
+       label kirpti. !important ile Material default override ediliyor;
+       class specificity esit oldugundan deterministik tek cozum bu. */
+    :host ::ng-deep .mat-mdc-dialog-content.edit-dialog-content {
+      padding: 24px 16px 12px !important;
     }
     .loading { display:flex; justify-content:center; padding: 48px; }
     .row { display:flex; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
