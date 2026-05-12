@@ -187,7 +187,7 @@ type TechFieldKey = typeof TECH_FIELD_KEYS[number];
         <!-- Notlar -->
         <mat-form-field appearance="outline" class="full">
           <mat-label>Açıklama ve Notlar</mat-label>
-          <textarea matInput rows="3" maxlength="8000"
+          <textarea matInput rows="6" maxlength="8000"
                     [(ngModel)]="form.operationNotes"
                     [ngModelOptions]="{standalone:true}"></textarea>
         </mat-form-field>
@@ -211,7 +211,10 @@ type TechFieldKey = typeof TECH_FIELD_KEYS[number];
     .edit-dialog-content {
       min-width: min(1240px, 96vw);
       max-width: 98vw;
-      max-height: 82vh;
+      /* 2026-05-12: yükseklik artışı — dialog daha çok dikey alan kullansın.
+         min-height ile boş form bile dolu görünür; max-height viewport sınırı. */
+      min-height: 78vh;
+      max-height: 92vh;
       padding: 12px 16px 8px;
       overflow: auto;
     }
