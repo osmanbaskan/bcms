@@ -131,6 +131,7 @@ function setup(opts: SetupOpts = {}) {
     scheduleSvcSpy,
     apiSpy,
     dialogSpy,
+    dialogRefSpy,
     snackSpy,
     snackRefSpy,
     onActionSubject,
@@ -255,29 +256,46 @@ describe('ScheduleListComponent — mutation restore (2026-05-10)', () => {
       expect(ctx.router.navigate).toHaveBeenCalledWith(['/live-plan', 11]);
     });
 
-    it('duplicateSchedule snack action → scheduleSvc.duplicateLivePlanEntry(s.id) (legacy /schedules YOK)', fakeAsync(() => {
+    it('duplicateSchedule confirm dialog → ok → scheduleSvc.duplicateLivePlanEntry(s.id) (legacy /schedules YOK)', fakeAsync(() => {
+      // 2026-05-12: snackbar action yerine MatDialog confirm; afterClosed
+      // true ile çözüldüğünde API çağrılır.
+      ctx.dialogRefSpy.afterClosed.and.returnValue(of(true));
       const s = makeSchedule({ id: 21 });
       ctx.component.duplicateSchedule(s);
-      // Snack açıldı ve kullanıcı Çoğalt aksiyonunu tetikledi
-      ctx.onActionSubject.next();
       tick();
 
+      expect(ctx.dialogSpy).toHaveBeenCalled();
       expect(ctx.scheduleSvcSpy.duplicateLivePlanEntry).toHaveBeenCalledWith(21);
-      // Legacy path negative kanıt: ApiService doğrudan /schedules POST/DELETE
-      // çağrısı YAPILMADI (mutation hep ScheduleService canonical metodları
-      // üzerinden gidiyor).
+      // Legacy path negative kanıt
       expect(ctx.apiSpy.post).not.toHaveBeenCalledWith('/schedules', jasmine.anything());
       expect(ctx.apiSpy.delete).not.toHaveBeenCalledWith(jasmine.stringMatching(/^\/schedules\//), jasmine.anything());
     }));
 
-    it('deleteSchedule snack action → scheduleSvc.deleteLivePlanEntry(s.id, s.version) (legacy /schedules YOK)', fakeAsync(() => {
+    it('duplicateSchedule confirm cancel → API çağrısı YAPILMAZ', fakeAsync(() => {
+      ctx.dialogRefSpy.afterClosed.and.returnValue(of(false));
+      const s = makeSchedule({ id: 22 });
+      ctx.component.duplicateSchedule(s);
+      tick();
+      expect(ctx.scheduleSvcSpy.duplicateLivePlanEntry).not.toHaveBeenCalled();
+    }));
+
+    it('deleteSchedule confirm dialog → ok → scheduleSvc.deleteLivePlanEntry(s.id, s.version) (legacy /schedules YOK)', fakeAsync(() => {
+      ctx.dialogRefSpy.afterClosed.and.returnValue(of(true));
       const s = makeSchedule({ id: 33, version: 7 });
       ctx.component.deleteSchedule(s);
-      ctx.onActionSubject.next();
       tick();
 
+      expect(ctx.dialogSpy).toHaveBeenCalled();
       expect(ctx.scheduleSvcSpy.deleteLivePlanEntry).toHaveBeenCalledWith(33, 7);
       expect(ctx.apiSpy.delete).not.toHaveBeenCalledWith(jasmine.stringMatching(/^\/schedules\//), jasmine.anything());
+    }));
+
+    it('deleteSchedule confirm cancel → API çağrısı YAPILMAZ', fakeAsync(() => {
+      ctx.dialogRefSpy.afterClosed.and.returnValue(of(false));
+      const s = makeSchedule({ id: 34, version: 1 });
+      ctx.component.deleteSchedule(s);
+      tick();
+      expect(ctx.scheduleSvcSpy.deleteLivePlanEntry).not.toHaveBeenCalled();
     }));
   });
 });

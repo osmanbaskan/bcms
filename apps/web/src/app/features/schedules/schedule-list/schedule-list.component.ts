@@ -29,6 +29,7 @@ import type { Schedule } from '@bcms/shared';
 import type { BcmsTokenParsed } from '../../../core/types/auth';
 import { LivePlanEntryAddDialogComponent } from './live-plan-entry-add-dialog.component';
 import { LivePlanEntryEditDialogComponent } from './live-plan-entry-edit-dialog.component';
+import { SegmentConfirmDialogComponent } from '../../live-plan/live-plan-detail/confirm-dialog.component';
 
 // Mutation restore (2026-05-10): Canlı Yayın Plan mutation aksiyonları
 // (Yeni / Düzenle / Teknik / Çoğalt / Sil) eski konumlarına geri getirildi;
@@ -762,9 +763,25 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
     this.router.navigate(['/live-plan', s.id]);
   }
 
+  // 2026-05-12: snackbar-action onayı (ekran altı, 5sn, kolayca kaçırılıyor)
+  // yerine MatDialog confirm — modal, ortalanmış, focus-trap'li, Escape iptal.
   duplicateSchedule(s: Schedule) {
-    const ref = this.snack.open(`"${s.title}" çoğaltılacak`, 'Çoğalt', { duration: 5000 });
-    ref.onAction().subscribe(() => {
+    const when = `${formatIstanbulDateTr(s.startTime)} ${formatIstanbulTime(s.startTime)}`;
+    const ref = this.dialog.open(SegmentConfirmDialogComponent, {
+      data: {
+        title:        'Yayın Kaydını Çoğalt',
+        message:      `"${s.title}" (${when}) kaydı çoğaltılacak. Yeni kayıt aynı içerikle PLANLANDI durumunda oluşturulur.`,
+        confirmText:  'Çoğalt',
+        cancelText:   'Vazgeç',
+        confirmColor: 'primary',
+      },
+      width:      '480px',
+      maxWidth:   '92vw',
+      panelClass: 'dark-dialog',
+      autoFocus:  'first-tabbable',
+    });
+    ref.afterClosed().subscribe((ok) => {
+      if (!ok) return;
       this.scheduleSvc.duplicateLivePlanEntry(s.id).subscribe({
         next:  () => {
           this.snack.open('Yayın kaydı çoğaltıldı', 'Kapat', { duration: 2500 });
@@ -781,8 +798,22 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   }
 
   deleteSchedule(s: Schedule) {
-    const ref = this.snack.open(`"${s.title}" silinecek`, 'Sil', { duration: 5000 });
-    ref.onAction().subscribe(() => {
+    const when = `${formatIstanbulDateTr(s.startTime)} ${formatIstanbulTime(s.startTime)}`;
+    const ref = this.dialog.open(SegmentConfirmDialogComponent, {
+      data: {
+        title:        'Yayın Kaydını Sil',
+        message:      `"${s.title}" (${when}) kaydı kalıcı olarak silinecek. Bu işlem geri alınamaz.`,
+        confirmText:  'Sil',
+        cancelText:   'Vazgeç',
+        confirmColor: 'warn',
+      },
+      width:      '480px',
+      maxWidth:   '92vw',
+      panelClass: 'dark-dialog',
+      autoFocus:  'first-tabbable',
+    });
+    ref.afterClosed().subscribe((ok) => {
+      if (!ok) return;
       this.scheduleSvc.deleteLivePlanEntry(s.id, s.version).subscribe({
         next:  () => {
           this.snack.open('Yayın kaydı silindi', 'Kapat', { duration: 2000 });
