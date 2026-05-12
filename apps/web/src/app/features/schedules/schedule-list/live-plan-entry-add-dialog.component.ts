@@ -227,53 +227,83 @@ import {
     </mat-dialog-actions>
   `,
   styles: [`
-    .add-dialog-content { min-width: 880px; max-width: 96vw; padding: 12px 16px 8px; }
-    .tab-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 4px 0; }
-    .row { display: flex; gap: 8px; }
-    .row .grow { flex: 1 1 0; min-width: 0; }
+    .add-dialog-content {
+      min-width: min(960px, 92vw);
+      max-width: 96vw;
+      max-height: 78vh;
+      padding: 12px 16px 8px;
+      overflow: auto;
+    }
+    .tab-body { display: flex; flex-direction: column; gap: 8px; padding: 16px 4px 0; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .row .grow { flex: 1 1 240px; min-width: 0; }
     .full { width: 100%; }
     mat-form-field { width: 100%; }
     .err  { color: #f44336; font-size: 12px; margin: 4px 0 0; }
 
-    .fixture-body { min-height: 420px; }
+    .fixture-body { min-height: 380px; }
     .season-chip { color: var(--bp-fg-3); font-size: 11px; margin-left: 6px; }
 
     .fixtures-section { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
     .fixtures-header {
       display: flex; justify-content: space-between; align-items: center;
-      font-size: 12px; color: var(--bp-fg-3);
-      border-bottom: 1px solid var(--bp-line-2); padding-bottom: 4px;
+      font-size: 12px; color: var(--bp-fg-2);
+      border-bottom: 1px solid var(--bp-line-2); padding-bottom: 6px;
     }
-    .fixtures-title { font-weight: 600; color: var(--bp-fg-2); }
+    .fixtures-title { font-weight: 600; color: var(--bp-fg-1); letter-spacing: 0.02em; }
+    .fixtures-meta  { color: var(--bp-fg-3); }
     .fixtures-list {
-      display: flex; flex-direction: column; gap: 2px;
-      max-height: 360px; overflow-y: auto; padding-right: 4px;
+      display: flex; flex-direction: column; gap: 4px;
+      max-height: 320px; overflow-y: auto; padding-right: 4px;
     }
     .fixture-row {
       display: grid;
-      grid-template-columns: 110px 60px 1fr 90px;
-      align-items: center; gap: 8px;
-      padding: 8px 10px;
-      background: transparent;
+      grid-template-columns: 110px 64px 1fr 90px;
+      align-items: center; gap: 10px;
+      padding: 10px 12px;
+      background: var(--bp-bg-2, rgba(255,255,255,0.02));
       border: 1px solid var(--bp-line-2);
-      border-radius: 6px;
+      border-radius: 8px;
       text-align: left;
       cursor: pointer;
       font-size: 13px;
       color: var(--bp-fg-1);
+      transition: background 0.12s, border-color 0.12s;
     }
-    .fixture-row:hover    { background: var(--bp-row-hover); }
-    .fixture-row.selected { background: var(--bp-row-selected, #1e3a5f); border-color: #3a7bd5; }
+    .fixture-row:hover    { background: var(--bp-row-hover, rgba(255,255,255,0.06)); border-color: var(--bp-line-1); }
+    .fixture-row.selected {
+      background: var(--bp-row-selected, rgba(124, 77, 255, 0.16));
+      border-color: var(--bp-accent, #7c4dff);
+      box-shadow: inset 0 0 0 1px var(--bp-accent, #7c4dff);
+    }
     .fx-date  { color: var(--bp-fg-2); font-variant-numeric: tabular-nums; }
     .fx-time  { color: var(--bp-fg-1); font-variant-numeric: tabular-nums; font-weight: 600; }
     .fx-teams { color: var(--bp-fg-1); }
     .fx-teams em { font-style: normal; color: var(--bp-fg-3); padding: 0 6px; }
     .fx-week  { color: var(--bp-fg-3); font-size: 11px; text-align: right; }
     .fixture-empty {
+      min-height: 180px;
+      display: flex; align-items: center; justify-content: center;
       padding: 24px;
       text-align: center;
       color: var(--bp-fg-3);
-      font-size: 12px;
+      font-size: 13px;
+      border: 1px dashed var(--bp-line-2);
+      border-radius: 8px;
+      background: var(--bp-bg-2, rgba(255,255,255,0.02));
+    }
+
+    /* Polish — disabled Kaydet butonu Material default'unda mor renkte
+       kalıyordu; aktif/disabled ayrımı net görünsün. */
+    :host ::ng-deep .mat-mdc-dialog-actions .mat-mdc-raised-button[disabled],
+    :host ::ng-deep .mat-mdc-dialog-actions .mat-mdc-raised-button.mat-mdc-button-disabled {
+      background-color: rgba(255,255,255,0.08) !important;
+      color: rgba(255,255,255,0.42) !important;
+      box-shadow: none !important;
+    }
+    /* Aktif tab vurgusunu güçlendir (Material default contrast düşük). */
+    :host ::ng-deep .mat-mdc-tab.mdc-tab--active .mdc-tab__text-label {
+      font-weight: 600;
     }
   `],
 })

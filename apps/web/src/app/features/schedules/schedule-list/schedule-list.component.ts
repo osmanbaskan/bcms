@@ -482,6 +482,26 @@ export class ReportIssueDialogComponent {
     .td-record-location { color: var(--bp-fg-2); }
     .td-actions { width: 200px; padding: 2px 4px; text-align: center; white-space: nowrap; }
 
+    /* 2026-05-12 polish: aksiyon ikon butonları okunaklı/anlaşılır olsun.
+       Material default mat-icon-button transparan; hover'da background daha
+       net olsun, ikon rengi yüksek kontrast, primary/warn ayrımı net kalsın. */
+    .td-actions button.mat-mdc-icon-button {
+      width: 32px; height: 32px; padding: 0;
+      margin: 0 1px;
+      color: var(--bp-fg-2);
+      transition: background 0.12s, color 0.12s;
+    }
+    .td-actions button.mat-mdc-icon-button:hover:not([disabled]) {
+      background: var(--bp-row-hover, rgba(255,255,255,0.08));
+      color: var(--bp-fg-1);
+    }
+    .td-actions button.mat-mdc-icon-button.mat-warn:hover:not([disabled]) {
+      background: rgba(244, 67, 54, 0.14);
+      color: #ff8a80;
+    }
+    .td-actions button.mat-mdc-icon-button[disabled] { opacity: 0.32; }
+    .td-actions button.mat-mdc-icon-button mat-icon { font-size: 18px; height: 18px; width: 18px; }
+
     .table-footer {
       display: flex;
       align-items: center;
@@ -649,8 +669,8 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
 
   openAddDialog() {
     const ref = this.dialog.open(LivePlanEntryAddDialogComponent, {
-      width: '720px',
-      maxWidth: '98vw',
+      width: '960px',
+      maxWidth: '96vw',
       panelClass: 'dark-dialog',
     });
     ref.afterClosed().subscribe((created) => {
@@ -664,7 +684,7 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
   openEditDialog(s: Schedule) {
     const ref = this.dialog.open(LivePlanEntryEditDialogComponent, {
       data: { schedule: s },
-      width: '720px',
+      width: '1240px',
       maxWidth: '98vw',
       panelClass: 'dark-dialog',
     });

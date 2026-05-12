@@ -208,21 +208,35 @@ type TechFieldKey = typeof TECH_FIELD_KEYS[number];
     </mat-dialog-actions>
   `,
   styles: [`
-    .edit-dialog-content { min-width: 1100px; max-width: 98vw; padding: 12px 16px 8px; }
-    .loading { display:flex; justify-content:center; padding: 32px; }
-    .row { display:flex; gap: 8px; margin-bottom: 4px; }
-    .row.compact mat-form-field { flex: 1 1 0; min-width: 0; }
-    .grow { flex: 1 1 0; min-width: 0; }
+    .edit-dialog-content {
+      min-width: min(1240px, 96vw);
+      max-width: 98vw;
+      max-height: 82vh;
+      padding: 12px 16px 8px;
+      overflow: auto;
+    }
+    .loading { display:flex; justify-content:center; padding: 48px; }
+    .row { display:flex; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+    .row.compact mat-form-field { flex: 1 1 140px; min-width: 0; }
+    .grow { flex: 1 1 280px; min-width: 0; }
     .grid {
       display: grid;
-      grid-template-columns: repeat(8, minmax(0, 1fr));
-      gap: 8px;
-      margin: 4px 0 8px;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px 12px;
+      margin: 8px 0 12px;
     }
     .grid app-lookup-select { display:block; min-width: 0; }
     .full { width: 100%; }
     .err  { color: #f44336; font-size: 12px; margin: 4px 0 0; }
     mat-form-field { width: 100%; }
+
+    /* Polish — disabled Kaydet butonu net görünsün; tab başlıkları okunaklı. */
+    :host ::ng-deep .mat-mdc-dialog-actions .mat-mdc-raised-button[disabled],
+    :host ::ng-deep .mat-mdc-dialog-actions .mat-mdc-raised-button.mat-mdc-button-disabled {
+      background-color: rgba(255,255,255,0.08) !important;
+      color: rgba(255,255,255,0.42) !important;
+      box-shadow: none !important;
+    }
   `],
 })
 export class LivePlanEntryEditDialogComponent implements OnInit {
