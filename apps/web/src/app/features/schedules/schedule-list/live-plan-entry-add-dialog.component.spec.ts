@@ -97,6 +97,26 @@ describe('LivePlanEntryAddDialogComponent', () => {
     expect(svc.getFixtureCompetitions).toHaveBeenCalledTimes(1);
   });
 
+  it('backend /broadcast-types boş ise fallback Müsabaka dropdown\'da görünür ve isOptaMode true döner', () => {
+    svc.getBroadcastTypes.and.returnValue(of([]));
+    fixture.detectChanges();
+    const display = component.displayBroadcastTypes();
+    expect(display.length).toBe(1);
+    expect(display[0].code).toBe('MATCH');
+    expect(display[0].description).toBe('Müsabaka');
+
+    component.onBroadcastTypeChange(display[0].id);
+    expect(component.isOptaMode()).toBeTrue();
+  });
+
+  it('backend zaten MATCH dönerse fallback duplicate eklenmez', () => {
+    fixture.detectChanges(); // BT_FIXTURE includes MATCH (id:1)
+    const display = component.displayBroadcastTypes();
+    const matchCount = display.filter((b) => b.code === 'MATCH').length;
+    expect(matchCount).toBe(1);
+    expect(display.length).toBe(2); // MATCH + STUDIO
+  });
+
   it('Müsabaka seçilmediyse isOptaMode=false; Lig/Hafta/fixture/Kaydet disabled', () => {
     fixture.detectChanges();
     expect(component.isOptaMode()).toBeFalse();

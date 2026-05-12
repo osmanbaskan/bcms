@@ -49,6 +49,16 @@ interface BatchResults {
   errors:     Array<{ id: string; message: string }>;    // 400/403/404/5xx
 }
 
+/** 2026-05-12: `broadcast_types` seed boş kalan kurulumlar için fallback.
+ *  Backend response'unda code='MATCH' veya description 'Müsab*' yoksa
+ *  dropdown'a sentinel ile eklenir. Sentinel `id = -1`; create payload'a
+ *  girmediği için backend FK çakışması riski yok. */
+const FALLBACK_MUSABAKA: BroadcastType = { id: -1, code: 'MATCH', description: 'Müsabaka' };
+
+function isMatchType(bt: BroadcastType): boolean {
+  return bt.code === 'MATCH' || (bt.description ?? '').toLowerCase().startsWith('müsab');
+}
+
 @Component({
   selector: 'app-live-plan-entry-add-dialog',
   standalone: true,
@@ -75,7 +85,7 @@ interface BatchResults {
                             [ngModelOptions]="{standalone:true}"
                             [disabled]="broadcastTypesLoading() || saving()">
                   <mat-option [value]="null">— Seçin —</mat-option>
-                  @for (bt of broadcastTypes(); track bt.id) {
+                  @for (bt of displayBroadcastTypes(); track bt.id) {
                     <mat-option [value]="bt.id">{{ bt.description || bt.code }}</mat-option>
                   }
                 </mat-select>
@@ -378,15 +388,23 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
   };
 
   // ── Computed ────────────────────────────────────────────────────────────
+  /** Dropdown'da gösterilecek liste: backend response + fallback Müsabaka
+   *  (backend zaten MATCH/Müsabaka döndürdüyse duplicate eklenmez). */
+  displayBroadcastTypes = computed<BroadcastType[]>(() => {
+    const fromApi = this.broadcastTypes();
+    const hasMatch = fromApi.some(isMatchType);
+    return hasMatch ? fromApi : [FALLBACK_MUSABAKA, ...fromApi];
+  });
+
   /** İçerik Türü "Müsabaka" mı? code='MATCH' canonical; description fallback
-   *  "Müsab"* prefix'iyle daha esnek (seed/Türkçe label varyasyonları için). */
+   *  "Müsab"* prefix'iyle daha esnek (seed/Türkçe label varyasyonları için).
+   *  Sentinel fallback (id=-1) de aynı kontrolden geçer (code='MATCH'). */
   isOptaMode = computed(() => {
     const id = this.selectedBroadcastTypeId();
     if (id == null) return false;
-    const bt = this.broadcastTypes().find((b) => b.id === id);
+    const bt = this.displayBroadcastTypes().find((b) => b.id === id);
     if (!bt) return false;
-    if (bt.code === 'MATCH') return true;
-    return (bt.description ?? '').toLowerCase().startsWith('müsab');
+    return isMatchType(bt);
   });
 
   /** fixtures listesinden distinct weekNumber (null hariç), artan sıralı. */
