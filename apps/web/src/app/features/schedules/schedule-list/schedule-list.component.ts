@@ -252,7 +252,7 @@ export class ReportIssueDialogComponent {
                     [style.background]="scheduleRowColor(s)">
                   <td class="td-time">{{ s.startTime | date:'HH:mm' }}</td>
                   <td class="td-title">
-                    <span class="content-main">{{ s.title }}</span>
+                    <span class="content-main">{{ displayTitle(s) }}</span>
                   </td>
                   <td class="td-trans">{{ s.startTime | date:'HH:mm' }}</td>
                   <td class="td-trans">{{ s.endTime   | date:'HH:mm' }}</td>
@@ -440,7 +440,14 @@ export class ReportIssueDialogComponent {
       min-width: 56px;
     }
     .td-title { min-width: 200px; max-width: 280px; }
-    .content-main { font-weight: var(--bp-fw-semibold); display: block; color: var(--bp-fg-1); }
+    .content-main {
+      font-weight: var(--bp-fw-semibold);
+      display: block;
+      color: var(--bp-fg-1);
+      /* 2026-05-12: takım çifti title'ı newline ile geldiğinde alt alta render. */
+      white-space: pre-line;
+      line-height: 1.20;
+    }
     .td-trans {
       white-space: nowrap;
       color: var(--bp-fg-3);
@@ -608,6 +615,19 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
 
   /** 2026-05-11: liste display yardımcıları — technicalDetails alanlarını
    *  görsel kompakt formata sokar. Tüm değerler null ise "—" döner. */
+  /** 2026-05-12: Yayın Adı hücresi — title `" vs "` separator'ı içeriyorsa
+   *  takımlar alt alta render edilir (OPTA createFromOpta paterni). Title
+   *  manuel girildiyse veya `" vs "` içermiyorsa olduğu gibi gösterilir. */
+  displayTitle(s: Schedule): string {
+    const title = s.title ?? '';
+    if (!title) return title;
+    const parts = title.split(/\s+vs\s+/i);
+    if (parts.length === 2 && parts[0].trim() && parts[1].trim()) {
+      return `${parts[0].trim()}\n${parts[1].trim()}`;
+    }
+    return title;
+  }
+
   // 2026-05-12: çoklu değer içeren hücreler (IRD/FIBER/INT/DİL/KANAL) artık
   // alt alta render edilir — newline ile join + hücre CSS'inde
   // `white-space: pre-line`. Boş değerler yine "—".
