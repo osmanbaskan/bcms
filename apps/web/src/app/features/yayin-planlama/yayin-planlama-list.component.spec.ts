@@ -274,6 +274,43 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
     });
   });
 
+  describe('Kolon sırası ve tarih formatı', () => {
+    it('cols sırası: date, time, match, league, week, channels, status', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as { cols: string[] };
+      expect(cmp.cols).toEqual(['date', 'time', 'match', 'league', 'week', 'channels', 'status']);
+      expect(cmp.cols[0]).toBe('date');
+      expect(cmp.cols[1]).toBe('time');
+      expect(cmp.cols[2]).toBe('match');
+    });
+
+    it('formatDate: UTC ISO → "DD.MM.YYYY" (Türkiye)', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        formatDate(iso: string | null | undefined): string;
+      };
+      // 2026-06-01T19:00:00Z → Türkiye 2026-06-01 22:00 → "01.06.2026"
+      expect(cmp.formatDate('2026-06-01T19:00:00.000Z')).toBe('01.06.2026');
+      // Akşam late UTC Türkiye'de ertesi güne taşar: 2026-12-31T23:30Z → +03:00 → 2027-01-01 02:30
+      expect(cmp.formatDate('2026-12-31T23:30:00.000Z')).toBe('01.01.2027');
+      expect(cmp.formatDate(null)).toBe('—');
+      expect(cmp.formatDate(undefined)).toBe('—');
+    });
+
+    it('formatTime: UTC ISO → "HH:mm" (Türkiye)', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        formatTime(iso: string | null | undefined): string;
+      };
+      // 19:00Z + 03:00 → 22:00
+      expect(cmp.formatTime('2026-06-01T19:00:00.000Z')).toBe('22:00');
+      expect(cmp.formatTime(null)).toBe('—');
+    });
+  });
+
   describe('Kanallar kolonu (id → name stack)', () => {
     it('countChannels gibi sayı göstermez; gerçek kanal adlarını alt alta gösterir', () => {
       serviceSpy.getLivePlanList.and.returnValue(of(makeList([

@@ -19,6 +19,7 @@ import { GROUP, LIVE_PLAN_STATUSES, PERMISSIONS, type LivePlanEntry, type LivePl
 import { isSkipAuthAllowed } from '../../core/auth/skip-auth';
 import type { BcmsTokenParsed } from '../../core/types/auth';
 import { ApiService } from '../../core/services/api.service';
+import { formatIstanbulDateTr, formatIstanbulTime } from '../../core/time/tz.helpers';
 import { YayinPlanlamaService, type LeagueFilterOption } from '../../core/services/yayin-planlama.service';
 
 /**
@@ -134,6 +135,14 @@ interface ChannelCatalogItem { id: number; name: string; }
         </div>
       } @else {
         <table mat-table [dataSource]="rows()" class="yp-table">
+          <ng-container matColumnDef="date">
+            <th mat-header-cell *matHeaderCellDef>Tarih</th>
+            <td mat-cell *matCellDef="let r">{{ formatDate(r.eventStartTime) }}</td>
+          </ng-container>
+          <ng-container matColumnDef="time">
+            <th mat-header-cell *matHeaderCellDef>Saat</th>
+            <td mat-cell *matCellDef="let r">{{ formatTime(r.eventStartTime) }}</td>
+          </ng-container>
           <ng-container matColumnDef="match">
             <th mat-header-cell *matHeaderCellDef>Karşılaşma</th>
             <td mat-cell *matCellDef="let r" class="td-match">
@@ -150,14 +159,6 @@ interface ChannelCatalogItem { id: number; name: string; }
           <ng-container matColumnDef="week">
             <th mat-header-cell *matHeaderCellDef>Hafta</th>
             <td mat-cell *matCellDef="let r">{{ r.weekNumber ?? '—' }}</td>
-          </ng-container>
-          <ng-container matColumnDef="date">
-            <th mat-header-cell *matHeaderCellDef>Tarih</th>
-            <td mat-cell *matCellDef="let r">{{ formatDate(r.eventStartTime) }}</td>
-          </ng-container>
-          <ng-container matColumnDef="time">
-            <th mat-header-cell *matHeaderCellDef>Saat</th>
-            <td mat-cell *matCellDef="let r">{{ formatTime(r.eventStartTime) }}</td>
           </ng-container>
           <ng-container matColumnDef="channels">
             <th mat-header-cell *matHeaderCellDef>Kanallar</th>
@@ -205,7 +206,9 @@ export class YayinPlanlamaListComponent implements OnInit {
   private service  = inject(YayinPlanlamaService);
   private keycloak = inject(KeycloakService, { optional: true });
 
-  protected cols = ['match', 'league', 'week', 'date', 'time', 'channels', 'status'];
+  // 2026-05-13: Tarih + Saat kolonları en başa alındı (operatör tarih bazlı
+  // tarama yapıyor). Tarih formatı `gg.aa.yyyy` (formatIstanbulDateTr).
+  protected cols = ['date', 'time', 'match', 'league', 'week', 'channels', 'status'];
   protected statuses = LIVE_PLAN_STATUSES;
 
   // Filter state
@@ -301,15 +304,24 @@ export class YayinPlanlamaListComponent implements OnInit {
     this.reload();
   }
 
+  /** UTC ISO → Türkiye yerel tarihi "DD.MM.YYYY" (gg.aa.yyyy). */
   protected formatDate(iso: string | null | undefined): string {
     if (!iso) return '—';
-    return iso.slice(0, 10);
+    try {
+      return formatIstanbulDateTr(iso);
+    } catch {
+      return '—';
+    }
   }
 
+  /** UTC ISO → Türkiye yerel saati "HH:mm". */
   protected formatTime(iso: string | null | undefined): string {
     if (!iso) return '—';
-    const m = /T(\d{2}:\d{2})/.exec(iso);
-    return m?.[1] ?? '—';
+    try {
+      return formatIstanbulTime(iso);
+    } catch {
+      return '—';
+    }
   }
 
   /**
