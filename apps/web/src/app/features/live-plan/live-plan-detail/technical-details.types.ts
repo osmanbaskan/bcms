@@ -172,8 +172,9 @@ export interface FieldGroupDef {
 }
 
 /**
- * 6 mantıksal grup — REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md §5.1-§5.6
- * sırasına birebir.
+ * Teknik form mantıksal grupları — REQUIREMENTS-LIVE-PLAN-TECHNICAL-FIELDS-V1.md
+ * §5.1-§5.6 sırasını takip eder; 2026-05-13 itibarıyla §5.2 "Ortak" ve §5.3
+ * "IRD / Fiber" Düzenle dialog'a taşındığı için 4 grup kaldı.
  */
 export const FIELD_GROUPS: readonly FieldGroupDef[] = [
   {
@@ -197,40 +198,17 @@ export const FIELD_GROUPS: readonly FieldGroupDef[] = [
       { key: 'fixedPhone2',         label: 'Sabit Tel 2',    kind: 'string', maxLength: 80 },
     ],
   },
-  {
-    id: 'ortak',
-    title: 'Ortak (Edit Üst)',
-    hint: '11 alan — transmisyon başlangıç/bitiş, INT/dil/demod + yabancı dil.',
-    fields: [
-      { key: 'plannedStartTime',  label: 'Trans. Başlangıç', kind: 'datetime' },
-      { key: 'plannedEndTime',    label: 'Trans. Bitiş',     kind: 'datetime' },
-      { key: 'hdvgResourceId',    label: 'HDVG',             kind: 'fk', lookupType: 'transmission_int_resources' },
-      { key: 'int1ResourceId',    label: 'Int',              kind: 'fk', lookupType: 'transmission_int_resources' },
-      { key: 'int2ResourceId',    label: 'Int 2',            kind: 'fk', lookupType: 'transmission_int_resources' },
-      { key: 'offTubeId',         label: 'Off Tube',         kind: 'fk', lookupType: 'live_plan_off_tube_options' },
-      { key: 'languageId',        label: 'Dil',              kind: 'fk', lookupType: 'live_plan_languages' },
-      { key: 'secondLanguageId',  label: 'Yabancı Dil',      kind: 'fk', lookupType: 'live_plan_languages' },
-      { key: 'demodId',           label: 'Demod',            kind: 'fk', lookupType: 'transmission_demod_options' },
-      { key: 'tieId',             label: 'TIE',              kind: 'fk', lookupType: 'transmission_tie_options' },
-      { key: 'virtualResourceId', label: 'Sanal',            kind: 'fk', lookupType: 'transmission_virtual_resources' },
-    ],
-  },
-  {
-    id: 'ird-fiber',
-    title: 'IRD / Fiber',
-    hint: '5 alan — event-level IRD ve fiber kaynaklar.',
-    fields: [
-      { key: 'ird1Id',   label: 'IRD 1',   kind: 'fk', lookupType: 'transmission_irds' },
-      { key: 'ird2Id',   label: 'IRD 2',   kind: 'fk', lookupType: 'transmission_irds' },
-      { key: 'ird3Id',   label: 'IRD 3',   kind: 'fk', lookupType: 'transmission_irds' },
-      { key: 'fiber1Id', label: 'Fiber 1', kind: 'fk', lookupType: 'transmission_fibers' },
-      { key: 'fiber2Id', label: 'Fiber 2', kind: 'fk', lookupType: 'transmission_fibers' },
-    ],
-  },
+  // 2026-05-13: §5.2 "Ortak" (11 alan) + §5.3 "IRD / Fiber" (5 alan) tamamen
+  // kaldırıldı; §5.4'ten `modulationTypeId` + `videoCodingId` çıkarıldı.
+  // Toplam 18 alanın UI sahipliği Düzenle dialog'una (Yayın Adı / Karşılaşma /
+  // Kanal / Transmisyon Zamanı + 16 lookup-select grid) verildi — canonical
+  // edit yeri. DB kolonları korunur. ALL_FIELDS = FIELD_GROUPS.flatMap
+  // olduğu için bu 18 key Teknik form state/diff/PATCH payload'una asla
+  // girmez; mevcut değerler Düzenle PATCH'lemediği sürece dokunulmaz.
   {
     id: 'ana-feed',
     title: 'Ana Feed / Transmisyon',
-    hint: '21 alan — ana feed uydu/uplink/downlink/modülasyon.',
+    hint: '19 alan — ana feed uydu/uplink/downlink (Mod Tipi + Video Coding Düzenle\'de).',
     fields: [
       { key: 'feedTypeId',             label: 'Feed Type',           kind: 'fk', lookupType: 'transmission_feed_types' },
       { key: 'satelliteId',            label: 'Uydu Adı',            kind: 'fk', lookupType: 'transmission_satellites' },
@@ -240,9 +218,7 @@ export const FIELD_GROUPS: readonly FieldGroupDef[] = [
       { key: 'uplinkPolarizationId',   label: 'Up. Polarizasyon',    kind: 'fk', lookupType: 'transmission_polarizations' },
       { key: 'downlinkFrequency',      label: 'Downlink Frekansı',   kind: 'string', maxLength: 120 },
       { key: 'downlinkPolarizationId', label: 'Dwn. Polarizasyon',   kind: 'fk', lookupType: 'transmission_polarizations' },
-      { key: 'modulationTypeId',       label: 'Mod Tipi',            kind: 'fk', lookupType: 'transmission_modulation_types' },
       { key: 'rollOffId',              label: 'Roll Off',            kind: 'fk', lookupType: 'transmission_roll_offs' },
-      { key: 'videoCodingId',          label: 'Video Coding',        kind: 'fk', lookupType: 'transmission_video_codings' },
       { key: 'audioConfigId',          label: 'Audio Config',        kind: 'fk', lookupType: 'transmission_audio_configs' },
       { key: 'preMatchKey',            label: 'Maç Önü Key',         kind: 'string', maxLength: 200 },
       { key: 'matchKey',               label: 'Maç Key',             kind: 'string', maxLength: 200 },
@@ -294,5 +270,15 @@ export const FIELD_GROUPS: readonly FieldGroupDef[] = [
   },
 ];
 
-/** Tüm 73 alanın düz listesi (sıra: §5.1 → §5.6). */
+/**
+ * Teknik form'da render edilen 56 alanın düz listesi (sıra: §5.1 → §5.4 → §5.5 → §5.6).
+ *
+ * 2026-05-13: 18 alan Düzenle dialog canonical edit yeri olduğu için
+ * FIELD_GROUPS'tan çıkarıldı (§5.2 Ortak 11 + §5.3 IRD/Fiber 5 + §5.4'ten
+ * mod/coding 2). TechnicalDetailsRow / TechnicalDetailsBaseFields /
+ * TechnicalDetailsFieldKey tip seviyesinde 73 keyin tamamı korunur — API
+ * contract değişmedi. ALL_FIELDS yalnız UI render + state/diff iteration
+ * scope'unu temsil eder; Düzenle alanları PATCH payload'una buradan girmez,
+ * Düzenle kendi `buildTechDiff` üzerinden yazar.
+ */
 export const ALL_FIELDS: readonly FieldDef[] = FIELD_GROUPS.flatMap((g) => g.fields);

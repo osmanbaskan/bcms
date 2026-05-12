@@ -5,7 +5,7 @@ import { of } from 'rxjs';
 
 import { TechnicalDetailsFormComponent } from './technical-details-form.component';
 import { ApiService } from '../../../core/services/api.service';
-import type { TechnicalDetailsRow } from './technical-details.types';
+import { ALL_FIELDS, FIELD_GROUPS, type TechnicalDetailsRow } from './technical-details.types';
 
 function makeRow(overrides: Partial<TechnicalDetailsRow> = {}): TechnicalDetailsRow {
   // Tüm 73 alan null başlangıçlı; createdAt/updatedAt sabit fixture.
@@ -256,5 +256,49 @@ describe('TechnicalDetailsFormComponent', () => {
     confirmResult = false;
     component.confirmDelete();
     expect(savedSpy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 2026-05-13: FIELD_GROUPS / ALL_FIELDS scope sözleşmesi. Düzenle dialog'una
+ * taşınan 18 alan Teknik form render scope'undan çıkarıldı. Bu test'ler
+ * silinen keylerin geri sızmasını engeller (regression guard).
+ */
+describe('TechnicalDetailsFormComponent — Düzenle\'ye taşınan 18 alan FIELD_GROUPS dışı', () => {
+  const REMOVED_KEYS = [
+    'plannedStartTime', 'plannedEndTime',
+    'hdvgResourceId', 'int1ResourceId', 'int2ResourceId',
+    'offTubeId', 'languageId', 'secondLanguageId',
+    'demodId', 'tieId', 'virtualResourceId',
+    'ird1Id', 'ird2Id', 'ird3Id', 'fiber1Id', 'fiber2Id',
+    'modulationTypeId', 'videoCodingId',
+  ] as const;
+
+  it('FIELD_GROUPS hiçbiri 18 kaldırılan keyi içermez', () => {
+    const allKeysInGroups = FIELD_GROUPS.flatMap((g) => g.fields.map((f) => f.key as string));
+    for (const k of REMOVED_KEYS) {
+      expect(allKeysInGroups).not.toContain(k);
+    }
+  });
+
+  it('ALL_FIELDS hiçbiri 18 kaldırılan keyi içermez', () => {
+    const allKeys = ALL_FIELDS.map((f) => f.key as string);
+    for (const k of REMOVED_KEYS) {
+      expect(allKeys).not.toContain(k);
+    }
+  });
+
+  it('§5.2 "Ortak" ve §5.3 "IRD / Fiber" grupları FIELD_GROUPS\'ta yok', () => {
+    const ids = FIELD_GROUPS.map((g) => g.id);
+    expect(ids).not.toContain('ortak');
+    expect(ids).not.toContain('ird-fiber');
+  });
+
+  it('Korunan §5.1/§5.4/§5.5/§5.6 grup id\'leri mevcut', () => {
+    const ids = FIELD_GROUPS.map((g) => g.id);
+    expect(ids).toContain('yayin-ob');
+    expect(ids).toContain('ana-feed');
+    expect(ids).toContain('yedek-feed');
+    expect(ids).toContain('fiber-format');
   });
 });
