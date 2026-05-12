@@ -13,6 +13,7 @@ import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 
 import {
   ScheduleService,
@@ -68,6 +69,7 @@ function isMatchType(bt: BroadcastType): boolean {
     MatButtonModule, MatIconModule,
     MatDialogModule, MatProgressSpinnerModule,
     MatSnackBarModule, MatTabsModule, MatDividerModule,
+    MatCheckboxModule,
   ],
   template: `
     <h2 mat-dialog-title>Yeni Yayın Kaydı Ekle</h2>
@@ -128,7 +130,16 @@ function isMatchType(bt: BroadcastType): boolean {
 
             <div class="fixtures-section">
               <div class="fixtures-header">
-                <span class="fixtures-title">Fikstür</span>
+                <div class="fixtures-header-left">
+                  <span class="fixtures-title">Fikstür</span>
+                  <mat-checkbox class="select-all"
+                                [disabled]="selectAllDisabled()"
+                                [checked]="allFilteredSelected()"
+                                [indeterminate]="someFilteredSelected() && !allFilteredSelected()"
+                                (change)="toggleAllVisible()">
+                    Tümünü Seç
+                  </mat-checkbox>
+                </div>
                 <span class="fixtures-meta">
                   @if (!isOptaMode()) {
                     İçerik Türü = Müsabaka seçin
@@ -273,7 +284,10 @@ function isMatchType(bt: BroadcastType): boolean {
     .add-dialog-content {
       min-width: min(960px, 92vw);
       max-width: 96vw;
-      max-height: 78vh;
+      /* 2026-05-12: dikey yükseklik ~%50 artışı — fixture listesi nefes alsın.
+         1366x768'de viewport'a sığar (88vh ≈ 676px, dialog actions + header
+         hariç içerik ~580px). */
+      max-height: 88vh;
       padding: 12px 16px 8px;
       overflow: auto;
     }
@@ -292,12 +306,19 @@ function isMatchType(bt: BroadcastType): boolean {
       display: flex; justify-content: space-between; align-items: center;
       font-size: 12px; color: var(--bp-fg-2);
       border-bottom: 1px solid var(--bp-line-2); padding-bottom: 6px;
+      gap: 12px; flex-wrap: wrap;
+    }
+    .fixtures-header-left {
+      display: flex; align-items: center; gap: 14px;
     }
     .fixtures-title { font-weight: 600; color: var(--bp-fg-1); letter-spacing: 0.02em; }
     .fixtures-meta  { color: var(--bp-fg-3); }
+    .select-all { font-size: 12px; }
+    :host ::ng-deep .select-all .mdc-form-field { font-size: 12px; }
     .fixtures-list {
       display: flex; flex-direction: column; gap: 4px;
-      max-height: 320px; overflow-y: auto; padding-right: 4px;
+      /* 2026-05-12: liste yüksekliği ~%50 artışı (320 → 480). */
+      max-height: 480px; overflow-y: auto; padding-right: 4px;
     }
     .fixture-row {
       display: grid;
@@ -428,6 +449,28 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
 
   selectedCount = computed(() => this.selectedFixtureIds().size);
 
+  /** Görünen (week filter uygulanmış) fixture'ların tamamı seçili mi. */
+  allFilteredSelected = computed(() => {
+    const visible = this.filteredFixtures();
+    if (visible.length === 0) return false;
+    const sel = this.selectedFixtureIds();
+    return visible.every((f) => sel.has(f.matchId));
+  });
+
+  /** Görünenlerden en az biri seçili mi (indeterminate hesabı için). */
+  someFilteredSelected = computed(() => {
+    const sel = this.selectedFixtureIds();
+    return this.filteredFixtures().some((f) => sel.has(f.matchId));
+  });
+
+  selectAllDisabled = computed(() =>
+    !this.isOptaMode()
+    || !this.selectedCompetitionCode()
+    || this.fixturesLoading()
+    || this.filteredFixtures().length === 0
+    || this.saving(),
+  );
+
   saveButtonLabel = computed(() => {
     if (this.activeTab === 0) {
       const n = this.selectedCount();
@@ -510,6 +553,22 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
     const next = new Set(this.selectedFixtureIds());
     if (next.has(matchId)) next.delete(matchId);
     else next.add(matchId);
+    this.selectedFixtureIds.set(next);
+  }
+
+  /** "Tümünü Seç" toggle — yalnız görünen (week filter uygulanmış) fixture'ları
+   *  etkiler. Tamamı seçiliyse → görünen seçimleri kaldır; değilse → görünenleri
+   *  ekle. Görünmeyen (gizli) seçimler korunur. */
+  toggleAllVisible(): void {
+    if (this.selectAllDisabled()) return;
+    const visible = this.filteredFixtures();
+    const next = new Set(this.selectedFixtureIds());
+    const allSelected = this.allFilteredSelected();
+    if (allSelected) {
+      for (const f of visible) next.delete(f.matchId);
+    } else {
+      for (const f of visible) next.add(f.matchId);
+    }
     this.selectedFixtureIds.set(next);
   }
 

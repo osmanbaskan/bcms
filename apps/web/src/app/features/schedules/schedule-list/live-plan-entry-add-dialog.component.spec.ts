@@ -304,6 +304,93 @@ describe('LivePlanEntryAddDialogComponent', () => {
     expect(dialogRef.close).toHaveBeenCalled();
   });
 
+  // ── Tümünü Seç ──────────────────────────────────────────────────────────
+  it('Tümünü Seç: filteredFixtures boş veya disabled koşulda etkisiz', () => {
+    fixture.detectChanges();
+    // OPTA mode kapalı
+    expect(component.selectAllDisabled()).toBeTrue();
+    component.toggleAllVisible();
+    expect(component.selectedFixtureIds().size).toBe(0);
+
+    // OPTA mode açık ama Lig yok
+    component.onBroadcastTypeChange(1);
+    expect(component.selectAllDisabled()).toBeTrue();
+    component.toggleAllVisible();
+    expect(component.selectedFixtureIds().size).toBe(0);
+  });
+
+  it('Tümünü Seç: görünen fixture\'ları seçer (hafta filtresi yok → hepsi)', () => {
+    fixture.detectChanges();
+    component.onBroadcastTypeChange(1);
+    component.onCompetitionChange('115:2025-2026');
+
+    expect(component.selectAllDisabled()).toBeFalse();
+    expect(component.allFilteredSelected()).toBeFalse();
+    expect(component.someFilteredSelected()).toBeFalse();
+
+    component.toggleAllVisible();
+    expect(component.selectedFixtureIds().size).toBe(4); // tüm fixtures
+    expect(component.allFilteredSelected()).toBeTrue();
+    expect(component.saveButtonLabel()).toBe('4 Kaydı Ekle');
+  });
+
+  it('Tümünü Seç: hafta filtresi varken sadece o haftayı seçer (gizli seçimleri etkilemez)', () => {
+    fixture.detectChanges();
+    component.onBroadcastTypeChange(1);
+    component.onCompetitionChange('115:2025-2026');
+
+    // Önce 29. haftadan bir fixture'ı manuel seç (gizli kalacak referans)
+    component.onWeekChange(29);
+    component.toggleFixture('opta-3');
+    expect(component.selectedFixtureIds().size).toBe(1);
+
+    // 28. haftaya geç ve tümünü seç
+    component.onWeekChange(28);
+    component.toggleAllVisible();
+    // 29'dan kalan + 28'deki 2 (opta-1, opta-2) = 3
+    expect(component.selectedFixtureIds().size).toBe(3);
+    expect(component.selectedFixtureIds().has('opta-1')).toBeTrue();
+    expect(component.selectedFixtureIds().has('opta-2')).toBeTrue();
+    expect(component.selectedFixtureIds().has('opta-3')).toBeTrue();
+    // null haftalı opta-4 28. haftaya dahil değil
+    expect(component.selectedFixtureIds().has('opta-4')).toBeFalse();
+    expect(component.allFilteredSelected()).toBeTrue();
+  });
+
+  it('Tümünü Seç: hepsi seçiliyken tekrar tıklayınca görünen seçimleri kaldırır (gizli korunur)', () => {
+    fixture.detectChanges();
+    component.onBroadcastTypeChange(1);
+    component.onCompetitionChange('115:2025-2026');
+
+    // Tüm haftalar — 4 seçim
+    component.toggleAllVisible();
+    expect(component.selectedFixtureIds().size).toBe(4);
+
+    // 28. haftaya filtrele — 2 fixture görünür, hepsi seçili
+    component.onWeekChange(28);
+    expect(component.allFilteredSelected()).toBeTrue();
+
+    // Tümünü Seç toggle off → 28'deki 2 kaldırılır, 29 (opta-3) + null (opta-4) korunur
+    component.toggleAllVisible();
+    expect(component.selectedFixtureIds().size).toBe(2);
+    expect(component.selectedFixtureIds().has('opta-1')).toBeFalse();
+    expect(component.selectedFixtureIds().has('opta-2')).toBeFalse();
+    expect(component.selectedFixtureIds().has('opta-3')).toBeTrue();
+    expect(component.selectedFixtureIds().has('opta-4')).toBeTrue();
+  });
+
+  it('Tümünü Seç: indeterminate state — bazıları seçili iken some=true, all=false', () => {
+    fixture.detectChanges();
+    component.onBroadcastTypeChange(1);
+    component.onCompetitionChange('115:2025-2026');
+    component.toggleFixture('opta-1');
+    expect(component.someFilteredSelected()).toBeTrue();
+    expect(component.allFilteredSelected()).toBeFalse();
+    // toggleAll → all selected (görünenleri tamamla)
+    component.toggleAllVisible();
+    expect(component.allFilteredSelected()).toBeTrue();
+  });
+
   it('Lig null seçilince fixture listesi temizlenir + seçim sıfırlanır', () => {
     fixture.detectChanges();
     component.onBroadcastTypeChange(1);
