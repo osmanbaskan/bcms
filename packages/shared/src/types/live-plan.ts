@@ -49,6 +49,13 @@ export interface LivePlanEntry {
   /** OPTA Match.league.name join'i (read-only; 2026-05-11). Yazma payload'a
    *  girmez; UI read-only chip. matchId null veya match.league null ise null. */
   leagueName?:    string | null;
+  /** 2026-05-13: Yayın Planlama sekmesinde Lig/Hafta filter dropdown desteği.
+   *  `matches.league_id` + `matches.week_number` + `matches.season` join.
+   *  Read-only; write payload'a girmez. matchId null (manual entry) ise null.
+   *  Lig adında çakışma ihtimaline karşı dropdown'da id ile karşılaştır. */
+  leagueId?:      number | null;
+  weekNumber?:    number | null;
+  season?:        string | null;
   /** 2026-05-11: list/getById response zenginleştirmesi. 14 FK için (id +
    *  resolved name) çiftleri; isimler 10 lookup tablosundan batch-fetch ile
    *  backend tarafında resolve edilir. technical_details satırı yoksa null. */

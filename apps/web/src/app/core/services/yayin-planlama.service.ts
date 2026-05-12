@@ -4,6 +4,8 @@ import { ApiService } from './api.service';
 import {
   SCHEDULE_LOOKUP_TYPES,
   type CreateBroadcastScheduleDto,
+  type LivePlanEntry,
+  type LivePlanListResponse,
   type PaginatedResponse,
   type Schedule,
   type ScheduleLookupListResponse,
@@ -50,15 +52,41 @@ export interface YayinPlanlamaFilter {
   pageSize?: number;
 }
 
+/**
+ * 2026-05-13: Yayın Planlama listesi artık /api/v1/live-plan endpoint'inden
+ * besleniyor — her aktif Canlı Yayın Plan kaydı (eventKey/scheduleId şartı
+ * yok) listede görünür. Lig/Hafta filter Match relation üzerinden. EventKey
+ * filtresi kaldırıldı (live-plan eventKey non-unique; filter anlamsız).
+ */
+export interface LivePlanListFilter {
+  /** ISO UTC — eventStartTime >= from. */
+  from?:       string;
+  /** ISO UTC — eventStartTime <= to. */
+  to?:         string;
+  /** Comma-separated multi value: PLANNED,READY,IN_PROGRESS. */
+  status?:     string;
+  /** Lig filter; manuel entry (matchId null) bu filter aktifken hariç. */
+  leagueId?:   number;
+  /** Hafta filter; null weekNumber entry'ler hariç. */
+  weekNumber?: number;
+  page?:       number;
+  pageSize?:   number;
+}
+
+export interface LeagueFilterOption {
+  id:   number;
+  name: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class YayinPlanlamaService {
   private readonly api = inject(ApiService);
 
   // ── List ────────────────────────────────────────────────────────────────
-  /** GET /api/v1/schedules/broadcast — server-side broadcast-complete filter:
-   *  eventKey/selectedLivePlanEntryId/scheduleDate/scheduleTime not null.
-   *  Pagination server-side; frontend-side post-filter YOK (yanlış sayfa
-   *  sayımı önlenir). */
+  /** [legacy] GET /api/v1/schedules/broadcast — broadcast-complete schedule
+   *  row guarantee. Yayın Planlama listesi 2026-05-13 itibarıyla
+   *  `getLivePlanList()` kullanır; bu method form/picker akışı için
+   *  geriye-uyumluluk amacıyla korundu. */
   getList(filter: YayinPlanlamaFilter = {}): Observable<PaginatedResponse<Schedule>> {
     const params: Record<string, string | number | boolean> = {};
     if (filter.eventKey) params['eventKey'] = filter.eventKey;
@@ -68,6 +96,43 @@ export class YayinPlanlamaService {
     if (filter.page)     params['page']     = filter.page;
     if (filter.pageSize) params['pageSize'] = filter.pageSize;
     return this.api.get<PaginatedResponse<Schedule>>('/schedules/broadcast', params);
+  }
+
+  /**
+   * 2026-05-13: Yayın Planlama listesi canonical endpoint — Canlı Yayın
+   * Plan'daki tüm aktif kayıtlar (`deletedAt IS NULL`). EventKey/schedule
+   * şartı yok; manuel + OPTA kayıtların tümü görünür. Lig/Hafta filter
+   * Match relation üzerinden — manuel entry (matchId null) bu filter
+   * aktifken doğal olarak hariç.
+   */
+  getLivePlanList(filter: LivePlanListFilter = {}): Observable<LivePlanListResponse> {
+    const params: Record<string, string | number | boolean> = {};
+    if (filter.from)       params['from']       = filter.from;
+    if (filter.to)         params['to']         = filter.to;
+    if (filter.status)     params['status']     = filter.status;
+    if (filter.leagueId)   params['leagueId']   = filter.leagueId;
+    if (filter.weekNumber) params['weekNumber'] = filter.weekNumber;
+    if (filter.page)       params['page']       = filter.page;
+    if (filter.pageSize)   params['pageSize']   = filter.pageSize;
+    return this.api.get<LivePlanListResponse>('/live-plan', params);
+  }
+
+  /**
+   * Aktif live-plan entry'lerde kullanılan distinct lig listesi.
+   * UI Lig dropdown source.
+   */
+  getLeagueFilterOptions(): Observable<LeagueFilterOption[]> {
+    return this.api.get<LeagueFilterOption[]>('/live-plan/filters/leagues');
+  }
+
+  /**
+   * Aktif live-plan entry'lerde kullanılan distinct hafta numaraları.
+   * `leagueId` verilirse o lige scope'lanır. Null weekNumber dahil edilmez.
+   */
+  getWeekFilterOptions(leagueId?: number): Observable<number[]> {
+    const params: Record<string, string | number | boolean> = {};
+    if (leagueId !== undefined) params['leagueId'] = leagueId;
+    return this.api.get<number[]>('/live-plan/filters/weeks', params);
   }
 
   getById(id: number): Observable<Schedule> {

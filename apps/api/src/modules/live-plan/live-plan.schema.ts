@@ -110,6 +110,11 @@ export const listLivePlanQuerySchema = z.object({
   to:          z.string().datetime().optional(),
   matchId:     z.coerce.number().int().positive().optional(),
   optaMatchId: z.string().trim().min(1).optional(),
+  /** 2026-05-13: Yayın Planlama Lig/Hafta filter. `match.leagueId` / `match.weekNumber`
+   *  ile inner join filter; manuel entry (matchId NULL) bu filter aktifken
+   *  doğal olarak dışarıda kalır. */
+  leagueId:    z.coerce.number().int().positive().optional(),
+  weekNumber:  z.coerce.number().int().positive().optional(),
   page:        z.coerce.number().int().positive().default(1),
   pageSize:    z.coerce.number().int().positive().max(200).default(50),
 });

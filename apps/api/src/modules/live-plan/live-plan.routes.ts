@@ -55,6 +55,27 @@ export async function livePlanRoutes(app: FastifyInstance) {
     return svc.list(query);
   });
 
+  // ── Filter dropdown endpoints (2026-05-13: Yayın Planlama Lig/Hafta) ────
+  // Static path'ler param route (/:id) ÖNCESİNDE — Fastify radix-tree static
+  // priority verse de defensive sıralama.
+  app.get('/filters/leagues', {
+    preHandler: app.requireGroup(...PERMISSIONS.livePlan.read),
+    schema: { tags: ['LivePlan'], summary: 'Distinct leagues in active live-plan entries' },
+  }, async () => {
+    return svc.listLeagueFilterOptions();
+  });
+
+  const weekFilterQuerySchema = z.object({
+    leagueId: z.coerce.number().int().positive().optional(),
+  });
+  app.get('/filters/weeks', {
+    preHandler: app.requireGroup(...PERMISSIONS.livePlan.read),
+    schema: { tags: ['LivePlan'], summary: 'Distinct week numbers (optional leagueId scope)' },
+  }, async (request) => {
+    const { leagueId } = weekFilterQuerySchema.parse(request.query);
+    return svc.listWeekFilterOptions(leagueId);
+  });
+
   // ── GET /api/v1/live-plan/:id ────────────────────────────────────────────
   app.get<{ Params: { id: string } }>('/:id', {
     preHandler: app.requireGroup(...PERMISSIONS.livePlan.read),

@@ -96,4 +96,51 @@ describe('YayinPlanlamaService', () => {
     service.getLookupOptions('logo_options', false).subscribe();
     expect(apiSpy.get).toHaveBeenCalledWith('/schedules/lookups/logo_options', {});
   });
+
+  // ── 2026-05-13: Yayın Planlama → /live-plan endpoint reroute ──────────
+  it('getLivePlanList: GET /live-plan + lig/hafta query params', (done) => {
+    apiSpy.get.and.returnValue(of({ items: [], total: 0, page: 1, pageSize: 50 }));
+    service.getLivePlanList({
+      from: '2026-06-01T00:00:00.000Z',
+      to:   '2026-06-30T23:59:59.999Z',
+      status: 'PLANNED',
+      leagueId: 10,
+      weekNumber: 3,
+      page: 2,
+      pageSize: 25,
+    }).subscribe(() => done());
+    expect(apiSpy.get).toHaveBeenCalledWith('/live-plan', {
+      from:       '2026-06-01T00:00:00.000Z',
+      to:         '2026-06-30T23:59:59.999Z',
+      status:     'PLANNED',
+      leagueId:   10,
+      weekNumber: 3,
+      page:       2,
+      pageSize:   25,
+    });
+  });
+
+  it('getLivePlanList: filter boş → params boş object', () => {
+    apiSpy.get.and.returnValue(of({ items: [], total: 0, page: 1, pageSize: 50 }));
+    service.getLivePlanList().subscribe();
+    expect(apiSpy.get).toHaveBeenCalledWith('/live-plan', {});
+  });
+
+  it('getLeagueFilterOptions: GET /live-plan/filters/leagues', () => {
+    apiSpy.get.and.returnValue(of([{ id: 1, name: 'Süper Lig' }]));
+    service.getLeagueFilterOptions().subscribe();
+    expect(apiSpy.get).toHaveBeenCalledWith('/live-plan/filters/leagues');
+  });
+
+  it('getWeekFilterOptions: leagueId opsiyonel — param ile çağrılır', () => {
+    apiSpy.get.and.returnValue(of([1, 2, 3]));
+    service.getWeekFilterOptions(10).subscribe();
+    expect(apiSpy.get).toHaveBeenCalledWith('/live-plan/filters/weeks', { leagueId: 10 });
+  });
+
+  it('getWeekFilterOptions: leagueId yoksa params boş', () => {
+    apiSpy.get.and.returnValue(of([1, 2, 3]));
+    service.getWeekFilterOptions().subscribe();
+    expect(apiSpy.get).toHaveBeenCalledWith('/live-plan/filters/weeks', {});
+  });
 });

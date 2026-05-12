@@ -509,4 +509,194 @@ describe('LivePlanService — integration', () => {
     expect(r2.team1Name).toBeNull();
     expect(r2.team2Name).toBe('Yeni Takım 2');
   });
+
+  // ── 2026-05-13: Yayın Planlama Lig/Hafta filter + filter dropdown ──────
+  describe('list lig/hafta filter + filters/leagues + filters/weeks', () => {
+    async function seedFixture(): Promise<{
+      entryLigA1Wk1: number;
+      entryLigA2Wk2: number;
+      entryLigB1Wk5: number;
+      entryManual:   number;
+    }> {
+      const prisma = getRawPrisma();
+      // 2 lig: seed id=1 'Süper Lig'; ek olarak upsert (leagues seed tablosu —
+      // cleanupTransactional truncate etmez; tekrar create P2002 verir).
+      // Explicit id ile auto-increment sequence çakışmasını önle (seed id=1
+      // explicit set ediliyor; sequence nextval=1 → collision; safe yüksek id).
+      const ligB = await prisma.league.upsert({
+        where:  { code: 'opta-lig-b' },
+        update: {},
+        create: { id: 9999, code: 'opta-lig-b', name: 'TFF 1. Lig', country: 'Türkiye' },
+      });
+
+      // 3 OPTA match: ligA(week=1, week=2), ligB(week=5)
+      const m1 = await prisma.match.create({
+        data: { leagueId: 1, optaUid: 'flt-a1', homeTeamName: 'H1', awayTeamName: 'A1',
+                matchDate: new Date('2026-06-01T19:00:00Z'), season: '2025-2026', weekNumber: 1 },
+      });
+      const m2 = await prisma.match.create({
+        data: { leagueId: 1, optaUid: 'flt-a2', homeTeamName: 'H2', awayTeamName: 'A2',
+                matchDate: new Date('2026-06-08T19:00:00Z'), season: '2025-2026', weekNumber: 2 },
+      });
+      const m3 = await prisma.match.create({
+        data: { leagueId: ligB.id, optaUid: 'flt-b5', homeTeamName: 'H3', awayTeamName: 'A3',
+                matchDate: new Date('2026-06-15T19:00:00Z'), season: '2025-2026', weekNumber: 5 },
+      });
+
+      const reqA = makeRequest(makeUser({ username: 'flt-tester', groups: ['Booking'] }));
+      const eA1 = await svc.createFromOpta('flt-a1', reqA);
+      const eA2 = await svc.createFromOpta('flt-a2', reqA);
+      const eB5 = await svc.createFromOpta('flt-b5', reqA);
+      void m1; void m2; void m3;
+
+      // Manuel entry: matchId null
+      const eManual = await svc.create(
+        { title: 'Manuel kayıt', eventStartTime: '2026-06-20T19:00:00Z',
+          eventEndTime: '2026-06-20T21:00:00Z' },
+        reqA,
+      );
+
+      return {
+        entryLigA1Wk1: eA1.id, entryLigA2Wk2: eA2.id,
+        entryLigB1Wk5: eB5.id, entryManual: eManual.id,
+      };
+    }
+
+    test('leagueId filter → sadece o lige ait entry\'ler döner', async () => {
+      const ids = await seedFixture();
+      const filtered = await svc.list({
+        page: 1, pageSize: 50, leagueId: 1,
+      } as ListLivePlanQuery);
+      const filteredIds = filtered.items.map((r) => r.id);
+      expect(filteredIds).toContain(ids.entryLigA1Wk1);
+      expect(filteredIds).toContain(ids.entryLigA2Wk2);
+      expect(filteredIds).not.toContain(ids.entryLigB1Wk5);
+      expect(filteredIds).not.toContain(ids.entryManual);
+    });
+
+    test('weekNumber filter → sadece o haftaya ait entry\'ler döner', async () => {
+      const ids = await seedFixture();
+      const filtered = await svc.list({
+        page: 1, pageSize: 50, weekNumber: 2,
+      } as ListLivePlanQuery);
+      const filteredIds = filtered.items.map((r) => r.id);
+      expect(filteredIds).toContain(ids.entryLigA2Wk2);
+      expect(filteredIds).not.toContain(ids.entryLigA1Wk1);
+      expect(filteredIds).not.toContain(ids.entryLigB1Wk5);
+      expect(filteredIds).not.toContain(ids.entryManual);
+    });
+
+    test('leagueId + weekNumber → AND filter', async () => {
+      const ids = await seedFixture();
+      const filtered = await svc.list({
+        page: 1, pageSize: 50, leagueId: 1, weekNumber: 1,
+      } as ListLivePlanQuery);
+      const filteredIds = filtered.items.map((r) => r.id);
+      expect(filteredIds).toEqual([ids.entryLigA1Wk1]);
+    });
+
+    test('manuel entry (matchId null): filter yoksa görünür, leagueId/weekNumber filtre aktifken gizlenir', async () => {
+      const ids = await seedFixture();
+
+      // Filter YOK → manual görünür
+      const all = await svc.list({ page: 1, pageSize: 50 } as ListLivePlanQuery);
+      expect(all.items.map((r) => r.id)).toContain(ids.entryManual);
+
+      // leagueId filter → manual gizlenir
+      const byLeague = await svc.list({
+        page: 1, pageSize: 50, leagueId: 1,
+      } as ListLivePlanQuery);
+      expect(byLeague.items.map((r) => r.id)).not.toContain(ids.entryManual);
+
+      // weekNumber filter → manual gizlenir
+      const byWeek = await svc.list({
+        page: 1, pageSize: 50, weekNumber: 1,
+      } as ListLivePlanQuery);
+      expect(byWeek.items.map((r) => r.id)).not.toContain(ids.entryManual);
+    });
+
+    test('response: leagueId / leagueName / weekNumber / season alanları döner', async () => {
+      const ids = await seedFixture();
+      const all = await svc.list({ page: 1, pageSize: 50 } as ListLivePlanQuery);
+      const eA1 = all.items.find((r) => r.id === ids.entryLigA1Wk1);
+      expect(eA1).toBeDefined();
+      expect(eA1!.leagueId).toBe(1);
+      expect(eA1!.leagueName).toBe('Süper Lig');
+      expect(eA1!.weekNumber).toBe(1);
+      expect(eA1!.season).toBe('2025-2026');
+
+      // Manuel entry: tüm match join alanları null
+      const eM = all.items.find((r) => r.id === ids.entryManual);
+      expect(eM).toBeDefined();
+      expect(eM!.leagueId).toBeNull();
+      expect(eM!.leagueName).toBeNull();
+      expect(eM!.weekNumber).toBeNull();
+      expect(eM!.season).toBeNull();
+    });
+
+    test('deletedAt entry: list/filter ve filter dropdownlarda asla görünmez', async () => {
+      const ids = await seedFixture();
+      const prisma = getRawPrisma();
+      await prisma.livePlanEntry.update({
+        where: { id: ids.entryLigA1Wk1 },
+        data:  { deletedAt: new Date() },
+      });
+
+      const all = await svc.list({ page: 1, pageSize: 50 } as ListLivePlanQuery);
+      expect(all.items.map((r) => r.id)).not.toContain(ids.entryLigA1Wk1);
+
+      // Filter dropdown'lar deleted entry'lerin liglerini/haftalarını saymaz
+      // (test seed'inde ligA için 2 entry var — biri silindi, biri sağlam;
+      //  ligA hâlâ dropdown'da olmalı çünkü eA2 sağlam)
+      const leagues = await svc.listLeagueFilterOptions();
+      expect(leagues.find((l) => l.id === 1)).toBeDefined();
+    });
+
+    test('filters/leagues: aktif live-plan entry\'lerde kullanılan distinct ligler (sıralı)', async () => {
+      await seedFixture();
+      const leagues = await svc.listLeagueFilterOptions();
+      // Tam 2 lig: Süper Lig (id=1) + TFF 1. Lig (yeni)
+      expect(leagues.length).toBe(2);
+      // Sıralama lig adına göre tr-TR
+      const names = leagues.map((l) => l.name);
+      expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'tr-TR')));
+      // Süper Lig dahil
+      expect(leagues.some((l) => l.name === 'Süper Lig')).toBe(true);
+    });
+
+    test('filters/weeks: leagueId scope + null weekNumber hariç + artan sıralı', async () => {
+      const ids = await seedFixture();
+      void ids;
+
+      // Lig A (id=1): weekNumber {1, 2}
+      const weeksA = await svc.listWeekFilterOptions(1);
+      expect(weeksA).toEqual([1, 2]);
+
+      // Lig B (yeni id): weekNumber {5}
+      const leagues = await svc.listLeagueFilterOptions();
+      const ligB = leagues.find((l) => l.name === 'TFF 1. Lig')!;
+      const weeksB = await svc.listWeekFilterOptions(ligB.id);
+      expect(weeksB).toEqual([5]);
+
+      // leagueId yok → tüm liglerin distinct hafta {1,2,5}
+      const weeksAll = await svc.listWeekFilterOptions();
+      expect(weeksAll).toEqual([1, 2, 5]);
+    });
+
+    test('filters/weeks: null weekNumber entry dropdown\'da YOK', async () => {
+      const prisma = getRawPrisma();
+      // Entry ile bağlı Match.weekNumber null
+      await prisma.match.create({
+        data: { leagueId: 1, optaUid: 'flt-no-week', homeTeamName: 'X', awayTeamName: 'Y',
+                matchDate: new Date('2026-06-25T19:00:00Z'), season: '2025-2026',
+                weekNumber: null },
+      });
+      const req = makeRequest(makeUser({ username: 'flt-nw', groups: ['Booking'] }));
+      await svc.createFromOpta('flt-no-week', req);
+
+      const weeks = await svc.listWeekFilterOptions(1);
+      // Yalnız null weekNumber entry vardı, dropdown boş
+      expect(weeks).toEqual([]);
+    });
+  });
 });

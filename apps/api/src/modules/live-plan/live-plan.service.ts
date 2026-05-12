@@ -69,18 +69,34 @@ export interface TechnicalDetailsDisplay {
 
 export type LivePlanEntryWithLeague = LivePlanEntry & {
   leagueName:       string | null;
+  leagueId:         number | null;
+  weekNumber:       number | null;
+  season:           string | null;
   technicalDetails: TechnicalDetailsDisplay | null;
 };
 
 const MATCH_LEAGUE_INCLUDE = {
-  match: { include: { league: { select: { name: true } } } },
+  // 2026-05-13: Yayın Planlama Lig/Hafta filter için match.leagueId / weekNumber
+  // / season eklendi; league.id (name'in yanına) — dropdown comparison için
+  // ad çakışmasına karşı id kanonik.
+  match: { include: { league: { select: { id: true, name: true } } } },
   technicalDetails: true,
 } as const satisfies Prisma.LivePlanEntryInclude;
 
 type EntryWithIncludes = Prisma.LivePlanEntryGetPayload<{ include: typeof MATCH_LEAGUE_INCLUDE }>;
 
-function flattenLeagueOnly(row: EntryWithIncludes): { leagueName: string | null } {
-  return { leagueName: row.match?.league?.name ?? null };
+function flattenMatchJoin(row: EntryWithIncludes): {
+  leagueName: string | null;
+  leagueId:   number | null;
+  weekNumber: number | null;
+  season:     string | null;
+} {
+  return {
+    leagueName: row.match?.league?.name ?? null,
+    leagueId:   row.match?.league?.id   ?? null,
+    weekNumber: row.match?.weekNumber   ?? null,
+    season:     row.match?.season       ?? null,
+  };
 }
 
 /**
@@ -155,16 +171,32 @@ export interface ListLivePlanResult {
   pageSize: number;
 }
 
+/** 2026-05-13: Yayın Planlama Lig filter dropdown — aktif live-plan
+ *  entry'lerde kullanılan distinct ligler. */
+export interface LeagueFilterOption {
+  id:   number;
+  name: string;
+}
+
 export class LivePlanService {
   constructor(private readonly app: FastifyInstance) {}
 
   // ── List ───────────────────────────────────────────────────────────────────
   async list(query: ListLivePlanQuery): Promise<ListLivePlanResult> {
+    // 2026-05-13: leagueId / weekNumber filter Match relation join üzerinden.
+    // Match null ise (manual entry) bu filter aktifken doğal olarak dışarıda
+    // kalır (Prisma `match: { leagueId: X }` null relation'ı exclude eder).
+    const matchFilter: Prisma.MatchWhereInput = {};
+    if (query.leagueId   !== undefined) matchFilter.leagueId   = query.leagueId;
+    if (query.weekNumber !== undefined) matchFilter.weekNumber = query.weekNumber;
+    const hasMatchFilter = Object.keys(matchFilter).length > 0;
+
     const where: Prisma.LivePlanEntryWhereInput = {
       deletedAt: null, // K11 defansif filter (hard-delete sonrası no-op)
       ...(query.status?.length ? { status: { in: query.status } } : {}),
       ...(query.matchId !== undefined ? { matchId: query.matchId } : {}),
       ...(query.optaMatchId !== undefined ? { optaMatchId: query.optaMatchId } : {}),
+      ...(hasMatchFilter ? { match: matchFilter } : {}),
       ...this.buildDateRangeWhere(query.from, query.to),
     };
 
@@ -187,6 +219,59 @@ export class LivePlanService {
       page:     query.page,
       pageSize: query.pageSize,
     };
+  }
+
+  // ── Filter dropdowns (2026-05-13) ─────────────────────────────────────────
+  /**
+   * Yayın Planlama Lig dropdown — aktif live-plan entry'lerinde kullanılan
+   * distinct ligler. `live_plan_entries.matchId` null değil + `deletedAt`
+   * null entry'lerin match.league.id + name'i. Sıralama: lig adı.
+   *
+   * Boş response (0 lig) UI tarafında "Tümü" tek option ile gösterilir.
+   */
+  async listLeagueFilterOptions(): Promise<LeagueFilterOption[]> {
+    const rows = await this.app.prisma.livePlanEntry.findMany({
+      where: {
+        deletedAt: null,
+        matchId:   { not: null },
+      },
+      select: {
+        match: { select: { league: { select: { id: true, name: true } } } },
+      },
+    });
+    const distinct = new Map<number, string>();
+    for (const r of rows) {
+      const lg = r.match?.league;
+      if (lg) distinct.set(lg.id, lg.name);
+    }
+    return Array.from(distinct.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'tr-TR'));
+  }
+
+  /**
+   * Yayın Planlama Hafta dropdown — aktif live-plan entry'lerinde
+   * kullanılan distinct weekNumber'lar. `leagueId` parametresi varsa o
+   * lige scope'lanır. `match.weekNumber NULL` entry'ler hariç. Sıralama:
+   * artan.
+   */
+  async listWeekFilterOptions(leagueId?: number): Promise<number[]> {
+    const rows = await this.app.prisma.livePlanEntry.findMany({
+      where: {
+        deletedAt: null,
+        match: {
+          weekNumber: { not: null },
+          ...(leagueId !== undefined ? { leagueId } : {}),
+        },
+      },
+      select: { match: { select: { weekNumber: true } } },
+    });
+    const distinct = new Set<number>();
+    for (const r of rows) {
+      const w = r.match?.weekNumber;
+      if (typeof w === 'number') distinct.add(w);
+    }
+    return Array.from(distinct).sort((a, b) => a - b);
   }
 
   // ── Detail ─────────────────────────────────────────────────────────────────
@@ -274,7 +359,7 @@ export class LivePlanService {
     void match;
     return {
       ...(rest as LivePlanEntry),
-      ...flattenLeagueOnly(row),
+      ...flattenMatchJoin(row),
       technicalDetails: buildTechnicalDisplay(technicalDetails, names),
     };
   }
