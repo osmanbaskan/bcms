@@ -13,7 +13,8 @@ import {
 } from '../../../core/services/schedule.service';
 
 const BT_FIXTURE: BroadcastType[] = [
-  { id: 1, code: 'MATCH', description: 'Maç' },
+  { id: 1, code: 'MATCH',  description: 'Müsabaka' },
+  { id: 2, code: 'STUDIO', description: 'Stüdyo' },
 ];
 
 const COMP_FIXTURE: FixtureCompetition[] = [
@@ -23,11 +24,32 @@ const COMP_FIXTURE: FixtureCompetition[] = [
 
 const FIXTURES_FIXTURE: OptaFixtureRow[] = [
   {
-    matchId: 'opta-9',
+    matchId: 'opta-1',
     competitionId: '115', competitionName: 'Süper Lig', season: '2025-2026',
     homeTeamName: 'Galatasaray', awayTeamName: 'Fenerbahçe',
     matchDate: '2026-06-01T17:00:00.000Z',
     weekNumber: 28,
+  },
+  {
+    matchId: 'opta-2',
+    competitionId: '115', competitionName: 'Süper Lig', season: '2025-2026',
+    homeTeamName: 'Beşiktaş', awayTeamName: 'Trabzonspor',
+    matchDate: '2026-06-02T17:00:00.000Z',
+    weekNumber: 28,
+  },
+  {
+    matchId: 'opta-3',
+    competitionId: '115', competitionName: 'Süper Lig', season: '2025-2026',
+    homeTeamName: 'Adana D.S.', awayTeamName: 'Antalyaspor',
+    matchDate: '2026-06-08T17:00:00.000Z',
+    weekNumber: 29,
+  },
+  {
+    matchId: 'opta-4',
+    competitionId: '115', competitionName: 'Süper Lig', season: '2025-2026',
+    homeTeamName: 'Konyaspor', awayTeamName: 'Sivasspor',
+    matchDate: '2026-06-15T17:00:00.000Z',
+    weekNumber: null,
   },
 ];
 
@@ -48,8 +70,10 @@ describe('LivePlanEntryAddDialogComponent', () => {
     svc.getBroadcastTypes.and.returnValue(of(BT_FIXTURE));
     svc.getFixtureCompetitions.and.returnValue(of(COMP_FIXTURE));
     svc.getOptaFixtures.and.returnValue(of(FIXTURES_FIXTURE));
-    (svc.createLivePlanFromOpta as unknown as jasmine.Spy).and.returnValue(of({ id: 42 }));
-    (svc.createLivePlanEntry as unknown as jasmine.Spy).and.returnValue(of({ id: 43 }));
+    (svc.createLivePlanFromOpta as unknown as jasmine.Spy).and.callFake((dto: { optaMatchId: string }) =>
+      of({ id: 100, title: dto.optaMatchId }),
+    );
+    (svc.createLivePlanEntry as unknown as jasmine.Spy).and.returnValue(of({ id: 999 }));
 
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
 
@@ -71,64 +95,170 @@ describe('LivePlanEntryAddDialogComponent', () => {
     fixture.detectChanges();
     expect(svc.getBroadcastTypes).toHaveBeenCalledTimes(1);
     expect(svc.getFixtureCompetitions).toHaveBeenCalledTimes(1);
-    expect(component.broadcastTypes()).toEqual(BT_FIXTURE);
-    expect(component.competitions()).toEqual(COMP_FIXTURE);
   });
 
-  it('competition seçilince /opta/fixtures çağrılır (competitionId+season+from)', () => {
+  it('Müsabaka seçilmediyse isOptaMode=false; Lig/Hafta/fixture/Kaydet disabled', () => {
     fixture.detectChanges();
+    expect(component.isOptaMode()).toBeFalse();
+    expect(component.canSave()).toBeFalse();
+    // Stüdyo seçilince yine OPTA değil
+    component.onBroadcastTypeChange(2);
+    expect(component.isOptaMode()).toBeFalse();
+    expect(component.canSave()).toBeFalse();
+  });
+
+  it('Müsabaka seçilince isOptaMode=true; Lig henüz seçili değilse Kaydet disabled', () => {
+    fixture.detectChanges();
+    component.onBroadcastTypeChange(1);
+    expect(component.isOptaMode()).toBeTrue();
+    expect(component.canSave()).toBeFalse();
+  });
+
+  it('İçerik Türü değişince Lig/Hafta/fikstür/seçim reset edilir', () => {
+    fixture.detectChanges();
+    component.onBroadcastTypeChange(1);
+    component.onCompetitionChange('115:2025-2026');
+    component.toggleFixture('opta-1');
+    expect(component.selectedFixtureIds().size).toBe(1);
+
+    component.onBroadcastTypeChange(2); // Stüdyo
+    expect(component.selectedCompetitionCode()).toBeNull();
+    expect(component.selectedWeek()).toBeNull();
+    expect(component.fixtures()).toEqual([]);
+    expect(component.selectedFixtureIds().size).toBe(0);
+  });
+
+  it('Lig seçilince /opta/fixtures çağrılır (competitionId+season+from)', () => {
+    fixture.detectChanges();
+    component.onBroadcastTypeChange(1);
     component.onCompetitionChange('115:2025-2026');
     expect(svc.getOptaFixtures).toHaveBeenCalledTimes(1);
     const [compId, season, fromIso] = svc.getOptaFixtures.calls.mostRecent().args;
     expect(compId).toBe('115');
     expect(season).toBe('2025-2026');
     expect(typeof fromIso).toBe('string');
-    expect(component.fixtures()).toEqual(FIXTURES_FIXTURE);
+    expect(component.fixtures().length).toBe(4);
   });
 
-  it('canSave: fixture seçilmediyse false, seçilince true (sekme 0)', () => {
+  it('availableWeeks: distinct weekNumber (null hariç), artan sırada', () => {
     fixture.detectChanges();
-    component.activeTab = 0;
-    expect(component.canSave()).toBeFalse();
+    component.onBroadcastTypeChange(1);
+    component.onCompetitionChange('115:2025-2026');
+    expect(component.availableWeeks()).toEqual([28, 29]);
+  });
+
+  it('Hafta filter: Tüm Haftalar (null) tüm fikstürler + null haftalı; spesifik hafta sadece eşleşen + null hariç', () => {
+    fixture.detectChanges();
+    component.onBroadcastTypeChange(1);
+    component.onCompetitionChange('115:2025-2026');
+    expect(component.filteredFixtures().length).toBe(4);
+
+    component.onWeekChange(28);
+    expect(component.filteredFixtures().map((f) => f.matchId)).toEqual(['opta-1', 'opta-2']);
+
+    component.onWeekChange(29);
+    expect(component.filteredFixtures().map((f) => f.matchId)).toEqual(['opta-3']);
+
+    component.onWeekChange(null);
+    expect(component.filteredFixtures().length).toBe(4);
+  });
+
+  it('Multi-select: toggleFixture seçer/çıkarır; canSave seçim sayısına göre', () => {
+    fixture.detectChanges();
+    component.onBroadcastTypeChange(1);
     component.onCompetitionChange('115:2025-2026');
     expect(component.canSave()).toBeFalse();
-    component.selectFixture('opta-9');
+
+    component.toggleFixture('opta-1');
+    component.toggleFixture('opta-2');
+    expect(component.selectedCount()).toBe(2);
     expect(component.canSave()).toBeTrue();
+    expect(component.saveButtonLabel()).toBe('2 Kaydı Ekle');
+
+    component.toggleFixture('opta-1'); // toggle off
+    expect(component.selectedCount()).toBe(1);
+    expect(component.saveButtonLabel()).toBe('1 Kaydı Ekle');
+
+    component.toggleFixture('opta-2'); // toggle off
+    expect(component.selectedCount()).toBe(0);
+    expect(component.canSave()).toBeFalse();
+    expect(component.saveButtonLabel()).toBe('Kaydet');
   });
 
-  it('save (sekme 0): POST /live-plan/from-opta { optaMatchId } ve dialog kapanır', () => {
+  it('save (batch): seçili her optaMatchId için createLivePlanFromOpta çağrılır; tümü başarılıysa dialog kapanır', () => {
     fixture.detectChanges();
-    component.activeTab = 0;
+    component.onBroadcastTypeChange(1);
     component.onCompetitionChange('115:2025-2026');
-    component.selectFixture('opta-9');
+    component.toggleFixture('opta-1');
+    component.toggleFixture('opta-3');
+
     component.save();
-    expect(svc.createLivePlanFromOpta).toHaveBeenCalledWith({ optaMatchId: 'opta-9' });
+
+    expect(svc.createLivePlanFromOpta).toHaveBeenCalledTimes(2);
+    const calls = svc.createLivePlanFromOpta.calls.allArgs().map((a) => (a[0] as { optaMatchId: string }).optaMatchId);
+    expect(calls).toEqual(['opta-1', 'opta-3']);
     expect(dialogRef.close).toHaveBeenCalled();
+    const closeArg = dialogRef.close.calls.mostRecent().args[0] as { created: unknown[]; duplicates: string[]; errors: unknown[] };
+    expect(closeArg.created.length).toBe(2);
+    expect(closeArg.duplicates).toEqual([]);
+    expect(closeArg.errors).toEqual([]);
   });
 
-  it('save 409: dialog açık kalır, error mesajı set edilir', () => {
-    svc.createLivePlanFromOpta.and.returnValue(
-      throwError(() => new HttpErrorResponse({ status: 409, error: { message: 'duplicate' } })),
-    );
+  it('save (batch): 409 duplicate partial failure — diğerleri devam eder, dialog kapanır, özet duplicates içerir', () => {
+    (svc.createLivePlanFromOpta as unknown as jasmine.Spy).and.callFake((dto: { optaMatchId: string }) => {
+      if (dto.optaMatchId === 'opta-2') {
+        return throwError(() => new HttpErrorResponse({ status: 409, error: { message: 'duplicate' } }));
+      }
+      return of({ id: 200, title: dto.optaMatchId });
+    });
+
     fixture.detectChanges();
-    component.activeTab = 0;
+    component.onBroadcastTypeChange(1);
     component.onCompetitionChange('115:2025-2026');
-    component.selectFixture('opta-9');
+    component.toggleFixture('opta-1');
+    component.toggleFixture('opta-2');
+    component.toggleFixture('opta-3');
     component.save();
+
+    expect(svc.createLivePlanFromOpta).toHaveBeenCalledTimes(3);
+    expect(dialogRef.close).toHaveBeenCalledTimes(1);
+    const closeArg = dialogRef.close.calls.mostRecent().args[0] as { created: unknown[]; duplicates: string[]; errors: unknown[] };
+    expect(closeArg.created.length).toBe(2);
+    expect(closeArg.duplicates).toEqual(['opta-2']);
+    expect(closeArg.errors).toEqual([]);
+  });
+
+  it('save (batch): hiç başarı yoksa dialog açık kalır, errorMsg set edilir', () => {
+    (svc.createLivePlanFromOpta as unknown as jasmine.Spy).and.callFake(() =>
+      throwError(() => new HttpErrorResponse({ status: 409 })),
+    );
+
+    fixture.detectChanges();
+    component.onBroadcastTypeChange(1);
+    component.onCompetitionChange('115:2025-2026');
+    component.toggleFixture('opta-1');
+    component.toggleFixture('opta-2');
+    component.save();
+
     expect(dialogRef.close).not.toHaveBeenCalled();
-    expect(component.errorMsg()).toContain('aktif kayıt var');
+    expect(component.errorMsg()).toContain('mevcut');
   });
 
-  it('save 404: OPTA match bulunamadı mesajı', () => {
-    svc.createLivePlanFromOpta.and.returnValue(
-      throwError(() => new HttpErrorResponse({ status: 404, error: { message: 'not found' } })),
-    );
+  it('save (batch): karışık 409 + 400 — dialog açık kalır (success=0)', () => {
+    (svc.createLivePlanFromOpta as unknown as jasmine.Spy).and.callFake((dto: { optaMatchId: string }) => {
+      const status = dto.optaMatchId === 'opta-1' ? 409 : 400;
+      return throwError(() => new HttpErrorResponse({ status, error: { message: 'x' } }));
+    });
+
     fixture.detectChanges();
-    component.activeTab = 0;
+    component.onBroadcastTypeChange(1);
     component.onCompetitionChange('115:2025-2026');
-    component.selectFixture('opta-9');
+    component.toggleFixture('opta-1');
+    component.toggleFixture('opta-3');
     component.save();
-    expect(component.errorMsg()).toBeTruthy();
+
+    expect(dialogRef.close).not.toHaveBeenCalled();
+    expect(component.errorMsg()).toContain('hata');
   });
 
   it('save (sekme 1 manuel): POST /live-plan ile ISO datetime ve trim edilmiş alanlar', () => {
@@ -154,13 +284,16 @@ describe('LivePlanEntryAddDialogComponent', () => {
     expect(dialogRef.close).toHaveBeenCalled();
   });
 
-  it('competition null seçilince fixture listesi temizlenir', () => {
+  it('Lig null seçilince fixture listesi temizlenir + seçim sıfırlanır', () => {
     fixture.detectChanges();
+    component.onBroadcastTypeChange(1);
     component.onCompetitionChange('115:2025-2026');
+    component.toggleFixture('opta-1');
     expect(component.fixtures().length).toBeGreaterThan(0);
 
     component.onCompetitionChange(null);
     expect(component.fixtures()).toEqual([]);
-    expect(component.selectedFixtureId()).toBeNull();
+    expect(component.selectedFixtureIds().size).toBe(0);
+    expect(component.selectedWeek()).toBeNull();
   });
 });
