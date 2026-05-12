@@ -12,10 +12,13 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSelectModule } from '@angular/material/select';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { DateAdapter, MAT_DATE_FORMATS, MAT_DATE_LOCALE, MatNativeDateModule, NativeDateAdapter } from '@angular/material/core';
 
 import { ApiService } from '../../../core/services/api.service';
 import {
   composeIstanbulIso,
+  dateOnlyToIstanbul,
   formatIstanbulDate,
   formatIstanbulTime,
 } from '../../../core/time/tz.helpers';
@@ -70,15 +73,53 @@ const TECH_FIELD_KEYS = [
 ] as const;
 type TechFieldKey = typeof TECH_FIELD_KEYS[number];
 
+// 2026-05-12: Transmisyon tarih alanları için MatDatepicker (Türkçe locale,
+// dd.MM.yyyy display). Karşılaşma Tarihi mevcut native <input type="date">
+// olarak korunur (kullanıcı kararı; daha sonra aynı standarda alınabilir).
+const TR_DATE_FORMATS = {
+  parse: { dateInput: 'dd.MM.yyyy' },
+  display: {
+    dateInput: 'dd.MM.yyyy',
+    monthYearLabel: { month: 'short', year: 'numeric' },
+    dateA11yLabel: { day: '2-digit', month: 'long', year: 'numeric' },
+    monthYearA11yLabel: { month: 'long', year: 'numeric' },
+  },
+};
+
+class TrDateAdapter extends NativeDateAdapter {
+  override parse(value: string | null, _parseFormat: unknown): Date | null {
+    if (!value) return null;
+    const match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(value.trim());
+    if (match) {
+      const date = new Date(+match[3], +match[2] - 1, +match[1]);
+      return isNaN(date.getTime()) ? null : date;
+    }
+    return super.parse(value, _parseFormat);
+  }
+
+  override format(date: Date, displayFormat: unknown): string {
+    if (displayFormat === 'dd.MM.yyyy') {
+      return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()}`;
+    }
+    return super.format(date, displayFormat as object);
+  }
+}
+
 @Component({
   selector: 'app-live-plan-entry-edit-dialog',
   standalone: true,
+  providers: [
+    { provide: MAT_DATE_LOCALE, useValue: 'tr-TR' },
+    { provide: MAT_DATE_FORMATS, useValue: TR_DATE_FORMATS },
+    { provide: DateAdapter, useClass: TrDateAdapter, deps: [MAT_DATE_LOCALE] },
+  ],
   imports: [
     CommonModule, FormsModule,
     MatFormFieldModule, MatInputModule, MatSelectModule,
     MatButtonModule, MatIconModule,
     MatDialogModule, MatProgressSpinnerModule,
     MatSnackBarModule,
+    MatDatepickerModule, MatNativeDateModule,
     LookupSelectComponent,
   ],
   template: `
@@ -157,9 +198,12 @@ type TechFieldKey = typeof TECH_FIELD_KEYS[number];
         <div class="row">
           <mat-form-field appearance="outline">
             <mat-label>Transmisyon Başlangıç Tarihi</mat-label>
-            <input matInput type="date"
-                   [(ngModel)]="form.plannedStartDate"
+            <input matInput [matDatepicker]="psPicker"
+                   [ngModel]="plannedStartDateAsDate()"
+                   (ngModelChange)="onPlannedStartDateChange($event)"
                    [ngModelOptions]="{standalone:true}">
+            <mat-datepicker-toggle matIconSuffix [for]="psPicker"></mat-datepicker-toggle>
+            <mat-datepicker #psPicker></mat-datepicker>
           </mat-form-field>
           <mat-form-field appearance="outline">
             <mat-label>Transmisyon Başlangıç Saati</mat-label>
@@ -169,9 +213,12 @@ type TechFieldKey = typeof TECH_FIELD_KEYS[number];
           </mat-form-field>
           <mat-form-field appearance="outline">
             <mat-label>Transmisyon Bitiş Tarihi</mat-label>
-            <input matInput type="date"
-                   [(ngModel)]="form.plannedEndDate"
+            <input matInput [matDatepicker]="pePicker"
+                   [ngModel]="plannedEndDateAsDate()"
+                   (ngModelChange)="onPlannedEndDateChange($event)"
                    [ngModelOptions]="{standalone:true}">
+            <mat-datepicker-toggle matIconSuffix [for]="pePicker"></mat-datepicker-toggle>
+            <mat-datepicker #pePicker></mat-datepicker>
           </mat-form-field>
           <mat-form-field appearance="outline">
             <mat-label>Transmisyon Bitiş Saati</mat-label>
@@ -480,6 +527,31 @@ export class LivePlanEntryEditDialogComponent implements OnInit {
     const msg = err?.error?.message ?? err?.message ?? 'Kaydedilemedi';
     this.errorMsg.set(msg);
     this.snack.open(msg, 'Kapat', { duration: 4000 });
+  }
+
+  // ── Datepicker adapters (Transmisyon Tarih alanları) ──────────────────────
+  // Form internal state YYYY-MM-DD string; MatDatepicker iki yöne Date kullanır.
+  // ngModel = Date | null; ngModelChange Date | null → dateOnlyToIstanbul ile
+  // YYYY-MM-DD string'e geri çevirilir. Timezone Lock korunur (composeIstanbulIso
+  // save sırasında string'i Türkiye gün başı + saat ile UTC ISO'ya dönüştürür).
+  plannedStartDateAsDate(): Date | null {
+    return this.parseLocalYmd(this.form.plannedStartDate);
+  }
+  plannedEndDateAsDate(): Date | null {
+    return this.parseLocalYmd(this.form.plannedEndDate);
+  }
+  onPlannedStartDateChange(d: Date | null): void {
+    this.form.plannedStartDate = d ? dateOnlyToIstanbul(d) : '';
+  }
+  onPlannedEndDateChange(d: Date | null): void {
+    this.form.plannedEndDate = d ? dateOnlyToIstanbul(d) : '';
+  }
+  /** YYYY-MM-DD → Date (local midnight). Boş string → null. */
+  private parseLocalYmd(ymd: string): Date | null {
+    if (!ymd) return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+    if (!m) return null;
+    return new Date(+m[1], +m[2] - 1, +m[3]);
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
