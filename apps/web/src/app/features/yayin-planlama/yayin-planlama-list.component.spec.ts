@@ -65,10 +65,6 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
     ]));
     serviceSpy.getWeekFilterOptions.and.returnValue(of([1, 2, 3]));
     serviceSpy.updateLivePlanChannels.and.returnValue(of(makeEntry({ version: 2, channel1Id: 1 })));
-    (serviceSpy as unknown as { updateLivePlanEventStart: jasmine.Spy }).updateLivePlanEventStart =
-      jasmine.createSpy('updateLivePlanEventStart').and.returnValue(
-        of(makeEntry({ version: 2, eventStartTime: '2026-06-02T19:00:00.000Z' })),
-      );
 
     apiSpy = jasmine.createSpyObj<ApiService>('ApiService', ['get']);
     // /channels/catalog → 2 channel fixture (generic callFake; explicit cast).
@@ -502,141 +498,83 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
     });
   });
 
-  describe('Inline tarih düzenleme', () => {
-    it('yetkili kullanıcıda Tarih hücresinde <input type="date"> render edilir', () => {
+  describe('Tarih: read-only kolon + filter datepicker', () => {
+    it('satır Tarih hücresinde input[type="date"] render EDİLMEZ (inline edit kaldırıldı)', () => {
       const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
       fixture.detectChanges();
-      const inputs = (fixture.nativeElement as HTMLElement)
-        .querySelectorAll('.td-date input[type="date"]');
-      expect(inputs.length).toBe(1);
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelectorAll('table input[type="date"]').length).toBe(0);
     });
 
-    it('dateInputValue: UTC ISO → Türkiye "YYYY-MM-DD"', () => {
-      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
-      fixture.detectChanges();
-      const cmp = fixture.componentInstance as unknown as {
-        dateInputValue(r: LivePlanEntry): string;
-      };
-      // 2026-06-01T19:00:00Z → Türkiye 2026-06-01 22:00 → "2026-06-01"
-      expect(cmp.dateInputValue(makeEntry({ eventStartTime: '2026-06-01T19:00:00.000Z' })))
-        .toBe('2026-06-01');
-      // 23:30Z → ertesi gün Türkiye
-      expect(cmp.dateInputValue(makeEntry({ eventStartTime: '2026-12-31T23:30:00.000Z' })))
-        .toBe('2027-01-01');
-    });
-
-    it('onDateChange: yeni tarih → updateLivePlanEventStart çağrılır + mevcut Türkiye saati korunur', () => {
-      // row.eventStartTime = 2026-06-01T19:00:00Z → Türkiye 22:00
+    it('satır Tarih read-only "DD.MM.YYYY" gösterir', () => {
       serviceSpy.getLivePlanList.and.returnValue(of(makeList([
-        makeEntry({ id: 50, version: 3, eventStartTime: '2026-06-01T19:00:00.000Z' }),
+        makeEntry({ eventStartTime: '2026-06-01T19:00:00.000Z' }),
       ])));
       const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
       fixture.detectChanges();
-      const cmp = fixture.componentInstance as unknown as {
-        rows(): LivePlanEntry[];
-        onDateChange(r: LivePlanEntry, d: string): void;
-      };
-      cmp.onDateChange(cmp.rows()[0], '2026-06-15'); // 15 Haziran 22:00 Türkiye
-      const spy = (serviceSpy as unknown as {
-        updateLivePlanEventStart: jasmine.Spy;
-      }).updateLivePlanEventStart;
-      expect(spy).toHaveBeenCalled();
-      const [id, iso, version] = spy.calls.mostRecent().args;
-      expect(id).toBe(50);
-      expect(version).toBe(3);
-      // 2026-06-15 22:00 Türkiye = 19:00 UTC
-      expect(iso).toBe('2026-06-15T19:00:00.000Z');
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.textContent).toContain('01.06.2026');
     });
 
-    it('onDateChange: aynı tarih → updateLivePlanEventStart ÇAĞRILMAZ', () => {
-      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
-        makeEntry({ id: 51, eventStartTime: '2026-06-01T19:00:00.000Z' }),
-      ])));
+    it('filter bar Başlangıç/Bitiş için mat-datepicker + toggle render edilir', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      // 2 datepicker toggle (Başlangıç + Bitiş)
+      const toggles = host.querySelectorAll('.filter-bar mat-datepicker-toggle');
+      expect(toggles.length).toBe(2);
+    });
+
+    it('reload: dateFrom Date olarak set edilince getLivePlanList from ISO Türkiye günü 00:00 compose eder', () => {
       const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
       fixture.detectChanges();
       const cmp = fixture.componentInstance as unknown as {
-        rows(): LivePlanEntry[];
-        onDateChange(r: LivePlanEntry, d: string): void;
+        dateFrom: Date | null;
+        reload(): void;
       };
-      const spy = (serviceSpy as unknown as {
-        updateLivePlanEventStart: jasmine.Spy;
-      }).updateLivePlanEventStart;
-      spy.calls.reset();
-      cmp.onDateChange(cmp.rows()[0], '2026-06-01'); // aynı gün
-      expect(spy).not.toHaveBeenCalled();
+      // 1 Haziran 2026 (browser local — BCMS Türkiye-only assumption)
+      cmp.dateFrom = new Date(2026, 5, 1);
+      cmp.reload();
+      const args = serviceSpy.getLivePlanList.calls.mostRecent().args[0]!;
+      // Türkiye 2026-06-01 00:00 = UTC 2026-05-31 21:00
+      expect(args.from).toBe('2026-05-31T21:00:00.000Z');
     });
 
-    it('onDateChange success: row updated entry ile değiştirilir (yeni version)', () => {
-      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
-        makeEntry({ id: 52, version: 5, eventStartTime: '2026-06-01T19:00:00.000Z' }),
-      ])));
-      const spy = (serviceSpy as unknown as {
-        updateLivePlanEventStart: jasmine.Spy;
-      }).updateLivePlanEventStart;
-      spy.and.returnValue(of(makeEntry({
-        id: 52, version: 6, eventStartTime: '2026-06-15T19:00:00.000Z',
-      })));
+    it('reload: dateTo set edilince getLivePlanList to ISO Türkiye günü 23:59:59 compose eder', () => {
       const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
       fixture.detectChanges();
       const cmp = fixture.componentInstance as unknown as {
-        rows(): LivePlanEntry[];
-        onDateChange(r: LivePlanEntry, d: string): void;
+        dateTo: Date | null;
+        reload(): void;
       };
-      cmp.onDateChange(cmp.rows()[0], '2026-06-15');
-      const updated = cmp.rows()[0];
-      expect(updated.version).toBe(6);
-      expect(updated.eventStartTime).toBe('2026-06-15T19:00:00.000Z');
+      cmp.dateTo = new Date(2026, 5, 1);
+      cmp.reload();
+      const args = serviceSpy.getLivePlanList.calls.mostRecent().args[0]!;
+      // Türkiye 2026-06-01 23:59:59 = UTC 2026-06-01 20:59:59
+      expect(args.to).toBe('2026-06-01T20:59:59.000Z');
     });
 
-    it('onDateChange error: optimistic rollback', () => {
-      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
-        makeEntry({ id: 53, version: 7, eventStartTime: '2026-06-01T19:00:00.000Z' }),
-      ])));
-      const spy = (serviceSpy as unknown as {
-        updateLivePlanEventStart: jasmine.Spy;
-      }).updateLivePlanEventStart;
-      spy.and.returnValue(throwError(() =>
-        new HttpErrorResponse({ status: 400, error: { message: 'invalid' } }),
-      ));
+    it('reload: dateFrom/dateTo null → from/to param undefined', () => {
       const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
       fixture.detectChanges();
       const cmp = fixture.componentInstance as unknown as {
-        rows(): LivePlanEntry[];
-        onDateChange(r: LivePlanEntry, d: string): void;
+        dateFrom: Date | null;
+        dateTo:   Date | null;
+        reload(): void;
       };
-      cmp.onDateChange(cmp.rows()[0], '2026-06-15');
-      const after = cmp.rows()[0];
-      expect(after.eventStartTime).toBe('2026-06-01T19:00:00.000Z');
-      expect(after.version).toBe(7);
+      cmp.dateFrom = null;
+      cmp.dateTo   = null;
+      cmp.reload();
+      const args = serviceSpy.getLivePlanList.calls.mostRecent().args[0]!;
+      expect(args.from).toBeUndefined();
+      expect(args.to).toBeUndefined();
     });
 
-    it('onDateChange 412 conflict: reload tetiklenir', () => {
-      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
-        makeEntry({ id: 54, version: 8 }),
-      ])));
-      const spy = (serviceSpy as unknown as {
-        updateLivePlanEventStart: jasmine.Spy;
-      }).updateLivePlanEventStart;
-      spy.and.returnValue(throwError(() =>
-        new HttpErrorResponse({ status: 412, error: { message: 'version mismatch' } }),
-      ));
-      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
-      fixture.detectChanges();
-      serviceSpy.getLivePlanList.calls.reset();
-      const cmp = fixture.componentInstance as unknown as {
-        rows(): LivePlanEntry[];
-        onDateChange(r: LivePlanEntry, d: string): void;
-      };
-      cmp.onDateChange(cmp.rows()[0], '2026-06-15');
-      expect(serviceSpy.getLivePlanList).toHaveBeenCalled();
-    });
-
-    it('kanal hücresinde ch-edit yan yana layout container var (row flex)', () => {
+    it('kanal hücresinde ch-edit yan yana layout container var (row flex; KORUNDU)', () => {
       const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
       fixture.detectChanges();
       const chEdit = (fixture.nativeElement as HTMLElement).querySelector('.td-channels .ch-edit');
       expect(chEdit).not.toBeNull();
-      // 3 mat-select aynı flex container içinde
       const selects = chEdit!.querySelectorAll('.ch-select');
       expect(selects.length).toBe(3);
     });
@@ -659,7 +597,7 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
     beforeEach(async () => {
       svcSpy = jasmine.createSpyObj<YayinPlanlamaService>('YayinPlanlamaService', [
         'getLivePlanList', 'getLeagueFilterOptions', 'getWeekFilterOptions',
-        'updateLivePlanChannels', 'updateLivePlanEventStart',
+        'updateLivePlanChannels',
       ]);
       svcSpy.getLivePlanList.and.returnValue(of(makeList([
         makeEntry({ id: 99, channel1Id: 1, channel2Id: 2 }),
@@ -703,12 +641,12 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
       expect(readonly!.textContent).toContain('beIN 2');
     });
 
-    it('date input render edilmez; tarih read-only "DD.MM.YYYY" görünür', () => {
+    it('tarih hücresi (yetkili/yetkisiz fark etmez) read-only "DD.MM.YYYY"', () => {
       const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
       fixture.detectChanges();
       const host = fixture.nativeElement as HTMLElement;
-      expect(host.querySelectorAll('.td-date input[type="date"]').length).toBe(0);
-      // Read-only span — eventStartTime: 2026-06-01T19:00:00Z → "01.06.2026"
+      // Inline edit kaldırıldı: tablo içinde input[type=date] yok
+      expect(host.querySelectorAll('table input[type="date"]').length).toBe(0);
       expect(host.textContent).toContain('01.06.2026');
     });
   });

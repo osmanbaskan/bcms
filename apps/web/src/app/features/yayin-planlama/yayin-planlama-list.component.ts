@@ -14,13 +14,18 @@ import { MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import {
+  DateAdapter, MAT_DATE_FORMATS, MAT_DATE_LOCALE,
+  MatNativeDateModule, NativeDateAdapter,
+} from '@angular/material/core';
 import { KeycloakService } from 'keycloak-angular';
 import { GROUP, PERMISSIONS, type LivePlanEntry } from '@bcms/shared';
 import { isSkipAuthAllowed } from '../../core/auth/skip-auth';
 import type { BcmsTokenParsed } from '../../core/types/auth';
 import { ApiService } from '../../core/services/api.service';
 import {
-  composeIstanbulIso, formatIstanbulDate, formatIstanbulDateTr, formatIstanbulTime,
+  composeIstanbulIso, formatIstanbulDateTr, formatIstanbulTime,
 } from '../../core/time/tz.helpers';
 import { YayinPlanlamaService, type LeagueFilterOption } from '../../core/services/yayin-planlama.service';
 
@@ -51,14 +56,58 @@ const PAGE_SIZE_DEFAULT = 25;
 
 interface ChannelCatalogItem { id: number; name: string; }
 
+// 2026-05-13: Filter bar Başlangıç/Bitiş için MatDatepicker (Türkçe locale,
+// dd.MM.yyyy display). Pattern paritesi: live-plan-entry-edit-dialog.
+const TR_DATE_FORMATS = {
+  parse: { dateInput: 'dd.MM.yyyy' },
+  display: {
+    dateInput: 'dd.MM.yyyy',
+    monthYearLabel: { month: 'short', year: 'numeric' },
+    dateA11yLabel: { day: '2-digit', month: 'long', year: 'numeric' },
+    monthYearA11yLabel: { month: 'long', year: 'numeric' },
+  },
+};
+
+class TrDateAdapter extends NativeDateAdapter {
+  override parse(value: string | null, _parseFormat: unknown): Date | null {
+    if (!value) return null;
+    const match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(value.trim());
+    if (match) {
+      const d = new Date(+match[3], +match[2] - 1, +match[1]);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    return super.parse(value, _parseFormat);
+  }
+  override format(date: Date, displayFormat: unknown): string {
+    if (displayFormat === 'dd.MM.yyyy') {
+      return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()}`;
+    }
+    return super.format(date, displayFormat as object);
+  }
+}
+
+/** MatDatepicker Date → "YYYY-MM-DD" (browser local; BCMS Türkiye-only). */
+function dateToYmd(d: Date): string {
+  const y  = d.getFullYear();
+  const m  = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
 @Component({
   selector: 'app-yayin-planlama-list',
   standalone: true,
+  providers: [
+    { provide: MAT_DATE_LOCALE,  useValue: 'tr-TR' },
+    { provide: MAT_DATE_FORMATS, useValue: TR_DATE_FORMATS },
+    { provide: DateAdapter,      useClass: TrDateAdapter, deps: [MAT_DATE_LOCALE] },
+  ],
   imports: [
     CommonModule, FormsModule, RouterLink,
     MatTableModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatPaginatorModule,
     MatTooltipModule, MatDialogModule, MatSnackBarModule, MatProgressSpinnerModule,
+    MatDatepickerModule, MatNativeDateModule,
   ],
   template: `
     <div class="page">
@@ -74,11 +123,19 @@ interface ChannelCatalogItem { id: number; name: string; }
       <div class="filter-bar">
         <mat-form-field appearance="outline">
           <mat-label>Başlangıç</mat-label>
-          <input matInput type="date" name="from" [(ngModel)]="dateFrom" (change)="reload()" />
+          <input matInput [matDatepicker]="fromPicker"
+                 [(ngModel)]="dateFrom" name="from"
+                 (dateChange)="reload()" />
+          <mat-datepicker-toggle matIconSuffix [for]="fromPicker"></mat-datepicker-toggle>
+          <mat-datepicker #fromPicker></mat-datepicker>
         </mat-form-field>
         <mat-form-field appearance="outline">
           <mat-label>Bitiş</mat-label>
-          <input matInput type="date" name="to" [(ngModel)]="dateTo" (change)="reload()" />
+          <input matInput [matDatepicker]="toPicker"
+                 [(ngModel)]="dateTo" name="to"
+                 (dateChange)="reload()" />
+          <mat-datepicker-toggle matIconSuffix [for]="toPicker"></mat-datepicker-toggle>
+          <mat-datepicker #toPicker></mat-datepicker>
         </mat-form-field>
         <mat-form-field appearance="outline">
           <mat-label>Lig</mat-label>
@@ -123,17 +180,7 @@ interface ChannelCatalogItem { id: number; name: string; }
         <table mat-table [dataSource]="rows()" class="yp-table">
           <ng-container matColumnDef="date">
             <th mat-header-cell *matHeaderCellDef>Tarih</th>
-            <td mat-cell *matCellDef="let r" class="td-date">
-              @if (canEditLivePlan()) {
-                <input type="date" class="date-input"
-                       [ngModel]="dateInputValue(r)"
-                       (ngModelChange)="onDateChange(r, $event)"
-                       [disabled]="savingRowId() === r.id"
-                       [ngModelOptions]="{standalone: true}" />
-              } @else {
-                <span>{{ formatDate(r.eventStartTime) }}</span>
-              }
-            </td>
+            <td mat-cell *matCellDef="let r">{{ formatDate(r.eventStartTime) }}</td>
           </ng-container>
           <ng-container matColumnDef="time">
             <th mat-header-cell *matHeaderCellDef>Saat</th>
@@ -225,19 +272,6 @@ interface ChannelCatalogItem { id: number; name: string; }
     .ch-edit .ch-select ::ng-deep .mat-mdc-form-field-infix { padding: 4px 0; min-height: 28px; }
     .ch-edit .ch-spinner { margin-left: 4px; flex-shrink: 0; }
 
-    /* Inline tarih input — compact, mat-form-field DEĞİL (native HTML5
-       date input; layout simplicity). */
-    .td-date .date-input {
-      font: inherit;
-      padding: 4px 6px;
-      border: 1px solid rgba(0,0,0,0.2);
-      border-radius: 4px;
-      background: transparent;
-      color: inherit;
-      width: 130px;
-    }
-    .td-date .date-input:focus { outline: 2px solid var(--mat-sys-primary); outline-offset: -1px; }
-    .td-date .date-input:disabled { opacity: 0.5; cursor: not-allowed; }
   `],
 })
 export class YayinPlanlamaListComponent implements OnInit {
@@ -251,9 +285,9 @@ export class YayinPlanlamaListComponent implements OnInit {
   protected cols = ['date', 'time', 'match', 'league', 'week', 'channels'];
   protected readonly channelSlots: ReadonlyArray<1 | 2 | 3> = [1, 2, 3];
 
-  // Filter state
-  protected dateFrom   = '';
-  protected dateTo     = '';
+  // Filter state — MatDatepicker Date | null modeli
+  protected dateFrom:   Date | null = null;
+  protected dateTo:     Date | null = null;
   protected leagueId:   number | null = null;
   protected weekNumber: number | null = null;
 
@@ -293,10 +327,10 @@ export class YayinPlanlamaListComponent implements OnInit {
   reload(): void {
     this.loading.set(true);
     this.error.set(null);
-    // `from/to` UI'dan YYYY-MM-DD geliyor; backend `from/to` ISO datetime
-    // bekliyor — gün başlangıcı/sonu olarak compose.
-    const fromIso = this.dateFrom ? `${this.dateFrom}T00:00:00.000Z` : undefined;
-    const toIso   = this.dateTo   ? `${this.dateTo}T23:59:59.999Z`   : undefined;
+    // MatDatepicker Date → Türkiye gün boundary compose (00:00 / 23:59:59).
+    // composeIstanbulIso `+03:00` ile UTC ISO üretir; backend datetime kabul eder.
+    const fromIso = this.dateFrom ? composeIstanbulIso(dateToYmd(this.dateFrom), '00:00')    : undefined;
+    const toIso   = this.dateTo   ? composeIstanbulIso(dateToYmd(this.dateTo),   '23:59:59') : undefined;
     this.service.getLivePlanList({
       from:       fromIso,
       to:         toIso,
@@ -471,81 +505,6 @@ export class YayinPlanlamaListComponent implements OnInit {
           return;
         }
         const msg = err?.error?.message ?? 'Kanal güncellenemedi.';
-        this.snack.open(msg, 'Kapat', { duration: 4000 });
-      },
-    });
-  }
-
-  // ── 2026-05-13: Inline tarih düzenleme ─────────────────────────────────
-  /**
-   * HTML5 `<input type="date">` value formatı — YYYY-MM-DD (Türkiye tarihi).
-   */
-  protected dateInputValue(row: LivePlanEntry): string {
-    if (!row.eventStartTime) return '';
-    try {
-      return formatIstanbulDate(row.eventStartTime); // "YYYY-MM-DD"
-    } catch {
-      return '';
-    }
-  }
-
-  /**
-   * Operatör date input'u değiştirdi → mevcut Türkiye saatini koruyarak
-   * yeni UTC ISO compose et + PATCH.
-   */
-  protected onDateChange(row: LivePlanEntry, newLocalDate: string): void {
-    if (!newLocalDate) return; // Browser temizleme — yoksay
-    const currentDate = this.dateInputValue(row);
-    if (currentDate === newLocalDate) return; // no-op
-    // Mevcut Türkiye saatini koru (örn. "22:00")
-    let currentTime: string;
-    try {
-      currentTime = formatIstanbulTime(row.eventStartTime); // "HH:mm"
-    } catch {
-      currentTime = '00:00';
-    }
-    let newIso: string;
-    try {
-      newIso = composeIstanbulIso(newLocalDate, currentTime);
-    } catch {
-      this.snack.open('Tarih biçimi geçersiz.', 'Kapat', { duration: 4000 });
-      return;
-    }
-    this.saveEventStart(row, newIso);
-  }
-
-  /**
-   * PATCH /api/v1/live-plan/:id (Schedule DEĞİL) + If-Match: row.version.
-   * Body: `{ eventStartTime }`. Backend autoEndForStartOnly ile eventEndTime
-   * +2h placeholder olarak update edilir (mevcut davranış).
-   * Optimistic UI: local row hemen güncellenir; error'da rollback.
-   */
-  private saveEventStart(row: LivePlanEntry, newIso: string): void {
-    const oldRows = this.rows();
-    this.rows.set(oldRows.map((r) =>
-      r.id === row.id ? { ...r, eventStartTime: newIso } : r,
-    ));
-    this.savingRowId.set(row.id);
-
-    this.service.updateLivePlanEventStart(row.id, newIso, row.version).subscribe({
-      next: (updated) => {
-        this.rows.update((rs) => rs.map((r) => (r.id === updated.id ? updated : r)));
-        this.savingRowId.set(null);
-        this.snack.open('Tarih güncellendi.', 'Kapat', { duration: 2000 });
-      },
-      error: (err: HttpErrorResponse) => {
-        this.savingRowId.set(null);
-        this.rows.set(oldRows);
-        if (err?.status === 412) {
-          this.snack.open(
-            'Kayıt başka biri tarafından güncellendi. Liste yenileniyor.',
-            'Kapat',
-            { duration: 4000 },
-          );
-          this.reload();
-          return;
-        }
-        const msg = err?.error?.message ?? 'Tarih güncellenemedi.';
         this.snack.open(msg, 'Kapat', { duration: 4000 });
       },
     });

@@ -162,31 +162,6 @@ export class YayinPlanlamaService {
     );
   }
 
-  /**
-   * 2026-05-13: Yayın Planlama listesinde inline tarih düzenleme.
-   *
-   * **LivePlanEntry üstüne yazılır; Schedule / /schedules/broadcast değil.**
-   * `PATCH /api/v1/live-plan/:id` + `If-Match: version`. Body sadece
-   * `{ eventStartTime }` — saat operatör tarafından korunur (caller compose
-   * eder: yeni Türkiye tarihi + mevcut Türkiye saati → UTC ISO).
-   *
-   * Backend not: `eventStartTime` tek başına gönderilince
-   * `autoEndForStartOnly` ile `eventEndTime` placeholder +2h olarak update
-   * edilir (live-plan.service.ts:368+). Bu davranış mevcut; yeni değil.
-   */
-  updateLivePlanEventStart(
-    id:              number,
-    eventStartTime:  string,
-    version:         number,
-  ): Observable<LivePlanEntry> {
-    return this.api.patch<LivePlanEntry>(`/live-plan/${id}`, { eventStartTime }, version).pipe(
-      map((res) => {
-        this.api.invalidateCache('/live-plan');
-        return res;
-      }),
-    );
-  }
-
   getById(id: number): Observable<Schedule> {
     return this.api.get<Schedule>(`/schedules/${id}`);
   }
