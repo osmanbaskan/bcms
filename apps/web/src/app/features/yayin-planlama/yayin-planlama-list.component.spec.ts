@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import type { LivePlanEntry, LivePlanListResponse } from '@bcms/shared';
 import { YayinPlanlamaListComponent } from './yayin-planlama-list.component';
 import { YayinPlanlamaService } from '../../core/services/yayin-planlama.service';
+import { ApiService } from '../../core/services/api.service';
 
 /**
  * 2026-05-13: Yayın Planlama list spec — `getLivePlanList()` data source.
@@ -47,6 +48,7 @@ function makeList(items: LivePlanEntry[] = [makeEntry()]): LivePlanListResponse 
 
 describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', () => {
   let serviceSpy: jasmine.SpyObj<YayinPlanlamaService>;
+  let apiSpy:     jasmine.SpyObj<ApiService>;
 
   beforeEach(async () => {
     serviceSpy = jasmine.createSpyObj<YayinPlanlamaService>('YayinPlanlamaService', [
@@ -59,12 +61,25 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
     ]));
     serviceSpy.getWeekFilterOptions.and.returnValue(of([1, 2, 3]));
 
+    apiSpy = jasmine.createSpyObj<ApiService>('ApiService', ['get']);
+    // /channels/catalog → 2 channel fixture (generic callFake; explicit cast).
+    (apiSpy.get as unknown as jasmine.Spy).and.callFake((path: string) => {
+      if (path === '/channels/catalog') {
+        return of([
+          { id: 1, name: 'beIN Sports 1 HD' },
+          { id: 2, name: 'beIN Sports 2 HD' },
+        ]);
+      }
+      return of([]);
+    });
+
     await TestBed.configureTestingModule({
       imports: [YayinPlanlamaListComponent],
       providers: [
         provideRouter([]),
         provideAnimationsAsync(),
         { provide: YayinPlanlamaService, useValue: serviceSpy },
+        { provide: ApiService,           useValue: apiSpy },
       ],
     }).compileComponents();
   });
@@ -178,5 +193,131 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
     const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
     // "Lig" + "—" hücreleri görünür
     expect(html).toContain('—');
+  });
+
+  // ── 2026-05-13: Karşılaşma sadeleştirme + kanal adı stack ─────────────
+  describe('Karşılaşma kolonu (title/team birleşik)', () => {
+    it('"Başlık" ve "Takımlar" kolon header\'ları render edilmez; "Karşılaşma" render edilir', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const headers = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll('th'),
+      ).map((th) => th.textContent?.trim() ?? '');
+      expect(headers).not.toContain('Başlık');
+      expect(headers).not.toContain('Takım');
+      expect(headers).toContain('Karşılaşma');
+    });
+
+    it('primaryMatchLabel: team1+team2 varsa "X vs Y"', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        primaryMatchLabel(r: LivePlanEntry): string;
+      };
+      expect(cmp.primaryMatchLabel(makeEntry({ team1Name: 'Galatasaray', team2Name: 'Fenerbahçe' })))
+        .toBe('Galatasaray vs Fenerbahçe');
+    });
+
+    it('primaryMatchLabel: takım yoksa title fallback', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        primaryMatchLabel(r: LivePlanEntry): string;
+      };
+      expect(cmp.primaryMatchLabel(makeEntry({ team1Name: null, team2Name: null, title: 'Stüdyo Programı' })))
+        .toBe('Stüdyo Programı');
+    });
+
+    it('primaryMatchLabel: hiçbiri yoksa "—"', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        primaryMatchLabel(r: LivePlanEntry): string;
+      };
+      expect(cmp.primaryMatchLabel(makeEntry({ team1Name: null, team2Name: null, title: '' })))
+        .toBe('—');
+    });
+
+    it('secondaryTitle: title takım bilgisinden farklıysa görünür', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        secondaryTitle(r: LivePlanEntry): string | null;
+      };
+      expect(cmp.secondaryTitle(makeEntry({
+        team1Name: 'Galatasaray', team2Name: 'Fenerbahçe',
+        title: 'Derbi Özel — Süper Lig 30. Hafta',
+      }))).toBe('Derbi Özel — Süper Lig 30. Hafta');
+    });
+
+    it('secondaryTitle: title takım birleşimiyle aynıysa null (tekrar gizlenir)', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        secondaryTitle(r: LivePlanEntry): string | null;
+      };
+      expect(cmp.secondaryTitle(makeEntry({
+        team1Name: 'Galatasaray', team2Name: 'Fenerbahçe',
+        title: 'Galatasaray vs Fenerbahçe',
+      }))).toBeNull();
+    });
+
+    it('secondaryTitle: takım bilgisi yoksa null (primary zaten title)', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        secondaryTitle(r: LivePlanEntry): string | null;
+      };
+      expect(cmp.secondaryTitle(makeEntry({
+        team1Name: null, team2Name: null, title: 'Manuel Kayıt',
+      }))).toBeNull();
+    });
+  });
+
+  describe('Kanallar kolonu (id → name stack)', () => {
+    it('countChannels gibi sayı göstermez; gerçek kanal adlarını alt alta gösterir', () => {
+      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ channel1Id: 1, channel2Id: 2 }),
+      ])));
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(html).toContain('beIN Sports 1 HD');
+      expect(html).toContain('beIN Sports 2 HD');
+      // Sayı gösterimi YOK (önceki `countChannels` = "2" gibi tek karakter çıkardı)
+      // Spec assertion zayıf olabilir; bu yüzden direct helper kontrolü:
+      const cmp = fixture.componentInstance as unknown as {
+        channelNamesStack(r: LivePlanEntry): string;
+      };
+      const stack = cmp.channelNamesStack(makeEntry({ channel1Id: 1, channel2Id: 2 }));
+      expect(stack).toBe('beIN Sports 1 HD\nbeIN Sports 2 HD');
+    });
+
+    it('hiç kanal yoksa "—"', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        channelNamesStack(r: LivePlanEntry): string;
+      };
+      const stack = cmp.channelNamesStack(makeEntry({ channel1Id: null, channel2Id: null, channel3Id: null }));
+      expect(stack).toBe('—');
+    });
+
+    it('lookup\'ta olmayan id atılır (defensive: stale row)', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        channelNamesStack(r: LivePlanEntry): string;
+      };
+      // id=999 catalog'da yok; id=1 var → sadece "beIN Sports 1 HD"
+      const stack = cmp.channelNamesStack(makeEntry({ channel1Id: 1, channel2Id: 999 }));
+      expect(stack).toBe('beIN Sports 1 HD');
+    });
+
+    it('ngOnInit: ApiService.get("/channels/catalog") çağrılır (channel name lookup)', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      expect(apiSpy.get).toHaveBeenCalledWith('/channels/catalog');
+    });
   });
 });

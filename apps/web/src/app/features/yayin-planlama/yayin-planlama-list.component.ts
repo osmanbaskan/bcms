@@ -1,7 +1,7 @@
-import { Component, OnInit, inject, signal, computed, effect } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -11,13 +11,14 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDialogModule } from '@angular/material/dialog';
+import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { KeycloakService } from 'keycloak-angular';
 import { GROUP, LIVE_PLAN_STATUSES, PERMISSIONS, type LivePlanEntry, type LivePlanStatus } from '@bcms/shared';
 import { isSkipAuthAllowed } from '../../core/auth/skip-auth';
 import type { BcmsTokenParsed } from '../../core/types/auth';
+import { ApiService } from '../../core/services/api.service';
 import { YayinPlanlamaService, type LeagueFilterOption } from '../../core/services/yayin-planlama.service';
 
 /**
@@ -34,6 +35,13 @@ import { YayinPlanlamaService, type LeagueFilterOption } from '../../core/servic
  * `Schedule.id` bekliyordu, yeni row tipi `LivePlanEntry`. Aksiyonların
  * canlı yayın plan entry'sine mi yoksa bağlı broadcast schedule'a mı işaret
  * etmesi karar bekleyen tasarım sorusu (raporda detay).
+ *
+ * 2026-05-13 UI sadeleştirme:
+ *   - "Başlık" + "Takım" iki kolonu tek "Karşılaşma" kolonuna birleştirildi
+ *     (team1/team2 varsa "X vs Y"; yoksa title fallback; title takım
+ *     bilgisinden farklıysa küçük secondary satır).
+ *   - "Kanallar" kolonu count yerine kanal **adlarını** alt alta gösterir
+ *     (channel id → name resolve `/channels/catalog` lookup üzerinden).
  */
 
 const PAGE_SIZE_DEFAULT = 25;
@@ -44,6 +52,8 @@ const STATUS_LABELS: Record<LivePlanStatus, string> = {
   COMPLETED:   'Tamamlandı',
   CANCELLED:   'İptal',
 };
+
+interface ChannelCatalogItem { id: number; name: string; }
 
 @Component({
   selector: 'app-yayin-planlama-list',
@@ -124,17 +134,12 @@ const STATUS_LABELS: Record<LivePlanStatus, string> = {
         </div>
       } @else {
         <table mat-table [dataSource]="rows()" class="yp-table">
-          <ng-container matColumnDef="title">
-            <th mat-header-cell *matHeaderCellDef>Başlık</th>
-            <td mat-cell *matCellDef="let r">{{ r.title }}</td>
-          </ng-container>
-          <ng-container matColumnDef="teams">
-            <th mat-header-cell *matHeaderCellDef>Takım</th>
-            <td mat-cell *matCellDef="let r">
-              @if (r.team1Name && r.team2Name) {
-                {{ r.team1Name }} vs {{ r.team2Name }}
-              } @else {
-                —
+          <ng-container matColumnDef="match">
+            <th mat-header-cell *matHeaderCellDef>Karşılaşma</th>
+            <td mat-cell *matCellDef="let r" class="td-match">
+              <div class="match-primary">{{ primaryMatchLabel(r) }}</div>
+              @if (secondaryTitle(r); as st) {
+                <div class="match-secondary">{{ st }}</div>
               }
             </td>
           </ng-container>
@@ -156,7 +161,7 @@ const STATUS_LABELS: Record<LivePlanStatus, string> = {
           </ng-container>
           <ng-container matColumnDef="channels">
             <th mat-header-cell *matHeaderCellDef>Kanallar</th>
-            <td mat-cell *matCellDef="let r">{{ countChannels(r) }}</td>
+            <td mat-cell *matCellDef="let r" class="td-channels">{{ channelNamesStack(r) }}</td>
           </ng-container>
           <ng-container matColumnDef="status">
             <th mat-header-cell *matHeaderCellDef>Durum</th>
@@ -183,16 +188,24 @@ const STATUS_LABELS: Record<LivePlanStatus, string> = {
     .yp-table { width: 100%; }
     .state { display: flex; align-items: center; gap: 12px; padding: 48px; justify-content: center; color: var(--mat-sys-on-surface-variant); }
     .state-error { color: var(--mat-sys-error); }
+    .td-match { min-width: 220px; max-width: 360px; }
+    .match-primary { font-weight: 500; }
+    .match-secondary { font-size: 11px; opacity: 0.65; margin-top: 2px; }
+    .td-channels {
+      white-space: pre-line;
+      font-size: 12px;
+      line-height: 1.35;
+      min-width: 140px;
+      max-width: 220px;
+    }
   `],
 })
 export class YayinPlanlamaListComponent implements OnInit {
-  private router  = inject(Router);
-  private dialog  = inject(MatDialog);
-  private snack   = inject(MatSnackBar);
-  private service = inject(YayinPlanlamaService);
+  private api      = inject(ApiService);
+  private service  = inject(YayinPlanlamaService);
   private keycloak = inject(KeycloakService, { optional: true });
 
-  protected cols = ['title', 'teams', 'league', 'week', 'date', 'time', 'channels', 'status'];
+  protected cols = ['match', 'league', 'week', 'date', 'time', 'channels', 'status'];
   protected statuses = LIVE_PLAN_STATUSES;
 
   // Filter state
@@ -206,6 +219,9 @@ export class YayinPlanlamaListComponent implements OnInit {
   protected leagues = signal<LeagueFilterOption[]>([]);
   protected weeks   = signal<number[]>([]);
 
+  // Channel id → name lookup (GET /channels/catalog — schedule-list paritesi)
+  protected channelCatalog = signal<ChannelCatalogItem[]>([]);
+
   // Page state
   protected rows     = signal<LivePlanEntry[]>([]);
   protected total    = signal(0);
@@ -218,6 +234,7 @@ export class YayinPlanlamaListComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadLeagues();
+    this.loadChannelCatalog();
     this.reload();
   }
 
@@ -271,6 +288,13 @@ export class YayinPlanlamaListComponent implements OnInit {
     });
   }
 
+  private loadChannelCatalog(): void {
+    this.api.get<ChannelCatalogItem[]>('/channels/catalog').subscribe({
+      next: (res) => this.channelCatalog.set(Array.isArray(res) ? res : []),
+      error: () => this.channelCatalog.set([]),
+    });
+  }
+
   onPage(ev: PageEvent): void {
     this.page.set(ev.pageIndex + 1);
     this.pageSize.set(ev.pageSize);
@@ -288,8 +312,46 @@ export class YayinPlanlamaListComponent implements OnInit {
     return m?.[1] ?? '—';
   }
 
-  protected countChannels(row: LivePlanEntry): number {
-    return [row.channel1Id, row.channel2Id, row.channel3Id].filter((v) => v != null).length;
+  /**
+   * Karşılaşma primary label:
+   *   - team1Name + team2Name varsa "X vs Y"
+   *   - yoksa entry title (fallback)
+   *   - hiçbiri yoksa "—"
+   */
+  protected primaryMatchLabel(row: LivePlanEntry): string {
+    if (row.team1Name && row.team2Name) {
+      return `${row.team1Name} vs ${row.team2Name}`;
+    }
+    return row.title?.trim() || '—';
+  }
+
+  /**
+   * Secondary satır: entry title takım bilgisinden anlamlı şekilde
+   * farklıysa göster. OPTA path'te title genelde "Team A vs Team B"
+   * olduğu için aynı çıkar → secondary boş döner (tekrar yok).
+   */
+  protected secondaryTitle(row: LivePlanEntry): string | null {
+    const title = row.title?.trim();
+    if (!title) return null;
+    if (!row.team1Name || !row.team2Name) return null; // primary zaten title
+    if (title === this.primaryMatchLabel(row)) return null;
+    return title;
+  }
+
+  /**
+   * Kanal id → name resolve; üç slottan dolu olanları "\n" ile join eder
+   * (CSS `white-space: pre-line` ile alt alta render olur). Boş slot
+   * hariç. Hiç kanal yoksa "—".
+   */
+  protected channelNamesStack(row: LivePlanEntry): string {
+    const names: string[] = [];
+    const lookup = this.channelCatalog();
+    for (const id of [row.channel1Id, row.channel2Id, row.channel3Id]) {
+      if (id == null) continue;
+      const ch = lookup.find((c) => c.id === id);
+      if (ch?.name) names.push(ch.name);
+    }
+    return names.length ? names.join('\n') : '—';
   }
 
   protected statusLabel(s: LivePlanStatus): string {
