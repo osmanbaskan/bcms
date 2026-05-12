@@ -5,7 +5,6 @@ import { RouterLink } from '@angular/router';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatChipsModule } from '@angular/material/chips';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -16,11 +15,13 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { KeycloakService } from 'keycloak-angular';
-import { GROUP, LIVE_PLAN_STATUSES, PERMISSIONS, type LivePlanEntry, type LivePlanStatus } from '@bcms/shared';
+import { GROUP, PERMISSIONS, type LivePlanEntry } from '@bcms/shared';
 import { isSkipAuthAllowed } from '../../core/auth/skip-auth';
 import type { BcmsTokenParsed } from '../../core/types/auth';
 import { ApiService } from '../../core/services/api.service';
-import { formatIstanbulDateTr, formatIstanbulTime } from '../../core/time/tz.helpers';
+import {
+  composeIstanbulIso, formatIstanbulDate, formatIstanbulDateTr, formatIstanbulTime,
+} from '../../core/time/tz.helpers';
 import { YayinPlanlamaService, type LeagueFilterOption } from '../../core/services/yayin-planlama.service';
 
 /**
@@ -47,13 +48,6 @@ import { YayinPlanlamaService, type LeagueFilterOption } from '../../core/servic
  */
 
 const PAGE_SIZE_DEFAULT = 25;
-const STATUS_LABELS: Record<LivePlanStatus, string> = {
-  PLANNED:     'Planlandı',
-  READY:       'Hazır',
-  IN_PROGRESS: 'Devam Ediyor',
-  COMPLETED:   'Tamamlandı',
-  CANCELLED:   'İptal',
-};
 
 interface ChannelCatalogItem { id: number; name: string; }
 
@@ -62,7 +56,7 @@ interface ChannelCatalogItem { id: number; name: string; }
   standalone: true,
   imports: [
     CommonModule, FormsModule, RouterLink,
-    MatTableModule, MatButtonModule, MatIconModule, MatChipsModule,
+    MatTableModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatPaginatorModule,
     MatTooltipModule, MatDialogModule, MatSnackBarModule, MatProgressSpinnerModule,
   ],
@@ -85,15 +79,6 @@ interface ChannelCatalogItem { id: number; name: string; }
         <mat-form-field appearance="outline">
           <mat-label>Bitiş</mat-label>
           <input matInput type="date" name="to" [(ngModel)]="dateTo" (change)="reload()" />
-        </mat-form-field>
-        <mat-form-field appearance="outline">
-          <mat-label>Durum</mat-label>
-          <mat-select [(ngModel)]="status" name="status" (selectionChange)="reload()">
-            <mat-option [value]="null">(hepsi)</mat-option>
-            @for (s of statuses; track s) {
-              <mat-option [value]="s">{{ statusLabel(s) }}</mat-option>
-            }
-          </mat-select>
         </mat-form-field>
         <mat-form-field appearance="outline">
           <mat-label>Lig</mat-label>
@@ -138,7 +123,17 @@ interface ChannelCatalogItem { id: number; name: string; }
         <table mat-table [dataSource]="rows()" class="yp-table">
           <ng-container matColumnDef="date">
             <th mat-header-cell *matHeaderCellDef>Tarih</th>
-            <td mat-cell *matCellDef="let r">{{ formatDate(r.eventStartTime) }}</td>
+            <td mat-cell *matCellDef="let r" class="td-date">
+              @if (canEditLivePlan()) {
+                <input type="date" class="date-input"
+                       [ngModel]="dateInputValue(r)"
+                       (ngModelChange)="onDateChange(r, $event)"
+                       [disabled]="savingRowId() === r.id"
+                       [ngModelOptions]="{standalone: true}" />
+              } @else {
+                <span>{{ formatDate(r.eventStartTime) }}</span>
+              }
+            </td>
           </ng-container>
           <ng-container matColumnDef="time">
             <th mat-header-cell *matHeaderCellDef>Saat</th>
@@ -190,10 +185,6 @@ interface ChannelCatalogItem { id: number; name: string; }
               }
             </td>
           </ng-container>
-          <ng-container matColumnDef="status">
-            <th mat-header-cell *matHeaderCellDef>Durum</th>
-            <td mat-cell *matCellDef="let r"><mat-chip>{{ statusLabel(r.status) }}</mat-chip></td>
-          </ng-container>
           <tr mat-header-row *matHeaderRowDef="cols"></tr>
           <tr mat-row *matRowDef="let row; columns: cols;"></tr>
         </table>
@@ -221,14 +212,32 @@ interface ChannelCatalogItem { id: number; name: string; }
     .td-channels {
       font-size: 12px;
       line-height: 1.35;
-      min-width: 220px;
-      max-width: 320px;
+      min-width: 340px;
     }
     .td-channels .ch-readonly { white-space: pre-line; }
-    .ch-edit { display: flex; flex-direction: column; gap: 4px; position: relative; }
-    .ch-edit .ch-select { width: 100%; }
+    /* 2026-05-13: 3 kanal seçim kutusu yan yana (önceki alt alta).
+       Desktop'ta tek satır; dar ekranda flex-wrap ile alta düşer. */
+    .ch-edit {
+      display: flex; flex-direction: row; gap: 6px;
+      align-items: center; flex-wrap: wrap;
+    }
+    .ch-edit .ch-select { width: 104px; }
     .ch-edit .ch-select ::ng-deep .mat-mdc-form-field-infix { padding: 4px 0; min-height: 28px; }
-    .ch-edit .ch-spinner { position: absolute; top: 4px; right: 4px; }
+    .ch-edit .ch-spinner { margin-left: 4px; flex-shrink: 0; }
+
+    /* Inline tarih input — compact, mat-form-field DEĞİL (native HTML5
+       date input; layout simplicity). */
+    .td-date .date-input {
+      font: inherit;
+      padding: 4px 6px;
+      border: 1px solid rgba(0,0,0,0.2);
+      border-radius: 4px;
+      background: transparent;
+      color: inherit;
+      width: 130px;
+    }
+    .td-date .date-input:focus { outline: 2px solid var(--mat-sys-primary); outline-offset: -1px; }
+    .td-date .date-input:disabled { opacity: 0.5; cursor: not-allowed; }
   `],
 })
 export class YayinPlanlamaListComponent implements OnInit {
@@ -237,16 +246,14 @@ export class YayinPlanlamaListComponent implements OnInit {
   private snack    = inject(MatSnackBar);
   private keycloak = inject(KeycloakService, { optional: true });
 
-  // 2026-05-13: Tarih + Saat kolonları en başa alındı (operatör tarih bazlı
-  // tarama yapıyor). Tarih formatı `gg.aa.yyyy` (formatIstanbulDateTr).
-  protected cols = ['date', 'time', 'match', 'league', 'week', 'channels', 'status'];
-  protected statuses = LIVE_PLAN_STATUSES;
+  // 2026-05-13: Durum kolonu + Durum filtresi kaldırıldı (UX sadeleştirme).
+  // Tarih + Saat en başta; Tarih inline editable (yetkili kullanıcı).
+  protected cols = ['date', 'time', 'match', 'league', 'week', 'channels'];
   protected readonly channelSlots: ReadonlyArray<1 | 2 | 3> = [1, 2, 3];
 
   // Filter state
   protected dateFrom   = '';
   protected dateTo     = '';
-  protected status:     LivePlanStatus | null = null;
   protected leagueId:   number | null = null;
   protected weekNumber: number | null = null;
 
@@ -293,7 +300,6 @@ export class YayinPlanlamaListComponent implements OnInit {
     this.service.getLivePlanList({
       from:       fromIso,
       to:         toIso,
-      status:     this.status     ?? undefined,
       leagueId:   this.leagueId   ?? undefined,
       weekNumber: this.weekNumber ?? undefined,
       page:       this.page(),
@@ -470,8 +476,79 @@ export class YayinPlanlamaListComponent implements OnInit {
     });
   }
 
-  protected statusLabel(s: LivePlanStatus): string {
-    return STATUS_LABELS[s] ?? s;
+  // ── 2026-05-13: Inline tarih düzenleme ─────────────────────────────────
+  /**
+   * HTML5 `<input type="date">` value formatı — YYYY-MM-DD (Türkiye tarihi).
+   */
+  protected dateInputValue(row: LivePlanEntry): string {
+    if (!row.eventStartTime) return '';
+    try {
+      return formatIstanbulDate(row.eventStartTime); // "YYYY-MM-DD"
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Operatör date input'u değiştirdi → mevcut Türkiye saatini koruyarak
+   * yeni UTC ISO compose et + PATCH.
+   */
+  protected onDateChange(row: LivePlanEntry, newLocalDate: string): void {
+    if (!newLocalDate) return; // Browser temizleme — yoksay
+    const currentDate = this.dateInputValue(row);
+    if (currentDate === newLocalDate) return; // no-op
+    // Mevcut Türkiye saatini koru (örn. "22:00")
+    let currentTime: string;
+    try {
+      currentTime = formatIstanbulTime(row.eventStartTime); // "HH:mm"
+    } catch {
+      currentTime = '00:00';
+    }
+    let newIso: string;
+    try {
+      newIso = composeIstanbulIso(newLocalDate, currentTime);
+    } catch {
+      this.snack.open('Tarih biçimi geçersiz.', 'Kapat', { duration: 4000 });
+      return;
+    }
+    this.saveEventStart(row, newIso);
+  }
+
+  /**
+   * PATCH /api/v1/live-plan/:id (Schedule DEĞİL) + If-Match: row.version.
+   * Body: `{ eventStartTime }`. Backend autoEndForStartOnly ile eventEndTime
+   * +2h placeholder olarak update edilir (mevcut davranış).
+   * Optimistic UI: local row hemen güncellenir; error'da rollback.
+   */
+  private saveEventStart(row: LivePlanEntry, newIso: string): void {
+    const oldRows = this.rows();
+    this.rows.set(oldRows.map((r) =>
+      r.id === row.id ? { ...r, eventStartTime: newIso } : r,
+    ));
+    this.savingRowId.set(row.id);
+
+    this.service.updateLivePlanEventStart(row.id, newIso, row.version).subscribe({
+      next: (updated) => {
+        this.rows.update((rs) => rs.map((r) => (r.id === updated.id ? updated : r)));
+        this.savingRowId.set(null);
+        this.snack.open('Tarih güncellendi.', 'Kapat', { duration: 2000 });
+      },
+      error: (err: HttpErrorResponse) => {
+        this.savingRowId.set(null);
+        this.rows.set(oldRows);
+        if (err?.status === 412) {
+          this.snack.open(
+            'Kayıt başka biri tarafından güncellendi. Liste yenileniyor.',
+            'Kapat',
+            { duration: 4000 },
+          );
+          this.reload();
+          return;
+        }
+        const msg = err?.error?.message ?? 'Tarih güncellenemedi.';
+        this.snack.open(msg, 'Kapat', { duration: 4000 });
+      },
+    });
   }
 
   private hasGroup(allowed: readonly string[]): boolean {

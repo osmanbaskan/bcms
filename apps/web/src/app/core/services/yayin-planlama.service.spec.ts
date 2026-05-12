@@ -155,4 +155,18 @@ describe('YayinPlanlamaService', () => {
     });
     expect(apiSpy.patch).toHaveBeenCalledWith('/live-plan/42', dto, 6);
   });
+
+  it('updateLivePlanEventStart: PATCH /live-plan/:id + {eventStartTime} + version + invalidate', (done) => {
+    apiSpy.patch.and.returnValue(of({ id: 99, version: 4, eventStartTime: '2026-07-01T19:00:00.000Z' } as any));
+    service.updateLivePlanEventStart(99, '2026-07-01T19:00:00.000Z', 3).subscribe((res) => {
+      expect((res as { version: number }).version).toBe(4);
+      expect(apiSpy.invalidateCache).toHaveBeenCalledWith('/live-plan');
+      done();
+    });
+    expect(apiSpy.patch).toHaveBeenCalledWith(
+      '/live-plan/99',
+      { eventStartTime: '2026-07-01T19:00:00.000Z' },
+      3,
+    );
+  });
 });
