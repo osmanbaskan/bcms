@@ -215,7 +215,10 @@ type TechFieldKey = typeof TECH_FIELD_KEYS[number];
          min-height ile boş form bile dolu görünür; max-height viewport sınırı. */
       min-height: 78vh;
       max-height: 92vh;
-      padding: 12px 16px 8px;
+      /* padding-top: mat-form-field (outlined) label notch'u dialog content'in
+         üst sınırına temas edip kırpılıyordu (Yayın Adı / Lig label'ları kesik
+         görünüyordu). 24px üst boşluk label'a nefes verir. */
+      padding: 24px 16px 12px;
       overflow: auto;
     }
     .loading { display:flex; justify-content:center; padding: 48px; }
