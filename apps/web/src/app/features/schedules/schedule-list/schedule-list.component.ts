@@ -219,9 +219,9 @@ export class ReportIssueDialogComponent {
           <table class="broadcast-table">
             <thead>
               <tr>
-                <th>Karşılaşma Başlangıç</th>
+                <th class="th-time-stack">Karşılaşma<br>Başlangıç</th>
                 <th>Yayın Adı</th>
-                <th colspan="2">Transmisyon Başlangıç / Bitiş</th>
+                <th colspan="2" class="th-time-stack">Transmisyon<br>Başlangıç<br>Bitiş</th>
                 <th>Mod Tipi /<br>Coding Tipi</th>
                 <th>IRD</th>
                 <th>Fiber</th>
@@ -441,7 +441,22 @@ export class ReportIssueDialogComponent {
       color: var(--bp-purple-300);
       font-family: var(--bp-font-mono);
       white-space: nowrap;
-      min-width: 56px;
+      width: 64px;
+      min-width: 64px;
+      max-width: 64px;
+      text-align: center;
+      padding-left: 4px;
+      padding-right: 4px;
+    }
+    /* 2026-05-12: saat başlıkları alt alta yazılır (Karşılaşma/Başlangıç +
+       Transmisyon/Başlangıç/Bitiş). Sıkı line-height + center align ile
+       kolon genişliği saat değerine yakın kompakt kalır. */
+    .th-time-stack {
+      line-height: 1.12;
+      vertical-align: middle;
+      text-align: center;
+      white-space: normal;
+      letter-spacing: 0;
     }
     .td-title { min-width: 200px; max-width: 280px; }
     .content-main {
@@ -456,8 +471,12 @@ export class ReportIssueDialogComponent {
       white-space: nowrap;
       color: var(--bp-fg-3);
       font-family: var(--bp-font-mono);
-      min-width: 50px;
+      width: 60px;
+      min-width: 60px;
+      max-width: 60px;
       text-align: center;
+      padding-left: 4px;
+      padding-right: 4px;
     }
     .td-mono { font-family: var(--bp-font-mono); color: var(--bp-fg-2); text-align: center; }
     .td-mod  { font-family: var(--bp-font-mono); color: var(--bp-fg-2); text-align: center; line-height: 1.18; }
