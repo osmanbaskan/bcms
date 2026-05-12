@@ -199,7 +199,7 @@ class TrDateAdapter extends NativeDateAdapter {
           <mat-form-field appearance="outline">
             <mat-label>Transmisyon Başlangıç Tarihi</mat-label>
             <input matInput [matDatepicker]="psPicker"
-                   [ngModel]="plannedStartDateAsDate()"
+                   [(ngModel)]="form.plannedStartDatePickerValue"
                    (ngModelChange)="onPlannedStartDateChange($event)"
                    [ngModelOptions]="{standalone:true}">
             <mat-datepicker-toggle matIconSuffix [for]="psPicker"></mat-datepicker-toggle>
@@ -214,7 +214,7 @@ class TrDateAdapter extends NativeDateAdapter {
           <mat-form-field appearance="outline">
             <mat-label>Transmisyon Bitiş Tarihi</mat-label>
             <input matInput [matDatepicker]="pePicker"
-                   [ngModel]="plannedEndDateAsDate()"
+                   [(ngModel)]="form.plannedEndDatePickerValue"
                    (ngModelChange)="onPlannedEndDateChange($event)"
                    [ngModelOptions]="{standalone:true}">
             <mat-datepicker-toggle matIconSuffix [for]="pePicker"></mat-datepicker-toggle>
@@ -362,6 +362,13 @@ export class LivePlanEntryEditDialogComponent implements OnInit {
     plannedStartTime:  '',
     plannedEndDate:    '',
     plannedEndTime:    '',
+    // 2026-05-12: MatDatepicker `[ngModel]` STABLE Date referansı bekler;
+    // method getter her CD cycle'ında yeni Date doğurup picker'i sonsuz
+    // re-render'a sokuyordu. Picker value'lari ayri property'lerde stable
+    // tutulur; string state'le applyTechToForm + onPlanned*DateChange
+    // tarafindan senkronize edilir.
+    plannedStartDatePickerValue: null as Date | null,
+    plannedEndDatePickerValue:   null as Date | null,
     operationNotes:    '' as string | null,
   };
 
@@ -529,24 +536,20 @@ export class LivePlanEntryEditDialogComponent implements OnInit {
     this.snack.open(msg, 'Kapat', { duration: 4000 });
   }
 
-  // ── Datepicker adapters (Transmisyon Tarih alanları) ──────────────────────
-  // Form internal state YYYY-MM-DD string; MatDatepicker iki yöne Date kullanır.
-  // ngModel = Date | null; ngModelChange Date | null → dateOnlyToIstanbul ile
-  // YYYY-MM-DD string'e geri çevirilir. Timezone Lock korunur (composeIstanbulIso
-  // save sırasında string'i Türkiye gün başı + saat ile UTC ISO'ya dönüştürür).
-  plannedStartDateAsDate(): Date | null {
-    return this.parseLocalYmd(this.form.plannedStartDate);
-  }
-  plannedEndDateAsDate(): Date | null {
-    return this.parseLocalYmd(this.form.plannedEndDate);
-  }
+  // ── Datepicker change handlers (Transmisyon Tarih alanları) ───────────────
+  // MatDatepicker `[(ngModel)]` ile picker value (Date | null) STABLE bind.
+  // ngModelChange sonrası YYYY-MM-DD string state senkron tutulur ki save
+  // sırasında composeIstanbulIso çağrısı string format alabilsin.
+  // Method getter pattern'i (her CD'de yeni Date) datepicker'ı sonsuz
+  // re-render'a sokuyordu — kaldırıldı.
   onPlannedStartDateChange(d: Date | null): void {
     this.form.plannedStartDate = d ? dateOnlyToIstanbul(d) : '';
   }
   onPlannedEndDateChange(d: Date | null): void {
     this.form.plannedEndDate = d ? dateOnlyToIstanbul(d) : '';
   }
-  /** YYYY-MM-DD → Date (local midnight). Boş string → null. */
+  /** YYYY-MM-DD → Date (local midnight). Boş string → null. Sadece load
+   *  ve default sync sırasında (Date object bir kez) kullanılır. */
   private parseLocalYmd(ymd: string): Date | null {
     if (!ymd) return null;
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
@@ -567,25 +570,42 @@ export class LivePlanEntryEditDialogComponent implements OnInit {
   }
 
   private applyTechToForm(r: TechnicalDetailsRow | null): void {
-    if (!r) {
+    if (r) {
+      const next = this.emptyTech();
+      for (const k of TECH_FIELD_KEYS) {
+        const v = (r as unknown as Record<string, unknown>)[k];
+        next[k] = typeof v === 'number' ? v : null;
+      }
+      this.tech = next;
+    } else {
       this.tech = this.emptyTech();
-      this.form.plannedStartDate = '';
-      this.form.plannedStartTime = '';
-      this.form.plannedEndDate   = '';
-      this.form.plannedEndTime   = '';
-      return;
     }
-    const next = this.emptyTech();
-    for (const k of TECH_FIELD_KEYS) {
-      const v = (r as unknown as Record<string, unknown>)[k];
-      next[k] = typeof v === 'number' ? v : null;
-    }
-    this.tech = next;
-    // Transmisyon süresi → Türkiye saatine split (ISO UTC stored).
-    this.form.plannedStartDate = r.plannedStartTime ? formatIstanbulDate(r.plannedStartTime) : '';
-    this.form.plannedStartTime = r.plannedStartTime ? formatIstanbulTime(r.plannedStartTime) : '';
-    this.form.plannedEndDate   = r.plannedEndTime   ? formatIstanbulDate(r.plannedEndTime)   : '';
-    this.form.plannedEndTime   = r.plannedEndTime   ? formatIstanbulTime(r.plannedEndTime)   : '';
+
+    // Transmisyon süresi (Türkiye saatine split):
+    //  - Plannedstart/end SET ise kendi tarihini kullan
+    //  - SET değilse default: form.startDate (Karşılaşma/yayın tarihi)
+    //    Saat alanları boş bırakılır — operatör doldurur. Boş saat
+    //    buildTechDiff'te null gönderim üretmez (composeIstanbulIso skip)
+    //    dolayısıyla unsaved entry için backend'e gereksiz null yazımı yok.
+    const defaultDate = this.form.startDate;
+
+    this.form.plannedStartDate = r?.plannedStartTime
+      ? formatIstanbulDate(r.plannedStartTime)
+      : defaultDate;
+    this.form.plannedStartTime = r?.plannedStartTime
+      ? formatIstanbulTime(r.plannedStartTime)
+      : '';
+    this.form.plannedEndDate = r?.plannedEndTime
+      ? formatIstanbulDate(r.plannedEndTime)
+      : defaultDate;
+    this.form.plannedEndTime = r?.plannedEndTime
+      ? formatIstanbulTime(r.plannedEndTime)
+      : '';
+
+    // MatDatepicker [(ngModel)] STABLE Date | null state. Date objesi
+    // bir kez burada üretilir; sonraki CD cycle'larında same reference.
+    this.form.plannedStartDatePickerValue = this.parseLocalYmd(this.form.plannedStartDate);
+    this.form.plannedEndDatePickerValue   = this.parseLocalYmd(this.form.plannedEndDate);
   }
 
   private emptyTech(): Record<TechFieldKey, number | null> {

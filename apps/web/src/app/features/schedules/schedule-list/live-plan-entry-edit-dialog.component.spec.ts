@@ -243,6 +243,71 @@ describe('LivePlanEntryEditDialogComponent', () => {
     expect(techBody['plannedEndTime']).toBe('2026-06-01T19:00:00.000Z');   // TR 22:00 → UTC
   });
 
+  it('Default: plannedStartTime null geldiğinde plannedStartDate startDate ile dolar (Karşılaşma tarihi)', () => {
+    (api.get as unknown as jasmine.Spy).and.callFake((path: string) => {
+      if (path.startsWith('/live-plan/lookups/')) {
+        return of({ items: [], total: 0, page: 1, pageSize: 200 });
+      }
+      if (path.endsWith('/technical-details')) return of(emptyTechRow(1));
+      return of(ENTRY_FIXTURE);
+    });
+    fixture.detectChanges();
+
+    // ENTRY_FIXTURE eventStartTime 2026-06-01T17:00Z → TR 2026-06-01 20:00.
+    expect(component.form.startDate).toBe('2026-06-01');
+    // Default uygulandı: plannedStart/EndDate karşılaşma tarihiyle dolu, saat boş.
+    expect(component.form.plannedStartDate).toBe('2026-06-01');
+    expect(component.form.plannedStartTime).toBe('');
+    expect(component.form.plannedEndDate).toBe('2026-06-01');
+    expect(component.form.plannedEndTime).toBe('');
+    // MatDatepicker picker value stable Date object.
+    expect(component.form.plannedStartDatePickerValue instanceof Date).toBeTrue();
+    expect(component.form.plannedEndDatePickerValue instanceof Date).toBeTrue();
+    // Saat boş olduğu için buildTechDiff null göndermez (default değişiklik dirty değil).
+    component.save();
+    const techCall = api.patch.calls.allArgs().find((args) => args[0] === '/live-plan/42/technical-details');
+    expect(techCall).toBeUndefined();
+  });
+
+  it('Default: plannedStartTime dolu geldiğinde kendi tarihi korunur, startDate ile ezilmez', () => {
+    const orig = emptyTechRow(1);
+    (orig as unknown as Record<string, unknown>)['plannedStartTime'] = '2026-06-02T10:00:00.000Z';
+    (orig as unknown as Record<string, unknown>)['plannedEndTime']   = '2026-06-02T12:00:00.000Z';
+    (api.get as unknown as jasmine.Spy).and.callFake((path: string) => {
+      if (path.startsWith('/live-plan/lookups/')) {
+        return of({ items: [], total: 0, page: 1, pageSize: 200 });
+      }
+      if (path.endsWith('/technical-details')) return of(orig);
+      return of(ENTRY_FIXTURE);
+    });
+    fixture.detectChanges();
+
+    // Tech satırı 2026-06-02, entry startDate 2026-06-01 — kendi tarihi korunur.
+    expect(component.form.startDate).toBe('2026-06-01');
+    expect(component.form.plannedStartDate).toBe('2026-06-02');
+    expect(component.form.plannedEndDate).toBe('2026-06-02');
+  });
+
+  it('onPlannedStartDateChange: Date seçilince hem string hem picker value senkron olur', () => {
+    (api.get as unknown as jasmine.Spy).and.callFake((path: string) => {
+      if (path.startsWith('/live-plan/lookups/')) {
+        return of({ items: [], total: 0, page: 1, pageSize: 200 });
+      }
+      if (path.endsWith('/technical-details')) return of(emptyTechRow(1));
+      return of(ENTRY_FIXTURE);
+    });
+    fixture.detectChanges();
+
+    const newDate = new Date(2026, 6, 15); // 15 Temmuz 2026 local
+    component.onPlannedStartDateChange(newDate);
+    expect(component.form.plannedStartDate).toBe('2026-07-15');
+    // ngModel two-way zaten picker value'i set eder; handler string state'i senkronlar.
+    // [(ngModel)] bağlantısı template'te; spec doğrudan handler'ı test eder.
+
+    component.onPlannedEndDateChange(null);
+    expect(component.form.plannedEndDate).toBe('');
+  });
+
   it('Transmisyon süresi temizleme: alanlar boşaltılırsa technical-details PATCH null gönderir', () => {
     // Original: planned* dolu — sonra boşalt → null gönder.
     const orig = emptyTechRow(1);
