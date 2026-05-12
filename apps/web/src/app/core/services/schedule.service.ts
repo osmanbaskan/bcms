@@ -13,6 +13,32 @@ import type {
   CreateLivePlanFromOptaDto,
 } from '@bcms/shared';
 
+/** 2026-05-11: Yeni Ekle dialog (Fikstürden Seç) için minimal display tipler.
+ *  Backend route response shape'leri ile birebir. */
+export interface BroadcastType {
+  id:          number;
+  code:        string;
+  description: string;
+}
+
+export interface FixtureCompetition {
+  id:     string;
+  name:   string;
+  season: string;
+}
+
+export interface OptaFixtureRow {
+  matchId:         string;
+  competitionId:   string;
+  competitionName: string;
+  season:          string;
+  homeTeamName:    string;
+  awayTeamName:    string;
+  matchDate:       string;
+  weekNumber?:     number | null;
+  label?:          string;
+}
+
 export interface ScheduleFilter {
   channel?: number;
   from?: string;
@@ -111,6 +137,23 @@ export class ScheduleService {
     return this.api.post<LivePlanEntry>('/live-plan/from-opta', dto).pipe(
       map(mapLivePlanEntryToSchedule),
     );
+  }
+
+  // 2026-05-11: Yeni Yayın Kaydı Ekle dialog OPTA fixture seçim akışı için
+  // helper'lar. Cache: /broadcast-types ve /opta/fixture-competitions zaten
+  // ApiService CACHEABLE_PATHS listesinde (60s TTL).
+  getBroadcastTypes(): Observable<BroadcastType[]> {
+    return this.api.get<BroadcastType[]>('/broadcast-types');
+  }
+
+  getFixtureCompetitions(): Observable<FixtureCompetition[]> {
+    return this.api.get<FixtureCompetition[]>('/opta/fixture-competitions');
+  }
+
+  getOptaFixtures(competitionId: string, season: string, fromIso?: string): Observable<OptaFixtureRow[]> {
+    const params: Record<string, string> = { competitionId, season };
+    if (fromIso) params['from'] = fromIso;
+    return this.api.get<OptaFixtureRow[]>('/opta/fixtures', params);
   }
 
   /** PATCH /live-plan/:id + If-Match: <version>. K9 — version conflict 412. */
