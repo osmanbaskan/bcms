@@ -451,14 +451,18 @@ export class ReportIssueDialogComponent {
     .td-mono { font-family: var(--bp-font-mono); color: var(--bp-fg-2); text-align: center; }
     .td-mod  { font-family: var(--bp-font-mono); color: var(--bp-fg-2); text-align: center; line-height: 1.18; }
     .td-mod-sub { color: var(--bp-fg-3); font-size: 0.85em; }
-    .td-stack { line-height: 1.20; }
+    /* 2026-05-12: çoklu değer içeren hücreler newline ile alt alta render edilir
+       (techStack2/3, langPair, channelTriplet \n ile join eder). */
+    .td-stack { line-height: 1.20; white-space: pre-line; }
     .td-stack > div { white-space: nowrap; }
     .td-stack > div + div { margin-top: 1px; color: var(--bp-fg-3); }
-    .td-lang { text-align: center; color: var(--bp-fg-2); white-space: nowrap; }
+    .td-mono { white-space: pre-line; line-height: 1.20; }
+    .td-lang { text-align: center; color: var(--bp-fg-2); white-space: pre-line; line-height: 1.20; }
     .td-channel {
       color: var(--bp-purple-300);
       font-weight: var(--bp-fw-semibold);
-      white-space: nowrap;
+      white-space: pre-line;
+      line-height: 1.20;
       min-width: 110px;
     }
     .td-league {
@@ -604,27 +608,29 @@ export class ScheduleListComponent implements OnInit, OnDestroy {
 
   /** 2026-05-11: liste display yardımcıları — technicalDetails alanlarını
    *  görsel kompakt formata sokar. Tüm değerler null ise "—" döner. */
+  // 2026-05-12: çoklu değer içeren hücreler (IRD/FIBER/INT/DİL/KANAL) artık
+  // alt alta render edilir — newline ile join + hücre CSS'inde
+  // `white-space: pre-line`. Boş değerler yine "—".
   channelTriplet(s: Schedule): string {
     const parts = [s.channel1Id, s.channel2Id, s.channel3Id]
-      .map((id) => this.channelName(id));
-    if (parts.every((p) => p === '—')) return '—';
-    return parts.join(' / ');
+      .map((id) => this.channelName(id))
+      .filter((p) => p !== '—');
+    return parts.length ? parts.join('\n') : '—';
   }
 
   techStack2(a: string | null | undefined, b: string | null | undefined): string {
     const vals = [a, b].filter((v): v is string => !!v && v.length > 0);
-    return vals.length ? vals.join(' / ') : '—';
+    return vals.length ? vals.join('\n') : '—';
   }
 
   techStack3(a: string | null | undefined, b: string | null | undefined, c: string | null | undefined): string {
     const vals = [a, b, c].filter((v): v is string => !!v && v.length > 0);
-    return vals.length ? vals.join(' / ') : '—';
+    return vals.length ? vals.join('\n') : '—';
   }
 
   langPair(main: string | null | undefined, second: string | null | undefined): string {
-    if (!main && !second) return '—';
-    if (main && second)   return `${main} / ${second}`;
-    return (main ?? second) as string;
+    const vals = [main, second].filter((v): v is string => !!v && v.length > 0);
+    return vals.length ? vals.join('\n') : '—';
   }
 
   load() {
