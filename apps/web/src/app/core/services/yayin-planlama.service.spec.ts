@@ -143,4 +143,16 @@ describe('YayinPlanlamaService', () => {
     service.getWeekFilterOptions().subscribe();
     expect(apiSpy.get).toHaveBeenCalledWith('/live-plan/filters/weeks', {});
   });
+
+  // ── 2026-05-13: Inline kanal düzenleme — LivePlanEntry PATCH path ──────
+  it('updateLivePlanChannels: PATCH /live-plan/:id + version + invalidate /live-plan', (done) => {
+    apiSpy.patch.and.returnValue(of({ id: 42, version: 7, channel1Id: 1 } as any));
+    const dto = { channel1Id: 1, channel2Id: null, channel3Id: 3 };
+    service.updateLivePlanChannels(42, dto, 6).subscribe((res) => {
+      expect((res as { version: number }).version).toBe(7);
+      expect(apiSpy.invalidateCache).toHaveBeenCalledWith('/live-plan');
+      done();
+    });
+    expect(apiSpy.patch).toHaveBeenCalledWith('/live-plan/42', dto, 6);
+  });
 });

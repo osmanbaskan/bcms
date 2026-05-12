@@ -12,7 +12,8 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialogModule } from '@angular/material/dialog';
-import { MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { HttpErrorResponse } from '@angular/common/http';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { KeycloakService } from 'keycloak-angular';
 import { GROUP, LIVE_PLAN_STATUSES, PERMISSIONS, type LivePlanEntry, type LivePlanStatus } from '@bcms/shared';
@@ -162,7 +163,32 @@ interface ChannelCatalogItem { id: number; name: string; }
           </ng-container>
           <ng-container matColumnDef="channels">
             <th mat-header-cell *matHeaderCellDef>Kanallar</th>
-            <td mat-cell *matCellDef="let r" class="td-channels">{{ channelNamesStack(r) }}</td>
+            <td mat-cell *matCellDef="let r" class="td-channels">
+              @if (canEditLivePlan()) {
+                <div class="ch-edit">
+                  @for (slot of channelSlots; track slot) {
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="ch-select">
+                      <mat-select
+                        [ngModel]="channelSlotValue(r, slot)"
+                        (ngModelChange)="onChannelChange(r, slot, $event)"
+                        [disabled]="savingRowId() === r.id"
+                        [ngModelOptions]="{standalone: true}">
+                        <mat-option [value]="null">—</mat-option>
+                        @for (ch of channelCatalog(); track ch.id) {
+                          <mat-option [value]="ch.id">{{ ch.name }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                  }
+                  @if (savingRowId() === r.id) {
+                    <mat-progress-spinner mode="indeterminate" diameter="14"
+                                          class="ch-spinner"></mat-progress-spinner>
+                  }
+                </div>
+              } @else {
+                <span class="ch-readonly">{{ channelNamesStack(r) }}</span>
+              }
+            </td>
           </ng-container>
           <ng-container matColumnDef="status">
             <th mat-header-cell *matHeaderCellDef>Durum</th>
@@ -193,23 +219,29 @@ interface ChannelCatalogItem { id: number; name: string; }
     .match-primary { font-weight: 500; }
     .match-secondary { font-size: 11px; opacity: 0.65; margin-top: 2px; }
     .td-channels {
-      white-space: pre-line;
       font-size: 12px;
       line-height: 1.35;
-      min-width: 140px;
-      max-width: 220px;
+      min-width: 220px;
+      max-width: 320px;
     }
+    .td-channels .ch-readonly { white-space: pre-line; }
+    .ch-edit { display: flex; flex-direction: column; gap: 4px; position: relative; }
+    .ch-edit .ch-select { width: 100%; }
+    .ch-edit .ch-select ::ng-deep .mat-mdc-form-field-infix { padding: 4px 0; min-height: 28px; }
+    .ch-edit .ch-spinner { position: absolute; top: 4px; right: 4px; }
   `],
 })
 export class YayinPlanlamaListComponent implements OnInit {
   private api      = inject(ApiService);
   private service  = inject(YayinPlanlamaService);
+  private snack    = inject(MatSnackBar);
   private keycloak = inject(KeycloakService, { optional: true });
 
   // 2026-05-13: Tarih + Saat kolonları en başa alındı (operatör tarih bazlı
   // tarama yapıyor). Tarih formatı `gg.aa.yyyy` (formatIstanbulDateTr).
   protected cols = ['date', 'time', 'match', 'league', 'week', 'channels', 'status'];
   protected statuses = LIVE_PLAN_STATUSES;
+  protected readonly channelSlots: ReadonlyArray<1 | 2 | 3> = [1, 2, 3];
 
   // Filter state
   protected dateFrom   = '';
@@ -233,7 +265,17 @@ export class YayinPlanlamaListComponent implements OnInit {
   protected loading  = signal(false);
   protected error    = signal<string | null>(null);
 
+  /** Inline kanal düzenleme sırasında o satırın id'si (UI lock). */
+  protected savingRowId = signal<number | null>(null);
+
+  /** "Yeni" butonu yetkilenmesi — `/yayin-planlama/new` broadcast schedule
+   *  create form'u canlı kalıyor; `schedules.write` grup seti. */
   protected canWrite = computed<boolean>(() => this.hasGroup(PERMISSIONS.schedules.write));
+
+  /** Inline kanal düzenleme yetkilenmesi — `PATCH /api/v1/live-plan/:id`
+   *  endpoint'i `PERMISSIONS.livePlan.write` ister. Bu sekme artık LivePlanEntry
+   *  üstüne yazar (Schedule DEĞİL); doğru permission anahtarı budur. */
+  protected canEditLivePlan = computed<boolean>(() => this.hasGroup(PERMISSIONS.livePlan.write));
 
   ngOnInit(): void {
     this.loadLeagues();
@@ -364,6 +406,68 @@ export class YayinPlanlamaListComponent implements OnInit {
       if (ch?.name) names.push(ch.name);
     }
     return names.length ? names.join('\n') : '—';
+  }
+
+  /** Inline edit select için slot başına mevcut değer. */
+  protected channelSlotValue(row: LivePlanEntry, slot: 1 | 2 | 3): number | null {
+    if (slot === 1) return row.channel1Id ?? null;
+    if (slot === 2) return row.channel2Id ?? null;
+    return row.channel3Id ?? null;
+  }
+
+  /**
+   * 2026-05-13: Operatör select değiştirdi → otomatik kaydet.
+   * No-op aynı değer için. Yeni değerle compose edip `saveChannels` çağırır.
+   */
+  protected onChannelChange(row: LivePlanEntry, slot: 1 | 2 | 3, newId: number | null): void {
+    const current = this.channelSlotValue(row, slot);
+    const normalizedNew = newId ?? null;
+    if (current === normalizedNew) return;
+    this.saveChannels(row, slot, normalizedNew);
+  }
+
+  /**
+   * PATCH /api/v1/live-plan/:id (Schedule DEĞİL) + If-Match: row.version.
+   * Optimistic UI: local row'u hemen güncelle; success'te server response ile
+   * yer değiştir (yeni version); error'da eski snapshot'a geri dön. 412 →
+   * "kayıt başkası tarafından güncellendi" + liste reload.
+   */
+  private saveChannels(row: LivePlanEntry, slot: 1 | 2 | 3, newId: number | null): void {
+    const dto = {
+      channel1Id: slot === 1 ? newId : (row.channel1Id ?? null),
+      channel2Id: slot === 2 ? newId : (row.channel2Id ?? null),
+      channel3Id: slot === 3 ? newId : (row.channel3Id ?? null),
+    };
+    // Optimistic update — kullanıcı select'i bıraktığında anında yansır.
+    const oldRows = this.rows();
+    this.rows.set(oldRows.map((r) => (r.id === row.id ? { ...r, ...dto } : r)));
+    this.savingRowId.set(row.id);
+
+    this.service.updateLivePlanChannels(row.id, dto, row.version).subscribe({
+      next: (updated) => {
+        // Server response yeni version'lu row; local replace (optimistic
+        // başarı path'ini de tek yerden senkronize eder).
+        this.rows.update((rs) => rs.map((r) => (r.id === updated.id ? updated : r)));
+        this.savingRowId.set(null);
+        this.snack.open('Kanallar güncellendi.', 'Kapat', { duration: 2000 });
+      },
+      error: (err: HttpErrorResponse) => {
+        this.savingRowId.set(null);
+        // Optimistic rollback
+        this.rows.set(oldRows);
+        if (err?.status === 412) {
+          this.snack.open(
+            'Kayıt başka biri tarafından güncellendi. Liste yenileniyor.',
+            'Kapat',
+            { duration: 4000 },
+          );
+          this.reload();
+          return;
+        }
+        const msg = err?.error?.message ?? 'Kanal güncellenemedi.';
+        this.snack.open(msg, 'Kapat', { duration: 4000 });
+      },
+    });
   }
 
   protected statusLabel(s: LivePlanStatus): string {

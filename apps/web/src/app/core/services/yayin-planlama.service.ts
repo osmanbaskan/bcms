@@ -135,6 +135,33 @@ export class YayinPlanlamaService {
     return this.api.get<number[]>('/live-plan/filters/weeks', params);
   }
 
+  /**
+   * 2026-05-13: Yayın Planlama listesinde inline kanal düzenleme.
+   *
+   * **Bu update LivePlanEntry üstüne yazılır; Schedule veya
+   * /schedules/broadcast KULLANILMAZ.** `PATCH /api/v1/live-plan/:id` +
+   * `If-Match: version` kanonik canlı yayın plan entry mutation path'i.
+   * Aynı kayıt Canlı Yayın Plan sekmesinde de güncel görünür (tek tablo
+   * tek satır).
+   *
+   * - `If-Match` zorunlu (K9 optimistic locking; backend `parseIfMatch`)
+   * - 412 → caller reload yapsın
+   * - Success → yeni LivePlanEntry (artırılmış version); `/live-plan` cache
+   *   invalidate (Canlı Yayın Plan listesi de yenilensin)
+   */
+  updateLivePlanChannels(
+    id:      number,
+    dto:     { channel1Id: number | null; channel2Id: number | null; channel3Id: number | null },
+    version: number,
+  ): Observable<LivePlanEntry> {
+    return this.api.patch<LivePlanEntry>(`/live-plan/${id}`, dto, version).pipe(
+      map((res) => {
+        this.api.invalidateCache('/live-plan');
+        return res;
+      }),
+    );
+  }
+
   getById(id: number): Observable<Schedule> {
     return this.api.get<Schedule>(`/schedules/${id}`);
   }

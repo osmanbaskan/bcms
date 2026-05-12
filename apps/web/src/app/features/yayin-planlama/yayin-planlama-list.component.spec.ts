@@ -1,11 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { KeycloakService } from 'keycloak-angular';
 import type { LivePlanEntry, LivePlanListResponse } from '@bcms/shared';
 import { YayinPlanlamaListComponent } from './yayin-planlama-list.component';
 import { YayinPlanlamaService } from '../../core/services/yayin-planlama.service';
 import { ApiService } from '../../core/services/api.service';
+import { environment } from '../../../environments/environment';
 
 /**
  * 2026-05-13: Yayın Planlama list spec — `getLivePlanList()` data source.
@@ -53,6 +56,7 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
   beforeEach(async () => {
     serviceSpy = jasmine.createSpyObj<YayinPlanlamaService>('YayinPlanlamaService', [
       'getLivePlanList', 'getLeagueFilterOptions', 'getWeekFilterOptions',
+      'updateLivePlanChannels',
     ]);
     serviceSpy.getLivePlanList.and.returnValue(of(makeList()));
     serviceSpy.getLeagueFilterOptions.and.returnValue(of([
@@ -60,6 +64,7 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
       { id: 20, name: 'TFF 1. Lig' },
     ]));
     serviceSpy.getWeekFilterOptions.and.returnValue(of([1, 2, 3]));
+    serviceSpy.updateLivePlanChannels.and.returnValue(of(makeEntry({ version: 2, channel1Id: 1 })));
 
     apiSpy = jasmine.createSpyObj<ApiService>('ApiService', ['get']);
     // /channels/catalog → 2 channel fixture (generic callFake; explicit cast).
@@ -312,17 +317,12 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
   });
 
   describe('Kanallar kolonu (id → name stack)', () => {
-    it('countChannels gibi sayı göstermez; gerçek kanal adlarını alt alta gösterir', () => {
-      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
-        makeEntry({ channel1Id: 1, channel2Id: 2 }),
-      ])));
+    it('channelNamesStack helper: kanal adları "\\n" ile alt alta join', () => {
+      // 2026-05-13: Inline edit aktifken trigger DOM ile değil helper ile
+      // doğrula (mat-select option textleri overlay'da render olur). Read-only
+      // path zaten yetkisiz describe block'unda HTML üzerinden assert ediliyor.
       const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
       fixture.detectChanges();
-      const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
-      expect(html).toContain('beIN Sports 1 HD');
-      expect(html).toContain('beIN Sports 2 HD');
-      // Sayı gösterimi YOK (önceki `countChannels` = "2" gibi tek karakter çıkardı)
-      // Spec assertion zayıf olabilir; bu yüzden direct helper kontrolü:
       const cmp = fixture.componentInstance as unknown as {
         channelNamesStack(r: LivePlanEntry): string;
       };
@@ -355,6 +355,179 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
       const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
       fixture.detectChanges();
       expect(apiSpy.get).toHaveBeenCalledWith('/channels/catalog');
+    });
+  });
+
+  // ── 2026-05-13: Inline kanal düzenleme (LivePlanEntry PATCH üzerinden) ─
+  describe('Inline kanal düzenleme', () => {
+    it('yetkili kullanıcıda Kanallar hücresinde 3 mat-select render edilir', () => {
+      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ id: 5, channel1Id: 1, channel2Id: null, channel3Id: null }),
+      ])));
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      const selects = host.querySelectorAll('.td-channels .ch-select');
+      expect(selects.length).toBe(3);
+      // Read-only stack render edilmez (yetkili path)
+      expect(host.querySelector('.td-channels .ch-readonly')).toBeNull();
+    });
+
+    it('onChannelChange: slot=1 yeni id → updateLivePlanChannels(id, dto, version) çağrılır', () => {
+      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ id: 7, version: 4, channel1Id: null, channel2Id: 2, channel3Id: null }),
+      ])));
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        rows(): LivePlanEntry[];
+        onChannelChange(row: LivePlanEntry, slot: 1 | 2 | 3, newId: number | null): void;
+      };
+      const row = cmp.rows()[0];
+      cmp.onChannelChange(row, 1, 1);
+      expect(serviceSpy.updateLivePlanChannels).toHaveBeenCalledWith(
+        7,
+        { channel1Id: 1, channel2Id: 2, channel3Id: null },
+        4,
+      );
+    });
+
+    it('onChannelChange: aynı değer → updateLivePlanChannels ÇAĞRILMAZ', () => {
+      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ id: 8, channel1Id: 1 }),
+      ])));
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        rows(): LivePlanEntry[];
+        onChannelChange(row: LivePlanEntry, slot: 1 | 2 | 3, newId: number | null): void;
+      };
+      serviceSpy.updateLivePlanChannels.calls.reset();
+      cmp.onChannelChange(cmp.rows()[0], 1, 1);
+      expect(serviceSpy.updateLivePlanChannels).not.toHaveBeenCalled();
+    });
+
+    it('success: row updated entry ile değiştirilir (yeni version)', () => {
+      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ id: 9, version: 3, channel1Id: null }),
+      ])));
+      serviceSpy.updateLivePlanChannels.and.returnValue(
+        of(makeEntry({ id: 9, version: 4, channel1Id: 2 })),
+      );
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        rows(): LivePlanEntry[];
+        onChannelChange(row: LivePlanEntry, slot: 1 | 2 | 3, newId: number | null): void;
+        savingRowId(): number | null;
+      };
+      cmp.onChannelChange(cmp.rows()[0], 1, 2);
+      const updated = cmp.rows()[0];
+      expect(updated.version).toBe(4);
+      expect(updated.channel1Id).toBe(2);
+      expect(cmp.savingRowId()).toBeNull();
+    });
+
+    it('hata: eski row geri yüklenir (optimistic rollback)', () => {
+      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ id: 10, version: 5, channel1Id: 1, channel2Id: 2 }),
+      ])));
+      serviceSpy.updateLivePlanChannels.and.returnValue(throwError(() =>
+        new HttpErrorResponse({ status: 400, error: { message: 'val' } }),
+      ));
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        rows(): LivePlanEntry[];
+        onChannelChange(row: LivePlanEntry, slot: 1 | 2 | 3, newId: number | null): void;
+      };
+      cmp.onChannelChange(cmp.rows()[0], 1, 9);
+      const after = cmp.rows()[0];
+      // Eski değerler geri yüklenmeli
+      expect(after.channel1Id).toBe(1);
+      expect(after.channel2Id).toBe(2);
+      expect(after.version).toBe(5);
+    });
+
+    it('412 conflict: reload() çağrılır + getLivePlanList tekrar', () => {
+      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ id: 11, version: 6, channel1Id: null }),
+      ])));
+      serviceSpy.updateLivePlanChannels.and.returnValue(throwError(() =>
+        new HttpErrorResponse({ status: 412, error: { message: 'version mismatch' } }),
+      ));
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      serviceSpy.getLivePlanList.calls.reset();
+      const cmp = fixture.componentInstance as unknown as {
+        rows(): LivePlanEntry[];
+        onChannelChange(row: LivePlanEntry, slot: 1 | 2 | 3, newId: number | null): void;
+      };
+      cmp.onChannelChange(cmp.rows()[0], 1, 1);
+      // reload sonrası tekrar liste fetch'i
+      expect(serviceSpy.getLivePlanList).toHaveBeenCalled();
+    });
+  });
+
+  // ── Yetkisiz kullanıcı (canEditLivePlan=false) read-only path ──────────
+  describe('Yetkisiz kullanıcı — read-only kanal hücresi', () => {
+    let originalSkipAuth: boolean;
+    beforeAll(() => {
+      originalSkipAuth = (environment as { skipAuth: boolean }).skipAuth;
+      (environment as { skipAuth: boolean }).skipAuth = false;
+    });
+    afterAll(() => {
+      (environment as { skipAuth: boolean }).skipAuth = originalSkipAuth;
+    });
+
+    let svcSpy:  jasmine.SpyObj<YayinPlanlamaService>;
+    let apiSpy2: jasmine.SpyObj<ApiService>;
+
+    beforeEach(async () => {
+      svcSpy = jasmine.createSpyObj<YayinPlanlamaService>('YayinPlanlamaService', [
+        'getLivePlanList', 'getLeagueFilterOptions', 'getWeekFilterOptions',
+        'updateLivePlanChannels',
+      ]);
+      svcSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ id: 99, channel1Id: 1, channel2Id: 2 }),
+      ])));
+      svcSpy.getLeagueFilterOptions.and.returnValue(of([]));
+      svcSpy.getWeekFilterOptions.and.returnValue(of([]));
+
+      apiSpy2 = jasmine.createSpyObj<ApiService>('ApiService', ['get']);
+      (apiSpy2.get as unknown as jasmine.Spy).and.callFake((path: string) => {
+        if (path === '/channels/catalog') {
+          return of([{ id: 1, name: 'beIN 1' }, { id: 2, name: 'beIN 2' }]);
+        }
+        return of([]);
+      });
+
+      // Empty groups; not Admin; skipAuth off → canEditLivePlan false
+      const keycloakStub = {
+        getKeycloakInstance: () => ({ tokenParsed: { groups: [] } }),
+      };
+
+      await TestBed.configureTestingModule({
+        imports: [YayinPlanlamaListComponent],
+        providers: [
+          provideRouter([]),
+          provideAnimationsAsync(),
+          { provide: YayinPlanlamaService, useValue: svcSpy },
+          { provide: ApiService,           useValue: apiSpy2 },
+          { provide: KeycloakService,      useValue: keycloakStub },
+        ],
+      }).compileComponents();
+    });
+
+    it('mat-select render edilmez; read-only ad listesi görünür', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelectorAll('.td-channels .ch-select').length).toBe(0);
+      const readonly = host.querySelector('.td-channels .ch-readonly');
+      expect(readonly).not.toBeNull();
+      expect(readonly!.textContent).toContain('beIN 1');
+      expect(readonly!.textContent).toContain('beIN 2');
     });
   });
 });
