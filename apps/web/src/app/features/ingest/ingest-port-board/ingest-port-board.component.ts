@@ -187,9 +187,35 @@ export class IngestPortBoardComponent {
   trackPort = (_: number, column: IngestPortBoardColumnView) => column.port;
   trackItem = (_: number, item: IngestPortBoardItemView) => item.row.id;
 
+  /**
+   * 2026-05-14: "vs" yerine alt alta takım render ve trailing "(yedek)" ayrı
+   * satır. Sıra:
+   *   1) trim + trailing "(yedek)" tail'i ayır (case-insensitive)
+   *   2) " vs " ile (space-vs-space, case-insensitive) ayır
+   *   3) " - " (space-hyphen-space) fallback — "A-B" bölünmez
+   *   4) Tek parça kaldıysa base title'ı tek satır olarak ver
+   *   5) Tail varsa "(yedek)" en sona ayrı satır olarak ekle
+   */
   titleLines(title: string): string[] {
-    const parts = title.split(' - ').map((part) => part.trim()).filter(Boolean);
-    return parts.length > 1 ? parts.slice(0, 3) : [title];
+    const trimmed = (title ?? '').trim();
+    if (!trimmed) return [''];
+
+    let base = trimmed;
+    const yedekMatch = base.match(/^(.*?)\s*\(yedek\)\s*$/i);
+    const yedekTail = yedekMatch ? '(yedek)' : null;
+    if (yedekMatch) base = yedekMatch[1].trim();
+
+    let parts = base.split(/\s+vs\s+/i).map((p) => p.trim()).filter(Boolean);
+    if (parts.length < 2) {
+      parts = base.split(' - ').map((p) => p.trim()).filter(Boolean);
+    }
+
+    const lines: string[] = parts.length >= 2
+      ? parts.slice(0, 3)
+      : [base];
+
+    if (yedekTail) lines.push(yedekTail);
+    return lines;
   }
 
   portColumnRows(): IngestPortBoardColumnView[][] {
