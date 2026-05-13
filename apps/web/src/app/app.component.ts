@@ -556,7 +556,7 @@ export class AppComponent implements OnInit, OnDestroy {
     {
       label: 'EKİP',
       items: [
-        { label: 'Ekip İş Takip',     icon: 'people_outline',      route: '/bookings',           groups: [] },
+        { label: 'İş Takip',          icon: 'people_outline',      route: '/bookings',           groups: [] },
         { label: 'Haftalık Shift',    icon: 'calendar_today',      route: '/weekly-shift',       groups: [] },
       ],
     },

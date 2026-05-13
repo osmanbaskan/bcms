@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { BCMS_GROUPS, GROUP, type BcmsGroup, type JwtPayload } from '@bcms/shared';
-import type { CreateBookingDto, UpdateBookingDto } from './booking.schema.js';
+import type { CreateBookingDto, UpdateBookingDto, CreateBookingCommentDto } from './booking.schema.js';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { createEnvelope } from '../outbox/outbox.types.js';
 import { isOutboxPollerAuthoritative } from '../outbox/outbox.helpers.js';
@@ -136,7 +136,15 @@ async function fetchUserDisplayNameMap(): Promise<Map<string, string>> {
 export class BookingService {
   constructor(private readonly app: FastifyInstance) {}
 
-  async findAll(request: FastifyRequest, scheduleId?: number, group?: string, page = 1, pageSize = 50) {
+  async findAll(
+    request: FastifyRequest,
+    scheduleId?: number,
+    group?: string,
+    page = 1,
+    pageSize = 50,
+    qTitle?: string,
+    status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED',
+  ) {
     const claims = request.user as JwtPayload;
     const visibleGroups = this.visibleGroups(claims);
     const currentUserType = isAdminUser(claims) ? 'supervisor' : await fetchUserType(claims.preferred_username);
@@ -152,6 +160,11 @@ export class BookingService {
       ...(selectedGroup
         ? { userGroup: selectedGroup }
         : { OR: [{ userGroup: { in: visibleGroups } }, { userGroup: null }] }),
+      // 2026-05-14: "İş Takip" toolbar — başlık araması + durum filtresi.
+      //   qTitle yalnızca taskTitle üzerinde case-insensitive contains;
+      //   taskDetails/notes/comments içinde arama YOK (kapsam dışı).
+      ...(qTitle ? { taskTitle: { contains: qTitle, mode: 'insensitive' as const } } : {}),
+      ...(status ? { status } : {}),
     };
     const [data, total, displayNames] = await Promise.all([
       this.app.prisma.booking.findMany({
@@ -204,6 +217,8 @@ export class BookingService {
   async create(dto: CreateBookingDto, request: FastifyRequest) {
     const claims = request.user as JwtPayload;
     const user = claims.preferred_username;
+    const displayNames = await fetchUserDisplayNameMap();
+    const userDisplay = displayNames.get(user) ?? user;
     const group = this.resolveTargetGroup(claims, dto.userGroup);
 
     // ORTA-API-1.3.2 fix (2026-05-04): schedule existence check transaction
@@ -236,6 +251,18 @@ export class BookingService {
           metadata:    dto.metadata as Prisma.InputJsonValue,
         },
         include: { team: true, schedule: true },
+      });
+
+      // 2026-05-14: İlk status history kaydı (fromStatus=null → toStatus).
+      // Sınırsız tutulur; kullanıcı görünür ürün datası (audit yerine geçmez).
+      await tx.bookingStatusHistory.create({
+        data: {
+          bookingId:       created.id,
+          fromStatus:      null,
+          toStatus:        created.status,
+          changedByUserId: user,
+          changedByName:   userDisplay,
+        },
       });
 
       // Madde 2+7 PR-B2 (audit doc): Phase 2 SHADOW outbox write.
@@ -286,8 +313,11 @@ export class BookingService {
 
   async update(id: number, dto: UpdateBookingDto, ifMatchVersion: number | undefined, request: FastifyRequest) {
     const claims = request.user as JwtPayload;
+    const user = claims.preferred_username;
     const existing = await this.findByIdForRequest(id, claims);
     const canAssign = await this.canAssign(request, existing.userGroup);
+    const displayNames = await fetchUserDisplayNameMap();
+    const userDisplay = displayNames.get(user) ?? user;
 
     if (ifMatchVersion !== undefined && existing.version !== ifMatchVersion) {
       throw Object.assign(
@@ -371,6 +401,21 @@ export class BookingService {
         where: { id },
         include: { team: true, schedule: true },
       });
+
+      // 2026-05-14: Status değişikliğinde history kaydı (sınırsız, kullanıcı
+      // silmez). Yalnızca farklı bir status seçildiğinde yazılır; aynı status
+      // PATCH'lerinde gürültü üretmez.
+      if (dto.status && dto.status !== existing.status) {
+        await tx.bookingStatusHistory.create({
+          data: {
+            bookingId:       id,
+            fromStatus:      existing.status,
+            toStatus:        dto.status,
+            changedByUserId: user,
+            changedByName:   userDisplay,
+          },
+        });
+      }
 
       // Madde 2+7 PR-B3a (audit doc): notification email shadow outbox write.
       // Aynı koşul (mevcut direct publish ile parity): dto.status &&
@@ -564,6 +609,63 @@ export class BookingService {
     }
 
     return result;
+  }
+
+  // ── 2026-05-14: İş Takip — yorum + durum geçmişi (V1: create+list, edit/delete YOK)
+  //
+  // Yetki kuralı: comment/status-history endpoint'leri `findByIdForRequest`
+  // üzerinden gider — Admin universal, SystemEng özel değil, kullanıcı
+  // booking'i görebiliyorsa yorum/history erişimi var.
+
+  /**
+   * Comment + status-history endpoint'leri için ortak visibility kontrolü.
+   *
+   *   booking yok                  → 404
+   *   booking var ama canSee false → 403  (mevcut findByIdForRequest 404
+   *                                        dönüyor; bu helper kullanıcının
+   *                                        istediği "görme yok" semantiğini
+   *                                        explicit yapar)
+   *
+   * Admin universal; SystemEng özel bypass YOK.
+   */
+  private async assertBookingVisible(bookingId: number, request: FastifyRequest) {
+    const claims = request.user as JwtPayload;
+    const booking = await this.findById(bookingId); // 404 → not found
+    if (!this.canSee(claims, booking.userGroup)) {
+      throw Object.assign(new Error('Bu işe erişiminiz yok'), { statusCode: 403 });
+    }
+    return booking;
+  }
+
+  async listComments(bookingId: number, request: FastifyRequest) {
+    await this.assertBookingVisible(bookingId, request);
+    return this.app.prisma.bookingComment.findMany({
+      where:   { bookingId, deletedAt: null },
+      orderBy: { createdAt: 'asc' }, // Jira-benzeri kronolojik akış
+    });
+  }
+
+  async addComment(bookingId: number, dto: CreateBookingCommentDto, request: FastifyRequest) {
+    await this.assertBookingVisible(bookingId, request);
+    const claims = request.user as JwtPayload;
+    const user = claims.preferred_username;
+    const displayNames = await fetchUserDisplayNameMap();
+    return this.app.prisma.bookingComment.create({
+      data: {
+        bookingId,
+        authorUserId: user,
+        authorName:   displayNames.get(user) ?? user,
+        body:         dto.body, // schema zaten trim + min(1) yapar
+      },
+    });
+  }
+
+  async listStatusHistory(bookingId: number, request: FastifyRequest) {
+    await this.assertBookingVisible(bookingId, request);
+    return this.app.prisma.bookingStatusHistory.findMany({
+      where:   { bookingId },
+      orderBy: { createdAt: 'asc' }, // kronolojik aktivite akışı
+    });
   }
 
   private visibleGroups(claims: JwtPayload): BcmsGroup[] {

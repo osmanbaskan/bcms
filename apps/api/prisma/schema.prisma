@@ -203,6 +203,8 @@ model Booking {
   match        Match?        @relation(fields: [matchId], references: [id])
   schedule     Schedule?     @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   team         Team?         @relation(fields: [teamId], references: [id])
+  comments     BookingComment[]
+  statusHistory BookingStatusHistory[]
 
   @@index([scheduleId])
   @@index([teamId])
@@ -211,6 +213,44 @@ model Booking {
   @@index([assigneeId])
   @@index([startDate, dueDate])
   @@map("bookings")
+}
+
+/// 2026-05-14: "İş Takip" sekmesinde her iş içinde Jira-benzeri çoklu yorum
+/// sistemi. Plain text gövde; V1'de edit/delete yok. authorUserId Keycloak
+/// `preferred_username`; authorName snapshot (Keycloak isim değişikliği
+/// audit izinden kopmasın).
+model BookingComment {
+  id           Int       @id @default(autoincrement())
+  bookingId    Int       @map("booking_id")
+  authorUserId String    @map("author_user_id") @db.VarChar(100)
+  authorName   String?   @map("author_name") @db.VarChar(200)
+  body         String    @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+  booking      Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt], map: "booking_comments_booking_created_idx")
+  @@map("booking_comments")
+}
+
+/// 2026-05-14: Her iş için kalıcı durum geçmişi — operatör görünümünde
+/// aktivite akışı. Status PATCH veya create sırasında otomatik yazılır;
+/// kullanıcı tarafından silinmez (audit yerine geçmez; bu kullanıcıya
+/// görünen ürün datası). fromStatus null → ilk create kaydı.
+model BookingStatusHistory {
+  id              Int            @id @default(autoincrement())
+  bookingId       Int            @map("booking_id")
+  fromStatus      BookingStatus? @map("from_status")
+  toStatus        BookingStatus  @map("to_status")
+  changedByUserId String         @map("changed_by_user_id") @db.VarChar(100)
+  changedByName   String?        @map("changed_by_name") @db.VarChar(200)
+  note            String?        @db.VarChar(500)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  booking         Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt], map: "booking_status_history_booking_created_idx")
+  @@map("booking_status_history")
 }
 
 model IngestJob {

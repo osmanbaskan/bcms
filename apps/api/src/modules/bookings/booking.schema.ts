@@ -55,3 +55,28 @@ export const updateBookingSchema = z.object({
 
 export type CreateBookingDto = z.infer<typeof createBookingSchema>;
 export type UpdateBookingDto = z.infer<typeof updateBookingSchema>;
+
+// 2026-05-14: "İş Takip" — yorum + durum geçmişi.
+//
+// Yorum gövdesi plain text; sunucu trim eder. HTML render YOK (Angular default
+// escape). max 4000 = makul long-form yorum sınırı.
+export const createBookingCommentSchema = z.object({
+  body: z.string().trim().min(1, 'Yorum boş olamaz').max(4000),
+});
+
+export type CreateBookingCommentDto = z.infer<typeof createBookingCommentSchema>;
+
+// 2026-05-14: list filter — başlık araması + status filter.
+//   qTitle: trim + empty kabul edilmez (zod min(1)); frontend hiç göndermesin.
+//           Sadece taskTitle üzerinde case-insensitive contains.
+//   status: BookingStatus enum; "Tümü" frontend tarafında param göndermez.
+export const listBookingsQuerySchema = z.object({
+  scheduleId: z.coerce.number().int().positive().optional(),
+  group:      z.string().optional(),
+  qTitle:     z.string().trim().min(1).max(120).optional(),
+  status:     z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(),
+  page:       z.coerce.number().int().positive().default(1),
+  pageSize:   z.coerce.number().int().positive().max(200).default(50),
+});
+
+export type ListBookingsQuery = z.infer<typeof listBookingsQuerySchema>;

@@ -20,7 +20,14 @@ import { isSkipAuthAllowed } from '../../../core/auth/skip-auth';
 import { ApiService } from '../../../core/services/api.service';
 import { istanbulTodayDate } from '../../../core/time/tz.helpers';
 import { GROUP } from '@bcms/shared';
-import type { Booking, BookingStatus, PaginatedResponse } from '@bcms/shared';
+import type {
+  Booking,
+  BookingComment,
+  BookingStatus,
+  BookingStatusHistoryEntry,
+  PaginatedResponse,
+} from '@bcms/shared';
+import { formatIstanbulDateTr, formatIstanbulTime } from '../../../core/time/tz.helpers';
 import type { BcmsTokenParsed } from '../../../core/types/auth';
 
 interface BookingListResponse extends PaginatedResponse<Booking> {
@@ -56,7 +63,7 @@ function todayDateOnly(): string {
   standalone: true,
   imports: [
     CommonModule, FormsModule, MatButtonModule, MatDialogModule, MatFormFieldModule,
-    MatInputModule, MatSelectModule, MatProgressSpinnerModule,
+    MatInputModule, MatSelectModule, MatProgressSpinnerModule, MatIconModule,
   ],
   template: `
     <h2 mat-dialog-title>{{ data.booking ? 'İşi Düzenle' : 'Yeni İş' }}</h2>
@@ -110,6 +117,81 @@ function todayDateOnly(): string {
           <textarea matInput rows="4" [(ngModel)]="form.taskReport" [ngModelOptions]="{standalone:true}"></textarea>
         </mat-form-field>
       </div>
+
+      <!-- 2026-05-14: Yorum + Durum Geçmişi panelleri (edit mode'da). -->
+      @if (data.booking) {
+        <section class="activity-grid">
+          <div class="activity-card">
+            <h3>Yorumlar <span class="count">({{ comments().length }})</span></h3>
+            @if (commentsLoading()) {
+              <div class="activity-state"><mat-spinner diameter="20"></mat-spinner></div>
+            } @else if (commentsError()) {
+              <p class="activity-state activity-error">{{ commentsError() }}</p>
+            } @else if (comments().length === 0) {
+              <p class="activity-state activity-empty">Henüz yorum yok.</p>
+            } @else {
+              <ul class="comment-list">
+                @for (c of comments(); track c.id) {
+                  <li class="comment-item">
+                    <header>
+                      <strong>{{ c.authorName || c.authorUserId }}</strong>
+                      <time>{{ formatCommentTime(c.createdAt) }}</time>
+                    </header>
+                    <p class="comment-body">{{ c.body }}</p>
+                  </li>
+                }
+              </ul>
+            }
+            <div class="comment-form">
+              <mat-form-field class="wide">
+                <mat-label>Yorum ekle</mat-label>
+                <textarea matInput rows="3" maxlength="4000"
+                          [(ngModel)]="commentBody"
+                          [ngModelOptions]="{standalone:true}"
+                          [disabled]="commentSubmitting()"
+                          placeholder="Düz metin; HTML işlenmez."></textarea>
+              </mat-form-field>
+              <div class="comment-actions">
+                <button mat-raised-button color="primary"
+                        [disabled]="!canSubmitComment() || commentSubmitting()"
+                        (click)="submitComment()">
+                  @if (commentSubmitting()) {
+                    <mat-spinner diameter="16"></mat-spinner>
+                  } @else {
+                    Gönder
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="activity-card">
+            <h3>Durum Geçmişi <span class="count">({{ statusHistory().length }})</span></h3>
+            @if (statusHistoryLoading()) {
+              <div class="activity-state"><mat-spinner diameter="20"></mat-spinner></div>
+            } @else if (statusHistoryError()) {
+              <p class="activity-state activity-error">{{ statusHistoryError() }}</p>
+            } @else if (statusHistory().length === 0) {
+              <p class="activity-state activity-empty">Henüz durum değişikliği yok.</p>
+            } @else {
+              <ul class="history-list">
+                @for (h of statusHistory(); track h.id) {
+                  <li class="history-item">
+                    <span class="history-time">{{ formatCommentTime(h.createdAt) }}</span>
+                    <span class="history-actor">{{ h.changedByName || h.changedByUserId }}</span>
+                    <span class="history-transition">
+                      {{ h.fromStatus ? statusLabel(h.fromStatus) : 'Oluşturuldu' }}
+                      <mat-icon class="history-arrow">arrow_forward</mat-icon>
+                      <strong>{{ statusLabel(h.toStatus) }}</strong>
+                    </span>
+                    @if (h.note) { <span class="history-note">{{ h.note }}</span> }
+                  </li>
+                }
+              </ul>
+            }
+          </div>
+        </section>
+      }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>İptal</button>
@@ -119,13 +201,57 @@ function todayDateOnly(): string {
     </mat-dialog-actions>
   `,
   styles: [`
-    .dialog-content { min-width: min(820px, 94vw); }
+    .dialog-content { min-width: min(820px, 94vw); max-height: 80vh; }
     .form-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:12px; }
     .wide { grid-column: 1 / -1; }
     mat-spinner { display:inline-block; margin-right:6px; }
     @media (max-width: 720px) {
       .form-grid { grid-template-columns:1fr; }
     }
+
+    /* 2026-05-14: Yorum + Durum Geçmişi paneli */
+    .activity-grid {
+      display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: 16px; margin-top: 24px;
+    }
+    @media (max-width: 980px) { .activity-grid { grid-template-columns: 1fr; } }
+    .activity-card {
+      border: 1px solid var(--bp-line-2, rgba(255,255,255,0.08));
+      border-radius: 8px; padding: 14px; background: var(--bp-bg-2, transparent);
+      display: flex; flex-direction: column; min-height: 220px;
+    }
+    .activity-card h3 {
+      margin: 0 0 10px; font-size: 13px; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--bp-fg-2, currentColor);
+    }
+    .activity-card h3 .count { color: var(--bp-fg-3, #999); font-weight: 400; }
+    .activity-state {
+      display: flex; align-items: center; justify-content: center;
+      padding: 18px; color: var(--bp-fg-3, #999); font-size: 12.5px;
+    }
+    .activity-empty { font-style: italic; }
+    .activity-error { color: var(--bp-status-REJECTED-fg, #d33); }
+
+    .comment-list, .history-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 260px; }
+    .comment-item { padding: 8px 0; border-bottom: 1px solid var(--bp-line-2, rgba(255,255,255,0.05)); }
+    .comment-item:last-child { border-bottom: 0; }
+    .comment-item header { display:flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--bp-fg-2, #aaa); }
+    .comment-item header strong { color: var(--bp-fg-1, #fff); font-weight: 600; }
+    .comment-item .comment-body { margin: 4px 0 0; white-space: pre-wrap; font-size: 13px; color: var(--bp-fg-1, currentColor); }
+
+    .comment-form { margin-top: 12px; }
+    .comment-form .wide { display: block; }
+    .comment-actions { display:flex; justify-content: flex-end; }
+
+    .history-item { display:flex; flex-direction: column; gap: 2px; padding: 6px 0; font-size: 12px; border-bottom: 1px solid var(--bp-line-2, rgba(255,255,255,0.05)); }
+    .history-item:last-child { border-bottom: 0; }
+    .history-time { color: var(--bp-fg-3, #999); font-size: 11px; }
+    .history-actor { color: var(--bp-fg-2, #bbb); font-weight: 500; }
+    .history-transition { display:flex; align-items: center; gap: 6px; color: var(--bp-fg-1, currentColor); }
+    .history-arrow { font-size: 14px !important; width: 14px !important; height: 14px !important; }
+    .history-note { color: var(--bp-fg-3, #999); font-style: italic; }
+
+    .search-field { min-width: 220px; }
   `],
 })
 export class BookingTaskDialogComponent implements OnInit {
@@ -142,6 +268,16 @@ export class BookingTaskDialogComponent implements OnInit {
   assignees = signal<AssignableUser[]>([]);
   saving = signal(false);
 
+  // 2026-05-14: yorum + durum geçmişi paneli state'i (edit mode'da kullanılır).
+  comments              = signal<BookingComment[]>([]);
+  commentsLoading       = signal(false);
+  commentsError         = signal<string | null>(null);
+  commentBody           = '';
+  commentSubmitting     = signal(false);
+  statusHistory         = signal<BookingStatusHistoryEntry[]>([]);
+  statusHistoryLoading  = signal(false);
+  statusHistoryError    = signal<string | null>(null);
+
   form = {
     taskTitle: this.data.booking?.taskTitle ?? '',
     userGroup: this.data.booking?.userGroup ?? this.data.groups[0] ?? '',
@@ -156,6 +292,10 @@ export class BookingTaskDialogComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadAssignees();
+    if (this.data.booking) {
+      this.loadComments();
+      this.loadStatusHistory();
+    }
   }
 
   canAssign(): boolean {
@@ -185,6 +325,88 @@ export class BookingTaskDialogComponent implements OnInit {
     const user = this.assignees().find((item) => item.id === this.form.assigneeId);
     this.form.assigneeName = user?.displayName ?? null;
   }
+
+  // ── 2026-05-14: Yorum + Durum Geçmişi (edit mode) ──────────────────────────
+
+  loadComments(): void {
+    if (!this.data.booking) return;
+    this.commentsLoading.set(true);
+    this.commentsError.set(null);
+    this.api.get<BookingComment[]>(`/bookings/${this.data.booking.id}/comments`).subscribe({
+      next: (rows) => {
+        this.comments.set(Array.isArray(rows) ? rows : []);
+        this.commentsLoading.set(false);
+      },
+      error: (err) => {
+        this.commentsError.set(err?.error?.message ?? 'Yorumlar yüklenemedi');
+        this.commentsLoading.set(false);
+      },
+    });
+  }
+
+  loadStatusHistory(): void {
+    if (!this.data.booking) return;
+    this.statusHistoryLoading.set(true);
+    this.statusHistoryError.set(null);
+    this.api.get<BookingStatusHistoryEntry[]>(`/bookings/${this.data.booking.id}/status-history`).subscribe({
+      next: (rows) => {
+        this.statusHistory.set(Array.isArray(rows) ? rows : []);
+        this.statusHistoryLoading.set(false);
+      },
+      error: (err) => {
+        this.statusHistoryError.set(err?.error?.message ?? 'Durum geçmişi yüklenemedi');
+        this.statusHistoryLoading.set(false);
+      },
+    });
+  }
+
+  canSubmitComment(): boolean {
+    return !!this.data.booking && this.commentBody.trim().length > 0;
+  }
+
+  submitComment(): void {
+    if (!this.canSubmitComment() || !this.data.booking) return;
+    const body = this.commentBody.trim();
+    const optimistic: BookingComment = {
+      id: -Date.now(), // negative placeholder; gerçek id POST sonrası gelir
+      bookingId: this.data.booking.id,
+      authorUserId: 'me',
+      authorName: 'Gönderiliyor…',
+      body,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.commentSubmitting.set(true);
+    this.comments.update((list) => [...list, optimistic]);
+    const tmpId = optimistic.id;
+    const previousBody = this.commentBody;
+    this.commentBody = '';
+    this.api.post<BookingComment>(`/bookings/${this.data.booking.id}/comments`, { body }).subscribe({
+      next: (created) => {
+        // optimistic'i gerçek kayıtla değiştir
+        this.comments.update((list) => list.map((c) => (c.id === tmpId ? created : c)));
+        this.commentSubmitting.set(false);
+      },
+      error: (err) => {
+        // rollback
+        this.comments.update((list) => list.filter((c) => c.id !== tmpId));
+        this.commentBody = previousBody;
+        this.commentSubmitting.set(false);
+        this.snack.open(err?.error?.message ?? 'Yorum eklenemedi', 'Kapat', { duration: 4000 });
+      },
+    });
+  }
+
+  formatCommentTime(iso: string): string {
+    if (!iso) return '';
+    return `${formatIstanbulDateTr(iso)} ${formatIstanbulTime(iso)}`;
+  }
+
+  statusLabel(value: string): string {
+    return STATUS_OPTIONS.find((item) => item.value === value)?.label ?? value;
+  }
+
+  // ── /Yorum + Durum Geçmişi ─────────────────────────────────────────────────
 
   save(): void {
     if (!this.canSave()) return;
@@ -227,10 +449,29 @@ export class BookingTaskDialogComponent implements OnInit {
     <div class="page">
       <div class="toolbar">
         <div>
-          <h1>Ekip iş takip</h1>
+          <h1>İş Takip</h1>
           <p>Grup içi iş takip sistemi</p>
         </div>
         <div class="toolbar-actions">
+          <mat-form-field appearance="outline" class="search-field">
+            <mat-label>Başlıkta ara</mat-label>
+            <input matInput [(ngModel)]="searchTitle" [ngModelOptions]="{standalone:true}"
+                   (input)="onSearchInput()" placeholder="Örn. yayın hazırlığı" maxlength="120" />
+            @if (searchTitle) {
+              <button matSuffix mat-icon-button aria-label="Temizle" (click)="clearSearch()">
+                <mat-icon>close</mat-icon>
+              </button>
+            }
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Durum</mat-label>
+            <mat-select [(ngModel)]="selectedStatus" [ngModelOptions]="{standalone:true}" (selectionChange)="onStatusChange()">
+              <mat-option value="">Tümü</mat-option>
+              @for (status of statuses; track status.value) {
+                <mat-option [value]="status.value">{{ status.label }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
           <mat-form-field appearance="outline">
             <mat-label>Grup</mat-label>
             <mat-select [(ngModel)]="selectedGroup" [ngModelOptions]="{standalone:true}" (selectionChange)="load()">
@@ -407,6 +648,13 @@ export class BookingListComponent implements OnInit {
   isAdmin = signal(false);
   loading = signal(false);
   selectedGroup = '';
+  // 2026-05-14: İş Takip toolbar — title search + status filter.
+  // Search: 300ms debounce; whitespace/empty backend'e gönderilmez.
+  // Status: '' = Tümü (backend param yok).
+  searchTitle = '';
+  selectedStatus: BookingStatus | '' = '';
+  statuses = STATUS_OPTIONS;
+  private searchDebounceHandle: number | null = null;
   displayedColumns = ['taskTitle', 'userGroup', 'requestedBy', 'status', 'dates', 'assignee', 'actions'];
 
   // LOW-FE-003 fix (2026-05-05): visibleGroups gereksizdi — groups() doğrudan
@@ -419,8 +667,15 @@ export class BookingListComponent implements OnInit {
 
   load(): void {
     this.loading.set(true);
-    const params = this.selectedGroup ? { group: this.selectedGroup } : undefined;
-    this.api.get<BookingListResponse>('/bookings', params).subscribe({
+    // 2026-05-14: server-side filter — list paginated; client-side filter
+    // sayfa-sınırı içinde yanıltır. qTitle trim sonrası boş → param hiç
+    // gönderilmez (backend zod min(1) reddederdi).
+    const trimmed = this.searchTitle.trim();
+    const params: Record<string, string> = {};
+    if (this.selectedGroup)     params['group']  = this.selectedGroup;
+    if (trimmed)                params['qTitle'] = trimmed;
+    if (this.selectedStatus)    params['status'] = this.selectedStatus;
+    this.api.get<BookingListResponse>('/bookings', Object.keys(params).length ? params : undefined).subscribe({
       next: (res) => {
         // HIGH-FE-005: sort artık sortedBookings computed'unda; raw data set.
         this.bookings.set(res.data);
@@ -433,6 +688,28 @@ export class BookingListComponent implements OnInit {
         this.showError(err);
       },
     });
+  }
+
+  onSearchInput(): void {
+    // 300ms debounce: kullanıcı yazarken her keystroke'da API çağrısı yapma.
+    if (this.searchDebounceHandle !== null) window.clearTimeout(this.searchDebounceHandle);
+    this.searchDebounceHandle = window.setTimeout(() => {
+      this.searchDebounceHandle = null;
+      this.load();
+    }, 300);
+  }
+
+  clearSearch(): void {
+    this.searchTitle = '';
+    if (this.searchDebounceHandle !== null) {
+      window.clearTimeout(this.searchDebounceHandle);
+      this.searchDebounceHandle = null;
+    }
+    this.load();
+  }
+
+  onStatusChange(): void {
+    this.load();
   }
 
   openDialog(booking?: Booking): void {

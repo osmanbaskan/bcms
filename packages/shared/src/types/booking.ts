@@ -63,3 +63,27 @@ export interface BookingListItem extends Booking {
   /** Keycloak'dan join edilmiş display name; createdBy ID'sine karşılık. */
   requestedByName?: string | null;
 }
+
+/** 2026-05-14: İş Takip — Jira-benzeri yorum sistemi. V1 plain text;
+ *  edit/delete YOK. authorName Keycloak display name snapshot'ı. */
+export interface BookingComment {
+  id:           number;
+  bookingId:    number;
+  authorUserId: string;
+  authorName?:  string | null;
+  body:         string;
+  createdAt:    string;
+  updatedAt:    string;
+}
+
+/** 2026-05-14: İş Takip — sınırsız durum geçmişi (kullanıcı silmez). */
+export interface BookingStatusHistoryEntry {
+  id:              number;
+  bookingId:       number;
+  fromStatus:      BookingStatus | null;
+  toStatus:        BookingStatus;
+  changedByUserId: string;
+  changedByName?:  string | null;
+  note?:           string | null;
+  createdAt:       string;
+}
