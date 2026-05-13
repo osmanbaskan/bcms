@@ -1036,11 +1036,33 @@ export class IngestListComponent implements OnInit, OnDestroy {
     const portOrder = new Map(orderedNames.map((name, index) => [name, index]));
     const grouped = new Map<string, IngestPlanRow[]>();
 
+    // 2026-05-14: Port Görünümü'nde "Yedek Kayıt Portu" da görünür.
+    //
+    //   Primary row → row.recordingPort kolonu (mevcut davranış, dokunulmaz).
+    //   Backup variant → row.backupRecordingPort kolonuna ayrı entry:
+    //     - id `__backup` suffix (trackBy collision guard)
+    //     - title sonuna " (yedek)" eki (operatöre yedek olduğunu belli eder)
+    //     - sortMinute/endMinute/source/sourceLabel ... aynı kalır (sort + overlap
+    //       mantığı toPortBoardItems içinde çalışmaya devam eder)
+    //   Aynı port primary === backup ise duplicate üretilmez (backend zaten
+    //   bu kombinasyonu 400 ile reddeder; defensive guard).
+    //   Primary boş + backup dolu (anomali) → backup variant board'a girer;
+    //   kullanıcının atadığı portu görmesi için.
     for (const row of this.portBoardAllRows()) {
-      if (!row.recordingPort) continue;
-      const rows = grouped.get(row.recordingPort) ?? [];
-      rows.push(row);
-      grouped.set(row.recordingPort, rows);
+      if (row.recordingPort) {
+        const rows = grouped.get(row.recordingPort) ?? [];
+        rows.push(row);
+        grouped.set(row.recordingPort, rows);
+      }
+      if (row.backupRecordingPort && row.backupRecordingPort !== row.recordingPort) {
+        const rows = grouped.get(row.backupRecordingPort) ?? [];
+        rows.push({
+          ...row,
+          id:    `${row.id}__backup`,
+          title: `${row.title} (yedek)`,
+        });
+        grouped.set(row.backupRecordingPort, rows);
+      }
     }
 
     return orderedNames

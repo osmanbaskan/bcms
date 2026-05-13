@@ -266,4 +266,122 @@ describe('IngestListComponent', () => {
 
     fixture.destroy();
   }));
+
+  // ── 2026-05-14: Port Görünümü — Yedek Kayıt Portu yansıma fix testleri ─────
+  //
+  // Bug: assignedPortColumns sadece row.recordingPort üzerinden grouping
+  // yapıyordu; row.backupRecordingPort port board'da hiç gözükmüyordu.
+  // Fix: backup port için ayrı variant entry (id `__backup`, title `(yedek)`).
+
+  function makePortBoardEntry(opts: {
+    livePlanEntryId: number; title: string;
+    eventStart: string; eventEnd: string;
+    recordingPort?: string | null; backupRecordingPort?: string | null;
+  }): any {
+    return {
+      livePlanEntryId: opts.livePlanEntryId,
+      eventKey: 'manual:pb', title: opts.title, status: 'PLANNED',
+      eventStartTime: opts.eventStart, eventEndTime: opts.eventEnd,
+      channel1Id: null, channel2Id: null, channel3Id: null, leagueName: null,
+      planItem: null, ingestJob: null, scheduleId: null, hasBroadcastSchedule: false,
+    };
+  }
+
+  function makePlanItem(opts: {
+    livePlanEntryId: number;
+    recordingPort?: string | null; backupRecordingPort?: string | null;
+  }): any {
+    return {
+      id: opts.livePlanEntryId, sourceType: 'live-plan',
+      sourceKey: `liveplan:${opts.livePlanEntryId}`,
+      dayDate: '2026-06-01',
+      recordingPort: opts.recordingPort ?? null,
+      backupRecordingPort: opts.backupRecordingPort ?? null,
+      plannedStartMinute: 1020, plannedEndMinute: 1140,
+      status: 'WAITING', jobId: null, note: null,
+      createdAt: '', updatedAt: '',
+    };
+  }
+
+  function setupBoardWith(planItem: any, candidate?: any) {
+    component.channels.set([] as any[]);
+    component.portBoardLivePlan.set([] as any[]);
+    component.portBoardStudioPlan.set([] as any[]);
+    component.portBoardLiveEntryCandidates.set([
+      candidate ?? makePortBoardEntry({
+        livePlanEntryId: planItem.id, title: 'PB-row',
+        eventStart: '2026-06-01T17:00:00.000Z', eventEnd: '2026-06-01T19:00:00.000Z',
+      }),
+    ]);
+    component.portBoardIngestItems.set([planItem]);
+    // activeRecordingPorts kolonun gözükmesi için katalogta olmalı
+    component.recordingPorts.set([
+      { id: 1, name: 'PortA', sortOrder: 1, active: true },
+      { id: 2, name: 'PortB', sortOrder: 2, active: true },
+    ] as any[]);
+  }
+
+  it('Port Görünümü: yalnız primary port — sadece o kolonda 1 entry', () => {
+    setupBoardWith(makePlanItem({ livePlanEntryId: 100, recordingPort: 'PortA' }));
+    const cols = component.assignedPortColumns();
+    const colA = cols.find((c) => c.port === 'PortA');
+    const colB = cols.find((c) => c.port === 'PortB');
+    expect(colA?.items.length).toBe(1);
+    expect(colB?.items.length).toBe(0);
+    expect(colA?.items[0].row.title).toBe('PB-row');
+  });
+
+  it('Port Görünümü: primary + backup farklıysa iki kolonda iki entry', () => {
+    setupBoardWith(makePlanItem({ livePlanEntryId: 101, recordingPort: 'PortA', backupRecordingPort: 'PortB' }));
+    const cols = component.assignedPortColumns();
+    const colA = cols.find((c) => c.port === 'PortA');
+    const colB = cols.find((c) => c.port === 'PortB');
+    expect(colA?.items.length).toBe(1);
+    expect(colB?.items.length).toBe(1);
+  });
+
+  it('Port Görünümü: backup entry title "(yedek)" içerir', () => {
+    setupBoardWith(makePlanItem({ livePlanEntryId: 102, recordingPort: 'PortA', backupRecordingPort: 'PortB' }));
+    const cols = component.assignedPortColumns();
+    const backupItem = cols.find((c) => c.port === 'PortB')!.items[0];
+    expect(backupItem.row.title).toContain('(yedek)');
+    expect(backupItem.row.title).toMatch(/PB-row.*\(yedek\)/);
+  });
+
+  it('Port Görünümü: backup entry id "__backup" suffix taşır (trackBy collision guard)', () => {
+    setupBoardWith(makePlanItem({ livePlanEntryId: 103, recordingPort: 'PortA', backupRecordingPort: 'PortB' }));
+    const cols = component.assignedPortColumns();
+    const primaryItem = cols.find((c) => c.port === 'PortA')!.items[0];
+    const backupItem  = cols.find((c) => c.port === 'PortB')!.items[0];
+    expect(backupItem.row.id).toMatch(/__backup$/);
+    expect(backupItem.row.id).not.toBe(primaryItem.row.id);
+  });
+
+  it('Port Görünümü: primary === backup ise duplicate üretilmez (tek entry, "(yedek)" yok)', () => {
+    setupBoardWith(makePlanItem({ livePlanEntryId: 104, recordingPort: 'PortA', backupRecordingPort: 'PortA' }));
+    const cols = component.assignedPortColumns();
+    const colA = cols.find((c) => c.port === 'PortA');
+    expect(colA?.items.length).toBe(1);
+    expect(colA?.items[0].row.title).not.toContain('(yedek)');
+  });
+
+  it('Port Görünümü: primary boş + backup dolu (defensive) → backup kolonunda "(yedek)" entry', () => {
+    setupBoardWith(makePlanItem({ livePlanEntryId: 105, recordingPort: null, backupRecordingPort: 'PortB' }));
+    const cols = component.assignedPortColumns();
+    const colA = cols.find((c) => c.port === 'PortA');
+    const colB = cols.find((c) => c.port === 'PortB');
+    expect(colA?.items.length).toBe(0);
+    expect(colB?.items.length).toBe(1);
+    expect(colB?.items[0].row.title).toContain('(yedek)');
+  });
+
+  it('Port Görünümü: backup boş ise mevcut davranış değişmez (sadece primary kolonu)', () => {
+    setupBoardWith(makePlanItem({ livePlanEntryId: 106, recordingPort: 'PortA', backupRecordingPort: null }));
+    const cols = component.assignedPortColumns();
+    const colA = cols.find((c) => c.port === 'PortA');
+    const colB = cols.find((c) => c.port === 'PortB');
+    expect(colA?.items.length).toBe(1);
+    expect(colB?.items.length).toBe(0);
+    expect(colA?.items[0].row.title).not.toContain('(yedek)');
+  });
 });
