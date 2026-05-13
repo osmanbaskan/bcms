@@ -662,6 +662,10 @@ export class IngestListComponent implements OnInit, OnDestroy {
   portBoardLivePlan = signal<Schedule[]>([]);
   portBoardStudioPlan = signal<StudioPlanSlot[]>([]);
   portBoardIngestItems = signal<IngestPlanItem[]>([]);
+  // 2026-05-13: Port Görünümü yeni live_plan_entries (`liveplan:<id>`) akışını
+  // desteklemeli. planningRows ile aynı authoritative pattern: snapshot
+  // backend fetch'ten gelir, signal ingestPlanItems üzerinden patchlenir.
+  portBoardLiveEntryCandidates = signal<LivePlanIngestCandidate[]>([]);
   portBoardLoadError = signal<string | null>(null);
 
   filteredJobs = computed(() => {
@@ -715,11 +719,18 @@ export class IngestListComponent implements OnInit, OnDestroy {
     // Tüm günlük entry'ler kanal/eventKey/job/planItem var-yok ayrımı olmadan
     // listelenir. Channel display: kanal yoksa veya katalogtan ad bulunamazsa
     // '—'.
+    //
+    // 2026-05-13 fix: `c.planItem` salt backend fetch snapshot'ı; save sonrası
+    // `ingestPlanItems` signal güncellense bile snapshot eski değerini taşıyordu
+    // → mat-select port seçimi anlık görünmüyordu. Authoritative kaynak
+    // `planItemMap.get('liveplan:<id>')`; yoksa snapshot'a fallback.
     const liveEntryRows: IngestPlanRow[] = this.liveEntryCandidates().map((c) => {
+      const livePlanItem      = planItemMap.get(`liveplan:${c.livePlanEntryId}`);
+      const effectivePlanItem = livePlanItem ?? c.planItem;
       const startMin = this.sortMinuteFromDate(c.eventStartTime);
       const endMin   = this.sortMinuteFromDate(c.eventEndTime);
-      const planMin  = c.planItem?.plannedStartMinute ?? startMin;
-      const planEnd  = c.planItem?.plannedEndMinute   ?? endMin;
+      const planMin  = effectivePlanItem?.plannedStartMinute ?? startMin;
+      const planEnd  = effectivePlanItem?.plannedEndMinute   ?? endMin;
       return {
         id:                  `liveplan-${c.livePlanEntryId}`,
         source:              'live-plan' as const,
@@ -733,12 +744,12 @@ export class IngestListComponent implements OnInit, OnDestroy {
         title:               c.title,
         location:            this.channelTripletNames(c.channel1Id, c.channel2Id, c.channel3Id),
         note:                c.leagueName ?? '—',
-        recordingPort:       c.planItem?.recordingPort ?? '',
-        backupRecordingPort: c.planItem?.backupRecordingPort ?? '',
-        status: (c.planItem?.status as IngestPlanStatus | undefined)
+        recordingPort:       effectivePlanItem?.recordingPort       ?? '',
+        backupRecordingPort: effectivePlanItem?.backupRecordingPort ?? '',
+        status: (effectivePlanItem?.status as IngestPlanStatus | undefined)
               ?? (c.ingestJob ? this.deriveStatusFromJob(c.ingestJob.status) : 'WAITING'),
-        planNote:            c.planItem?.note ?? '',
-        jobId:               c.planItem?.jobId ?? c.ingestJob?.id ?? undefined,
+        planNote:            effectivePlanItem?.note ?? '',
+        jobId:               effectivePlanItem?.jobId ?? c.ingestJob?.id ?? undefined,
         scheduleId:          c.scheduleId ?? undefined,
       };
     });
@@ -862,7 +873,52 @@ export class IngestListComponent implements OnInit, OnDestroy {
     const planItemMap = new Map(planItems.map((item) => [item.sourceKey, item]));
     const date = this.portBoardDate();
 
-    const liveRows = this.portBoardLivePlan().map((schedule) => {
+    // 2026-05-13: live_plan_entries projection (`liveplan:<id>` sourceKey).
+    // planningRows.liveEntryRows ile aynı authoritative pattern: signal varsa
+    // kullan, snapshot fallback.
+    const liveEntryRows: IngestPlanRow[] = this.portBoardLiveEntryCandidates().map((c) => {
+      const livePlanItem      = planItemMap.get(`liveplan:${c.livePlanEntryId}`);
+      const effectivePlanItem = livePlanItem ?? c.planItem;
+      const startMin = this.sortMinuteFromDate(c.eventStartTime);
+      const endMin   = this.sortMinuteFromDate(c.eventEndTime);
+      const planMin  = effectivePlanItem?.plannedStartMinute ?? startMin;
+      const planEnd  = effectivePlanItem?.plannedEndMinute   ?? endMin;
+      return {
+        id:                  `liveplan-${c.livePlanEntryId}`,
+        source:              'live-plan' as const,
+        sourceLabel:         'Canlı Yayın',
+        sourceKey:           `liveplan:${c.livePlanEntryId}`,
+        day:                 date,
+        sortMinute:          planMin,
+        endMinute:           planEnd,
+        startTime:           this.minuteToTime(planMin),
+        endTime:             this.minuteToTime(planEnd),
+        title:               c.title,
+        location:            this.channelTripletNames(c.channel1Id, c.channel2Id, c.channel3Id),
+        note:                c.leagueName ?? '—',
+        recordingPort:       effectivePlanItem?.recordingPort       ?? '',
+        backupRecordingPort: effectivePlanItem?.backupRecordingPort ?? '',
+        status: (effectivePlanItem?.status as IngestPlanStatus | undefined)
+              ?? (c.ingestJob ? this.deriveStatusFromJob(c.ingestJob.status) : 'WAITING'),
+        planNote:            effectivePlanItem?.note ?? '',
+        jobId:               effectivePlanItem?.jobId ?? c.ingestJob?.id ?? undefined,
+        scheduleId:          c.scheduleId ?? undefined,
+      };
+    });
+
+    // 2026-05-13: Duplicate guard — planningRows ile aynı pattern. Yeni
+    // live-plan entry akışı schedule ile eşliyse (scheduleId != null), legacy
+    // `live:<scheduleId>` satırını dışla (aynı event'in iki kez kolonda
+    // gözükmesini engelle).
+    const dupScheduleIds = new Set(
+      this.portBoardLiveEntryCandidates()
+        .map((c) => c.scheduleId)
+        .filter((id): id is number => id !== null),
+    );
+
+    const liveRows = this.portBoardLivePlan()
+      .filter((schedule) => !dupScheduleIds.has(schedule.id))
+      .map((schedule) => {
       const planItem = planItemMap.get(`live:${schedule.id}`);
       const srcStart = this.sortMinuteFromDate(schedule.startTime);
       const srcEnd = this.sortMinuteFromDate(schedule.endTime);
@@ -940,7 +996,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
         };
       });
 
-    return [...liveRows, ...studioRows, ...manualRows].sort((a, b) => a.sortMinute - b.sortMinute);
+    return [...liveEntryRows, ...liveRows, ...studioRows, ...manualRows].sort((a, b) => a.sortMinute - b.sortMinute);
   });
 
   portBoardRows = computed(() => this.portBoardAllRows().filter((row) => !!row.recordingPort));
@@ -1142,6 +1198,15 @@ export class IngestListComponent implements OnInit, OnDestroy {
     this.api.get<IngestPlanItem[]>('/ingest/plan', { date: dateValue }).subscribe({
       next: (items) => this.portBoardIngestItems.set(Array.isArray(items) ? items : []),
       error: () => this.portBoardLoadError.set('Ingest plan öğeleri yüklenemedi'),
+    });
+    // 2026-05-13: live_plan_entries projection (planningRows ile aynı kontrat).
+    // Port Görünümü, planning tab'ında save edilen `liveplan:<id>` satırlarının
+    // mat-select tarafından seçilmiş portunu gösterebilmek için bu listeyi
+    // bilmeli. Snapshot backend'den; signal patch'i savePlanRow → ingestPlanItems
+    // üzerinden olur, computed planItemMap lookup ile yeni değeri okur.
+    this.api.get<LivePlanIngestCandidate[]>('/ingest/live-plan-candidates', { date: dateValue }).subscribe({
+      next: (rows) => this.portBoardLiveEntryCandidates.set(Array.isArray(rows) ? rows : []),
+      error: () => this.portBoardLiveEntryCandidates.set([]),
     });
   }
 
