@@ -61,6 +61,27 @@ app-studio-plan-toolbar {
   zoom: 100%;
 }
 
+// 2026-05-14: Fullscreen modda toolbar plan-shell üst kenarına yapışır.
+// Normal modda sticky tetiklenmez (parent scroll container'ın overflow:auto
+// çocuğu olarak in-flow render edilir). Sadece tam-ekran modunda kullanıcı
+// uzun tablo içinde scroll yaparken araçlara erişebilsin diye.
+.plan-shell:fullscreen .plan-shell-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bp-bg-2);
+  border-bottom: 1px solid var(--bp-line-2);
+}
+
+// 2026-05-14: Export PDF / print sırasında toolbar görünmesin (no-print
+// class'ı için defansif kural — global .no-print yoksa burada handle).
+@media print {
+  .plan-shell .plan-shell-toolbar,
+  .plan-shell .no-print {
+    display: none !important;
+  }
+}
+
 .print-title {
   display: flex;
   align-items: center;

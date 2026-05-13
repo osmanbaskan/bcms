@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, OnInit, OnDestroy, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, HostListener, OnInit, OnDestroy, ViewChild, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { KeycloakService } from 'keycloak-angular';
@@ -259,6 +259,8 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.saveSub?.unsubscribe();
     this.saveTrigger$.complete();
+    // 2026-05-14: auto-pan RAF loop'u memory leak bırakmasın.
+    this.stopAutoPanLoop();
   }
 
   onWeekStartChange(weekStart = this.weekStart): void {
@@ -558,7 +560,13 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
 
   @HostListener('document:fullscreenchange')
   onFullscreenChange(): void {
-    this.fullscreenActive.set(document.fullscreenElement?.id === 'studio-plan-export');
+    const active = document.fullscreenElement?.id === 'studio-plan-export';
+    this.fullscreenActive.set(active);
+    if (!active) {
+      // 2026-05-14: fullscreen kapanınca auto-pan loop'u temizle.
+      this.autoPanState = { dx: 0, dy: 0 };
+      this.stopAutoPanLoop();
+    }
   }
 
   async toggleFullscreen(): Promise<void> {
@@ -567,6 +575,113 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
       return;
     }
     await document.getElementById('studio-plan-export')?.requestFullscreen();
+  }
+
+  // ── 2026-05-14: Fullscreen edit mode'da mouse-edge auto-pan ───────────────
+  //
+  // Pointer fullscreen container'ın kenarına yaklaştıkça yatay (ve opsiyonel
+  // dikey) scroll otomatik tetiklenir. Sadece:
+  //   - fullscreenActive() === true
+  //   - viewMode() === 'table' (liste mode kapsam dışı)
+  //   - canEdit() === true (readonly görüntüleyici için anlamsız)
+  //   - touch/coarse pointer DEĞİL
+  // koşullarında çalışır. Native scroll ile çakışmaz (kenarda değilse no-op).
+  //
+  // Reduced-motion tercih edilmişse hız 1/3'e iner; tamamen kapanmaz (yine
+  // operasyonel fayda korunur).
+
+  @ViewChild('planShell', { static: false }) planShellRef?: ElementRef<HTMLDivElement>;
+
+  private autoPanFrame: number | null = null;
+  private autoPanState: { dx: number; dy: number } = { dx: 0, dy: 0 };
+  private readonly autoPanEdgePx  = 80;
+  private readonly autoPanMaxSpd  = 22;
+
+  private readonly isCoarsePointer =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: coarse)').matches;
+
+  private readonly prefersReducedMotion =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  @HostListener('document:pointermove', ['$event'])
+  onPointerMoveForAutoPan(ev: PointerEvent): void {
+    if (!this.fullscreenActive())     return;
+    if (this.isCoarsePointer)         return;
+    if (this.viewMode() === 'list')   return;
+    if (!this.canEdit())              return;
+
+    const el = this.planShellRef?.nativeElement;
+    if (!el) return;
+
+    const r = el.getBoundingClientRect();
+    const x = ev.clientX;
+    const y = ev.clientY;
+
+    // Pointer container dışında → state sıfır + loop kapanır.
+    if (x < r.left || x > r.right || y < r.top || y > r.bottom) {
+      if (this.autoPanState.dx !== 0 || this.autoPanState.dy !== 0) {
+        this.autoPanState = { dx: 0, dy: 0 };
+      }
+      return;
+    }
+
+    const distLeft  = x - r.left;
+    const distRight = r.right - x;
+    const distTop   = y - r.top;
+    const distBot   = r.bottom - y;
+
+    const maxSpeed = this.prefersReducedMotion ? this.autoPanMaxSpd / 3 : this.autoPanMaxSpd;
+    const speedFor = (d: number): number => Math.max(0, (this.autoPanEdgePx - d) / this.autoPanEdgePx) * maxSpeed;
+
+    let dx = 0;
+    if (distRight < this.autoPanEdgePx)      dx = +speedFor(distRight);
+    else if (distLeft < this.autoPanEdgePx)  dx = -speedFor(distLeft);
+
+    let dy = 0;
+    if (distBot < this.autoPanEdgePx)        dy = +speedFor(distBot);
+    else if (distTop < this.autoPanEdgePx)   dy = -speedFor(distTop);
+
+    this.autoPanState = { dx, dy };
+    if (dx !== 0 || dy !== 0) this.ensureAutoPanLoop();
+  }
+
+  @HostListener('document:pointerleave')
+  onPointerLeaveForAutoPan(): void {
+    this.autoPanState = { dx: 0, dy: 0 };
+  }
+
+  private ensureAutoPanLoop(): void {
+    if (this.autoPanFrame !== null) return;
+    if (typeof window === 'undefined') return;
+    const tick = (): void => {
+      const el = this.planShellRef?.nativeElement;
+      const { dx, dy } = this.autoPanState;
+      if (!el || (dx === 0 && dy === 0)) {
+        this.autoPanFrame = null;
+        return;
+      }
+      const beforeL = el.scrollLeft;
+      const beforeT = el.scrollTop;
+      const maxL = el.scrollWidth  - el.clientWidth;
+      const maxT = el.scrollHeight - el.clientHeight;
+      el.scrollLeft = Math.max(0, Math.min(maxL, beforeL + dx));
+      el.scrollTop  = Math.max(0, Math.min(maxT, beforeT + dy));
+      // Scroll limit hit + state aynıysa CPU israfı önle: aynı pozisyondan
+      // ileri gidemiyorsa loop sonraki frame'de kendini kapatır.
+      this.autoPanFrame = window.requestAnimationFrame(tick);
+    };
+    this.autoPanFrame = window.requestAnimationFrame(tick);
+  }
+
+  private stopAutoPanLoop(): void {
+    if (this.autoPanFrame !== null && typeof window !== 'undefined') {
+      window.cancelAnimationFrame(this.autoPanFrame);
+      this.autoPanFrame = null;
+    }
   }
 
   private buildPrintDocument(planHtml: string): string {

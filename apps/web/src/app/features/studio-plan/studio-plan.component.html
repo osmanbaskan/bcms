@@ -21,30 +21,34 @@
     </div>
   </header>
 
-  <app-studio-plan-toolbar
-    [weekStart]="weekStart"
-    [weekOptions]="weekOptions"
-    [viewMode]="viewMode()"
-    [programs]="programs()"
-    [colors]="colors()"
-    [selectedProgram]="selectedProgram"
-    [selectedColor]="selectedColor"
-    [readonly]="!canEdit()"
-    [eraserMode]="eraserMode()"
-    [loading]="loading()"
-    [saving]="saving()"
-    [saveError]="saveError()"
-    [lastSavedAt]="lastSavedAt()"
-    (weekStartChange)="onWeekStartChange($event)"
-    (viewModeChange)="canEdit() && viewMode.set($event)"
-    (selectedProgramChange)="selectedProgram = $event"
-    (selectedColorChange)="selectedColor = $event"
-    (clearSelection)="clearSelection()"
-    (moveCurrentWeekToNextWeek)="moveCurrentWeekToNextWeek()"
-    (eraserModeChange)="eraserMode.set($event)"
-  ></app-studio-plan-toolbar>
+  <div #planShell id="studio-plan-export" class="plan-shell">
+    <!-- 2026-05-14: Toolbar fullscreen container'ı içinde — fullscreen modda
+         operatör view-mode/program/renk/silgi araçlarına erişebilsin. Normal
+         modda layout aynı kalır (sticky kuralı sadece :fullscreen altında). -->
+    <app-studio-plan-toolbar
+      class="plan-shell-toolbar no-print"
+      [weekStart]="weekStart"
+      [weekOptions]="weekOptions"
+      [viewMode]="viewMode()"
+      [programs]="programs()"
+      [colors]="colors()"
+      [selectedProgram]="selectedProgram"
+      [selectedColor]="selectedColor"
+      [readonly]="!canEdit()"
+      [eraserMode]="eraserMode()"
+      [loading]="loading()"
+      [saving]="saving()"
+      [saveError]="saveError()"
+      [lastSavedAt]="lastSavedAt()"
+      (weekStartChange)="onWeekStartChange($event)"
+      (viewModeChange)="canEdit() && viewMode.set($event)"
+      (selectedProgramChange)="selectedProgram = $event"
+      (selectedColorChange)="selectedColor = $event"
+      (clearSelection)="clearSelection()"
+      (moveCurrentWeekToNextWeek)="moveCurrentWeekToNextWeek()"
+      (eraserModeChange)="eraserMode.set($event)"
+    ></app-studio-plan-toolbar>
 
-  <div id="studio-plan-export" class="plan-shell">
     <div class="print-title">
       <strong>STÜDYO PLANI</strong>
       <span>{{ dateRangeLabel() }}</span>
