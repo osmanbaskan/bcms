@@ -6,8 +6,11 @@ import {
   listLivePlanQuerySchema,
   updateLivePlanSchema,
   createFromOptaSchema,
+  livePlanExportRequestSchema,
 } from './live-plan.schema.js';
 import { LivePlanService } from './live-plan.service.js';
+import { exportLivePlanToBuffer } from './live-plan.export.js';
+import { formatIstanbulDate } from '../../core/tz.js';
 
 /**
  * Madde 5 M5-B2 (decision §3.3): live-plan canonical /api/v1/live-plan routes.
@@ -149,5 +152,23 @@ export async function livePlanRoutes(app: FastifyInstance) {
     const created = await svc.duplicate(id, request);
     reply.status(201);
     return created;
+  });
+
+  // 2026-05-13: Yayın Planlama seçimli Excel export.
+  //   POST /api/v1/live-plan/export
+  //   Body: { ids: number[1..500], title?: string<=120 }
+  //   Auth: PERMISSIONS.livePlan.read (view yetkisi olan export edebilir).
+  //   Response: xlsx binary + Content-Disposition attachment.
+  app.post('/export', {
+    preHandler: app.requireGroup(...PERMISSIONS.livePlan.read),
+    schema: { tags: ['LivePlan'], summary: 'Selected live-plan entries → Excel' },
+  }, async (request, reply) => {
+    const body = livePlanExportRequestSchema.parse(request.body);
+    const buf  = await exportLivePlanToBuffer(app, body);
+    const filename = `yayin-planlama_${formatIstanbulDate(new Date())}.xlsx`;
+    reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(buf);
   });
 }

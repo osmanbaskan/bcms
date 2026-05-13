@@ -56,7 +56,7 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
   beforeEach(async () => {
     serviceSpy = jasmine.createSpyObj<YayinPlanlamaService>('YayinPlanlamaService', [
       'getLivePlanList', 'getLeagueFilterOptions', 'getWeekFilterOptions',
-      'updateLivePlanChannels',
+      'updateLivePlanChannels', 'exportLivePlanExcel',
     ]);
     serviceSpy.getLivePlanList.and.returnValue(of(makeList()));
     serviceSpy.getLeagueFilterOptions.and.returnValue(of([
@@ -65,6 +65,7 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
     ]));
     serviceSpy.getWeekFilterOptions.and.returnValue(of([1, 2, 3]));
     serviceSpy.updateLivePlanChannels.and.returnValue(of(makeEntry({ version: 2, channel1Id: 1 })));
+    serviceSpy.exportLivePlanExcel.and.returnValue(of(new Blob(['xlsx'], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })));
 
     apiSpy = jasmine.createSpyObj<ApiService>('ApiService', ['get']);
     // /channels/catalog → 2 channel fixture (generic callFake; explicit cast).
@@ -280,15 +281,15 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
   });
 
   describe('Kolon sırası ve tarih formatı', () => {
-    it('cols sırası: date, time, match, league, week, channels (status kaldırıldı 2026-05-13)', () => {
+    it('cols sırası: select, date, time, match, league, week, channels (status kaldırıldı 2026-05-13; select 2026-05-13)', () => {
       const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
       fixture.detectChanges();
       const cmp = fixture.componentInstance as unknown as { cols: string[] };
-      expect(cmp.cols).toEqual(['date', 'time', 'match', 'league', 'week', 'channels']);
+      expect(cmp.cols).toEqual(['select', 'date', 'time', 'match', 'league', 'week', 'channels']);
       expect(cmp.cols).not.toContain('status');
-      expect(cmp.cols[0]).toBe('date');
-      expect(cmp.cols[1]).toBe('time');
-      expect(cmp.cols[2]).toBe('match');
+      expect(cmp.cols[0]).toBe('select');
+      expect(cmp.cols[1]).toBe('date');
+      expect(cmp.cols[2]).toBe('time');
     });
 
     it('formatDate: UTC ISO → "DD.MM.YYYY" (Türkiye)', () => {
@@ -648,6 +649,150 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
       // Inline edit kaldırıldı: tablo içinde input[type=date] yok
       expect(host.querySelectorAll('table input[type="date"]').length).toBe(0);
       expect(host.textContent).toContain('01.06.2026');
+    });
+  });
+
+  // ── 2026-05-13: Seçimli Excel/PDF export ──────────────────────────────
+  describe('Selection + Export', () => {
+    it('select kolonu render edilir (header + row checkbox)', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      const headerCb = host.querySelector('table th.th-select mat-checkbox');
+      expect(headerCb).not.toBeNull();
+      const rowCbs = host.querySelectorAll('table td.td-select mat-checkbox');
+      expect(rowCbs.length).toBe(1); // makeList default tek satır
+    });
+
+    it('header checkbox: mevcut sayfa tüm row id\'leri selectedIds\'e ekler', () => {
+      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ id: 11 }),
+        makeEntry({ id: 22 }),
+        makeEntry({ id: 33 }),
+      ])));
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        toggleAllOnPage(checked: boolean): void;
+        selectedIds(): Set<number>;
+      };
+      cmp.toggleAllOnPage(true);
+      expect(Array.from(cmp.selectedIds()).sort()).toEqual([11, 22, 33]);
+    });
+
+    it('row checkbox: tek satır toggle', () => {
+      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ id: 5 }),
+      ])));
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        toggleOne(id: number, checked: boolean): void;
+        selectedIds(): Set<number>;
+        isSelected(id: number): boolean;
+      };
+      cmp.toggleOne(5, true);
+      expect(cmp.isSelected(5)).toBeTrue();
+      cmp.toggleOne(5, false);
+      expect(cmp.isSelected(5)).toBeFalse();
+    });
+
+    it('Excel/PDF butonları selection=0 iken disabled', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const buttons = (fixture.nativeElement as HTMLElement)
+        .querySelectorAll('.header-actions button');
+      // İlk iki buton Excel + PDF
+      const excelBtn = buttons[0] as HTMLButtonElement;
+      const pdfBtn   = buttons[1] as HTMLButtonElement;
+      expect(excelBtn.disabled).toBeTrue();
+      expect(pdfBtn.disabled).toBeTrue();
+    });
+
+    it('selection > 0 → butonlar enabled + count etiketi', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        toggleOne(id: number, checked: boolean): void;
+      };
+      cmp.toggleOne(1, true);
+      fixture.detectChanges();
+      const buttons = (fixture.nativeElement as HTMLElement)
+        .querySelectorAll('.header-actions button');
+      const excelBtn = buttons[0] as HTMLButtonElement;
+      expect(excelBtn.disabled).toBeFalse();
+      expect(excelBtn.textContent).toContain('Excel (1)');
+      expect((buttons[1] as HTMLButtonElement).textContent).toContain('PDF (1)');
+    });
+
+    it('reload (filter/pagination) → selectedIds temizlenir', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        toggleOne(id: number, checked: boolean): void;
+        selectedIds(): Set<number>;
+        reload(): void;
+      };
+      cmp.toggleOne(1, true);
+      expect(cmp.selectedIds().size).toBe(1);
+      cmp.reload();
+      expect(cmp.selectedIds().size).toBe(0);
+    });
+
+    it('exportExcel: selected ids ile service.exportLivePlanExcel çağrılır', () => {
+      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ id: 7 }),
+        makeEntry({ id: 9 }),
+      ])));
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        toggleAllOnPage(checked: boolean): void;
+        exportExcel(): void;
+      };
+      cmp.toggleAllOnPage(true);
+      cmp.exportExcel();
+      expect(serviceSpy.exportLivePlanExcel).toHaveBeenCalled();
+      const [ids, title] = serviceSpy.exportLivePlanExcel.calls.mostRecent().args;
+      expect(ids.sort()).toEqual([7, 9]);
+      expect(title).toBe('Yayın Planlama');
+    });
+
+    it('exportExcel selection boş → service çağrılmaz', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      serviceSpy.exportLivePlanExcel.calls.reset();
+      const cmp = fixture.componentInstance as unknown as { exportExcel(): void };
+      cmp.exportExcel();
+      expect(serviceSpy.exportLivePlanExcel).not.toHaveBeenCalled();
+    });
+
+    it('exportPdf: window.open + print HTML içerik (selected rows)', () => {
+      serviceSpy.getLivePlanList.and.returnValue(of(makeList([
+        makeEntry({ id: 1, title: 'GS vs FB', team1Name: 'GS', team2Name: 'FB' }),
+      ])));
+      const fakeWin = {
+        opener: 'something',
+        document: { write: jasmine.createSpy('write'), close: jasmine.createSpy('close') },
+        focus: jasmine.createSpy('focus'),
+        print: jasmine.createSpy('print'),
+      } as unknown as Window;
+      spyOn(window, 'open').and.returnValue(fakeWin);
+
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        toggleOne(id: number, checked: boolean): void;
+        exportPdf(): void;
+      };
+      cmp.toggleOne(1, true);
+      cmp.exportPdf();
+
+      expect(window.open).toHaveBeenCalled();
+      const writeCall = (fakeWin.document.write as jasmine.Spy).calls.mostRecent();
+      const html = writeCall.args[0] as string;
+      expect(html).toContain('Yayın Planlama');
+      expect(html).toContain('GS vs FB');
     });
   });
 });

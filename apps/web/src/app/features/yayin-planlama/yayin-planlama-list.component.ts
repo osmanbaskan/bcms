@@ -15,6 +15,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import {
   DateAdapter, MAT_DATE_FORMATS, MAT_DATE_LOCALE,
   MatNativeDateModule, NativeDateAdapter,
@@ -25,7 +26,7 @@ import { isSkipAuthAllowed } from '../../core/auth/skip-auth';
 import type { BcmsTokenParsed } from '../../core/types/auth';
 import { ApiService } from '../../core/services/api.service';
 import {
-  composeIstanbulIso, formatIstanbulDateTr, formatIstanbulTime,
+  composeIstanbulIso, formatIstanbulDate, formatIstanbulDateTr, formatIstanbulTime,
 } from '../../core/time/tz.helpers';
 import { YayinPlanlamaService, type LeagueFilterOption } from '../../core/services/yayin-planlama.service';
 
@@ -107,17 +108,31 @@ function dateToYmd(d: Date): string {
     MatTableModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatPaginatorModule,
     MatTooltipModule, MatDialogModule, MatSnackBarModule, MatProgressSpinnerModule,
-    MatDatepickerModule, MatNativeDateModule,
+    MatDatepickerModule, MatNativeDateModule, MatCheckboxModule,
   ],
   template: `
     <div class="page">
       <div class="page-header">
         <h2>Yayın Planlama</h2>
-        @if (canWrite()) {
-          <button mat-raised-button color="primary" routerLink="/yayin-planlama/new">
-            <mat-icon>add</mat-icon> Yeni
+        <div class="header-actions">
+          <button mat-stroked-button
+                  [disabled]="selectionCount() === 0 || exporting()"
+                  (click)="exportExcel()">
+            <mat-icon>download</mat-icon>
+            Excel ({{ selectionCount() }})
           </button>
-        }
+          <button mat-stroked-button
+                  [disabled]="selectionCount() === 0 || exporting()"
+                  (click)="exportPdf()">
+            <mat-icon>print</mat-icon>
+            PDF ({{ selectionCount() }})
+          </button>
+          @if (canWrite()) {
+            <button mat-raised-button color="primary" routerLink="/yayin-planlama/new">
+              <mat-icon>add</mat-icon> Yeni
+            </button>
+          }
+        </div>
       </div>
 
       <div class="filter-bar">
@@ -178,6 +193,23 @@ function dateToYmd(d: Date): string {
         </div>
       } @else {
         <table mat-table [dataSource]="rows()" class="yp-table">
+          <ng-container matColumnDef="select">
+            <th mat-header-cell *matHeaderCellDef class="th-select">
+              <mat-checkbox
+                [checked]="allOnPageSelected()"
+                [indeterminate]="someOnPageSelected()"
+                (change)="toggleAllOnPage($event.checked)"
+                aria-label="Tümünü seç">
+              </mat-checkbox>
+            </th>
+            <td mat-cell *matCellDef="let r" class="td-select">
+              <mat-checkbox
+                [checked]="isSelected(r.id)"
+                (change)="toggleOne(r.id, $event.checked)"
+                aria-label="Satırı seç">
+              </mat-checkbox>
+            </td>
+          </ng-container>
           <ng-container matColumnDef="date">
             <th mat-header-cell *matHeaderCellDef>Tarih</th>
             <td mat-cell *matCellDef="let r">{{ formatDate(r.eventStartTime) }}</td>
@@ -247,8 +279,10 @@ function dateToYmd(d: Date): string {
   `,
   styles: [`
     .page { padding: 24px; }
-    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
     .page-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
+    .header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .th-select, .td-select { width: 40px; padding-left: 8px; padding-right: 0; }
     .filter-bar { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
     .yp-table { width: 100%; }
     .state { display: flex; align-items: center; gap: 12px; padding: 48px; justify-content: center; color: var(--mat-sys-on-surface-variant); }
@@ -281,8 +315,8 @@ export class YayinPlanlamaListComponent implements OnInit {
   private keycloak = inject(KeycloakService, { optional: true });
 
   // 2026-05-13: Durum kolonu + Durum filtresi kaldırıldı (UX sadeleştirme).
-  // Tarih + Saat en başta; Tarih inline editable (yetkili kullanıcı).
-  protected cols = ['date', 'time', 'match', 'league', 'week', 'channels'];
+  // 2026-05-13: `select` kolonu en başa eklendi (seçimli Excel/PDF export).
+  protected cols = ['select', 'date', 'time', 'match', 'league', 'week', 'channels'];
   protected readonly channelSlots: ReadonlyArray<1 | 2 | 3> = [1, 2, 3];
 
   // Filter state — MatDatepicker Date | null modeli
@@ -309,6 +343,25 @@ export class YayinPlanlamaListComponent implements OnInit {
   /** Inline kanal düzenleme sırasında o satırın id'si (UI lock). */
   protected savingRowId = signal<number | null>(null);
 
+  // ── 2026-05-13: Seçimli export ──────────────────────────────────────────
+  /** Yalnız mevcut sayfa için. Page/reload temizlenir. */
+  protected selectedIds = signal<Set<number>>(new Set());
+  protected exporting   = signal<boolean>(false);
+
+  protected selectionCount = computed(() => this.selectedIds().size);
+  protected allOnPageSelected = computed(() => {
+    const rows = this.rows();
+    if (rows.length === 0) return false;
+    const sel = this.selectedIds();
+    return rows.every((r) => sel.has(r.id));
+  });
+  protected someOnPageSelected = computed(() => {
+    const rows = this.rows();
+    const sel = this.selectedIds();
+    const c = rows.filter((r) => sel.has(r.id)).length;
+    return c > 0 && c < rows.length;
+  });
+
   /** "Yeni" butonu yetkilenmesi — `/yayin-planlama/new` broadcast schedule
    *  create form'u canlı kalıyor; `schedules.write` grup seti. */
   protected canWrite = computed<boolean>(() => this.hasGroup(PERMISSIONS.schedules.write));
@@ -325,6 +378,9 @@ export class YayinPlanlamaListComponent implements OnInit {
   }
 
   reload(): void {
+    // Filtre değişimi / pagination ile selection temizlenir (yalnız mevcut
+    // sayfa kapsamı kararı).
+    this.clearSelection();
     this.loading.set(true);
     this.error.set(null);
     // MatDatepicker Date → Türkiye gün boundary compose (00:00 / 23:59:59).
@@ -508,6 +564,121 @@ export class YayinPlanlamaListComponent implements OnInit {
         this.snack.open(msg, 'Kapat', { duration: 4000 });
       },
     });
+  }
+
+  // ── 2026-05-13: Selection toggle handlers ─────────────────────────────
+  protected isSelected(id: number): boolean {
+    return this.selectedIds().has(id);
+  }
+
+  protected toggleOne(id: number, checked: boolean): void {
+    const next = new Set(this.selectedIds());
+    if (checked) next.add(id); else next.delete(id);
+    this.selectedIds.set(next);
+  }
+
+  protected toggleAllOnPage(checked: boolean): void {
+    const next = new Set(this.selectedIds());
+    for (const r of this.rows()) {
+      if (checked) next.add(r.id); else next.delete(r.id);
+    }
+    this.selectedIds.set(next);
+  }
+
+  private clearSelection(): void {
+    if (this.selectedIds().size > 0) this.selectedIds.set(new Set());
+  }
+
+  // ── 2026-05-13: Excel export — backend xlsx blob ──────────────────────
+  protected exportExcel(): void {
+    const ids = Array.from(this.selectedIds());
+    if (ids.length === 0) return;
+    this.exporting.set(true);
+    this.service.exportLivePlanExcel(ids, 'Yayın Planlama').subscribe({
+      next: (blob) => {
+        this.exporting.set(false);
+        const dateStr = formatIstanbulDate(new Date());
+        this.downloadBlob(blob, `yayin-planlama_${dateStr}.xlsx`);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.exporting.set(false);
+        const msg = err?.error?.message ?? 'Excel indirilemedi.';
+        this.snack.open(msg, 'Kapat', { duration: 4000 });
+      },
+    });
+  }
+
+  // ── 2026-05-13: PDF export — frontend print HTML ──────────────────────
+  protected exportPdf(): void {
+    const sel = this.selectedIds();
+    if (sel.size === 0) return;
+    const rows = this.rows().filter((r) => sel.has(r.id));
+    const html = this.buildPrintableHtml(rows);
+    const win = window.open('', '_blank', 'width=1200,height=800');
+    if (!win) {
+      this.snack.open('PDF penceresi açılamadı.', 'Kapat', { duration: 4000 });
+      return;
+    }
+    win.opener = null;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 250);
+  }
+
+  private downloadBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  private buildPrintableHtml(rows: LivePlanEntry[]): string {
+    const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c] as string));
+    const bodyRows = rows.map((r) => {
+      const teams = (r.team1Name && r.team2Name)
+        ? `${r.team1Name} vs ${r.team2Name}`
+        : (r.title ?? '');
+      const channels = this.channelNamesStack(r).replace(/\n/g, ', ');
+      return `
+        <tr>
+          <td>${esc(this.formatDate(r.eventStartTime))}</td>
+          <td>${esc(this.formatTime(r.eventStartTime))}</td>
+          <td>${esc(teams)}</td>
+          <td>${esc(r.leagueName ?? '—')}</td>
+          <td>${esc(r.weekNumber != null ? String(r.weekNumber) : '—')}</td>
+          <td>${esc(channels)}</td>
+        </tr>`;
+    }).join('');
+    return `<!DOCTYPE html>
+<html lang="tr"><head>
+<meta charset="utf-8">
+<title>Yayın Planlama</title>
+<style>
+  body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; padding: 24px; color: #222; }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  .meta { font-size: 11px; color: #666; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 6px 8px; border: 1px solid #ccc; text-align: left; vertical-align: top; }
+  th { background: #f3f3f3; font-weight: 600; }
+  @media print { body { padding: 0; } }
+</style>
+</head><body>
+<h1>Yayın Planlama</h1>
+<div class="meta">${esc(formatIstanbulDateTr(new Date()))} — ${rows.length} kayıt</div>
+<table>
+  <thead>
+    <tr>
+      <th>Tarih</th><th>Saat</th><th>Karşılaşma</th><th>Lig</th><th>Hafta</th><th>Kanallar</th>
+    </tr>
+  </thead>
+  <tbody>${bodyRows}</tbody>
+</table>
+</body></html>`;
   }
 
   private hasGroup(allowed: readonly string[]): boolean {

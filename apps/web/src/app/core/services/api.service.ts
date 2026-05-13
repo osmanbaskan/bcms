@@ -153,4 +153,14 @@ export class ApiService {
     // GET — retry uygulanır
     return this.http.get(`${this.base}${path}`, { params: httpParams, responseType: 'blob' }).pipe(retryConfig<Blob>());
   }
+
+  /**
+   * 2026-05-13: POST + responseType: blob — body'de payload (ör. seçilen
+   * ids) gönderilip xlsx/pdf gibi binary response indirilir. Cache yok;
+   * retry yok (mutation/export). Yayın Planlama selective export için
+   * eklendi.
+   */
+  postBlob<TBody>(path: string, body: TBody): Observable<Blob> {
+    return this.http.post(`${this.base}${path}`, body, { responseType: 'blob' });
+  }
 }

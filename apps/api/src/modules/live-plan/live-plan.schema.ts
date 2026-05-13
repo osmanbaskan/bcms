@@ -132,3 +132,18 @@ export const createFromOptaSchema = z.object({
 });
 
 export type CreateFromOptaDto = z.infer<typeof createFromOptaSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-05-13: Yayın Planlama seçimli Excel export.
+//   POST /api/v1/live-plan/export
+//   Body: { ids: number[1..500], title?: string<=120 }
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const livePlanExportRequestSchema = z.object({
+  ids:   z.array(z.number().int().positive())
+           .min(1, 'En az 1 kayıt seçilmelidir')
+           .max(500, 'En fazla 500 kayıt seçilebilir'),
+  title: z.string().trim().max(120).optional(),
+});
+
+export type LivePlanExportRequest = z.infer<typeof livePlanExportRequestSchema>;

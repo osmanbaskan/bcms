@@ -156,4 +156,26 @@ describe('YayinPlanlamaService', () => {
     expect(apiSpy.patch).toHaveBeenCalledWith('/live-plan/42', dto, 6);
   });
 
+  // ── 2026-05-13: Seçimli Excel export ───────────────────────────────────
+  it('exportLivePlanExcel: POST /live-plan/export + body {ids, title}', (done) => {
+    (apiSpy as unknown as { postBlob: jasmine.Spy }).postBlob =
+      jasmine.createSpy('postBlob').and.returnValue(of(new Blob(['xlsx'])));
+    service.exportLivePlanExcel([1, 2, 3], 'Yayın Planlama').subscribe((blob) => {
+      expect(blob).toBeInstanceOf(Blob);
+      done();
+    });
+    expect((apiSpy as unknown as { postBlob: jasmine.Spy }).postBlob).toHaveBeenCalledWith(
+      '/live-plan/export', { ids: [1, 2, 3], title: 'Yayın Planlama' },
+    );
+  });
+
+  it('exportLivePlanExcel: title yoksa body sadece {ids}', () => {
+    (apiSpy as unknown as { postBlob: jasmine.Spy }).postBlob =
+      jasmine.createSpy('postBlob').and.returnValue(of(new Blob(['xlsx'])));
+    service.exportLivePlanExcel([5]).subscribe();
+    expect((apiSpy as unknown as { postBlob: jasmine.Spy }).postBlob).toHaveBeenCalledWith(
+      '/live-plan/export', { ids: [5] },
+    );
+  });
+
 });

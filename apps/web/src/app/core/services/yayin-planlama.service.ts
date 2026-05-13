@@ -162,6 +162,15 @@ export class YayinPlanlamaService {
     );
   }
 
+  /**
+   * 2026-05-13: Yayın Planlama seçimli Excel export.
+   * POST /api/v1/live-plan/export — body { ids: number[1..500], title? }.
+   * Backend ExcelJS ile xlsx blob üretir; frontend download tetikler.
+   */
+  exportLivePlanExcel(ids: number[], title?: string): Observable<Blob> {
+    return this.api.postBlob('/live-plan/export', { ids, ...(title ? { title } : {}) });
+  }
+
   getById(id: number): Observable<Schedule> {
     return this.api.get<Schedule>(`/schedules/${id}`);
   }
