@@ -569,6 +569,7 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Kullanıcılar',      icon: 'manage_accounts',     route: '/users',              groups: [GROUP.SystemEng] },
         { label: 'Ayarlar',           icon: 'settings',            route: '/settings',           groups: [GROUP.SystemEng] },
         { label: 'Live-Plan Lookup',  icon: 'tune',                route: '/admin/live-plan-lookups', groups: [] },
+        { label: 'OPTA Lig Görünürlüğü', icon: 'visibility',       route: '/admin/opta-competitions', groups: [GROUP.SystemEng] },
         { label: 'Dökümanlar',        icon: 'description',         route: '/documents',          groups: [GROUP.SystemEng] },
       ],
     },

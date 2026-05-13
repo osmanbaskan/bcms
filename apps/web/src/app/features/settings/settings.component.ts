@@ -1,6 +1,7 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -26,7 +27,7 @@ interface SmbConfig {
   selector: 'app-settings',
   standalone: true,
   imports: [
-    CommonModule, FormsModule,
+    CommonModule, FormsModule, RouterLink,
     MatCardModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatIconModule, MatDividerModule,
     MatProgressSpinnerModule, MatSnackBarModule,
@@ -109,6 +110,25 @@ interface SmbConfig {
               </ng-container>
             }
           </button>
+        </mat-card-actions>
+      </mat-card>
+
+      <!-- 2026-05-13: OPTA Lig Görünürlüğü — ayrı admin route (Admin/SystemEng).
+           Page-level guard PERMISSIONS.opta.admin (route data.groups);
+           card her zaman görünür ama yetkisiz tıklama AuthGuard ile reddedilir. -->
+      <mat-card class="settings-card">
+        <mat-card-header>
+          <mat-icon mat-card-avatar>visibility</mat-icon>
+          <mat-card-title>OPTA Lig / Turnuva Görünürlüğü</mat-card-title>
+          <mat-card-subtitle>
+            Canlı Yayın Plan "Yeni Ekle" dropdown'ında gösterilecek ligleri yönet.
+          </mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-actions align="end">
+          <a mat-raised-button color="primary"
+             routerLink="/admin/opta-competitions">
+            <mat-icon>open_in_new</mat-icon> Aç
+          </a>
         </mat-card-actions>
       </mat-card>
 

@@ -153,5 +153,8 @@ export const PERMISSIONS = {
   opta: {
     /** OPTA fixture/lig listesi okuma (schedule form'da kullanılır) */
     read: [] as BcmsGroup[],
+    /** 2026-05-13: OPTA lig görünürlük yönetimi (admin: visible toggle + sortOrder).
+     *  /admin/opta-competitions UI ve PATCH endpoint'i bu seti kullanır. */
+    admin: ['SystemEng'] as BcmsGroup[],
   },
 } as const;

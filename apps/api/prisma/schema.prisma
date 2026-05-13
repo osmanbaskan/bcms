@@ -13,6 +13,15 @@ model League {
   name       String    @db.VarChar(200)
   country    String    @db.VarChar(100)
   metadata   Json?
+  /// 2026-05-13: OPTA fixture lig dropdown filtre alanı. Mevcut hardcoded
+  /// FEATURED array yerine DB-driven görünürlük. Yeni ligler default
+  /// gizli (false); admin endpoint /api/v1/opta/competitions/admin/:id ile
+  /// toggle edilir. Migration 20260513090000_leagues_visibility geriye
+  /// uyumluluk için 8 FEATURED kodu visible=true seed eder.
+  visible    Boolean   @default(false)
+  /// 2026-05-13: Admin tarafından düzenlenebilir sıralama (visible=true
+  /// ligler arasında). /fixture-competitions endpoint asc kullanır.
+  sortOrder  Int       @default(0) @map("sort_order")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
   deleted_at DateTime?
@@ -20,6 +29,7 @@ model League {
   teams      Team[]
 
   @@index([metadata], type: Gin)
+  @@index([visible, sortOrder], map: "leagues_visible_sort_order_idx")
   @@map("leagues")
 }
 

@@ -122,41 +122,57 @@ export async function optaRoutes(app: FastifyInstance) {
     return matches.filter((m) => !scheduledIds.has(m.matchId));
   });
 
-  // GET /api/v1/opta/fixture-competitions — DB'den seçili competition listesi
+  // GET /api/v1/opta/fixture-competitions — DB-driven visible filter
+  // (2026-05-13: hardcoded FEATURED array kaldırıldı; admin endpoint ile
+  // yönetilen `leagues.visible` + `sort_order` ile filter+sort).
   app.get('/fixture-competitions', {
     preHandler: app.requireGroup(...PERMISSIONS.opta.read),
     schema: {
       tags: ['OPTA'],
-      summary: 'Yayın planında kullanılan competition listesi',
+      summary: 'Yayın planında kullanılan competition listesi (visible=true)',
     },
   }, async (): Promise<{ id: string; name: string; season: string }[]> => {
-    const FEATURED = ['opta-115', 'opta-388', 'opta-8', 'opta-24', 'opta-104', 'custom-f1', 'custom-tbl', 'custom-tennis'];
-
-    // Her lig için yalnızca en güncel sezon
-    const rows = await app.prisma.$queryRaw<{ comp_id: string; name: string; season: string }[]>`
-      SELECT DISTINCT ON (l.code) l.code AS comp_id, l.name, m.season
+    // 1. Visible ligler arasında match'i olanlar için en güncel sezon.
+    const rows = await app.prisma.$queryRaw<{ comp_id: string; name: string; season: string; sort_order: number }[]>`
+      SELECT DISTINCT ON (l.code) l.code AS comp_id, l.name, m.season, l.sort_order
       FROM leagues l
       JOIN matches m ON m.league_id = l.id
-      WHERE l.code = ANY(${FEATURED}::text[])
+      WHERE l.visible = true AND l."deleted_at" IS NULL
       ORDER BY l.code, m.season DESC
     `;
-    // ORTA-API-1.8.1: featured order zaten map'leniyor; ek sıralama yok.
 
-    // Maçsız featured ligler (F1, Basketbol, Tenis gibi — manuel giriş için)
+    // 2. Maçsız visible ligler (F1, Basketbol, Tenis gibi — manuel giriş).
     const withMatches = new Set(rows.map((r) => r.comp_id));
     const noMatchLeagues = await app.prisma.league.findMany({
-      where: { code: { in: FEATURED.filter((c) => !withMatches.has(c)) } },
+      where: {
+        visible:    true,
+        deleted_at: null,
+        code:       { notIn: Array.from(withMatches) },
+      },
+      select: { code: true, name: true, sortOrder: true },
     });
 
-    const mapped = [
-      ...rows.map((r) => ({ id: r.comp_id.replace(/^(opta|custom)-/, ''), name: r.name, season: r.season, code: r.comp_id })),
-      ...noMatchLeagues.map((l) => ({ id: l.code.replace(/^(opta|custom)-/, ''), name: l.name, season: '-', code: l.code })),
+    type Row = { id: string; name: string; season: string; sortOrder: number; code: string };
+    const mapped: Row[] = [
+      ...rows.map((r): Row => ({
+        id:        r.comp_id.replace(/^(opta|custom)-/, ''),
+        name:      r.name,
+        season:    r.season,
+        sortOrder: r.sort_order,
+        code:      r.comp_id,
+      })),
+      ...noMatchLeagues.map((l): Row => ({
+        id:        l.code.replace(/^(opta|custom)-/, ''),
+        name:      l.name,
+        season:    '-',
+        sortOrder: l.sortOrder,
+        code:      l.code,
+      })),
     ];
 
-    const featuredOrder = new Map(FEATURED.map((code, i) => [code, i]));
     return mapped
-      .sort((a, b) => (featuredOrder.get(a.code) ?? 999) - (featuredOrder.get(b.code) ?? 999))
-      .map(({ code: _c, ...rest }) => rest);
+      .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name, 'tr-TR'))
+      .map(({ code: _c, sortOrder: _s, ...rest }) => rest);
   });
 
   // GET /api/v1/opta/fixtures?competitionId=X&season=Y[&from=ISO]
@@ -291,5 +307,51 @@ export async function optaRoutes(app: FastifyInstance) {
     writeSmbConfig(updated);
     app.log.info({ share: updated.share, username: updated.username }, 'OPTA SMB config güncellendi');
     return { ok: true };
+  });
+
+  // ── 2026-05-13: OPTA lig görünürlük yönetimi (Admin/SystemEng) ────────
+  // GET /api/v1/opta/competitions/admin — tüm ligler (visible/hidden + sortOrder).
+  app.get('/competitions/admin', {
+    preHandler: app.requireGroup(...PERMISSIONS.opta.admin),
+    schema: { tags: ['OPTA'], summary: 'Admin: lig görünürlük + sıralama listesi' },
+  }, async () => {
+    const rows = await app.prisma.league.findMany({
+      where:    { deleted_at: null },
+      orderBy:  [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select:   { id: true, code: true, name: true, country: true, visible: true, sortOrder: true },
+    });
+    return rows;
+  });
+
+  // PATCH /api/v1/opta/competitions/admin/:id — visible/sortOrder güncelle.
+  const competitionAdminPatchSchema = z.object({
+    visible:   z.boolean().optional(),
+    sortOrder: z.number().int().nonnegative().optional(),
+  }).refine((d) => d.visible !== undefined || d.sortOrder !== undefined, {
+    message: 'En az bir alan zorunlu (visible veya sortOrder)',
+  });
+
+  app.patch<{ Params: { id: string } }>('/competitions/admin/:id', {
+    preHandler: app.requireGroup(...PERMISSIONS.opta.admin),
+    schema: { tags: ['OPTA'], summary: 'Admin: lig görünürlük + sıralama güncelle' },
+  }, async (request) => {
+    const id = z.coerce.number().int().positive().parse(request.params.id);
+    const dto = competitionAdminPatchSchema.parse(request.body);
+    const data: Prisma.LeagueUpdateInput = {};
+    if (dto.visible   !== undefined) data.visible   = dto.visible;
+    if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+    try {
+      return await app.prisma.league.update({
+        where:  { id },
+        data,
+        select: { id: true, code: true, name: true, country: true, visible: true, sortOrder: true },
+      });
+    } catch (e) {
+      // P2025: kayıt yok → 404.
+      if ((e as { code?: string }).code === 'P2025') {
+        throw Object.assign(new Error('League bulunamadı'), { statusCode: 404 });
+      }
+      throw e;
+    }
   });
 }

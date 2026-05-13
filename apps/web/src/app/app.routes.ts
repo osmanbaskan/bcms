@@ -116,6 +116,18 @@ export const routes: Routes = [
     data: { groups: [] },
   },
   {
+    /** 2026-05-13: OPTA lig/turnuva görünürlük yönetimi.
+     *  Backend `PERMISSIONS.opta.admin = ['SystemEng']` + Admin auto-bypass;
+     *  route-level guard SystemEng. Mevcut hardcoded FEATURED yerine DB-driven
+     *  `leagues.visible` filtre — Canlı Yayın Plan "Yeni Ekle" dropdown'ı
+     *  burada açılan/gizlenen ligleri yansıtır. */
+    path: 'admin/opta-competitions',
+    loadComponent: () =>
+      import('./features/admin/opta-competitions/opta-competitions.component').then((m) => m.OptaCompetitionsComponent),
+    canActivate: [AuthGuard],
+    data: { groups: [GROUP.SystemEng] },
+  },
+  {
     /** Madde 5 M5-B10a (2026-05-07): yeni Live-Plan ekranı (paralel; mevcut
      *  /schedules dokunulmaz). Y1 lock. List + detail (segments-only iskelet);
      *  76 alan technical-details form M5-B10b'de. Page-level read = all-auth;
