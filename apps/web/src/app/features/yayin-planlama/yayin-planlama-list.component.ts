@@ -192,6 +192,7 @@ function dateToYmd(d: Date): string {
           <span>Yayın Planlama kaydı bulunamadı.</span>
         </div>
       } @else {
+        <div class="table-scroll">
         <table mat-table [dataSource]="rows()" class="yp-table">
           <ng-container matColumnDef="select">
             <th mat-header-cell *matHeaderCellDef class="th-select">
@@ -267,6 +268,7 @@ function dateToYmd(d: Date): string {
           <tr mat-header-row *matHeaderRowDef="cols"></tr>
           <tr mat-row *matRowDef="let row; columns: cols;"></tr>
         </table>
+        </div>
         <mat-paginator
           [length]="total()"
           [pageSize]="pageSize()"
@@ -284,27 +286,34 @@ function dateToYmd(d: Date): string {
     .header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .th-select, .td-select { width: 40px; padding-left: 8px; padding-right: 0; }
     .filter-bar { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
-    .yp-table { width: 100%; }
+    /* 2026-05-13: Table horizontal scroll wrapper — dar ekran/dolu sütun
+       senaryosunda cell'leri kırpmak yerine yatay scroll. */
+    .table-scroll { overflow-x: auto; width: 100%; }
+    .yp-table { width: max-content; min-width: 100%; }
     .state { display: flex; align-items: center; gap: 12px; padding: 48px; justify-content: center; color: var(--mat-sys-on-surface-variant); }
     .state-error { color: var(--mat-sys-error); }
     .td-match { min-width: 220px; max-width: 360px; }
     .match-primary { font-weight: 500; }
     .match-secondary { font-size: 11px; opacity: 0.65; margin-top: 2px; }
+    /* 2026-05-13: Kanallar hücresi — 3 mat-select için yeterli min genişlik
+       (3×140px + 12px gap = ~432px); grid layout ile her kutu eşit + tam
+       görünür, kırpma/üst üste binme yok. Spinner absolute (layout bozmaz). */
     .td-channels {
       font-size: 12px;
       line-height: 1.35;
-      min-width: 340px;
+      min-width: 460px;
     }
     .td-channels .ch-readonly { white-space: pre-line; }
-    /* 2026-05-13: 3 kanal seçim kutusu yan yana (önceki alt alta).
-       Desktop'ta tek satır; dar ekranda flex-wrap ile alta düşer. */
     .ch-edit {
-      display: flex; flex-direction: row; gap: 6px;
-      align-items: center; flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(140px, 1fr));
+      gap: 6px;
+      align-items: center;
+      position: relative;
     }
-    .ch-edit .ch-select { width: 104px; }
+    .ch-edit .ch-select { width: 100%; }
     .ch-edit .ch-select ::ng-deep .mat-mdc-form-field-infix { padding: 4px 0; min-height: 28px; }
-    .ch-edit .ch-spinner { margin-left: 4px; flex-shrink: 0; }
+    .ch-edit .ch-spinner { position: absolute; top: 2px; right: 2px; }
 
   `],
 })
