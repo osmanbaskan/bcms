@@ -8,15 +8,16 @@
 --
 -- Seed/backfill:
 --   - Mevcut OPTA futbol kodları (opta-115, opta-8, opta-24, opta-388,
---     opta-104) → sport_group='football'
+--     opta-104) → sport_group='football' (default'tan gelir)
 --   - Mevcut F1 (custom-f1) → 'formula1'
 --   - Mevcut Tenis (custom-tennis) → 'tennis'
 --   - Mevcut Basketbol (custom-tbl) → 'basketball'
---   - Diğer (legacy/ad-hoc OPTA satırları) → 'football' default
 --   - Yeni: custom-motogp (motogp), custom-rugby (rugby) → visible=true, sort_order
---   - F1 paterniyle MotoGP takvim dosyası (MOTOGP_CALENDAR_2026.xml) SMB'ye
---     manuel düşürülür (parser hazırdır; takvim dosyası operatör tarafında).
---   - Rugby ru1_compfixtures.* OPTA SMB'den çekilir (watcher pattern eklenir).
+--
+-- Not (2026-05-13 revize): `leagues.code` üzerinde partial unique index var
+-- (`WHERE deleted_at IS NULL`) — `ON CONFLICT (code)` PostgreSQL'de tam
+-- constraint arıyor. Bu yüzden UPSERT yerine UPDATE + INSERT WHERE NOT EXISTS
+-- pattern'i (predicate-safe).
 
 -- 1. Kolon ekle
 ALTER TABLE "leagues"
@@ -32,15 +33,23 @@ UPDATE "leagues" SET "sport_group" = 'formula1'   WHERE "code" = 'custom-f1';
 UPDATE "leagues" SET "sport_group" = 'tennis'     WHERE "code" = 'custom-tennis';
 UPDATE "leagues" SET "sport_group" = 'basketball' WHERE "code" = 'custom-tbl';
 
--- 4. Yeni sport ligleri (visible=true, geriye uyumluluk sırasıyla devam)
+-- 4. Yeni sport ligleri (predicate-safe upsert):
+--    (a) varsa update; (b) yoksa insert.
+UPDATE "leagues"
+   SET "sport_group" = 'motogp', "visible" = true, "sort_order" = 9, "updated_at" = NOW()
+ WHERE "code" = 'custom-motogp';
+
 INSERT INTO "leagues" ("code","name","country","sport_group","visible","sort_order","created_at","updated_at")
-VALUES
-  ('custom-motogp','MotoGP','Worldwide','motogp',true,9,NOW(),NOW()),
-  ('custom-rugby','Rugby Union','Worldwide','rugby',true,10,NOW(),NOW())
-ON CONFLICT ("code") DO UPDATE
-  SET "sport_group" = EXCLUDED."sport_group",
-      "visible"     = EXCLUDED."visible",
-      "sort_order"  = EXCLUDED."sort_order";
+SELECT 'custom-motogp','MotoGP','Worldwide','motogp',true,9,NOW(),NOW()
+WHERE NOT EXISTS (SELECT 1 FROM "leagues" WHERE "code" = 'custom-motogp');
+
+UPDATE "leagues"
+   SET "sport_group" = 'rugby', "visible" = true, "sort_order" = 10, "updated_at" = NOW()
+ WHERE "code" = 'custom-rugby';
+
+INSERT INTO "leagues" ("code","name","country","sport_group","visible","sort_order","created_at","updated_at")
+SELECT 'custom-rugby','Rugby Union','Worldwide','rugby',true,10,NOW(),NOW()
+WHERE NOT EXISTS (SELECT 1 FROM "leagues" WHERE "code" = 'custom-rugby');
 
 -- 5. Index — sport_group + visible filtre için
 CREATE INDEX "leagues_sport_group_visible_idx"
