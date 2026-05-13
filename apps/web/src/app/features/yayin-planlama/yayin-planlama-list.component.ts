@@ -47,7 +47,7 @@ import { YayinPlanlamaService, type LeagueFilterOption } from '../../core/servic
  *
  * 2026-05-13 UI sadeleştirme:
  *   - "Başlık" + "Takım" iki kolonu tek "Karşılaşma" kolonuna birleştirildi
- *     (team1/team2 varsa "X vs Y"; yoksa title fallback; title takım
+ *     (team1/team2 varsa "X - Y"; yoksa title fallback; title takım
  *     bilgisinden farklıysa küçük secondary satır).
  *   - "Kanallar" kolonu count yerine kanal **adlarını** alt alta gösterir
  *     (channel id → name resolve `/channels/catalog` lookup üzerinden).
@@ -95,6 +95,13 @@ function dateToYmd(d: Date): string {
   return `${y}-${m}-${dd}`;
 }
 
+/** Bugünün Türkiye günü 00:00:00 local Date (BCMS Türkiye-only deployment).
+ *  `composeIstanbulIso(dateToYmd(d), '00:00')` ile UTC ISO'ya çevirilebilir. */
+function todayIstanbulMidnight(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
 @Component({
   selector: 'app-yayin-planlama-list',
   standalone: true,
@@ -139,6 +146,7 @@ function dateToYmd(d: Date): string {
         <mat-form-field appearance="outline">
           <mat-label>Başlangıç</mat-label>
           <input matInput [matDatepicker]="fromPicker"
+                 [min]="minDateFrom"
                  [(ngModel)]="dateFrom" name="from"
                  (dateChange)="reload()" />
           <mat-datepicker-toggle matIconSuffix [for]="fromPicker"></mat-datepicker-toggle>
@@ -147,6 +155,7 @@ function dateToYmd(d: Date): string {
         <mat-form-field appearance="outline">
           <mat-label>Bitiş</mat-label>
           <input matInput [matDatepicker]="toPicker"
+                 [min]="minDateTo"
                  [(ngModel)]="dateTo" name="to"
                  (dateChange)="reload()" />
           <mat-datepicker-toggle matIconSuffix [for]="toPicker"></mat-datepicker-toggle>
@@ -329,10 +338,18 @@ export class YayinPlanlamaListComponent implements OnInit {
   protected readonly channelSlots: ReadonlyArray<1 | 2 | 3> = [1, 2, 3];
 
   // Filter state — MatDatepicker Date | null modeli
-  protected dateFrom:   Date | null = null;
+  // 2026-05-13: default Başlangıç = bugün (Türkiye günü). Geçmiş günler liste
+  // varsayılan olarak gizli; kullanıcı geçmişe doğru seçim yapamaz (min=today).
+  protected dateFrom:   Date | null = todayIstanbulMidnight();
   protected dateTo:     Date | null = null;
   protected leagueId:   number | null = null;
   protected weekNumber: number | null = null;
+
+  /** Datepicker min: Başlangıç ≥ bugün; Bitiş ≥ Başlangıç (yoksa bugün). */
+  protected readonly minDateFrom: Date = todayIstanbulMidnight();
+  protected get minDateTo(): Date {
+    return this.dateFrom ?? this.minDateFrom;
+  }
 
   // Filter dropdown options
   protected leagues = signal<LeagueFilterOption[]>([]);
@@ -473,13 +490,13 @@ export class YayinPlanlamaListComponent implements OnInit {
 
   /**
    * Karşılaşma primary label:
-   *   - team1Name + team2Name varsa "X vs Y"
+   *   - team1Name + team2Name varsa "X - Y"  (2026-05-13: vs → -)
    *   - yoksa entry title (fallback)
    *   - hiçbiri yoksa "—"
    */
   protected primaryMatchLabel(row: LivePlanEntry): string {
     if (row.team1Name && row.team2Name) {
-      return `${row.team1Name} vs ${row.team2Name}`;
+      return `${row.team1Name} - ${row.team2Name}`;
     }
     return row.title?.trim() || '—';
   }
@@ -487,13 +504,16 @@ export class YayinPlanlamaListComponent implements OnInit {
   /**
    * Secondary satır: entry title takım bilgisinden anlamlı şekilde
    * farklıysa göster. OPTA path'te title genelde "Team A vs Team B"
-   * olduğu için aynı çıkar → secondary boş döner (tekrar yok).
+   * olduğu için (upstream OPTA verisi) hem "-" hem "vs" formuna karşı
+   * karşılaştır — duplicate secondary engellenir.
    */
   protected secondaryTitle(row: LivePlanEntry): string | null {
     const title = row.title?.trim();
     if (!title) return null;
     if (!row.team1Name || !row.team2Name) return null; // primary zaten title
-    if (title === this.primaryMatchLabel(row)) return null;
+    const dashPrimary = `${row.team1Name} - ${row.team2Name}`;
+    const vsPrimary   = `${row.team1Name} vs ${row.team2Name}`;
+    if (title === dashPrimary || title === vsPrimary) return null;
     return title;
   }
 
@@ -650,7 +670,7 @@ export class YayinPlanlamaListComponent implements OnInit {
     }[c] as string));
     const bodyRows = rows.map((r) => {
       const teams = (r.team1Name && r.team2Name)
-        ? `${r.team1Name} vs ${r.team2Name}`
+        ? `${r.team1Name} - ${r.team2Name}`
         : (r.title ?? '');
       const channels = this.channelNamesStack(r).replace(/\n/g, ', ');
       return `

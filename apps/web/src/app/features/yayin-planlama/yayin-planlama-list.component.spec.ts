@@ -214,14 +214,14 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
       expect(headers).toContain('Karşılaşma');
     });
 
-    it('primaryMatchLabel: team1+team2 varsa "X vs Y"', () => {
+    it('primaryMatchLabel: team1+team2 varsa "X - Y" (2026-05-13: vs → -)', () => {
       const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
       fixture.detectChanges();
       const cmp = fixture.componentInstance as unknown as {
         primaryMatchLabel(r: LivePlanEntry): string;
       };
       expect(cmp.primaryMatchLabel(makeEntry({ team1Name: 'Galatasaray', team2Name: 'Fenerbahçe' })))
-        .toBe('Galatasaray vs Fenerbahçe');
+        .toBe('Galatasaray - Fenerbahçe');
     });
 
     it('primaryMatchLabel: takım yoksa title fallback', () => {
@@ -767,6 +767,60 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
       expect(serviceSpy.exportLivePlanExcel).not.toHaveBeenCalled();
     });
 
+    // ── 2026-05-13: default dateFrom = bugün + datepicker min=today ─────
+    it('default dateFrom: bugünün Türkiye günü 00:00 Date objesi (geçmiş günler gizli)', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        dateFrom: Date | null;
+      };
+      expect(cmp.dateFrom).not.toBeNull();
+      const d = cmp.dateFrom!;
+      const today = new Date();
+      expect(d.getFullYear()).toBe(today.getFullYear());
+      expect(d.getMonth()).toBe(today.getMonth());
+      expect(d.getDate()).toBe(today.getDate());
+      expect(d.getHours()).toBe(0);
+      expect(d.getMinutes()).toBe(0);
+    });
+
+    it('default reload getLivePlanList: from ISO = bugünün Türkiye 00:00 UTC compose', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const args = serviceSpy.getLivePlanList.calls.mostRecent().args[0]!;
+      // from undefined OLMAMALI (default today); to undefined olabilir
+      expect(args.from).toBeDefined();
+      // ISO formatı bugünün gün boundary'sini yansıtır (saat 21:00 önceki gün UTC veya 00:00 sonraki).
+      expect(args.from).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    });
+
+    it('datepicker min: Başlangıç min = bugün', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        minDateFrom: Date;
+      };
+      const today = new Date();
+      expect(cmp.minDateFrom.getFullYear()).toBe(today.getFullYear());
+      expect(cmp.minDateFrom.getMonth()).toBe(today.getMonth());
+      expect(cmp.minDateFrom.getDate()).toBe(today.getDate());
+    });
+
+    it('datepicker min: Bitiş min = Başlangıç (yoksa bugün)', () => {
+      const fixture = TestBed.createComponent(YayinPlanlamaListComponent);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance as unknown as {
+        dateFrom: Date | null;
+        minDateTo: Date;
+      };
+      // Default dateFrom = today → minDateTo = today
+      expect(cmp.minDateTo.getTime()).toBe(cmp.dateFrom!.getTime());
+      // dateFrom değişimi → minDateTo değişir
+      const future = new Date(2030, 5, 1);
+      cmp.dateFrom = future;
+      expect(cmp.minDateTo.getTime()).toBe(future.getTime());
+    });
+
     it('exportPdf: window.open + print HTML içerik (selected rows)', () => {
       serviceSpy.getLivePlanList.and.returnValue(of(makeList([
         makeEntry({ id: 1, title: 'GS vs FB', team1Name: 'GS', team2Name: 'FB' }),
@@ -792,7 +846,8 @@ describe('YayinPlanlamaListComponent (2026-05-13 — live-plan data source)', ()
       const writeCall = (fakeWin.document.write as jasmine.Spy).calls.mostRecent();
       const html = writeCall.args[0] as string;
       expect(html).toContain('Yayın Planlama');
-      expect(html).toContain('GS vs FB');
+      // 2026-05-13: PDF teams "X - Y" (vs → -)
+      expect(html).toContain('GS - FB');
     });
   });
 });

@@ -178,8 +178,8 @@ describe('POST /api/v1/live-plan/export — selected entries → xlsx', () => {
     expect(String(row3.getCell(1).value)).toBe('01.06.2026');
     expect(String(row4.getCell(1).value)).toBe('02.06.2026');
 
-    // Karşılaşma: e1 OPTA "GS vs FB"; e2 MANUAL fallback title "Manual"
-    expect(String(row3.getCell(3).value)).toBe('GS vs FB');
+    // Karşılaşma: e1 OPTA "GS - FB" (2026-05-13: vs → -); e2 MANUAL title "Manual"
+    expect(String(row3.getCell(3).value)).toBe('GS - FB');
     expect(String(row4.getCell(3).value)).toBe('Manual');
 
     // Lig: e1 dolu (League id=1 seed 'Süper Lig'); e2 boş

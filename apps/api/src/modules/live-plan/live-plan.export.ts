@@ -83,7 +83,7 @@ export async function exportLivePlanToBuffer(
     const date  = formatIstanbulDateTr(e.eventStartTime);
     const time  = formatIstanbulTime(e.eventStartTime);
     const teams = (e.team1Name && e.team2Name)
-      ? `${e.team1Name} vs ${e.team2Name}`
+      ? `${e.team1Name} - ${e.team2Name}`
       : (e.title ?? '');
     const league = e.match?.league?.name ?? '';
     const week   = e.match?.weekNumber != null ? String(e.match.weekNumber) : '';
