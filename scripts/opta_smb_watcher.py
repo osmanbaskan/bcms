@@ -17,7 +17,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from defusedxml import ElementTree as ET
 
@@ -194,6 +194,343 @@ def parse_results_file(cfg: dict, filename: str, team_cache: dict) -> list[dict]
     return matches
 
 
+# ── Yeni sport parser'ları (2026-05-13) ──────────────────────────────────────
+#
+# Hedef: Python watcher tek otoriter ETL kanalı olarak kalır; TAB7-*.xml
+# (tenis), MOTOGP_CALENDAR_<year>.xml ve ru1_compfixtures.*.xml dosyaları
+# srml-results ile aynı `/opta/sync` payload kontratına çevrilir:
+#   { matchUid, compId, compName, season, matchDate (ISO8601 offset),
+#     homeTeam, awayTeam, weekNumber? }
+#
+# compId konvansiyonu:
+#   - tenis  → "tennis"          (backend leagueCodeForCompId → custom-tennis)
+#   - MotoGP → "motogp"          (→ custom-motogp)
+#   - rugby  → "rugby-<comp_id>" (→ custom-rugby-<comp_id>)
+#
+# parse_* fonksiyonları yalnızca XML byte'ı alır (test edilebilirlik); SMB
+# I/O parse_*_file wrapper'larında.
+
+
+def _parse_iso8601_z(value: str):
+    """OPTA ISO8601 → tz-aware datetime; 'Z' veya '+HH:MM' destekler.
+
+    Başarısızsa None döner; çağıran skip + log eder. defusedxml ya da
+    pure-string operasyon — XXE riski yok.
+    """
+    s = (value or "").strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            return datetime.fromisoformat(s[:-1] + "+00:00")
+        # `datetime.fromisoformat` Python 3.11+ '+HH:MM' offset'i destekler.
+        return datetime.fromisoformat(s)
+    except ValueError:
+        pass
+    # Defansif fallback: "YYYY-MM-DD HH:MM:SS" (UTC kabul).
+    try:
+        return datetime.fromisoformat(s.replace(" ", "T") + "+00:00")
+    except ValueError:
+        return None
+
+
+def _parse_motogp_local_datetime(date_str: str, start_str: str, utc_offset_hours: int):
+    """MotoGP `date='DD.MM.YYYY'` + `start='HH:MM'` + `utc='<int>'` → UTC datetime."""
+    m_date = re.match(r"^(\d{2})\.(\d{2})\.(\d{4})$", (date_str or "").strip())
+    m_time = re.match(r"^(\d{2}):(\d{2})$",          (start_str or "").strip())
+    if not m_date or not m_time:
+        return None
+    dd, mm, yyyy = m_date.group(1), m_date.group(2), m_date.group(3)
+    hh, mn       = m_time.group(1), m_time.group(2)
+    try:
+        local_dt = datetime(int(yyyy), int(mm), int(dd), int(hh), int(mn))
+    except ValueError:
+        return None
+    utc_dt = local_dt - timedelta(hours=utc_offset_hours)
+    return utc_dt.replace(tzinfo=timezone.utc)
+
+
+_MOTOGP_SESSION_LABELS = {
+    "RACE":        "Yarış",
+    "QUALI":       "Sıralama",
+    "SPRINTRACE":  "Sprint Yarış",
+    "SPRINTQUALI": "Sprint Sıralama",
+    "FP1":         "Antrenman 1",
+    "FP2":         "Antrenman 2",
+    "FP3":         "Antrenman 3",
+    "WARMUP":      "Warm-up",
+}
+
+
+def _extract_tennis_player_name(entry) -> str | None:
+    """`<first_entry><player display_name | first_name + last_name /></first_entry>`."""
+    if entry is None:
+        return None
+    player = entry.find("player")
+    if player is None:
+        return None
+    display = (player.get("display_name") or "").strip()
+    if display:
+        return display
+    first = (player.get("first_name") or "").strip()
+    last  = (player.get("last_name")  or "").strip()
+    name = f"{first} {last}".strip()
+    return name or None
+
+
+def parse_tab7_xml(content: bytes) -> list[dict]:
+    """TAB7-<id>.xml → tenis match dict listesi (kontrat: matchItemSchema).
+
+    Beklenen yapı: `<statsperform_feed name="Tennis"><tournament ...>
+                      <competition><round><match start_time id />...`.
+    Tek dosya tipik olarak 1 match içerir; defansif olarak çoklu round/match
+    traversal'i destekler. Parse hatası → boş liste (caller skip + log).
+    """
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return []
+    if root.tag != "statsperform_feed":
+        return []
+    if (root.get("name") or "") != "Tennis":
+        return []
+
+    tournament = root.find("tournament")
+    if tournament is None:
+        return []
+
+    tournament_name = (
+        (tournament.get("name") or "").strip()
+        or (tournament.get("tournament_class") or "").strip()
+        or "Tennis"
+    )
+    end_date = tournament.get("end_date", "")
+    season   = end_date[:4] if len(end_date) >= 4 and end_date[:4].isdigit() else "2026"
+
+    matches: list[dict] = []
+    for comp in tournament.findall("competition"):
+        comp_name = (comp.get("name") or comp.get("sex") or "Singles").strip()
+        for rnd in comp.findall("round"):
+            for mtag in rnd.findall("match"):
+                match_id   = (mtag.get("id") or "").strip()
+                start_time = (mtag.get("start_time") or "").strip()
+                if not match_id or not start_time:
+                    continue
+
+                match_dt = _parse_iso8601_z(start_time)
+                if match_dt is None:
+                    continue
+
+                home = _extract_tennis_player_name(mtag.find("first_entry"))  or tournament_name
+                away = _extract_tennis_player_name(mtag.find("second_entry")) or comp_name
+
+                matches.append({
+                    "matchUid":   f"tennis-{match_id}",
+                    "compId":     "tennis",
+                    "compName":   "Tenis",
+                    "season":     season,
+                    "matchDate":  match_dt.isoformat(),
+                    "homeTeam":   home,
+                    "awayTeam":   away,
+                    "weekNumber": None,
+                })
+    return matches
+
+
+def parse_motogp_calendar_xml(content: bytes, fallback_season: str = "2026") -> list[dict]:
+    """MOTOGP_CALENDAR_<year>.xml → MotoGP session dict listesi.
+
+    F1 paterni: `<block><schedule><session/><eventname/><date/><start/><utc/>
+                  <gpno/></schedule>...`. session ve eventname zorunlu;
+    tarih/saat parse edilemiyorsa skip.
+    """
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return []
+    if root.tag != "block":
+        return []
+
+    matches: list[dict] = []
+    for sch in root.findall("schedule"):
+        sched_id  = (sch.get("id") or "").strip()
+        session   = (sch.findtext("session")   or "").strip()
+        eventname = (sch.findtext("eventname") or "").strip()
+        date_str  = (sch.findtext("date")      or "").strip()
+        start_str = (sch.findtext("start")     or "").strip()
+        utc_str   = (sch.findtext("utc")       or "0").strip()
+        gpno_str  = (sch.findtext("gpno")      or "0").strip()
+
+        if not session or not eventname:
+            continue
+        try:
+            utc_offset = int(utc_str)
+        except ValueError:
+            utc_offset = 0
+        try:
+            gpno = int(gpno_str)
+        except ValueError:
+            gpno = 0
+
+        match_dt = _parse_motogp_local_datetime(date_str, start_str, utc_offset)
+        if match_dt is None:
+            continue
+
+        session_label = _MOTOGP_SESSION_LABELS.get(session, session)
+        # matchUid stabil olmalı; OPTA `id` attribute'ü yoksa session+gpno
+        # fallback (aynı yarış weekend'inde her oturum benzersiz).
+        uid_seed = sched_id or f"{gpno}-{session}"
+        matches.append({
+            "matchUid":   f"motogp-{uid_seed}",
+            "compId":     "motogp",
+            "compName":   "MotoGP",
+            "season":     str(match_dt.year) or fallback_season,
+            "matchDate":  match_dt.isoformat(),
+            "homeTeam":   eventname,
+            "awayTeam":   session_label,
+            "weekNumber": gpno or None,
+        })
+    return matches
+
+
+def parse_rugby_compfixtures_xml(content: bytes) -> list[dict]:
+    """ru1_compfixtures.<comp>.<season>.<ts>.xml → rugby fixture dict listesi.
+
+    Yapı: `<fixtures><fixture id comp_id comp_name season_id datetime>
+                  <team home_or_away="home|away" team_name=.../>...`.
+    Zorunlu attribute'ler: id, comp_id, season_id, datetime. Eksikse skip.
+    """
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return []
+    if root.tag != "fixtures":
+        return []
+
+    matches: list[dict] = []
+    for fix in root.findall("fixture"):
+        fixture_id  = (fix.get("id")        or "").strip()
+        comp_num    = (fix.get("comp_id")   or "").strip()
+        comp_name   = (fix.get("comp_name") or "Rugby").strip()
+        season_id   = (fix.get("season_id") or "").strip()
+        dt_str      = (fix.get("datetime")  or "").strip()
+        if not (fixture_id and comp_num and season_id and dt_str):
+            continue
+
+        match_dt = _parse_iso8601_z(dt_str)
+        if match_dt is None:
+            continue
+
+        home_name = "Home"
+        away_name = "Away"
+        for team in fix.findall("team"):
+            side = (team.get("home_or_away") or "").strip()
+            name = (team.get("team_name") or (team.text or "")).strip()
+            if not name:
+                continue
+            if side == "home":
+                home_name = name
+            elif side == "away":
+                away_name = name
+
+        matches.append({
+            "matchUid":   f"rugby-{fixture_id}",
+            "compId":     f"rugby-{comp_num}",
+            "compName":   comp_name or "Rugby",
+            "season":     season_id,
+            "matchDate":  match_dt.isoformat(),
+            "homeTeam":   home_name,
+            "awayTeam":   away_name,
+            "weekNumber": None,
+        })
+    return matches
+
+
+# ── SMB-bağımlı wrapper'lar (test edilmez; pure-XML parser'lara delege eder)
+
+def parse_tab7_file(cfg: dict, filename: str) -> list[dict]:
+    return parse_tab7_xml(read_smb_file(cfg, filename))
+
+
+def parse_motogp_calendar_file(cfg: dict, filename: str) -> list[dict]:
+    m = _MOTOGP_CAL_RE.match(filename)
+    fallback_season = m.group(1) if m else "2026"
+    return parse_motogp_calendar_xml(read_smb_file(cfg, filename), fallback_season=fallback_season)
+
+
+def parse_rugby_compfixtures_file(cfg: dict, filename: str) -> list[dict]:
+    return parse_rugby_compfixtures_xml(read_smb_file(cfg, filename))
+
+
+# ── Pattern dispatch ──────────────────────────────────────────────────────────
+
+def classify_filename(fname: str) -> str | None:
+    """Bilinen pattern'lerden hangisi → sport kind; eşleşme yoksa None."""
+    if _RESULTS_RE.match(fname):    return "results"
+    if _TAB7_RE.match(fname):       return "tab7"
+    if _MOTOGP_CAL_RE.match(fname): return "motogp"
+    if _RUGBY_RE.match(fname):      return "rugby"
+    return None
+
+
+# ── State recovery (2026-05-13) ───────────────────────────────────────────────
+#
+# Sebep: v1 öncesi watcher, TAB7 / MOTOGP_CALENDAR / ru1_compfixtures pattern'leri
+# `scan_once`'a dahil edilmiş ama parse `parse_results_file`'a yönlenip `[]`
+# döndüğü için state map'e mtime yazıldı (eski davranış). Bu nedenle watcher
+# state dosyasında bu dosyalar "işlenmiş" gibi duruyor.
+#
+# Sport-aware parser deploy edildikten sonra aynı TAB7/MOTOGP/Rugby dosyalarının
+# tekrar parse edilmesi gerekir; ancak mtime state'te aynı kaldığı için
+# `scan_once` "değişiklik yok" der ve dosyaları skip eder.
+#
+# Çözüm: bir-kerelik state recovery — sport pattern'lerini state'ten çıkar;
+# srml-results entry'leri ve bilinmeyen anahtarlar dokunulmaz.
+
+def purge_sport_state_entries(state: dict) -> tuple[dict, int]:
+    """Sport pattern entry'lerini (TAB7/MOTOGP_CAL/RUGBY) state'ten çıkar.
+
+    `classify_filename` ile kategorize edilir; `results` (srml-results) ve
+    None (bilinmeyen anahtar) korunur. Sadece `tab7` / `motogp` / `rugby`
+    silinir.
+
+    Returns: `(yeni_state_dict, silinen_entry_sayısı)`.
+    """
+    new_state: dict = {}
+    removed = 0
+    for key, val in state.items():
+        kind = classify_filename(key)
+        if kind in ("tab7", "motogp", "rugby"):
+            removed += 1
+            continue
+        new_state[key] = val
+    return new_state, removed
+
+
+def _purge_env_enabled(env: dict | None = None) -> bool:
+    """`OPTA_WATCHER_PURGE_SPORT_STATE_ONCE` ENV truthy ise True (case-insensitive)."""
+    src = env if env is not None else os.environ
+    val = src.get("OPTA_WATCHER_PURGE_SPORT_STATE_ONCE", "")
+    return val.strip().lower() in ("true", "1", "yes")
+
+
+def _do_purge_sport_state(source: str) -> int:
+    """Disk state'ini oku, purge et, yaz; silinen sayıyı döner.
+
+    `load_state` / `save_state` mevcut kontrat'ı kullanır — state dosyası
+    yolu `STATE_PATH` (`HOME=/data` → `/data/.bcms-opta-watcher-state.json`).
+    """
+    state = load_state()
+    new_state, removed = purge_sport_state_entries(state)
+    save_state(new_state, state)
+    log.info(
+        "Sport state purge — TAB7/MOTOGP_CAL/RUGBY silindi "
+        "(silinen:%d, kalan:%d, kaynak:%s)",
+        removed, len(new_state), source,
+    )
+    return removed
+
+
 # ── DB işlemleri ──────────────────────────────────────────────────────────────
 
 def upsert_matches(matches: list[dict]) -> tuple[int, int, int]:
@@ -241,20 +578,26 @@ signal.signal(signal.SIGINT, _stop)
 
 
 def scan_once(cfg: dict, state: dict) -> dict:
-    """Bir tarama turu: değişen dosyaları paralel işle, güncel state döndür."""
+    """Bir tarama turu: değişen dosyaları sport bazlı parse et, güncel state döndür.
+
+    State advance kuralları (2026-05-13):
+      - `results` (srml-results): mevcut davranış aynen korunur — parse
+        çağrısı sonrası mtime state'e yazılır (POST sonucundan bağımsız).
+        Mevcut futbol akışı bozulmaz.
+      - `tab7` / `motogp` / `rugby`: parse exception veya 0 match dönerse
+        state advance EDİLMEZ (sonraki turda tekrar denenir). Parse ≥1 match
+        döndürdü VE batch POST başarılıysa state advance edilir.
+      - Pattern eşleşmeyen dosya zaten taramaya alınmaz.
+    """
     base      = smb_path(cfg)
     new_state = dict(state)
-    changed_files: list[tuple[str, float]] = []
+    changed_files: list[tuple[str, float, str]] = []  # (fname, mtime, kind)
 
     try:
         for entry in smbclient.scandir(base):
             fname = entry.name
-            # 2026-05-13: Pattern set genişledi — futbol (srml-results) +
-            # tenis (TAB7) + MotoGP takvim + rugby (ru1_compfixtures).
-            if not (_RESULTS_RE.match(fname)
-                    or _TAB7_RE.match(fname)
-                    or _MOTOGP_CAL_RE.match(fname)
-                    or _RUGBY_RE.match(fname)):
+            kind = classify_filename(fname)
+            if kind is None:
                 continue
             try:
                 mtime = entry.stat(follow_symlinks=False).st_mtime
@@ -263,8 +606,8 @@ def scan_once(cfg: dict, state: dict) -> dict:
 
             now = time.time()
             if mtime > state.get(fname, 0.0) and (now - mtime) >= MTIME_SETTLE_SEC:
-                changed_files.append((fname, mtime))
-                log.info("Değişiklik algılandı: %s (mtime: %s)", fname,
+                changed_files.append((fname, mtime, kind))
+                log.info("Değişiklik algılandı: %s [%s] (mtime: %s)", fname, kind,
                          datetime.fromtimestamp(mtime, tz=timezone.utc)
                          .strftime("%Y-%m-%d %H:%M:%S UTC"))
     except Exception as e:
@@ -277,24 +620,56 @@ def scan_once(cfg: dict, state: dict) -> dict:
 
     team_cache: dict[str, dict] = {}
     all_matches: list[dict] = []
+    # POST sonrası kalıcılaştırılacak (tennis/motogp/rugby) state.
+    pending_state: dict[str, float] = {}
 
-    for fname, mtime in changed_files:
+    for fname, mtime, kind in changed_files:
         try:
-            matches = parse_results_file(cfg, fname, team_cache)
-            all_matches.extend(matches)
-            new_state[fname] = mtime
+            if kind == "results":
+                # Futbol mevcut akışı — POST sonucundan bağımsız state advance.
+                matches = parse_results_file(cfg, fname, team_cache)
+                all_matches.extend(matches)
+                new_state[fname] = mtime
+            elif kind == "tab7":
+                matches = parse_tab7_file(cfg, fname)
+                if matches:
+                    all_matches.extend(matches)
+                    pending_state[fname] = mtime
+                else:
+                    log.warning("TAB7 parse 0 match: %s — state advance edilmedi", fname)
+            elif kind == "motogp":
+                matches = parse_motogp_calendar_file(cfg, fname)
+                if matches:
+                    all_matches.extend(matches)
+                    pending_state[fname] = mtime
+                else:
+                    log.warning("MotoGP parse 0 match: %s — state advance edilmedi", fname)
+            elif kind == "rugby":
+                matches = parse_rugby_compfixtures_file(cfg, fname)
+                if matches:
+                    all_matches.extend(matches)
+                    pending_state[fname] = mtime
+                else:
+                    log.warning("Rugby parse 0 match: %s — state advance edilmedi", fname)
         except Exception as e:
-            log.error("Dosya işleme hatası %s: %s", fname, e)
+            log.error("Dosya işleme hatası %s [%s]: %s", fname, kind, e)
+            # Yeni sport pattern'lerinde state advance edilmez; futbol için
+            # mevcut bug-uyumlu davranış değişmedi (parse_results_file kendi
+            # exception'larını swallow eder + boş döner).
 
     # Tüm maçları tek seferde DB'ye yaz
     try:
         ins, upd, unch = upsert_matches(all_matches)
+        # POST başarılı → tennis/motogp/rugby state'i kalıcılaştır.
+        new_state.update(pending_state)
         log.info(
             "Tarama tamamlandı — değişen:%d dosya | yeni:%d güncellenen:%d değişmeyen:%d",
             len(changed_files), ins, upd, unch,
         )
     except Exception as e:
-        log.error("DB yazma hatası: %s", e)
+        log.error("DB yazma hatası: %s — sport pending state atıldı", e)
+        # `pending_state` atılır; sonraki turda tekrar denenir. `new_state`
+        # içindeki srml-results advance'i korunur (mevcut "bozma" kuralı).
 
     return new_state
 
@@ -305,7 +680,28 @@ def main():
                         help="Tarama aralığı (saniye, varsayılan: 300)")
     parser.add_argument("--once", action="store_true",
                         help="Tek seferlik tarama yap ve çık")
+    # State recovery (2026-05-13): TAB7/MOTOGP_CAL/RUGBY entry'lerini state'ten
+    # tek seferlik temizler. SMB I/O yapmaz; sadece disk state'ini düzenler.
+    parser.add_argument("--purge-sport-state", action="store_true",
+                        help="State'ten TAB7/MOTOGP_CAL/RUGBY entry'lerini "
+                             "tek seferlik sil ve çık (srml-results dokunulmaz)")
     args = parser.parse_args()
+
+    # ── Startup state recovery hook ──────────────────────────────────────────
+    # İki tetikleyici:
+    #   1) `--purge-sport-state` CLI argümanı → purge + exit (ad-hoc komut).
+    #   2) `OPTA_WATCHER_PURGE_SPORT_STATE_ONCE=true` ENV → startup'ta purge,
+    #      sonra normal döngüye devam (deployment ile birlikte recovery).
+    # `--purge-sport-state` `OPTA_WATCHER_PURGE_SPORT_STATE_ONCE`'a göre öncelikli.
+    if args.purge_sport_state:
+        _do_purge_sport_state("CLI --purge-sport-state")
+        log.info("Purge tamamlandı — çıkılıyor (CLI mode)")
+        return
+    if _purge_env_enabled():
+        _do_purge_sport_state("ENV OPTA_WATCHER_PURGE_SPORT_STATE_ONCE")
+        # Normal döngüye devam — operatör ENV'i bir sonraki deployment'ta
+        # unset etmeli; aksi halde her container restart purge çalışır
+        # (idempotent ama log gürültüsü yapar).
 
     cfg   = load_smb_config()
     state = load_state()

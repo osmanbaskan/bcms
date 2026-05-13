@@ -20,6 +20,48 @@ const matchItemSchema = z.object({
   venue:      z.string().nullable().optional(),
 });
 
+/**
+ * compId → leagues.code eşleme.
+ *
+ * Tarih: 2026-05-13 (sport-aware code üretimi).
+ *
+ * Tarihçe: route uzun süre `opta-${compId}` ürettiğinden futbol srml-results
+ * akışı `leagues.code = 'opta-115'` tarzı kayıt yaratıyordu. 2026-05-13'te
+ * eklenen tenis/MotoGP/rugby parser'ları Python watcher tarafında
+ * compId='tennis'|'motogp'|'rugby-<num>' gönderdiğinde, mevcut migration
+ * `custom-tennis` / `custom-motogp` / `custom-rugby` row'larıyla aynı code
+ * üretmeli — aksi takdirde `opta-tennis` + `custom-tennis` paralel iki kayıt
+ * oluşur ve `/fixture-competitions` dropdown filtre'sini bozar.
+ *
+ * Kural: bilinen özel sport'lar → `custom-${compId}`; geri kalan (futbol srml)
+ * → `opta-${compId}` (mevcut davranış).
+ *
+ * `/fixtures` endpoint `IN ('opta-X','custom-X')` JOIN'i ile her iki prefix'i
+ * destekler; sport-aware code ile futbol yolu davranış değiştirmez, yeni
+ * sport'lar custom- prefix'iyle hizalanır.
+ */
+export function leagueCodeForCompId(compId: string): string {
+  if (compId === 'tennis' || compId === 'motogp' || compId.startsWith('rugby-')) {
+    return `custom-${compId}`;
+  }
+  return `opta-${compId}`;
+}
+
+/**
+ * compId → leagues.sport_group eşleme (yeni create için).
+ *
+ * Tarih: 2026-05-13. Yeni lig create'inde sport_group default 'football'
+ * olduğundan, tenis/MotoGP/rugby yeni kayıtları yanlış optgroup'ta düşerdi.
+ * Helper yalnızca create branch'inde kullanılır; existing kayıtların
+ * sport_group'una dokunulmaz (admin manuel yönetiminde).
+ */
+export function sportGroupForCompId(compId: string): 'football' | 'tennis' | 'motogp' | 'rugby' {
+  if (compId === 'tennis') return 'tennis';
+  if (compId === 'motogp') return 'motogp';
+  if (compId.startsWith('rugby-')) return 'rugby';
+  return 'football';
+}
+
 /** HIGH-API-007 fix (2026-05-05) — DoS payload koruması.
  *  Ölçüm (2026-05-05): total 34811 maç, 67 lig, max single league=4180,
  *  avg league=520, last 30d daily bulk max=266 row. 5000 sınırı tek bir
@@ -150,7 +192,7 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
         // 2026-04-30 6.5 saatlik burst'te ~205k audit satırı bunun sonucu.
         // Yeni: name değişmemiş ise upsert ATLA → audit log yok.
         // HIGH-003 audit raporu detayında.
-        const compCodes = Array.from(uniqueComps.values()).map((c) => `opta-${c.compId}`);
+        const compCodes = Array.from(uniqueComps.values()).map((c) => leagueCodeForCompId(c.compId));
         const existingLeagues = compCodes.length > 0
           ? await tx.league.findMany({
               where: { code: { in: compCodes } },
@@ -162,13 +204,21 @@ export const optaSyncRoutes: FastifyPluginAsync = async (fastify) => {
         // ── 1b. Her unique comp için: create / update (name diff) / skip ──
         await Promise.all(
           Array.from(uniqueComps.values()).map(async ({ compId, compName }) => {
-            const code = `opta-${compId}`;
+            const code = leagueCodeForCompId(compId);
             const existing = existingByCode.get(code);
 
             if (!existing) {
-              // Yeni lig — create + audit yazılır (gerçek değişiklik)
+              // Yeni lig — create + audit yazılır (gerçek değişiklik).
+              // sportGroup compId'den deduce edilir; mevcut kayıtların
+              // sport_group'una bu route asla dokunmaz (admin yönetimi).
               const league = await tx.league.create({
-                data: { code, name: compName, country: '', metadata: { optaCompId: compId } },
+                data: {
+                  code,
+                  name:       compName,
+                  country:    '',
+                  metadata:   { optaCompId: compId },
+                  sportGroup: sportGroupForCompId(compId),
+                },
                 select: { id: true },
               });
               leagueMap.set(compId, league.id);
