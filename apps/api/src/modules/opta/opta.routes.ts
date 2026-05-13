@@ -317,18 +317,20 @@ export async function optaRoutes(app: FastifyInstance) {
   }, async () => {
     const rows = await app.prisma.league.findMany({
       where:    { deleted_at: null },
-      orderBy:  [{ sortOrder: 'asc' }, { name: 'asc' }],
-      select:   { id: true, code: true, name: true, country: true, visible: true, sortOrder: true },
+      orderBy:  [{ sportGroup: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+      select:   { id: true, code: true, name: true, country: true, visible: true, sortOrder: true, sportGroup: true },
     });
     return rows;
   });
 
   // PATCH /api/v1/opta/competitions/admin/:id — visible/sortOrder güncelle.
+  const SPORT_GROUPS = ['football','tennis','motogp','rugby','formula1','basketball'] as const;
   const competitionAdminPatchSchema = z.object({
-    visible:   z.boolean().optional(),
-    sortOrder: z.number().int().nonnegative().optional(),
-  }).refine((d) => d.visible !== undefined || d.sortOrder !== undefined, {
-    message: 'En az bir alan zorunlu (visible veya sortOrder)',
+    visible:    z.boolean().optional(),
+    sortOrder:  z.number().int().nonnegative().optional(),
+    sportGroup: z.enum(SPORT_GROUPS).optional(),
+  }).refine((d) => d.visible !== undefined || d.sortOrder !== undefined || d.sportGroup !== undefined, {
+    message: 'En az bir alan zorunlu (visible, sortOrder, veya sportGroup)',
   });
 
   app.patch<{ Params: { id: string } }>('/competitions/admin/:id', {
@@ -338,13 +340,14 @@ export async function optaRoutes(app: FastifyInstance) {
     const id = z.coerce.number().int().positive().parse(request.params.id);
     const dto = competitionAdminPatchSchema.parse(request.body);
     const data: Prisma.LeagueUpdateInput = {};
-    if (dto.visible   !== undefined) data.visible   = dto.visible;
-    if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+    if (dto.visible    !== undefined) data.visible    = dto.visible;
+    if (dto.sortOrder  !== undefined) data.sortOrder  = dto.sortOrder;
+    if (dto.sportGroup !== undefined) data.sportGroup = dto.sportGroup;
     try {
       return await app.prisma.league.update({
         where:  { id },
         data,
-        select: { id: true, code: true, name: true, country: true, visible: true, sortOrder: true },
+        select: { id: true, code: true, name: true, country: true, visible: true, sortOrder: true, sportGroup: true },
       });
     } catch (e) {
       // P2025: kayıt yok → 404.

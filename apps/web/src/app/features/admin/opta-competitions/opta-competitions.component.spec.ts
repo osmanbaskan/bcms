@@ -11,7 +11,7 @@ import {
 function makeItem(overrides: Partial<OptaCompetitionAdminItem> = {}): OptaCompetitionAdminItem {
   return {
     id: 1, code: 'opta-115', name: 'Süper Lig', country: 'TR',
-    visible: true, sortOrder: 1,
+    visible: true, sortOrder: 1, sportGroup: 'football',
     ...overrides,
   };
 }

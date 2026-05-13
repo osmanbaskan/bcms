@@ -40,6 +40,13 @@ BATCH_SIZE = 100
 
 _RESULTS_RE = re.compile(r"^srml-(\d+)-(\d{4})-results\.xml$")
 _SQUADS_RE  = re.compile(r"^srml-(\d+)-(\d+)-squads\.xml$")
+# 2026-05-13: Yeni sport feed pattern'leri — tenis (TAB7), MotoGP takvim,
+# rugby fixtures. Watcher bu dosyaları SMB'den /opta volume'una düşürür;
+# Backend OPTA parser ilgili compId'de okur. F1 paterniyle MotoGP takvim
+# dosyası operatör tarafından manuel oluşturulur (MOTOGP_CALENDAR_<year>.xml).
+_TAB7_RE      = re.compile(r"^TAB7-(\d+)\.xml$")
+_MOTOGP_CAL_RE = re.compile(r"^MOTOGP_CALENDAR_(\d{4})\.xml$")
+_RUGBY_RE     = re.compile(r"^ru1_compfixtures\.[^.]+\.[^.]+\..*\.xml$")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -242,7 +249,12 @@ def scan_once(cfg: dict, state: dict) -> dict:
     try:
         for entry in smbclient.scandir(base):
             fname = entry.name
-            if not _RESULTS_RE.match(fname):
+            # 2026-05-13: Pattern set genişledi — futbol (srml-results) +
+            # tenis (TAB7) + MotoGP takvim + rugby (ru1_compfixtures).
+            if not (_RESULTS_RE.match(fname)
+                    or _TAB7_RE.match(fname)
+                    or _MOTOGP_CAL_RE.match(fname)
+                    or _RUGBY_RE.match(fname)):
                 continue
             try:
                 mtime = entry.stat(follow_symlinks=False).st_mtime

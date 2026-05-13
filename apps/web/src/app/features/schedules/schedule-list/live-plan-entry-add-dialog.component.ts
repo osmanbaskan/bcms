@@ -103,10 +103,14 @@ function isMatchType(bt: BroadcastType): boolean {
                             [ngModelOptions]="{standalone:true}"
                             [disabled]="!isOptaMode() || competitionsLoading() || saving()">
                   <mat-option [value]="null">— Seçin —</mat-option>
-                  @for (c of competitions(); track c.id + ':' + c.season) {
-                    <mat-option [value]="c.id + ':' + c.season">
-                      {{ c.name }} <span class="season-chip">{{ c.season }}</span>
-                    </mat-option>
+                  @for (g of competitionsGrouped(); track g.label) {
+                    <mat-optgroup [label]="g.label">
+                      @for (c of g.items; track c.id + ':' + c.season) {
+                        <mat-option [value]="c.id + ':' + c.season">
+                          {{ c.name }} <span class="season-chip">{{ c.season }}</span>
+                        </mat-option>
+                      }
+                    </mat-optgroup>
                   }
                 </mat-select>
                 @if (competitionsLoading()) {
@@ -386,6 +390,33 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
   competitions             = signal<FixtureCompetition[]>([]);
   competitionsLoading      = signal(false);
   selectedCompetitionCode  = signal<string | null>(null);
+
+  /**
+   * 2026-05-13: Sport bazlı gruplandırma (mat-optgroup). Backend response
+   * `sportGroup` alanı ile geliyor; geriye uyumluluk için boş gelirse
+   * 'football' default. Grup sırası: futbol → tenis → F1 → MotoGP → basketbol → rugby.
+   */
+  competitionsGrouped = computed<{ label: string; items: FixtureCompetition[] }[]>(() => {
+    const groups = new Map<string, FixtureCompetition[]>();
+    for (const c of this.competitions()) {
+      const g = c.sportGroup ?? 'football';
+      const arr = groups.get(g) ?? [];
+      arr.push(c);
+      groups.set(g, arr);
+    }
+    const groupLabels: Record<string, string> = {
+      football:   'Futbol',
+      tennis:     'Tenis',
+      formula1:   'Formula 1',
+      motogp:     'MotoGP',
+      basketball: 'Basketbol',
+      rugby:      'Rugby',
+    };
+    const order = ['football','tennis','formula1','motogp','basketball','rugby'];
+    return order
+      .filter((g) => groups.has(g))
+      .map((g) => ({ label: groupLabels[g] ?? g, items: groups.get(g) ?? [] }));
+  });
 
   fixtures        = signal<OptaFixtureRow[]>([]);
   fixturesLoading = signal(false);

@@ -12,10 +12,21 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { HttpErrorResponse } from '@angular/common/http';
 
+import { MatSelectModule } from '@angular/material/select';
+
 import {
   OptaAdminService,
   type OptaCompetitionAdminItem,
+  type OptaSportGroup,
 } from '../../../core/services/opta-admin.service';
+
+const SPORT_GROUP_LABELS: Record<OptaSportGroup, string> = {
+  football: 'Futbol', tennis: 'Tenis', formula1: 'Formula 1',
+  motogp: 'MotoGP', basketball: 'Basketbol', rugby: 'Rugby',
+};
+const SPORT_GROUP_OPTIONS: OptaSportGroup[] = [
+  'football','tennis','formula1','motogp','basketball','rugby',
+];
 
 /**
  * 2026-05-13: OPTA lig/turnuva görünürlük yönetimi.
@@ -30,9 +41,10 @@ import {
  */
 interface RowState extends OptaCompetitionAdminItem {
   /** Edit anlık değer (canlı) — orijinalden farklıysa dirty=true. */
-  draftVisible:   boolean;
-  draftSortOrder: number;
-  saving:         boolean;
+  draftVisible:    boolean;
+  draftSortOrder:  number;
+  draftSportGroup: OptaSportGroup;
+  saving:          boolean;
 }
 
 @Component({
@@ -41,7 +53,7 @@ interface RowState extends OptaCompetitionAdminItem {
   imports: [
     CommonModule, FormsModule,
     MatCardModule, MatTableModule, MatButtonModule, MatIconModule,
-    MatSlideToggleModule, MatFormFieldModule, MatInputModule,
+    MatSlideToggleModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatProgressSpinnerModule, MatSnackBarModule,
   ],
   template: `
@@ -76,6 +88,18 @@ interface RowState extends OptaCompetitionAdminItem {
             <ng-container matColumnDef="country">
               <th mat-header-cell *matHeaderCellDef>Ülke</th>
               <td mat-cell *matCellDef="let r">{{ r.country }}</td>
+            </ng-container>
+            <ng-container matColumnDef="sportGroup">
+              <th mat-header-cell *matHeaderCellDef>Spor</th>
+              <td mat-cell *matCellDef="let r">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="sport-select">
+                  <mat-select [(ngModel)]="r.draftSportGroup" [disabled]="r.saving">
+                    @for (g of sportGroupOptions; track g) {
+                      <mat-option [value]="g">{{ sportGroupLabel(g) }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              </td>
             </ng-container>
             <ng-container matColumnDef="visible">
               <th mat-header-cell *matHeaderCellDef>Görünür</th>
@@ -131,6 +155,8 @@ interface RowState extends OptaCompetitionAdminItem {
       border: 1px solid rgba(0,0,0,0.2); border-radius: 4px;
       background: transparent; color: inherit; font: inherit;
     }
+    .sport-select { width: 120px; }
+    .sport-select ::ng-deep .mat-mdc-form-field-infix { padding: 4px 0; min-height: 28px; }
     .sort-input:focus { outline: 2px solid var(--mat-sys-primary); outline-offset: -1px; }
     .sort-input:disabled { opacity: 0.5; }
     .state { display: flex; align-items: center; gap: 12px; padding: 48px; justify-content: center; color: var(--mat-sys-on-surface-variant); }
@@ -141,7 +167,11 @@ export class OptaCompetitionsComponent implements OnInit {
   private service = inject(OptaAdminService);
   private snack   = inject(MatSnackBar);
 
-  protected cols = ['code', 'name', 'country', 'visible', 'sortOrder', 'actions'];
+  protected cols = ['code', 'name', 'country', 'sportGroup', 'visible', 'sortOrder', 'actions'];
+  protected readonly sportGroupOptions = SPORT_GROUP_OPTIONS;
+  protected sportGroupLabel(g: OptaSportGroup): string {
+    return SPORT_GROUP_LABELS[g] ?? g;
+  }
   protected rows    = signal<RowState[]>([]);
   protected loading = signal(false);
   protected error   = signal<string | null>(null);
@@ -166,15 +196,18 @@ export class OptaCompetitionsComponent implements OnInit {
   }
 
   protected isDirty(r: RowState): boolean {
-    return r.draftVisible !== r.visible || r.draftSortOrder !== r.sortOrder;
+    return r.draftVisible !== r.visible
+        || r.draftSortOrder !== r.sortOrder
+        || r.draftSportGroup !== r.sportGroup;
   }
 
   protected save(r: RowState): void {
     if (!this.isDirty(r) || r.saving) return;
     r.saving = true;
-    const dto: { visible?: boolean; sortOrder?: number } = {};
-    if (r.draftVisible !== r.visible)     dto.visible   = r.draftVisible;
-    if (r.draftSortOrder !== r.sortOrder) dto.sortOrder = r.draftSortOrder;
+    const dto: { visible?: boolean; sortOrder?: number; sportGroup?: OptaSportGroup } = {};
+    if (r.draftVisible !== r.visible)         dto.visible    = r.draftVisible;
+    if (r.draftSortOrder !== r.sortOrder)     dto.sortOrder  = r.draftSortOrder;
+    if (r.draftSportGroup !== r.sportGroup)   dto.sportGroup = r.draftSportGroup;
 
     this.service.updateCompetitionAdmin(r.id, dto).subscribe({
       next: (updated) => {
@@ -195,9 +228,10 @@ export class OptaCompetitionsComponent implements OnInit {
   private toRowState(i: OptaCompetitionAdminItem): RowState {
     return {
       ...i,
-      draftVisible:   i.visible,
-      draftSortOrder: i.sortOrder,
-      saving:         false,
+      draftVisible:    i.visible,
+      draftSortOrder:  i.sortOrder,
+      draftSportGroup: i.sportGroup,
+      saving:          false,
     };
   }
 }

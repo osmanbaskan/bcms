@@ -22,6 +22,11 @@ model League {
   /// 2026-05-13: Admin tarafından düzenlenebilir sıralama (visible=true
   /// ligler arasında). /fixture-competitions endpoint asc kullanır.
   sortOrder  Int       @default(0) @map("sort_order")
+  /// 2026-05-13: Sport grup sınıfı — Yayın Planlama "Yeni Ekle" dropdown
+  /// optgroup'a göre. CHECK constraint migration'da
+  /// 20260513140000_leagues_sport_group:
+  /// football | tennis | motogp | rugby | formula1 | basketball.
+  sportGroup String    @default("football") @map("sport_group") @db.VarChar(30)
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
   deleted_at DateTime?
@@ -30,6 +35,7 @@ model League {
 
   @@index([metadata], type: Gin)
   @@index([visible, sortOrder], map: "leagues_visible_sort_order_idx")
+  @@index([sportGroup, visible, sortOrder], map: "leagues_sport_group_visible_idx")
   @@map("leagues")
 }
 

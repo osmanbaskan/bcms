@@ -53,10 +53,18 @@ export interface OptaFixture {
   label:           string;
 }
 
+/**
+ * 2026-05-13: `sportGroup` ile sport-bazlı UI gruplandırması (futbol /
+ * tenis / motogp / rugby / formula1 / basketball). Backend `/fixture-
+ * competitions` response'a flatten edilir; frontend mat-optgroup ile gösterir.
+ */
+export type SportGroup = 'football' | 'tennis' | 'motogp' | 'rugby' | 'formula1' | 'basketball';
+
 export interface FixtureCompetition {
-  id:     string;
-  name:   string;
-  season: string;
+  id:         string;
+  name:       string;
+  season:     string;
+  sportGroup: SportGroup;
 }
 
 // ── In-memory cache ───────────────────────────────────────────────────────────
@@ -225,7 +233,7 @@ export function buildFixtureCompetitions(): FixtureCompetition[] {
         continue;
       }
 
-      results.push({ id: compId, name: ALLOWED_COMPETITIONS[compId], season });
+      results.push({ id: compId, name: ALLOWED_COMPETITIONS[compId], season, sportGroup: 'football' });
     }
   }
 
@@ -235,11 +243,42 @@ export function buildFixtureCompetitions(): FixtureCompetition[] {
     const f1Fixtures = loadF1Fixtures();
     const now = new Date();
     if (f1Fixtures.some((f) => new Date(f.matchDate) >= now)) {
-      results.push({ id: 'f1', name: 'Formula 1', season: '2026' });
+      results.push({ id: 'f1', name: 'Formula 1', season: '2026', sportGroup: 'formula1' });
     }
   }
 
-  results.sort((a, b) => a.name.localeCompare(b.name));
+  // 2026-05-13: MotoGP takvimi varsa ekle (F1 paterni; MOTOGP_CALENDAR_*.xml).
+  const motogpPath = path.join(OPTA_DIR, 'MOTOGP_CALENDAR_2026.xml');
+  if (fs.existsSync(motogpPath)) {
+    const motogpFixtures = loadMotoGPFixtures();
+    const now = new Date();
+    if (motogpFixtures.some((f) => new Date(f.matchDate) >= now)) {
+      results.push({ id: 'motogp', name: 'MotoGP', season: '2026', sportGroup: 'motogp' });
+    }
+  }
+
+  // 2026-05-13: Tenis fikstürleri TAB7-*.xml dosyalarından (statsperform_feed
+  // name="Tennis"). En az 1 gelecek turnuva match'i varsa "Tennis" girişi.
+  const tennisFixtures = loadTennisFixtures();
+  const now = new Date();
+  if (tennisFixtures.some((f) => new Date(f.matchDate) >= now)) {
+    results.push({ id: 'tennis', name: 'Tennis', season: '2026', sportGroup: 'tennis' });
+  }
+
+  // 2026-05-13: Rugby fikstürleri ru1_compfixtures.*.xml dosyalarından.
+  // Her benzersiz comp_id ayrı entry; sportGroup='rugby'.
+  for (const rugbyComp of loadRugbyCompetitions()) {
+    results.push(rugbyComp);
+  }
+
+  results.sort((a, b) => {
+    const groupOrder: Record<SportGroup, number> = {
+      football: 1, tennis: 2, formula1: 3, motogp: 4, basketball: 5, rugby: 6,
+    };
+    const g = (groupOrder[a.sportGroup] ?? 99) - (groupOrder[b.sportGroup] ?? 99);
+    if (g !== 0) return g;
+    return a.name.localeCompare(b.name, 'tr-TR');
+  });
   fixtureCompCache = results;
   return results;
 }
@@ -249,6 +288,22 @@ export function loadFixtures(compId: string, season: string, afterDate?: Date): 
   // F1 özel durumu
   if (compId === 'f1') {
     const fixtures = loadF1Fixtures();
+    return afterDate ? fixtures.filter((f) => new Date(f.matchDate) >= afterDate) : fixtures;
+  }
+  // 2026-05-13: MotoGP — F1 paterni; takvim dosyası bazlı
+  if (compId === 'motogp') {
+    const fixtures = loadMotoGPFixtures();
+    return afterDate ? fixtures.filter((f) => new Date(f.matchDate) >= afterDate) : fixtures;
+  }
+  // 2026-05-13: Tenis — TAB7-*.xml batch (statsperform_feed Tennis)
+  if (compId === 'tennis') {
+    const fixtures = loadTennisFixtures();
+    return afterDate ? fixtures.filter((f) => new Date(f.matchDate) >= afterDate) : fixtures;
+  }
+  // 2026-05-13: Rugby Union — ru1_compfixtures.*.xml; comp_id route
+  if (compId.startsWith('rugby-')) {
+    const compNum = compId.slice('rugby-'.length);
+    const fixtures = loadRugbyFixtures(compNum, season);
     return afterDate ? fixtures.filter((f) => new Date(f.matchDate) >= afterDate) : fixtures;
   }
 
@@ -483,6 +538,282 @@ function loadF1Fixtures(): OptaFixture[] {
   return f1FixtureCache;
 }
 
+// ── MotoGP ────────────────────────────────────────────────────────────────────
+// 2026-05-13: F1 paterni ile MOTOGP_CALENDAR_<year>.xml dosyasından okur.
+// SMB share'inde yalnız MOTOGP_DRIVER_*_*.xml (driver telemetry) bulunduğu
+// için yarış takvimi için ayrı dosya tipi: operatör manuel/script ile
+// MOTOGP_CALENDAR_2026.xml düşürür. Format F1 ile aynı: <block><schedule>...
+let motogpFixtureCache: OptaFixture[] | null = null;
+
+function loadMotoGPFixtures(): OptaFixture[] {
+  if (motogpFixtureCache) return motogpFixtureCache;
+
+  const filePath = path.join(OPTA_DIR, 'MOTOGP_CALENDAR_2026.xml');
+  motogpFixtureCache = [];
+
+  try {
+    const xml    = fs.readFileSync(filePath, 'utf-8');
+    const parser = new XMLParser({
+      ignoreAttributes:    false,
+      attributeNamePrefix: '@_',
+      isArray: (name) => ['schedule'].includes(name),
+    });
+    const parsed   = parser.parse(xml);
+    const rawSessions = parsed?.block?.schedule ?? [];
+    const sessions = Array.isArray(rawSessions) ? rawSessions : [];
+
+    for (const s of sessions) {
+      if (typeof s !== 'object' || s === null) continue;
+      const item = s as Record<string, unknown>;
+      const session   = String(item.session ?? '');
+      const eventname = String(item.eventname ?? '');
+      const dateStr   = String(item.date ?? '');
+      const startStr  = String(item.start ?? '');
+      const utcOffset = Number(item.utc ?? 0);
+      const gpno      = Number(item.gpno ?? 0);
+      const schedId   = String(item['@_id'] ?? '');
+
+      if (!dateStr || !startStr || !session || !eventname) continue;
+      const matchDate = parseF1Date(dateStr, startStr, utcOffset);
+      if (!matchDate) continue;
+
+      // MotoGP session labels (F1 paritesi)
+      const sessionLabels: Record<string, string> = {
+        RACE: 'Yarış', QUALI: 'Sıralama', SPRINTRACE: 'Sprint Yarış',
+        SPRINTQUALI: 'Sprint Sıralama', FP1: 'Antrenman 1', FP2: 'Antrenman 2',
+        FP3: 'Antrenman 3', WARMUP: 'Warm-up',
+      };
+      const sessionLabel = sessionLabels[session] ?? session;
+      const dateLabel = `${matchDate.getUTCDate().toString().padStart(2,'0')}.${(matchDate.getUTCMonth()+1).toString().padStart(2,'0')}.${matchDate.getUTCFullYear()} ${matchDate.getUTCHours().toString().padStart(2,'0')}:${matchDate.getUTCMinutes().toString().padStart(2,'0')}`;
+      const label = `${eventname} — ${sessionLabel} (${dateLabel})`;
+
+      motogpFixtureCache.push({
+        matchId:         `motogp-${schedId}`,
+        competitionId:   'motogp',
+        competitionName: 'MotoGP',
+        season:          '2026',
+        homeTeamName:    eventname,
+        awayTeamName:    sessionLabel,
+        matchDate:       matchDate.toISOString(),
+        weekNumber:      gpno || null,
+        label,
+      });
+    }
+    motogpFixtureCache.sort((a, b) => a.matchDate.localeCompare(b.matchDate));
+  } catch {
+    // dosya yoksa boş döner
+  }
+  return motogpFixtureCache;
+}
+
+// ── Tennis ────────────────────────────────────────────────────────────────────
+// 2026-05-13: TAB7-*.xml dosyalarından tenis fikstürleri.
+// Format: <statsperform_feed name="Tennis"><tournament>...<match start_time/>
+//
+// Tek dosya = 1 maç. Initial sync 68k+ dosya; bu parser cache'i tek bellek
+// pass'inde doldurur; günlük poll (watcher 3600 sn) yeni dosyaları işler.
+// Operasyonel: full re-parse pahalı; ileri optimizasyon (incremental
+// mtime tabanlı) post-v1.
+let tennisFixtureCache: OptaFixture[] | null = null;
+
+function loadTennisFixtures(): OptaFixture[] {
+  if (tennisFixtureCache) return tennisFixtureCache;
+  tennisFixtureCache = [];
+
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(OPTA_DIR).filter((f) => /^TAB7-\d+\.xml$/.test(f));
+  } catch {
+    return tennisFixtureCache;
+  }
+
+  const tennisParser = new XMLParser({
+    ignoreAttributes:    false,
+    attributeNamePrefix: '@_',
+  });
+
+  for (const filename of files) {
+    try {
+      const xml = fs.readFileSync(path.join(OPTA_DIR, filename), 'utf-8');
+      const parsed = tennisParser.parse(xml);
+      const feed   = parsed?.statsperform_feed;
+      if (!feed || feed['@_name'] !== 'Tennis') continue;
+
+      const tournament = feed.tournament;
+      if (!tournament) continue;
+      const tournamentName: string = String(tournament['@_name'] ?? tournament['@_tournament_class'] ?? 'Tennis');
+      const tournamentType: string = String(tournament['@_type'] ?? '');
+      const season:         string = String(tournament['@_end_date'] ?? '').slice(0, 4) || '2026';
+
+      const competitions: unknown = tournament.competition;
+      const compList = Array.isArray(competitions) ? competitions : (competitions ? [competitions] : []);
+
+      for (const comp of compList) {
+        const c = comp as Record<string, unknown>;
+        const compName: string = String(c['@_name'] ?? c['@_sex'] ?? 'Singles');
+        const rounds: unknown = c.round;
+        const roundList = Array.isArray(rounds) ? rounds : (rounds ? [rounds] : []);
+
+        for (const round of roundList) {
+          const r = round as Record<string, unknown>;
+          const roundName: string = String(r['@_name'] ?? '');
+          const matches: unknown = r.match;
+          const matchList = Array.isArray(matches) ? matches : (matches ? [matches] : []);
+
+          for (const m of matchList) {
+            const mm = m as Record<string, unknown>;
+            const matchId = String(mm['@_id'] ?? '');
+            const startTime = String(mm['@_start_time'] ?? '');
+            if (!matchId || !startTime) continue;
+            const matchDate = new Date(startTime);
+            if (isNaN(matchDate.getTime())) continue;
+
+            // Player adları (varsa)
+            const firstPlayer  = extractTennisPlayerName(mm.first_entry);
+            const secondPlayer = extractTennisPlayerName(mm.second_entry);
+            const home = firstPlayer  || tournamentName;
+            const away = secondPlayer || compName;
+
+            const label = `${tournamentName} ${roundName} — ${home} vs ${away}`;
+            tennisFixtureCache.push({
+              matchId:         `tennis-${matchId}`,
+              competitionId:   'tennis',
+              competitionName: tournamentType ? `${tournamentName} (${tournamentType})` : tournamentName,
+              season,
+              homeTeamName:    home,
+              awayTeamName:    away,
+              matchDate:       matchDate.toISOString(),
+              weekNumber:      null,
+              label,
+            });
+          }
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  tennisFixtureCache.sort((a, b) => a.matchDate.localeCompare(b.matchDate));
+  return tennisFixtureCache;
+}
+
+function extractTennisPlayerName(entry: unknown): string | null {
+  if (!entry || typeof entry !== 'object') return null;
+  const e = entry as Record<string, unknown>;
+  const player = e.player as Record<string, unknown> | undefined;
+  if (player && typeof player === 'object') {
+    const display = String(player['@_display_name'] ?? '');
+    if (display) return display;
+    const first = String(player['@_first_name'] ?? '');
+    const last  = String(player['@_last_name'] ?? '');
+    if (first || last) return `${first} ${last}`.trim();
+  }
+  return null;
+}
+
+// ── Rugby Union (RU1) ────────────────────────────────────────────────────────
+// 2026-05-13: ru1_compfixtures.<compId>.<season>.<timestamp>.xml dosyalarından
+// fikstürler. Comp_id bazlı routing — her unique comp_id ayrı entry.
+let rugbyFixtureCache:    Map<string, OptaFixture[]> | null = null;
+let rugbyCompetitionsCache: FixtureCompetition[]    | null = null;
+
+function listRugbyFiles(): string[] {
+  try {
+    return fs.readdirSync(OPTA_DIR).filter((f) => /^ru1_compfixtures\.[^.]+\.[^.]+\..*\.xml$/.test(f));
+  } catch {
+    return [];
+  }
+}
+
+function loadRugbyCompetitions(): FixtureCompetition[] {
+  if (rugbyCompetitionsCache) return rugbyCompetitionsCache;
+  rugbyCompetitionsCache = [];
+  ensureRugbyParsed();
+  if (!rugbyFixtureCache) return rugbyCompetitionsCache;
+
+  const now = new Date();
+  const seen = new Set<string>();
+  for (const [key, fixtures] of rugbyFixtureCache.entries()) {
+    if (!fixtures.some((f) => new Date(f.matchDate) >= now)) continue;
+    const sample = fixtures[0];
+    const id = `rugby-${key.split(':')[0]}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    rugbyCompetitionsCache.push({
+      id,
+      name:       sample.competitionName || 'Rugby',
+      season:     sample.season,
+      sportGroup: 'rugby',
+    });
+  }
+  return rugbyCompetitionsCache;
+}
+
+function loadRugbyFixtures(compId: string, season: string): OptaFixture[] {
+  ensureRugbyParsed();
+  if (!rugbyFixtureCache) return [];
+  return rugbyFixtureCache.get(`${compId}:${season}`) ?? [];
+}
+
+function ensureRugbyParsed(): void {
+  if (rugbyFixtureCache) return;
+  rugbyFixtureCache = new Map();
+
+  const rugbyParser = new XMLParser({
+    ignoreAttributes:    false,
+    attributeNamePrefix: '@_',
+    isArray:             (name) => ['fixture', 'team'].includes(name),
+  });
+
+  for (const filename of listRugbyFiles()) {
+    try {
+      const xml = fs.readFileSync(path.join(OPTA_DIR, filename), 'utf-8');
+      const parsed = rugbyParser.parse(xml);
+      const fixtures = parsed?.fixtures?.fixture;
+      if (!fixtures || !Array.isArray(fixtures)) continue;
+
+      for (const f of fixtures) {
+        const ff = f as Record<string, unknown>;
+        const compNum     = String(ff['@_comp_id'] ?? '');
+        const compName    = String(ff['@_comp_name'] ?? 'Rugby');
+        const seasonId    = String(ff['@_season_id'] ?? '');
+        const datetime    = String(ff['@_datetime'] ?? '');
+        const fixtureId   = String(ff['@_id'] ?? '');
+        if (!compNum || !seasonId || !datetime || !fixtureId) continue;
+
+        const matchDate = new Date(datetime);
+        if (isNaN(matchDate.getTime())) continue;
+
+        const teams = (ff.team as Record<string, unknown>[]) ?? [];
+        const home = teams.find((t) => String(t['@_home_or_away'] ?? '') === 'home');
+        const away = teams.find((t) => String(t['@_home_or_away'] ?? '') === 'away');
+        const homeName = String(home?.['@_team_name'] ?? home?.['#text'] ?? 'Home');
+        const awayName = String(away?.['@_team_name'] ?? away?.['#text'] ?? 'Away');
+
+        const key = `${compNum}:${seasonId}`;
+        let list = rugbyFixtureCache.get(key);
+        if (!list) { list = []; rugbyFixtureCache.set(key, list); }
+        list.push({
+          matchId:         `rugby-${fixtureId}`,
+          competitionId:   `rugby-${compNum}`,
+          competitionName: compName,
+          season:          seasonId,
+          homeTeamName:    homeName,
+          awayTeamName:    awayName,
+          matchDate:       matchDate.toISOString(),
+          weekNumber:      null,
+          label:           `${homeName} vs ${awayName} (${compName})`,
+        });
+      }
+    } catch {
+      continue;
+    }
+  }
+  for (const list of rugbyFixtureCache.values()) {
+    list.sort((a, b) => a.matchDate.localeCompare(b.matchDate));
+  }
+}
+
 // ── Cache temizle ─────────────────────────────────────────────────────────────
 export function clearOptaCache() {
   competitionCache.clear();
@@ -491,6 +822,10 @@ export function clearOptaCache() {
   teamNameCache.clear();
   fixtureCompCache = null;
   f1FixtureCache   = null;
+  motogpFixtureCache = null;
+  tennisFixtureCache = null;
+  rugbyFixtureCache  = null;
+  rugbyCompetitionsCache = null;
 }
 
 // ORTA-API-1.7.6 fix (2026-05-04): OPTA XML size limit guard. Dosya

@@ -15,18 +15,23 @@ import { ApiService } from './api.service';
  * Permission: `PERMISSIONS.opta.admin = ['SystemEng']` + Admin auto-bypass.
  */
 
+export type OptaSportGroup = 'football' | 'tennis' | 'motogp' | 'rugby' | 'formula1' | 'basketball';
+
 export interface OptaCompetitionAdminItem {
-  id:        number;
-  code:      string;
-  name:      string;
-  country:   string;
-  visible:   boolean;
-  sortOrder: number;
+  id:         number;
+  code:       string;
+  name:       string;
+  country:    string;
+  visible:    boolean;
+  sortOrder:  number;
+  /** 2026-05-13: sport bazlı UI gruplandırma. */
+  sportGroup: OptaSportGroup;
 }
 
 export interface OptaCompetitionAdminPatch {
-  visible?:   boolean;
-  sortOrder?: number;
+  visible?:    boolean;
+  sortOrder?:  number;
+  sportGroup?: OptaSportGroup;
 }
 
 @Injectable({ providedIn: 'root' })

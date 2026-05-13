@@ -21,10 +21,16 @@ export interface BroadcastType {
   description: string;
 }
 
+/** 2026-05-13: Sport bazlı UI gruplandırma (mat-optgroup). */
+export type FixtureSportGroup = 'football' | 'tennis' | 'motogp' | 'rugby' | 'formula1' | 'basketball';
+
 export interface FixtureCompetition {
-  id:     string;
-  name:   string;
-  season: string;
+  id:         string;
+  name:       string;
+  season:     string;
+  /** Backend `/opta/fixture-competitions` response'una 2026-05-13 eklendi.
+   *  Geriye uyumluluk için optional; opsiyonel boş gelirse 'football'. */
+  sportGroup?: FixtureSportGroup;
 }
 
 export interface OptaFixtureRow {
