@@ -633,3 +633,47 @@ html[data-theme="light"] .mat-mdc-button:not(.mat-primary):not([color="primary"]
   color: var(--bp-fg-1) !important;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-05-14 LIGHT MODE — primary button (raised/unelevated) & mat-card audit-2
+//
+// Sebep:
+//   a) Material light theme'de `--mdc-filled/protected-button-container-color`
+//      default beyaz olarak compile ediliyor; raised/unelevated primary
+//      butonların text/icon'u beyaz → beyaz üstüne beyaz, buton görünmez.
+//      Etkilenen: yayin-planlama "Yeni", studio-plan "Export Excel",
+//      weekly-shift/settings "Kaydet", schedules "Aç" vb. (22+ buton).
+//   b) `.mat-mdc-card` light theme'de container `var(--bp-bg-2) = #fff`,
+//      sayfa bg de #fff, shadow zayıf → kart görünmez panel.
+//      Etkilenen: settings-card (3), documents-card, opta competitions card.
+// ─────────────────────────────────────────────────────────────────────────────
+html[data-theme="light"] {
+  --mdc-filled-button-container-color:    var(--bp-purple-500);
+  --mdc-filled-button-label-text-color:   #fff;
+  --mdc-protected-button-container-color: var(--bp-purple-500);
+  --mdc-protected-button-label-text-color: #fff;
+}
+
+// Compiled MDC token specifity'sini yenmek için selector-level fallback.
+// Material 18+: `mat-mdc-raised-button` ve `mat-mdc-unelevated-button` TİPLERİ
+// default primary; `color="primary"` attribute zorunlu DEĞİL. Bu yüzden
+// attribute filter'ı yok — tüm raised/unelevated butonlar mor + beyaz text.
+// (mat-warn / mat-accent gibi alternatif varyantları kapsam dışı bırak.)
+html[data-theme="light"] .mat-mdc-unelevated-button:not(.mat-warn):not(.mat-accent):not([color="warn"]):not([color="accent"]),
+html[data-theme="light"] .mat-mdc-raised-button:not(.mat-warn):not(.mat-accent):not([color="warn"]):not([color="accent"]) {
+  background-color: var(--bp-purple-500) !important;
+  color: #fff !important;
+}
+html[data-theme="light"] .mat-mdc-unelevated-button:not(.mat-warn):not(.mat-accent):not([color="warn"]):not([color="accent"]) .mat-icon,
+html[data-theme="light"] .mat-mdc-raised-button:not(.mat-warn):not(.mat-accent):not([color="warn"]):not([color="accent"]) .mat-icon,
+html[data-theme="light"] .mat-mdc-unelevated-button:not(.mat-warn):not(.mat-accent):not([color="warn"]):not([color="accent"]) .mdc-button__label,
+html[data-theme="light"] .mat-mdc-raised-button:not(.mat-warn):not(.mat-accent):not([color="warn"]):not([color="accent"]) .mdc-button__label {
+  color: #fff !important;
+}
+
+// mat-card için light theme'de görünür kenar — beyaz üstüne beyaz panel
+// kayboluyor; --bp-line-2 (patlıcan moru %32) ile yumuşak ama net çerçeve.
+html[data-theme="light"] .mat-mdc-card,
+html[data-theme="light"] mat-card {
+  border: 1px solid var(--bp-line-2);
+}
+
