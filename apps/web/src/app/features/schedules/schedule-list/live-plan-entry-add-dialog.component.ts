@@ -14,6 +14,14 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import {
+  DateAdapter,
+  MAT_DATE_FORMATS,
+  MAT_DATE_LOCALE,
+  MatNativeDateModule,
+  NativeDateAdapter,
+} from '@angular/material/core';
 
 import {
   ScheduleService,
@@ -62,9 +70,64 @@ function isMatchType(bt: BroadcastType): boolean {
   return bt.code === 'MATCH' || (bt.description ?? '').toLowerCase().startsWith('müsab');
 }
 
+// 2026-05-15: Manuel Giriş tarih alanları için MatDatepicker (Türkçe locale,
+// dd.MM.yyyy display). live-plan-entry-edit-dialog ile aynı adapter pattern.
+const TR_DATE_FORMATS = {
+  parse: { dateInput: 'dd.MM.yyyy' },
+  display: {
+    dateInput: 'dd.MM.yyyy',
+    monthYearLabel: { month: 'short', year: 'numeric' },
+    dateA11yLabel: { day: '2-digit', month: 'long', year: 'numeric' },
+    monthYearA11yLabel: { month: 'long', year: 'numeric' },
+  },
+};
+
+class TrDateAdapter extends NativeDateAdapter {
+  override parse(value: string | null, _parseFormat: unknown): Date | null {
+    if (!value) return null;
+    const match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(value.trim());
+    if (match) {
+      const date = new Date(+match[3], +match[2] - 1, +match[1]);
+      return isNaN(date.getTime()) ? null : date;
+    }
+    return super.parse(value, _parseFormat);
+  }
+
+  override format(date: Date, displayFormat: unknown): string {
+    if (displayFormat === 'dd.MM.yyyy') {
+      return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()}`;
+    }
+    return super.format(date, displayFormat as object);
+  }
+}
+
+/** Local Date → 'YYYY-MM-DD' string. `toISOString().slice(0,10)` kullanma —
+ *  Europe/Istanbul'da UTC kayması ay/gün sınırlarında yanlış tarih verir. */
+export function dateToInputValue(date: Date | null): string {
+  if (!date) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** 'YYYY-MM-DD' → local midnight Date. Geçersiz/boş ise null. */
+export function dateInputValueToDate(value: string): Date | null {
+  if (!value) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 @Component({
   selector: 'app-live-plan-entry-add-dialog',
   standalone: true,
+  providers: [
+    { provide: MAT_DATE_LOCALE, useValue: 'tr-TR' },
+    { provide: MAT_DATE_FORMATS, useValue: TR_DATE_FORMATS },
+    { provide: DateAdapter, useClass: TrDateAdapter, deps: [MAT_DATE_LOCALE] },
+  ],
   imports: [
     CommonModule, FormsModule,
     MatFormFieldModule, MatInputModule, MatSelectModule,
@@ -72,6 +135,7 @@ function isMatchType(bt: BroadcastType): boolean {
     MatDialogModule, MatProgressSpinnerModule,
     MatSnackBarModule, MatTabsModule, MatDividerModule,
     MatCheckboxModule,
+    MatDatepickerModule, MatNativeDateModule,
   ],
   template: `
     <h2 mat-dialog-title>Yeni Yayın Kaydı Ekle</h2>
@@ -211,15 +275,20 @@ function isMatchType(bt: BroadcastType): boolean {
             <!-- 2026-05-14: Başlangıç tarihi seçilince Bitiş Tarihi otomatik
                  aynı set edilir (kullanıcı henüz dokunmadıysa). Bitiş Tarihi ve
                  Bitiş Saati ZORUNLU değil — bitiş saati boşsa backend
-                 eventStartTime + 2h default doldurur. -->
+                 eventStartTime + 2h default doldurur.
+                 2026-05-15: Native date input yerine MatDatepicker (Türkçe
+                 locale, dd.MM.yyyy display) — live-plan-entry-edit-dialog ile
+                 aynı pattern. -->
             <div class="row">
               <mat-form-field appearance="outline" class="grow">
                 <mat-label>Başlangıç Tarihi</mat-label>
-                <input matInput type="date"
-                       [ngModel]="manual.startDate"
-                       (ngModelChange)="onStartDateChange($event)"
+                <input matInput [matDatepicker]="startPicker"
+                       [ngModel]="manualStartDatePickerValue"
+                       (ngModelChange)="onStartDatePicked($event)"
                        [ngModelOptions]="{standalone:true}"
                        required>
+                <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+                <mat-datepicker #startPicker></mat-datepicker>
               </mat-form-field>
               <mat-form-field appearance="outline" class="grow">
                 <mat-label>Başlangıç Saati</mat-label>
@@ -230,10 +299,12 @@ function isMatchType(bt: BroadcastType): boolean {
               </mat-form-field>
               <mat-form-field appearance="outline" class="grow">
                 <mat-label>Bitiş Tarihi</mat-label>
-                <input matInput type="date"
-                       [ngModel]="manual.endDate"
-                       (ngModelChange)="onEndDateInput($event)"
+                <input matInput [matDatepicker]="endPicker"
+                       [ngModel]="manualEndDatePickerValue"
+                       (ngModelChange)="onEndDatePicked($event)"
                        [ngModelOptions]="{standalone:true}">
+                <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+                <mat-datepicker #endPicker></mat-datepicker>
               </mat-form-field>
               <mat-form-field appearance="outline" class="grow">
                 <mat-label>Bitiş Saati</mat-label>
@@ -518,6 +589,12 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
    *  Başlangıç Tarihi değişiminde override edilmez. */
   private endDateManuallyEdited = false;
 
+  // 2026-05-15: MatDatepicker [(ngModel)] Date object alır; `manual.startDate`/
+  // `endDate` string kalır (single source of truth). Bu ekstra alanlar
+  // string ↔ Date senkron tutmak için aynalanır (edit dialog ile aynı pattern).
+  manualStartDatePickerValue: Date | null = null;
+  manualEndDatePickerValue:   Date | null = null;
+
   // ── Computed ────────────────────────────────────────────────────────────
   /** Dropdown'da gösterilecek liste: backend response + fallback Müsabaka
    *  (backend zaten MATCH/Müsabaka döndürdüyse duplicate eklenmez). */
@@ -678,8 +755,10 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
    *  (endDateManuallyEdited) sonraki başlangıç değişiminde override edilmez. */
   onStartDateChange(value: string): void {
     this.manual.startDate = value;
+    this.manualStartDatePickerValue = dateInputValueToDate(value);
     if (!this.endDateManuallyEdited) {
       this.manual.endDate = value;
+      this.manualEndDatePickerValue = this.manualStartDatePickerValue;
     }
   }
 
@@ -687,7 +766,18 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
    *  (boş Bitiş Tarihi auto-fill'i tekrar mümkün kılar). */
   onEndDateInput(value: string): void {
     this.manual.endDate = value;
+    this.manualEndDatePickerValue = dateInputValueToDate(value);
     this.endDateManuallyEdited = (value ?? '').trim().length > 0;
+  }
+
+  /** MatDatepicker [(ngModel)] Date object verir; string state'i ile auto-fill
+   *  davranışı için mevcut handler'a delege eder. */
+  onStartDatePicked(date: Date | null): void {
+    this.onStartDateChange(dateToInputValue(date));
+  }
+
+  onEndDatePicked(date: Date | null): void {
+    this.onEndDateInput(dateToInputValue(date));
   }
 
   // ── Loaders ─────────────────────────────────────────────────────────────

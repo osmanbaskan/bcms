@@ -4,7 +4,11 @@ import { MatDialogRef } from '@angular/material/dialog';
 import { of, throwError } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 
-import { LivePlanEntryAddDialogComponent } from './live-plan-entry-add-dialog.component';
+import {
+  LivePlanEntryAddDialogComponent,
+  dateToInputValue,
+  dateInputValueToDate,
+} from './live-plan-entry-add-dialog.component';
 import {
   ScheduleService,
   type BroadcastType,
@@ -643,6 +647,80 @@ describe('LivePlanEntryAddDialogComponent', () => {
       expect(body['team1Name']).toBe('Fenerbahçe Beko');
       expect(body['team2Name']).toBe('Anadolu Efes');
       expect(body['title']).toBe('Fenerbahçe Beko - Anadolu Efes');
+    });
+
+    // ── Datepicker (2026-05-15) ────────────────────────────────────────────
+    it('dateToInputValue: local Date → YYYY-MM-DD (UTC kayması yok)', () => {
+      expect(dateToInputValue(new Date(2026, 5, 1))).toBe('2026-06-01');
+      expect(dateToInputValue(new Date(2026, 0, 9))).toBe('2026-01-09');
+      expect(dateToInputValue(new Date(2026, 11, 31))).toBe('2026-12-31');
+      expect(dateToInputValue(null)).toBe('');
+    });
+
+    it('dateInputValueToDate: YYYY-MM-DD → local midnight Date; geçersizler null', () => {
+      const d = dateInputValueToDate('2026-06-01');
+      expect(d).not.toBeNull();
+      expect(d!.getFullYear()).toBe(2026);
+      expect(d!.getMonth()).toBe(5);   // 0-indexed → June
+      expect(d!.getDate()).toBe(1);
+      expect(d!.getHours()).toBe(0);
+
+      expect(dateInputValueToDate('')).toBeNull();
+      expect(dateInputValueToDate('not-a-date')).toBeNull();
+      expect(dateInputValueToDate('2026/06/01')).toBeNull();
+    });
+
+    it('onStartDatePicked: Date → manual.startDate string + picker value senkronize + endDate auto-fill', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.onStartDatePicked(new Date(2026, 5, 1));
+      expect(component.manual.startDate).toBe('2026-06-01');
+      expect(component.manualStartDatePickerValue).toEqual(new Date(2026, 5, 1));
+      expect(component.manual.endDate).toBe('2026-06-01');
+      expect(component.manualEndDatePickerValue).toEqual(new Date(2026, 5, 1));
+    });
+
+    it('onEndDatePicked: kullanıcı override flag set olur, sonraki Başlangıç değişimi etkilemez', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.onStartDatePicked(new Date(2026, 5, 1));
+      component.onEndDatePicked(new Date(2026, 5, 3));
+      expect(component.manual.endDate).toBe('2026-06-03');
+      expect(component.manualEndDatePickerValue).toEqual(new Date(2026, 5, 3));
+
+      // Başlangıç tekrar değişti → bitiş overwrite EDİLMEZ
+      component.onStartDatePicked(new Date(2026, 5, 2));
+      expect(component.manual.startDate).toBe('2026-06-02');
+      expect(component.manual.endDate).toBe('2026-06-03');
+      expect(component.manualEndDatePickerValue).toEqual(new Date(2026, 5, 3));
+    });
+
+    it('onEndDatePicked: Bitiş Tarihi null seçilirse flag reset → auto-fill tekrar etkin', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.onStartDatePicked(new Date(2026, 5, 1));
+      component.onEndDatePicked(new Date(2026, 5, 3));
+      // Operatör bitiş tarihini temizliyor (picker null)
+      component.onEndDatePicked(null);
+      expect(component.manual.endDate).toBe('');
+      expect(component.manualEndDatePickerValue).toBeNull();
+      // Başlangıç değişti → bitiş yeniden senkronize
+      component.onStartDatePicked(new Date(2026, 5, 5));
+      expect(component.manual.endDate).toBe('2026-06-05');
+    });
+
+    it('Datepicker akışı bitiş saati boşken canSave true tutar + save endTime YOK payload üretir', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.manual.title = 'Test Yayını';
+      component.onStartDatePicked(new Date(2026, 5, 1));
+      component.manual.startTime = '20:00';
+      expect(component.canSave()).toBeTrue();
+      component.save();
+
+      const body = svc.createLivePlanEntry.calls.mostRecent().args[0] as unknown as Record<string, unknown>;
+      expect('eventEndTime' in body).toBeFalse();
+      expect(typeof body['eventStartTime']).toBe('string');
     });
 
     it('Opta sekmesi tarih davranışından etkilenmez (Fikstürden Seç akışı korunur)', () => {
