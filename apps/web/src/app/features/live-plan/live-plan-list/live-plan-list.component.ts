@@ -91,10 +91,10 @@ import { LivePlanCreateDialogComponent } from './live-plan-create-dialog.compone
     .page-header { display:flex; justify-content:space-between; align-items:center; padding:16px 24px 8px; }
     .page-header h2 { margin:0; font-size:20px; font-weight:500; }
     .loading { display:flex; justify-content:center; padding:60px; }
-    .empty { padding:60px; text-align:center; color:#888; font-size:14px; }
+    .empty { padding:60px; text-align:center; color: var(--bp-fg-3); font-size:14px; }
     .lp-table { width:100%; }
     .row { cursor: pointer; }
-    .row:hover { background: rgba(255,255,255,0.04); }
+    .row:hover { background: var(--bp-row-hover); }
   `],
 })
 export class LivePlanListComponent implements OnInit {

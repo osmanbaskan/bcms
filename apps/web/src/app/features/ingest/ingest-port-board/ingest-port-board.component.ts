@@ -107,7 +107,7 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
     .port-board-section.full-page{margin:0;border-radius:0;border-left:0;border-right:0}
     .port-board-header{justify-content:space-between;gap:16px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
     .port-board-header h3,.port-board-header p{margin:0}
-    .port-board-header p{color:#9aa2b3;font-size:.8rem}
+    .port-board-header p{color: var(--bp-fg-3);font-size:.8rem}
     .port-board-actions{gap:12px;flex-wrap:wrap;justify-content:flex-end}
     .port-board-zoom{display:inline-flex;border:1px solid rgba(255,255,255,.14);border-radius:999px;overflow:hidden}
     .port-board-zoom button{min-width:64px;height:34px;border:0;background:transparent;color:#c8d3e5}

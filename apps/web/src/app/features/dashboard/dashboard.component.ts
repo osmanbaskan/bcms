@@ -361,7 +361,7 @@ interface StudioSlot {
       transition: background var(--bp-dur-fast);
     }
     .broadcast-row:last-child { border-bottom: 0; }
-    .broadcast-row:hover { background: rgba(255, 255, 255, 0.03); }
+    .broadcast-row:hover { background: var(--bp-row-hover); }
     .row-time {
       font-family: var(--bp-font-mono);
       font-size: 13px;

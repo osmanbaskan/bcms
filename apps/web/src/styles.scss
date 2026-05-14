@@ -149,7 +149,8 @@ app-root {
   box-shadow: var(--bp-shadow-md) !important;
   --mat-menu-item-label-text-color: var(--bp-fg-1);
   --mat-menu-item-icon-color: var(--bp-fg-3);
-  --mat-menu-item-hover-state-layer-color: rgba(255, 255, 255, 0.06);
+  // 2026-05-14 UI audit-2: hover algılanmıyordu (0.06 → --bp-row-hover 0.10)
+  --mat-menu-item-hover-state-layer-color: var(--bp-row-hover);
 }
 
 // page-container kaldırıldı (artık Shell'in body'si kullanılır)

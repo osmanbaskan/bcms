@@ -118,6 +118,11 @@ html[data-theme="dark"] {
   // (input/select kenarları dark zeminde fark edilir; hover/focus ezme
   // yine devam eder).
   --bp-line-2:  rgba(255, 255, 255, 0.14);
+  // 2026-05-14 UI audit-2: row/list hover state — birden fazla component
+  // hard-coded `rgba(255,255,255,0.03-0.06)` kullanıyordu (broadcast-row,
+  // live-plan-list .row, audit-row vb.) → koyu zeminde fark edilmiyordu.
+  // Tek token; component override gerekirse hâlâ inline mümkün.
+  --bp-row-hover: rgba(255, 255, 255, 0.10);
 
   // ── Foreground / text ──────────────────────────────────────────────────────
   --bp-fg-1: #f4f4f6;
@@ -167,6 +172,8 @@ html[data-theme="light"] {
   --bp-bg-4: #ede4ff;     // emphasized, table header
   --bp-line:    #5d2e5d;                   // patlıcan moru — strong visible border
   --bp-line-2:  rgba(93, 46, 93, 0.32);    // patlıcan moru %32 — daha hafif çerçeveler
+  // 2026-05-14 UI audit-2: light theme row/list hover.
+  --bp-row-hover: rgba(93, 46, 93, 0.08);
 
   // ── Foreground / text — MOR TONLARI (kullanıcı tercihi) ───────────────────
   --bp-fg-1: #3b0764;     // primary text — purple-950 (deep, near-black with purple)
