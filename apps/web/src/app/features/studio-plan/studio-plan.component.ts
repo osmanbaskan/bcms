@@ -178,10 +178,12 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
 
   readonly listEntries = computed(() => {
     const entries: StudioPlanListEntry[] = [];
-    const today = toDateInputValue(new Date());
 
+    // 2026-05-14: Liste tablo ile aynı `cells()` canonical signal'ından üretilir.
+    // Daha önce burada `if (day.id < today) continue;` ile geçmiş günler
+    // dışlanıyordu — tabloda gözüken Pazartesi/Salı programları listede
+    // görünmüyordu. Tablo + liste aynı haftanın tamamını göstermeli.
     for (const day of this.days()) {
-      if (day.id < today) continue;
       for (const studio of this.studios) {
         let cursor = 0;
         while (cursor < this.timeSlots.length) {

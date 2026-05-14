@@ -186,6 +186,76 @@ describe('StudioPlanComponent', () => {
     tick(100);
   }));
 
+  // ── 2026-05-14: listEntries canonical kaynak — tablo ↔ liste tutarlılığı ──
+  //
+  // Bug: listEntries computed `if (day.id < today) continue;` filtresi ile
+  //      geçmiş günleri dışlıyordu; tabloda gözüken Pazartesi/Salı kayıtları
+  //      listede görünmüyordu. Fix: filtre kaldırıldı; tablo + liste aynı
+  //      `cells()` signal'inden besleniyor.
+
+  it('listEntries: cells üzerinde herhangi bir günde atama varsa listede görünür', () => {
+    const comp = component as unknown as {
+      days: () => { id: string }[];
+      studios: string[];
+      timeSlots: string[];
+      cells: (next: Record<string, unknown>) => void;
+      listEntries: () => unknown[];
+      cellKey: (d: string, s: string, t: string) => string;
+    };
+    const day = comp.days()[0];
+    const studio = comp.studios[0];
+    const time = comp.timeSlots[0];
+    const key = comp.cellKey(day.id, studio, time);
+    (component as any).cells.set({ [key]: { program: 'Test Program', color: '#FF0000' } });
+    const entries = comp.listEntries();
+    expect(entries.length).toBe(1);
+    expect((entries[0] as { program: string }).program).toBe('Test Program');
+  });
+
+  it('listEntries: boş cells → liste boş', () => {
+    (component as any).cells.set({});
+    expect((component as any).listEntries().length).toBe(0);
+  });
+
+  it('listEntries: ardışık aynı program/color slot\'lar tek satır olarak merge edilir', () => {
+    const comp = component as unknown as {
+      days: () => { id: string }[];
+      studios: string[];
+      timeSlots: string[];
+      cellKey: (d: string, s: string, t: string) => string;
+    };
+    const day = comp.days()[0];
+    const studio = comp.studios[0];
+    const t1 = comp.timeSlots[0];
+    const t2 = comp.timeSlots[1];
+    const k1 = comp.cellKey(day.id, studio, t1);
+    const k2 = comp.cellKey(day.id, studio, t2);
+    (component as any).cells.set({
+      [k1]: { program: 'P', color: '#000' },
+      [k2]: { program: 'P', color: '#000' },
+    });
+    const entries = (component as any).listEntries();
+    expect(entries.length).toBe(1);
+    expect(entries[0].slotCount).toBe(2);
+  });
+
+  it('listEntries: cell silinince ilgili kayıt listeden kalkar', () => {
+    const comp = component as unknown as {
+      days: () => { id: string }[];
+      studios: string[];
+      timeSlots: string[];
+      cellKey: (d: string, s: string, t: string) => string;
+    };
+    const day = comp.days()[0];
+    const studio = comp.studios[0];
+    const time = comp.timeSlots[0];
+    const key = comp.cellKey(day.id, studio, time);
+    (component as any).cells.set({ [key]: { program: 'X', color: '#111' } });
+    expect((component as any).listEntries().length).toBe(1);
+    (component as any).cells.set({});
+    expect((component as any).listEntries().length).toBe(0);
+  });
+
   // ── 2026-05-14: Fullscreen UX fix — toolbar + auto-pan testleri ──────────
   //
   // Bug #1: toolbar fullscreen target dışındaydı → fullscreen modda araçlar
