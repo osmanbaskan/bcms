@@ -23,13 +23,19 @@ export const livePlanStatusSchema = z.enum([
 
 export type LivePlanStatusValue = z.infer<typeof livePlanStatusSchema>;
 
-const dateOrderRefine = (d: { eventStartTime: string; eventEndTime: string }) =>
-  new Date(d.eventEndTime) > new Date(d.eventStartTime);
+const dateOrderRefine = (d: { eventStartTime: string; eventEndTime?: string }) => {
+  if (d.eventEndTime === undefined) return true;
+  return new Date(d.eventEndTime) > new Date(d.eventStartTime);
+};
 
 export const createLivePlanSchema = z.object({
   title:           z.string().trim().min(1).max(500),
   eventStartTime:  z.string().datetime(),
-  eventEndTime:    z.string().datetime(),
+  // 2026-05-14: Bitiş saati operatör için zorunlu değil — UI'da boş kalabilir.
+  // Service create() PATCH paritesinde `eventStartTime + 2h` default ile
+  // doldurur (DB sütunu NOT NULL). dateOrderRefine her iki alan dolu iken
+  // çalışır; sadece start gelirse skip.
+  eventEndTime:    z.string().datetime().optional(),
   matchId:         z.number().int().positive().optional(),
   optaMatchId:     z.string().trim().min(1).max(80).optional(),
   status:          livePlanStatusSchema.optional().default('PLANNED'),

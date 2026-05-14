@@ -208,11 +208,16 @@ function isMatchType(bt: BroadcastType): boolean {
                      required>
             </mat-form-field>
 
+            <!-- 2026-05-14: Başlangıç tarihi seçilince Bitiş Tarihi otomatik
+                 aynı set edilir (kullanıcı henüz dokunmadıysa). Bitiş Tarihi ve
+                 Bitiş Saati ZORUNLU değil — bitiş saati boşsa backend
+                 eventStartTime + 2h default doldurur. -->
             <div class="row">
               <mat-form-field appearance="outline" class="grow">
                 <mat-label>Başlangıç Tarihi</mat-label>
                 <input matInput type="date"
-                       [(ngModel)]="manual.startDate"
+                       [ngModel]="manual.startDate"
+                       (ngModelChange)="onStartDateChange($event)"
                        [ngModelOptions]="{standalone:true}"
                        required>
               </mat-form-field>
@@ -226,16 +231,15 @@ function isMatchType(bt: BroadcastType): boolean {
               <mat-form-field appearance="outline" class="grow">
                 <mat-label>Bitiş Tarihi</mat-label>
                 <input matInput type="date"
-                       [(ngModel)]="manual.endDate"
-                       [ngModelOptions]="{standalone:true}"
-                       required>
+                       [ngModel]="manual.endDate"
+                       (ngModelChange)="onEndDateInput($event)"
+                       [ngModelOptions]="{standalone:true}">
               </mat-form-field>
               <mat-form-field appearance="outline" class="grow">
                 <mat-label>Bitiş Saati</mat-label>
                 <input matInput type="time"
                        [(ngModel)]="manual.endTime"
-                       [ngModelOptions]="{standalone:true}"
-                       required>
+                       [ngModelOptions]="{standalone:true}">
               </mat-form-field>
             </div>
 
@@ -510,6 +514,9 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
   manualAwayTeamId      = signal<number | null>(null);
   /** Operatör Başlık alanına manuel yazdı mı? `true` ise auto-fill yapılmaz. */
   private titleManuallyEdited = false;
+  /** Operatör Bitiş Tarihi alanına manuel dokundu mu? `true` ise sonraki
+   *  Başlangıç Tarihi değişiminde override edilmez. */
+  private endDateManuallyEdited = false;
 
   // ── Computed ────────────────────────────────────────────────────────────
   /** Dropdown'da gösterilecek liste: backend response + fallback Müsabaka
@@ -588,7 +595,9 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
       return this.isOptaMode() && this.selectedFixtureIds().size > 0;
     }
     const m = this.manual;
-    if (!m.startDate || !m.startTime || !m.endDate || !m.endTime) return false;
+    // 2026-05-14: Bitiş Tarihi/Saati ARTIK ZORUNLU DEĞİL — backend opsiyonel
+    // doldurur. Sadece başlangıç tarih+saat zorunlu.
+    if (!m.startDate || !m.startTime) return false;
     // Lig seçili modda: home+away ZORUNLU (aynı takım engeli zaten handler'da).
     if (this.manualLeagueId() != null) {
       const home = this.manualHomeTeamId();
@@ -662,6 +671,23 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
   onManualTitleInput(value: string): void {
     this.manual.title = value;
     this.titleManuallyEdited = value.trim().length > 0;
+  }
+
+  /** Başlangıç Tarihi değişince Bitiş Tarihi otomatik kopyalanır — kullanıcı
+   *  henüz Bitiş Tarihi alanına dokunmadıysa. Kullanıcı manuel değiştirdiyse
+   *  (endDateManuallyEdited) sonraki başlangıç değişiminde override edilmez. */
+  onStartDateChange(value: string): void {
+    this.manual.startDate = value;
+    if (!this.endDateManuallyEdited) {
+      this.manual.endDate = value;
+    }
+  }
+
+  /** Bitiş Tarihi manuel düzenleme bayrağı. Operatör boş bırakırsa flag reset
+   *  (boş Bitiş Tarihi auto-fill'i tekrar mümkün kılar). */
+  onEndDateInput(value: string): void {
+    this.manual.endDate = value;
+    this.endDateManuallyEdited = (value ?? '').trim().length > 0;
   }
 
   // ── Loaders ─────────────────────────────────────────────────────────────
@@ -820,10 +846,16 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
   private saveManual(): void {
     const m = this.manual;
     const startISO = composeIstanbulIso(m.startDate, m.startTime);
-    const endISO   = composeIstanbulIso(m.endDate, m.endTime);
 
-    // 2026-05-14: Lig seçili modda team isimleri DB-backed select'ten alınır;
-    // text input alanları ignore edilir. Başlık operatör override etmediyse
+    // 2026-05-14: Bitiş ISO yalnız hem tarih hem saat doluysa hesaplanır.
+    // Bitiş Tarihi boşsa Başlangıç Tarihi ile doldurulur (auto-fill onStart
+    // değişiminde zaten yapılır; save anında defensive fallback). Bitiş Saati
+    // boşsa eventEndTime payload'a girmez — backend +2h default doldurur.
+    const endDate = m.endDate || m.startDate;
+    const endISO  = m.endTime ? composeIstanbulIso(endDate, m.endTime) : undefined;
+
+    // Lig seçili modda team isimleri DB-backed select'ten alınır; text input
+    // alanları ignore edilir. Başlık operatör override etmediyse
     // `${home} - ${away}` auto-generate.
     let team1Name = m.team1Name.trim();
     let team2Name = m.team2Name.trim();
@@ -839,9 +871,9 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
     this.service.createLivePlanEntry({
       title,
       eventStartTime:  startISO,
-      eventEndTime:    endISO,
-      ...(team1Name              ? { team1Name }                                : {}),
-      ...(team2Name              ? { team2Name }                                : {}),
+      ...(endISO                  ? { eventEndTime: endISO }                    : {}),
+      ...(team1Name               ? { team1Name }                               : {}),
+      ...(team2Name               ? { team2Name }                               : {}),
       ...(m.operationNotes.trim() ? { operationNotes: m.operationNotes.trim() } : {}),
     }).subscribe({
       next:  (created) => { this.saving.set(false); this.dialogRef.close(created); },

@@ -538,4 +538,124 @@ describe('LivePlanEntryAddDialogComponent', () => {
       expect(body['team2Name']).toBe('FB');
     });
   });
+
+  // ── Manuel Giriş: tarih/saat davranışı (2026-05-14) ─────────────────────
+  describe('Manuel Giriş — tarih/saat davranışı', () => {
+    it('Başlangıç Tarihi seçilince Bitiş Tarihi otomatik aynı set edilir', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.onStartDateChange('2026-06-01');
+      expect(component.manual.startDate).toBe('2026-06-01');
+      expect(component.manual.endDate).toBe('2026-06-01');
+    });
+
+    it('Kullanıcı Bitiş Tarihi\'ni manuel değiştirdikten sonra Başlangıç değişimi override etmez', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.onStartDateChange('2026-06-01');
+      // Kullanıcı bitiş tarihini farklı bir güne çekiyor
+      component.onEndDateInput('2026-06-03');
+      expect(component.manual.endDate).toBe('2026-06-03');
+      // Başlangıç tekrar değişti → bitiş overwrite EDİLMEZ
+      component.onStartDateChange('2026-06-02');
+      expect(component.manual.startDate).toBe('2026-06-02');
+      expect(component.manual.endDate).toBe('2026-06-03');
+    });
+
+    it('Kullanıcı Bitiş Tarihi\'ni temizlerse auto-fill tekrar etkin olur', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.onStartDateChange('2026-06-01');
+      component.onEndDateInput('2026-06-03');
+      // Operatör bitiş tarihini boşaltırsa flag reset
+      component.onEndDateInput('');
+      expect(component.manual.endDate).toBe('');
+      component.onStartDateChange('2026-06-05');
+      expect(component.manual.endDate).toBe('2026-06-05');
+    });
+
+    it('canSave: Bitiş Saati boşken bile başlangıç+başlık doluysa true (klasik mod)', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.manual.title     = 'Test Yayını';
+      component.onStartDateChange('2026-06-01');
+      component.manual.startTime = '20:00';
+      // endDate auto-fill, endTime boş
+      expect(component.manual.endTime).toBe('');
+      expect(component.canSave()).toBeTrue();
+    });
+
+    it('canSave: Bitiş Saati ve Bitiş Tarihi boşken bile true (klasik mod)', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.manual.title     = 'Test Yayını';
+      component.manual.startDate = '2026-06-01';
+      component.manual.startTime = '20:00';
+      component.manual.endDate   = '';
+      component.manual.endTime   = '';
+      expect(component.canSave()).toBeTrue();
+    });
+
+    it('save (klasik mod): Bitiş Saati boş → payload\'ta eventEndTime YOK', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.manual.title     = 'Test Yayını';
+      component.onStartDateChange('2026-06-01');
+      component.manual.startTime = '20:00';
+      // endTime boş bırak
+      component.save();
+
+      const body = svc.createLivePlanEntry.calls.mostRecent().args[0] as unknown as Record<string, unknown>;
+      expect(body['title']).toBe('Test Yayını');
+      expect(typeof body['eventStartTime']).toBe('string');
+      expect('eventEndTime' in body).toBeFalse();
+    });
+
+    it('save (klasik mod): Bitiş Saati dolu ama Bitiş Tarihi boş → endDate=startDate fallback', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.manual.title     = 'Test Yayını';
+      component.manual.startDate = '2026-06-01';
+      component.manual.startTime = '20:00';
+      component.manual.endDate   = '';        // operatör temizlemiş
+      component.manual.endTime   = '22:00';
+      component.save();
+
+      const body = svc.createLivePlanEntry.calls.mostRecent().args[0] as unknown as Record<string, unknown>;
+      // eventEndTime üretilir (startDate fallback ile)
+      expect(typeof body['eventEndTime']).toBe('string');
+    });
+
+    it('save (lig modu): Bitiş Saati boş → eventEndTime YOK, team isimleri lig select\'ten', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.onManualLeagueChange(60);
+      component.onStartDateChange('2026-06-01');
+      component.manual.startTime = '20:00';
+      component.onManualHomeChange(1001);
+      component.onManualAwayChange(1003);
+      // endTime boş bırak
+      expect(component.canSave()).toBeTrue();
+      component.save();
+
+      const body = svc.createLivePlanEntry.calls.mostRecent().args[0] as unknown as Record<string, unknown>;
+      expect('eventEndTime' in body).toBeFalse();
+      expect(body['team1Name']).toBe('Fenerbahçe Beko');
+      expect(body['team2Name']).toBe('Anadolu Efes');
+      expect(body['title']).toBe('Fenerbahçe Beko - Anadolu Efes');
+    });
+
+    it('Opta sekmesi tarih davranışından etkilenmez (Fikstürden Seç akışı korunur)', () => {
+      fixture.detectChanges();
+      // Aktif tab 0 (Fikstürden Seç); manuel state değişikliği canSave'i bozmaz
+      component.onBroadcastTypeChange(1);
+      component.onCompetitionChange('115:2025-2026');
+      component.toggleFixture('opta-1');
+      // Manuel tarafa hiç dokunulmadan canSave true
+      expect(component.canSave()).toBeTrue();
+      // Manuel tarafta bitiş alanları boş — Opta canSave'ini etkilemez
+      expect(component.manual.endDate).toBe('');
+      expect(component.manual.endTime).toBe('');
+    });
+  });
 });

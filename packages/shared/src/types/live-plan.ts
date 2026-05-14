@@ -134,7 +134,9 @@ export interface TechnicalDetailsDisplay {
 export interface CreateLivePlanEntryDto {
   title:           string;
   eventStartTime:  string; // ISO 8601
-  eventEndTime:    string;
+  /** 2026-05-14: Operatör için opsiyonel. Verilmezse backend
+   *  `eventStartTime + 2h` default doldurur (PATCH paritesi). */
+  eventEndTime?:   string;
   matchId?:        number;
   optaMatchId?:    string;
   status?:         LivePlanStatus;

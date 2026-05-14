@@ -381,11 +381,19 @@ export class LivePlanService {
       // kullanılır (gelecekte eventKey backend-set'i değişirse uyumlu kalır).
       const channelSlots = await this.lookupChannelsByEventKey(tx, eventKey);
 
+      // 2026-05-14: Bitiş saati artık opsiyonel; verilmezse PATCH paritesinde
+      // `eventStartTime + 2h` default doldur. DB sütunu NOT NULL kalır; frontend
+      // default üretmez (operatör isteği uyumlu).
+      const eventStartDate = new Date(dto.eventStartTime);
+      const eventEndDate   = dto.eventEndTime !== undefined
+        ? new Date(dto.eventEndTime)
+        : new Date(eventStartDate.getTime() + 2 * 60 * 60 * 1000);
+
       const created = await tx.livePlanEntry.create({
         data: {
           title:           dto.title,
-          eventStartTime:  new Date(dto.eventStartTime),
-          eventEndTime:    new Date(dto.eventEndTime),
+          eventStartTime:  eventStartDate,
+          eventEndTime:    eventEndDate,
           matchId:         dto.matchId,
           optaMatchId:     dto.optaMatchId,
           status:          dto.status,
