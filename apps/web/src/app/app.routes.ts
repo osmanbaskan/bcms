@@ -128,6 +128,17 @@ export const routes: Routes = [
     data: { groups: [GROUP.SystemEng] },
   },
   {
+    /** 2026-05-15: Manuel Lig Yönetimi — Canlı Yayın Plan "Yeni Ekle / Manuel
+     *  Giriş / Lig (opsiyonel)" dropdown filter alanı `manual_selectable`.
+     *  OPTA fixture görünürlüğü `visible` alanıyla karışmaz. Yetki OPTA admin
+     *  ekranıyla birebir aynı (SystemEng + Admin auto-bypass). */
+    path: 'admin/manual-leagues',
+    loadComponent: () =>
+      import('./features/admin/manual-leagues/manual-leagues.component').then((m) => m.ManualLeaguesComponent),
+    canActivate: [AuthGuard],
+    data: { groups: [GROUP.SystemEng] },
+  },
+  {
     /** Madde 5 M5-B10a (2026-05-07): yeni Live-Plan ekranı (paralel; mevcut
      *  /schedules dokunulmaz). Y1 lock. List + detail (segments-only iskelet);
      *  76 alan technical-details form M5-B10b'de. Page-level read = all-auth;

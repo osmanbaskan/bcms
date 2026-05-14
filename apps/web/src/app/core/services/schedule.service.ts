@@ -48,12 +48,28 @@ export interface OptaFixtureRow {
 /** 2026-05-14: Manuel takım listesi destekli ligler (OPTA fixture'ı olmayan
  *  ama DB-backed team kaydı bulunan, ör. Türkiye Basketbol Ligi). */
 export interface ManualLeague {
-  id:         number;
-  code:       string;
-  name:       string;
-  country:    string;
-  sportGroup: string;
-  teamCount:  number;
+  id:               number;
+  code:             string;
+  name:             string;
+  country:          string;
+  sportGroup:       string;
+  teamCount:        number;
+  /** 2026-05-15: Manuel dropdown görünürlüğü. Backend filter:
+   *  /matches/leagues/manual sadece `manualSelectable=true` döndürür. */
+  manualSelectable?: boolean;
+}
+
+/** 2026-05-15: Admin "Manuel Lig Yönetimi" tablo satırı. Mevcut
+ *  ManualLeague + `visible` (OPTA fixture görünürlüğü; salt-okunur kıyas). */
+export interface ManualLeagueAdminRow {
+  id:               number;
+  code:             string;
+  name:             string;
+  country:          string;
+  sportGroup:       string;
+  visible:          boolean;
+  manualSelectable: boolean;
+  teamCount:        number;
 }
 
 export interface ManualTeam {
@@ -190,6 +206,29 @@ export class ScheduleService {
   /** 2026-05-14: Tek ligin takımları. Home/away select doldurmak için. */
   getTeamsByLeague(leagueId: number): Observable<ManualTeam[]> {
     return this.api.get<ManualTeam[]>(`/matches/leagues/${leagueId}/teams`);
+  }
+
+  /** 2026-05-15: Ayarlar > Manuel Lig Yönetimi admin listesi (tüm
+   *  non-deleted ligler + teamCount). */
+  getManualLeagueAdminRows(): Observable<ManualLeagueAdminRow[]> {
+    return this.api.get<ManualLeagueAdminRow[]>('/matches/leagues/manual/admin');
+  }
+
+  /** 2026-05-15: manualSelectable toggle. Cross-cache invalidate —
+   *  /matches/leagues/manual çağrısı stale kalmasın. */
+  updateManualLeagueSelectable(
+    id:               number,
+    manualSelectable: boolean,
+  ): Observable<ManualLeagueAdminRow> {
+    return this.api.patch<ManualLeagueAdminRow>(
+      `/matches/leagues/manual/admin/${id}`,
+      { manualSelectable },
+    ).pipe(
+      map((res) => {
+        this.api.invalidateCache('/matches');
+        return res;
+      }),
+    );
   }
 
   /** PATCH /live-plan/:id + If-Match: <version>. K9 — version conflict 412. */

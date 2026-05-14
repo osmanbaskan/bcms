@@ -27,6 +27,14 @@ model League {
   /// 20260513140000_leagues_sport_group:
   /// football | tennis | motogp | rugby | formula1 | basketball.
   sportGroup String    @default("football") @map("sport_group") @db.VarChar(30)
+  /// 2026-05-15: Canlı Yayın Plan "Yeni Ekle / Manuel Giriş" lig dropdown
+  /// filtre alanı. OPTA fixture görünürlüğü olan `visible` ile KARIŞTIRMA —
+  /// ayrı amaç. `/matches/leagues/manual` endpoint
+  /// `manual_selectable=true AND teams.count>0` filtreler. Migration
+  /// 20260515120000_add_leagues_manual_selectable TBL ('custom-tbl') için
+  /// true backfill yapar. Admin yönetimi:
+  /// /api/v1/matches/leagues/manual/admin* (PERMISSIONS.opta.admin paritesi).
+  manualSelectable Boolean @default(false) @map("manual_selectable")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
   deleted_at DateTime?

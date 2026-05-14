@@ -132,6 +132,26 @@ interface SmbConfig {
         </mat-card-actions>
       </mat-card>
 
+      <!-- 2026-05-15: Manuel Lig Yönetimi — Canlı Yayın Plan "Yeni Ekle /
+           Manuel Giriş / Lig (opsiyonel)" dropdown filter alanı
+           manual_selectable. OPTA görünürlüğünden bağımsız ayrı admin
+           route; yetki OPTA admin ile birebir aynı. -->
+      <mat-card class="settings-card">
+        <mat-card-header>
+          <mat-icon mat-card-avatar>edit_note</mat-icon>
+          <mat-card-title>Manuel Lig Yönetimi</mat-card-title>
+          <mat-card-subtitle>
+            Manuel girişte seçilebilir ligleri yönetin
+          </mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-actions align="end">
+          <a mat-raised-button color="primary"
+             routerLink="/admin/manual-leagues">
+            <mat-icon>open_in_new</mat-icon> Aç
+          </a>
+        </mat-card-actions>
+      </mat-card>
+
       <mat-card class="settings-card">
         <mat-card-header>
           <mat-icon mat-card-avatar>settings_input_component</mat-icon>

@@ -48,17 +48,29 @@ async function main(): Promise<void> {
   // ayrı PR; emir kapsamında migration yok.)
   let league = await prisma.league.findFirst({
     where:  { code: TBL_LEAGUE_CODE, deleted_at: null },
-    select: { id: true, code: true, name: true, sportGroup: true, visible: true },
+    select: { id: true, code: true, name: true, sportGroup: true, visible: true, manualSelectable: true },
   });
   if (!league) {
     league = await prisma.league.create({
       data: {
         code: TBL_LEAGUE_CODE, name: TBL_LEAGUE_NAME, country: 'Türkiye',
         sportGroup: 'basketball', visible: true,
+        // 2026-05-15: TBL default manuel-seçilebilir (operatör tarafından
+        // dropdown'da görünür). Migration backfill ile aynı semantic.
+        manualSelectable: true,
       },
-      select: { id: true, code: true, name: true, sportGroup: true, visible: true },
+      select: { id: true, code: true, name: true, sportGroup: true, visible: true, manualSelectable: true },
     });
     console.log(`[tbl-teams] league created: id=${league.id} code=${league.code}`);
+  } else if (!league.manualSelectable) {
+    // 2026-05-15: Mevcut TBL ligi varsa manualSelectable flag'i true olarak
+    // senkronize et (idempotent). Migration backfill atlandıysa veya yeni
+    // ortamda toggle kapalıysa düzelt.
+    await prisma.league.update({
+      where: { id: league.id },
+      data:  { manualSelectable: true },
+    });
+    console.log(`[tbl-teams] league exists: id=${league.id} code=${league.code} (manualSelectable → true)`);
   } else {
     console.log(`[tbl-teams] league exists: id=${league.id} code=${league.code} (no change)`);
   }

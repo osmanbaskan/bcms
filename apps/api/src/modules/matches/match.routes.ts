@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { PERMISSIONS } from '@bcms/shared';
 import { ISTANBUL_TZ } from '../../core/tz.js';
@@ -30,17 +31,19 @@ export async function matchRoutes(app: FastifyInstance) {
 
   // 2026-05-14: OPTA fixture'ı olmayan ama manuel takım kaydı bulunan
   // ligler — "Yeni Ekle / Manuel Giriş" lig dropdown'ı. Türkiye Basketbol
-  // Ligi gibi DB-backed manuel takım listesi olan ligler için. Filter:
-  // `deleted_at IS NULL` (lig) ve `teams.count > 0`.
+  // Ligi gibi DB-backed manuel takım listesi olan ligler için.
+  // 2026-05-15: Admin tarafından `manual_selectable` toggle eklendi —
+  // dropdown filter sıkılaştırıldı: `deleted_at IS NULL`, `manualSelectable
+  // = true` ve `teams.count > 0`. OPTA `visible` ile karıştırılmaz.
   app.get('/leagues/manual', {
     preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
     schema: {
       tags: ['Matches'],
-      summary: 'Manuel takım kaydı bulunan ligler',
+      summary: 'Manuel girişte seçilebilir ligler (manualSelectable=true ve teamCount>0)',
     },
   }, async () => {
     const rows = await app.prisma.league.findMany({
-      where: { deleted_at: null },
+      where: { deleted_at: null, manualSelectable: true },
       orderBy: { name: 'asc' },
       select: {
         id: true, code: true, name: true, country: true, sportGroup: true,
@@ -50,6 +53,70 @@ export async function matchRoutes(app: FastifyInstance) {
     return rows
       .filter((l) => l._count.teams > 0)
       .map(({ _count, ...rest }) => ({ ...rest, teamCount: _count.teams }));
+  });
+
+  // 2026-05-15: Admin yönetim listesi — Ayarlar > Manuel Lig Yönetimi
+  // ekranı için tüm non-deleted ligler (teamCount=0 dahil; toggle UI'da
+  // disabled). Yetki PERMISSIONS.opta.admin paritesi (operatör isteği:
+  // "OPTA Lig Görünürlüğü ile birebir aynı").
+  app.get('/leagues/manual/admin', {
+    preHandler: app.requireGroup(...PERMISSIONS.opta.admin),
+    schema: {
+      tags: ['Matches'],
+      summary: 'Admin: manuel lig seçilebilirlik listesi',
+    },
+  }, async () => {
+    const rows = await app.prisma.league.findMany({
+      where:   { deleted_at: null },
+      orderBy: [{ sportGroup: 'asc' }, { name: 'asc' }],
+      select: {
+        id: true, code: true, name: true, country: true, sportGroup: true,
+        visible: true, manualSelectable: true,
+        _count: { select: { teams: { where: { deleted_at: null } } } },
+      },
+    });
+    return rows.map(({ _count, ...rest }) => ({ ...rest, teamCount: _count.teams }));
+  });
+
+  // 2026-05-15: Admin toggle — manualSelectable flag aç/kapat.
+  // teamCount=0 olan ligler için yine kabul edilir (operatör bir lig
+  // hazırlığı yapıyorsa flag'i önceden açabilir; takım eklendiğinde
+  // dropdown'a doğal olarak girer).
+  const manualLeagueAdminPatchSchema = z.object({
+    manualSelectable: z.boolean(),
+  });
+
+  app.patch<{ Params: { id: string } }>('/leagues/manual/admin/:id', {
+    preHandler: app.requireGroup(...PERMISSIONS.opta.admin),
+    schema: {
+      tags: ['Matches'],
+      summary: 'Admin: manualSelectable toggle',
+    },
+  }, async (request, reply) => {
+    const id = Number.parseInt(request.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return reply.code(400).send({ statusCode: 400, error: 'Bad Request', message: 'invalid league id' });
+    }
+    const dto = manualLeagueAdminPatchSchema.parse(request.body);
+    const data: Prisma.LeagueUpdateInput = { manualSelectable: dto.manualSelectable };
+    try {
+      const updated = await app.prisma.league.update({
+        where: { id },
+        data,
+        select: {
+          id: true, code: true, name: true, country: true, sportGroup: true,
+          visible: true, manualSelectable: true,
+          _count: { select: { teams: { where: { deleted_at: null } } } },
+        },
+      });
+      const { _count, ...rest } = updated;
+      return { ...rest, teamCount: _count.teams };
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P2025') {
+        return reply.code(404).send({ statusCode: 404, error: 'Not Found', message: 'league not found' });
+      }
+      throw e;
+    }
   });
 
   // 2026-05-14: Tek ligin takımları — manuel home/away select.

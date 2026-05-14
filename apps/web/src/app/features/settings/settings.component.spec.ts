@@ -49,4 +49,18 @@ describe('SettingsComponent', () => {
     expect(optaLink).toBeTruthy();
     expect(optaLink!.textContent).toContain('Aç');
   });
+
+  it('Manuel Lig Yönetimi card render edilir + /admin/manual-leagues linki', () => {
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    const text = host.textContent ?? '';
+    expect(text).toContain('Manuel Lig Yönetimi');
+    expect(text).toContain('Manuel girişte seçilebilir ligleri yönetin');
+
+    const anchors = Array.from(host.querySelectorAll('a[routerLink]'));
+    const manualLink = anchors.find((a) => a.getAttribute('routerLink') === '/admin/manual-leagues');
+    expect(manualLink).toBeTruthy();
+    expect(manualLink!.textContent).toContain('Aç');
+  });
 });
