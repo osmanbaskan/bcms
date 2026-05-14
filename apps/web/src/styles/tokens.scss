@@ -165,21 +165,28 @@ html[data-theme="dark"] {
 // ─────────────────────────────────────────────────────────────────────────────
 html[data-theme="light"] {
   // ── Açık zeminler — Tailwind slate ölçeği ──────────────────────────────────
-  --bp-bg-0: #faf7ff;     // page bg (hafif mor tint)
-  --bp-bg-1: #ffffff;     // app body, header
-  --bp-bg-2: #ffffff;     // card, dialog
-  --bp-bg-3: #f5f0ff;     // hover, alt row (çok hafif mor)
-  --bp-bg-4: #ede4ff;     // emphasized, table header
-  --bp-line:    #5d2e5d;                   // patlıcan moru — strong visible border
-  --bp-line-2:  rgba(93, 46, 93, 0.32);    // patlıcan moru %32 — daha hafif çerçeveler
-  // 2026-05-14 UI audit-2: light theme row/list hover.
-  --bp-row-hover: rgba(93, 46, 93, 0.08);
+  // 2026-05-14 high-contrast operasyon teması revize:
+  //   - bg-0/bg-1 hafif mor tint sayfa zemini ile kart bg-2 #fff ayrımı net
+  //   - bg-3 hover daha belirgin (önce f5f0ff → ece4ff)
+  //   - bg-4 table header tonu kuvvetlendi (ede4ff → d8c8ff)
+  --bp-bg-0: #f5f1ff;     // page bg — biraz daha belirgin mor tint
+  --bp-bg-1: #faf7ff;     // app body / header — kırık beyaz mor
+  --bp-bg-2: #ffffff;     // card, dialog — net beyaz, page'ten ayrılır
+  --bp-bg-3: #ece4ff;     // hover, alt row — gözle fark edilir
+  --bp-bg-4: #d8c8ff;     // emphasized, table header — kuvvetli ton
+  // Border: patlıcan moru → purple-800 ölçeğine geçti (daha güçlü).
+  --bp-line:    #4c1d95;                       // purple-800 — strong border
+  --bp-line-2:  rgba(76, 29, 149, 0.42);       // purple-800 %42 — net ama yumuşak
+  // Hover daha belirgin (0.08 → 0.12 purple-500 tone).
+  --bp-row-hover: rgba(124, 58, 237, 0.12);
 
-  // ── Foreground / text — MOR TONLARI (kullanıcı tercihi) ───────────────────
-  --bp-fg-1: #3b0764;     // primary text — purple-950 (deep, near-black with purple)
-  --bp-fg-2: #5b21b6;     // secondary text — purple-700
-  --bp-fg-3: #7c3aed;     // muted/label — purple-500
-  --bp-fg-4: #a78bfa;     // very muted/disabled — purple-300
+  // ── Foreground / text — MOR ÖLÇEĞİNDE DAHA SERT ───────────────────────────
+  // Önceki fg-3 = purple-500 (soluk lila) operasyon ekranında çok silikti.
+  // Yeni: muted için purple-700 (~7:1 kontrast), disabled için purple-500.
+  --bp-fg-1: #2e1065;     // primary text — purple-900 (deep, neredeyse siyah-mor)
+  --bp-fg-2: #4c1d95;     // secondary text — purple-800
+  --bp-fg-3: #5b21b6;     // muted/label — purple-700 (eskiden 500'dü)
+  --bp-fg-4: #7c3aed;     // very muted/disabled — purple-500 (eskiden 300'dü)
 
   // ── Schedule status badge (light) ──────────────────────────────────────────
   --bp-status-DRAFT-bg:     rgba(107, 114, 128, 0.13);

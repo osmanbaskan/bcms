@@ -671,9 +671,100 @@ html[data-theme="light"] .mat-mdc-raised-button:not(.mat-warn):not(.mat-accent):
 }
 
 // mat-card için light theme'de görünür kenar — beyaz üstüne beyaz panel
-// kayboluyor; --bp-line-2 (patlıcan moru %32) ile yumuşak ama net çerçeve.
+// kayboluyor; --bp-line-2 (patlıcan moru %42) ile yumuşak ama net çerçeve.
 html[data-theme="light"] .mat-mdc-card,
 html[data-theme="light"] mat-card {
   border: 1px solid var(--bp-line-2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-05-14 LIGHT MODE — yüksek kontrast operasyon teması (font + tablo +
+// hover + tab + chip + dialog güçlendirme).
+//
+// Light için 11px altı metin "okunmuyor" geri bildirimi: dark mode'da
+// kompakt 9.5-10.5 px badge/cell intent korunuyor, light scope altında
+// minimum 11.5 px'e büyütüldü. Layout shift az; padding/font-weight
+// dengeli kalır.
+//
+// Tek commit revert edilebilir: bu blok tek bir alana toplandı.
+// ─────────────────────────────────────────────────────────────────────────────
+html[data-theme="light"] {
+  // Dense badge / chip / status tag — 9.5 px → 11 px
+  .status-badge,
+  .sev-tag,
+  .status-tag,
+  .action-badge,
+  app-status-tag .tag,
+  app-sev-tag .tag,
+  app-audit-log .action-badge,
+  app-audit-log .json-label,
+  // Catch-all: light theme'de "badge" / "tag" / "chip" eki olan element'leri
+  // 11 px taban; dark mode 9.5-10 px kompakt görünümü etkilenmez.
+  [class*="-badge"],
+  [class*="-tag"]:not([class*="mat-mdc-tag"]) {
+    font-size: 11px !important;
+  }
+
+  // Audit log — dense rows
+  app-audit-log .audit-row,
+  app-audit-log .audit-row > div,
+  app-audit-log .action,
+  app-audit-log .entity-type,
+  app-audit-log .meta-line {
+    font-size: 12px !important;
+  }
+  app-audit-log .subtitle { font-size: 13px !important; }
+
+  // Table header'lar — Material default + custom th 10.5 px → 12 px
+  .mat-mdc-header-cell,
+  app-schedule-list th,
+  app-schedule-list .th-time-stack,
+  app-ingest-list th,
+  app-booking-list th,
+  app-yayin-planlama-list th,
+  app-live-plan-list th {
+    font-size: 12px !important;
+  }
+
+  // Table cell — bg-2 (kart) içinde row hover net olsun
+  .mat-mdc-row:hover,
+  tr.mat-mdc-row:hover {
+    background: var(--bp-row-hover) !important;
+  }
+
+  // Mat-tab — non-active label sıkça soluk gözüküyor
+  .mat-mdc-tab .mdc-tab__text-label {
+    color: var(--bp-fg-2) !important;
+    font-weight: 500;
+  }
+  .mat-mdc-tab.mdc-tab--active .mdc-tab__text-label {
+    color: var(--bp-purple-700) !important;
+    font-weight: 600;
+  }
+
+  // Mat-menu items net
+  .mat-mdc-menu-item .mat-mdc-menu-item-text { color: var(--bp-fg-1) !important; }
+
+  // Input/select text & placeholder — light'ta hint okunamayan lila olmasın
+  .mat-mdc-input-element,
+  .mat-mdc-form-field .mat-mdc-input-element {
+    color: var(--bp-fg-1) !important;
+  }
+  .mat-mdc-input-element::placeholder { color: var(--bp-fg-3) !important; }
+  .mat-mdc-select-value-text { color: var(--bp-fg-1) !important; font-size: 13px !important; }
+  .mat-mdc-select-arrow { color: var(--bp-fg-2) !important; }
+
+  // Datepicker — calendar günleri okunaklı
+  .mat-calendar-body-cell-content { color: var(--bp-fg-1) !important; }
+  .mat-calendar-table-header th { color: var(--bp-fg-2) !important; }
+
+  // Mat-chip — light'ta bazı chip text rengi açık-yeşil/lila kaldığı için
+  .mat-mdc-chip .mdc-evolution-chip__text-label { color: var(--bp-fg-1) !important; }
+
+  // Dialog & overlay panel — surrounding card için belirgin shadow
+  .mat-mdc-dialog-container .mdc-dialog__surface {
+    border: 1px solid var(--bp-line-2);
+    box-shadow: var(--bp-shadow-lg);
+  }
 }
 
