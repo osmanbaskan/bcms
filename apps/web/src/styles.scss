@@ -559,3 +559,77 @@ app-schedule-list tr.transmission-finished .mat-mdc-icon-button mat-icon {
   color: #fff !important;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-05-14 LIGHT MODE Material default token override
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Sebep: `mat.define-theme(theme-type: dark, primary: violet-palette)` Material
+// 18+ light mode'da violet-palette tone-50 (~ #e8e0eb) gibi açık tonları text
+// rengi olarak yayıyor; light bg üzerinde kontrast ~1.3 → tamamen okunmaz.
+//
+// Etki: 345+ element (mat-form-field label, mat-icon-button icon, mat-icon,
+// mat-button-toggle text vb.) light mode'da görünür hale gelir. Dark mode
+// dokunulmaz.
+html[data-theme="light"] {
+  // Form field label/floating-label tüm varyantlar
+  --mdc-outlined-text-field-label-text-color:          var(--bp-fg-2);
+  --mdc-outlined-text-field-input-text-color:          var(--bp-fg-1);
+  --mdc-outlined-text-field-supporting-text-color:     var(--bp-fg-2);
+  --mdc-outlined-text-field-hover-label-text-color:    var(--bp-fg-1);
+  --mdc-filled-text-field-label-text-color:            var(--bp-fg-2);
+  --mdc-filled-text-field-input-text-color:            var(--bp-fg-1);
+  --mat-form-field-subscript-text-color:               var(--bp-fg-2);
+
+  // Icon button (genel) — Material default `--mdc-icon-button-icon-color`
+  // palette-50 tonuna düşürüyor; light bg'de görünmez.
+  --mdc-icon-button-icon-color:                        var(--bp-fg-1);
+
+  // NOT: `--mat-icon-color` genel ezilmez (2026-05-14 audit yan etki):
+  // primary mor bg'li button içindeki ikonlar purple-950 olup görünmez kalır.
+  // Sadece `.mat-mdc-icon-button .mat-icon` scoped ezme aşağıdaki block'ta
+  // explicit handle edilir.
+
+  // mat-button-toggle (Liste/Tablo gibi segmented) — non-selected text
+  --mat-standard-button-toggle-text-color:             var(--bp-fg-1);
+  --mat-standard-button-toggle-state-layer-color:      var(--bp-fg-1);
+  --mat-standard-button-toggle-divider-color:          var(--bp-line-2);
+
+  // Stroked / text button label (gerekirse ek defansif ezme)
+  --mdc-outlined-button-label-text-color:              var(--bp-fg-1);
+  --mdc-text-button-label-text-color:                  var(--bp-fg-1);
+
+  // Calendar / datepicker body
+  --mat-datepicker-calendar-body-label-text-color:     var(--bp-fg-2);
+  --mat-datepicker-calendar-navigation-button-icon-color: var(--bp-fg-1);
+}
+
+// Mat-form-field label/icon için CSS variable yetmediğinde explicit yedek
+// (selector specifity ile compiled MDC tokens'ı yener)
+html[data-theme="light"] .mat-mdc-form-field .mdc-floating-label,
+html[data-theme="light"] .mat-mdc-form-field .mat-mdc-floating-label,
+html[data-theme="light"] .mat-mdc-form-field .mdc-text-field--filled .mdc-floating-label {
+  color: var(--bp-fg-2) !important;
+}
+// Icon button: hem button element'in kendi color'unu hem child icon'u ez.
+// `--mdc-icon-button-icon-color` variable yetmedi → compiled `color` özelliği
+// hâlâ Material palette-50 tonunda; specifity ile zorla.
+html[data-theme="light"] button.mat-mdc-icon-button,
+html[data-theme="light"] .mat-mdc-icon-button .mat-icon,
+html[data-theme="light"] .mat-mdc-icon-button mat-icon {
+  color: var(--bp-fg-1) !important;
+}
+html[data-theme="light"] .mat-button-toggle .mat-button-toggle-label-content {
+  color: var(--bp-fg-1) !important;
+}
+// Stroked button label — palette-300 tone (purple-300) light bg'de silik.
+// Button element'in kendi `color` (icon child inherit) + `.mdc-button__label`
+// span'i birlikte ezilir.
+html[data-theme="light"] .mat-mdc-outlined-button:not(.mat-primary):not([color="primary"]),
+html[data-theme="light"] .mat-mdc-button:not(.mat-primary):not([color="primary"]),
+html[data-theme="light"] .mat-mdc-outlined-button:not(.mat-primary):not([color="primary"]) .mdc-button__label,
+html[data-theme="light"] .mat-mdc-button:not(.mat-primary):not([color="primary"]) .mdc-button__label,
+html[data-theme="light"] .mat-mdc-outlined-button:not(.mat-primary):not([color="primary"]) .mat-icon,
+html[data-theme="light"] .mat-mdc-button:not(.mat-primary):not([color="primary"]) .mat-icon {
+  color: var(--bp-fg-1) !important;
+}
+
