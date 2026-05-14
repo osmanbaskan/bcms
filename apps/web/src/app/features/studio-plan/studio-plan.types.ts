@@ -24,7 +24,11 @@ export interface StudioPlanListEntry {
   program: string;
   color: string;
   colorLabel: string;
+  /** Kapsanan slot adedi (her slot SLOT_MINUTES dakika). */
   slotCount: number;
+  /** Operatöre gösterilen toplam dakika; 2026-05-14: 15 dk slot için
+   *  hardcoded `slotCount * 30` template kaldırıldı, computed üretilir. */
+  durationMinutes: number;
 }
 
 export type StudioPlanViewMode = 'table' | 'list';

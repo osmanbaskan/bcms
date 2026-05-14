@@ -13,6 +13,14 @@ import {
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const timeSchema = z.string().regex(/^\d{2}:\d{2}$/);
 
+// 2026-05-14: Studio plan slot çözünürlüğü 30 dk → 15 dk. DB modelinde
+// `start_minute INT` zaten 15 dk için uygundu. Frontend grid 80 slot
+// (06:00-02:00, 15 dk × 80 = 1200 dk = 20 saat).
+const STUDIO_PLAN_SLOT_MINUTES = 15;
+const STUDIO_PLAN_SLOTS_PER_DAY = 80;
+const STUDIO_PLAN_MAX_STUDIOS = 5;
+const STUDIO_PLAN_MAX_DAYS = 7;
+
 const slotSchema = z.object({
   day: dateSchema,
   studio: z.string().min(1).max(100),
@@ -23,7 +31,7 @@ const slotSchema = z.object({
 });
 
 const saveStudioPlanSchema = z.object({
-  slots: z.array(slotSchema).max(7 * 5 * 40),
+  slots: z.array(slotSchema).max(STUDIO_PLAN_MAX_DAYS * STUDIO_PLAN_MAX_STUDIOS * STUDIO_PLAN_SLOTS_PER_DAY),
 });
 
 const catalogProgramSchema = z.object({
@@ -165,9 +173,9 @@ async function queryStudioUsage(app: FastifyInstance, from: string, to: string):
     }
     const entry = map.get(r.program)!;
     entry.slotCount    += sc;
-    entry.totalMinutes += sc * 30;
+    entry.totalMinutes += sc * STUDIO_PLAN_SLOT_MINUTES;
     entry.dayCount      = Math.max(entry.dayCount, Number(r.day_count));
-    entry.studios.push({ studio: r.studio, slotCount: sc, totalMinutes: sc * 30 });
+    entry.studios.push({ studio: r.studio, slotCount: sc, totalMinutes: sc * STUDIO_PLAN_SLOT_MINUTES });
   }
   return Array.from(map.values()).sort((a, b) => b.totalMinutes - a.totalMinutes);
 }

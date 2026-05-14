@@ -85,9 +85,16 @@ const DEFAULT_COLORS: StudioPlanColor[] = [
   { label: 'ORTAK YAYIN', value: '#6f2da8' },
 ];
 
-function buildHalfHourSlots(): string[] {
+// 2026-05-14: Studio plan slot çözünürlüğü 30 dk → 15 dk. Mevcut DB modeli
+// (studio_plan_slots.start_minute INT) 15 dk için zaten yeterli; migration
+// gerekmez. Eski 30 dk kayıtlar yeni gridde tek 15 dk slot olarak görünür.
+export const STUDIO_PLAN_SLOT_MINUTES = 15;
+export const STUDIO_PLAN_START_MINUTE = 6 * 60;    // 06:00
+export const STUDIO_PLAN_END_MINUTE   = 26 * 60;   // ertesi gün 02:00
+
+function buildTimeSlots(): string[] {
   const slots: string[] = [];
-  for (let minute = 6 * 60; minute < 26 * 60; minute += 30) {
+  for (let minute = STUDIO_PLAN_START_MINUTE; minute < STUDIO_PLAN_END_MINUTE; minute += STUDIO_PLAN_SLOT_MINUTES) {
     const hour = Math.floor(minute / 60) % 24;
     const mins = minute % 60;
     slots.push(`${String(hour).padStart(2, '0')}:${String(mins).padStart(2, '0')}`);
@@ -95,7 +102,7 @@ function buildHalfHourSlots(): string[] {
   return slots;
 }
 
-const TIME_SLOTS = buildHalfHourSlots();
+const TIME_SLOTS = buildTimeSlots();
 
 function mondayFor(date: Date): string {
   const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -202,6 +209,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
             endIndex++;
           }
 
+          const slotCount = endIndex - cursor;
           entries.push({
             id: `${day.id}-${studio}-${time}`,
             dayLabel: day.label,
@@ -212,7 +220,8 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
             program: assignment.program,
             color: assignment.color,
             colorLabel: this.colorLabel(assignment.color),
-            slotCount: endIndex - cursor,
+            slotCount,
+            durationMinutes: slotCount * STUDIO_PLAN_SLOT_MINUTES,
           });
 
           cursor = endIndex;
@@ -385,6 +394,9 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     const worksheet = workbook.addWorksheet('Stüdyo Planı');
 
     if (this.viewMode() === 'list') {
+      // 2026-05-14: 15 dk slot dönüşümü — list export'a `Süre (dk)` kolonu
+      // eklendi (`durationMinutes = slotCount * STUDIO_PLAN_SLOT_MINUTES`).
+      // `Slot Sayısı` operatör için referans bilgi olarak korundu.
       worksheet.columns = [
         { header: 'Gün', key: 'dayLabel', width: 12 },
         { header: 'Tarih', key: 'dayDate', width: 14 },
@@ -394,6 +406,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
         { header: 'Program', key: 'program', width: 35 },
         { header: 'Renk', key: 'colorLabel', width: 14 },
         { header: 'Slot Sayısı', key: 'slotCount', width: 12 },
+        { header: 'Süre (dk)', key: 'durationMinutes', width: 12 },
       ];
 
       for (const entry of this.listEntries()) {

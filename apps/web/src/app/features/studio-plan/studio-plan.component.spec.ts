@@ -186,6 +186,45 @@ describe('StudioPlanComponent', () => {
     tick(100);
   }));
 
+  // ── 2026-05-14: 15 dk slot grid (önce 30 dk) ──────────────────────────────
+  it('timeSlots 80 adet üretir', () => {
+    expect((component as any).timeSlots.length).toBe(80);
+  });
+
+  it('ilk slot 06:00, son slot 01:45', () => {
+    const ts = (component as any).timeSlots as string[];
+    expect(ts[0]).toBe('06:00');
+    expect(ts[ts.length - 1]).toBe('01:45');
+  });
+
+  it('listEntries tek atama → 15 dk durationMinutes + endTime 15 dk sonrası', () => {
+    const comp = component as any;
+    const day = comp.days()[0];
+    const studio = comp.studios[0];
+    const t = comp.timeSlots[0]; // 06:00
+    comp.cells.set({ [comp.cellKey(day.id, studio, t)]: { program: 'P', color: '#000' } });
+    const e = comp.listEntries()[0];
+    expect(e.startTime).toBe('06:00');
+    expect(e.endTime).toBe('06:15');
+    expect(e.durationMinutes).toBe(15);
+    expect(e.slotCount).toBe(1);
+  });
+
+  it('listEntries 4 ardışık aynı program → 1 saat (60 dk)', () => {
+    const comp = component as any;
+    const day = comp.days()[0];
+    const studio = comp.studios[0];
+    const assignment = { program: 'X', color: '#111' };
+    const cells: Record<string, unknown> = {};
+    for (let i = 0; i < 4; i++) cells[comp.cellKey(day.id, studio, comp.timeSlots[i])] = assignment;
+    comp.cells.set(cells);
+    const e = comp.listEntries()[0];
+    expect(e.slotCount).toBe(4);
+    expect(e.durationMinutes).toBe(60);
+    expect(e.startTime).toBe('06:00');
+    expect(e.endTime).toBe('07:00');
+  });
+
   // ── 2026-05-14: listEntries canonical kaynak — tablo ↔ liste tutarlılığı ──
   //
   // Bug: listEntries computed `if (day.id < today) continue;` filtresi ile
