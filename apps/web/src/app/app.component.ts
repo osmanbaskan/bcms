@@ -558,6 +558,9 @@ export class AppComponent implements OnInit, OnDestroy {
       items: [
         { label: 'İş Takip',          icon: 'people_outline',      route: '/bookings',           groups: [] },
         { label: 'Haftalık Shift',    icon: 'calendar_today',      route: '/weekly-shift',       groups: [] },
+        // 2026-05-15: Dökümanlar nav grubu YÖNETİM → EKİP'e taşındı; route,
+        // icon ve permission (SystemEng) korundu, sadece menü konumu değişti.
+        { label: 'Dökümanlar',        icon: 'description',         route: '/documents',          groups: [GROUP.SystemEng] },
       ],
     },
     {
@@ -570,7 +573,6 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Ayarlar',           icon: 'settings',            route: '/settings',           groups: [GROUP.SystemEng] },
         { label: 'Live-Plan Lookup',  icon: 'tune',                route: '/admin/live-plan-lookups', groups: [] },
         { label: 'OPTA Lig Görünürlüğü', icon: 'visibility',       route: '/admin/opta-competitions', groups: [GROUP.SystemEng] },
-        { label: 'Dökümanlar',        icon: 'description',         route: '/documents',          groups: [GROUP.SystemEng] },
       ],
     },
   ];
