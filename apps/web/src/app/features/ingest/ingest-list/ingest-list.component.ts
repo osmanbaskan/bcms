@@ -681,22 +681,28 @@ export class IngestListComponent implements OnInit, OnDestroy {
    *  saat aralığı çakışan" port adlarının seti. UI dropdown'larında o portları
    *  disable etmek için kullanılır — server 409'a düşmeden önce uyarı.
    *
-   *  Not: ingestPlanItems() saved state. Mid-edit time değişikliğinde set
-   *  güncel olmaz; ama time change'de savePlanRow tetiklendiği için bir sonraki
-   *  CD cycle'da güncellenir. Live mid-edit feedback istenirse row.sortMinute/
-   *  endMinute reactive yapılması gerekir (büyük refactor). */
+   *  2026-05-15: Veri kaynağı `planningRows()` (eskiden `ingestPlanItems()`).
+   *  ingestPlanItems sadece DB'de kayıtlı plan_item'ları içerir; live-plan
+   *  candidate row'lar (henüz DB satırı yok) target olarak haritada
+   *  bulunmuyor, dropdown busy göstermiyordu. planningRows UI'da görünen
+   *  TÜM satırları içerir (live-plan candidate dahil) ve her satır için
+   *  `recordingPort/backupRecordingPort/sortMinute/endMinute/day` taşır.
+   *
+   *  Primary + backup ikisi de "busy kullanım" olarak hesaba katılır:
+   *  aynı fiziksel port aynı saat aralığında ister primary ister backup
+   *  rolünde olsun, ikinci bir satırın o portu seçmesi 409 üretir. */
   busyPortsMapByRow = computed<Map<string, Set<string>>>(() => {
-    const items = this.ingestPlanItems();
+    const rows = this.planningRows();
     const map = new Map<string, Set<string>>();
-    for (const target of items) {
-      if (target.plannedStartMinute == null || target.plannedEndMinute == null) continue;
+    for (const target of rows) {
+      if (target.sortMinute == null || target.endMinute == null) continue;
       const busy = new Set<string>();
-      for (const other of items) {
+      for (const other of rows) {
         if (other.sourceKey === target.sourceKey) continue;
-        if (other.dayDate !== target.dayDate) continue;
-        if (other.plannedStartMinute == null || other.plannedEndMinute == null) continue;
-        const overlap = other.plannedStartMinute < target.plannedEndMinute
-                     && other.plannedEndMinute   > target.plannedStartMinute;
+        if (other.day !== target.day) continue;
+        if (other.sortMinute == null || other.endMinute == null) continue;
+        const overlap = other.sortMinute < target.endMinute
+                     && other.endMinute   > target.sortMinute;
         if (!overlap) continue;
         if (other.recordingPort)        busy.add(other.recordingPort);
         if (other.backupRecordingPort)  busy.add(other.backupRecordingPort);

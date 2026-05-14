@@ -384,4 +384,127 @@ describe('IngestListComponent', () => {
     expect(colB?.items.length).toBe(0);
     expect(colA?.items[0].row.title).not.toContain('(yedek)');
   });
+
+  // ── 2026-05-15: Port busy/disabled — Ingest dropdown çakışma engeli ─────
+  //
+  // Kök neden: önceki busyPortsMapByRow `ingestPlanItems()` üzerinde target
+  // iterate ediyordu; live-plan candidate row (henüz DB satırı yok) target
+  // olarak haritada bulunmuyor, dropdown busy göstermiyordu. Fix
+  // `planningRows()` veri kaynağına geçirdi — UI'da görünen tüm satırlar
+  // (DB-suz dahil) target+other olarak hesaba katılır.
+  describe('busyPortsMapByRow — port çakışma engeli', () => {
+    const livePlanDateIso = '2026-06-01';
+
+    // Spec TZ-bağımsız: plannedStartMinute mock'lamıyoruz; planningRows
+    // fallback `sortMinuteFromDate(eventStart)` kullanır. Tüm row'lar aynı
+    // eventStart paylaşırsa sortMinute identik olur — overlap test'leri TZ'den
+    // bağımsız geçer. Sadece port alanları planItem üzerinden senkron.
+    function makeLiveCandidate(opts: {
+      id: number; eventStart: string; eventEnd: string;
+      planItem?: { recordingPort?: string | null; backupRecordingPort?: string | null } | null;
+    }): any {
+      return {
+        livePlanEntryId: opts.id, eventKey: `manual:${opts.id}`,
+        title: `Row-${opts.id}`, status: 'PLANNED',
+        eventStartTime: opts.eventStart, eventEndTime: opts.eventEnd,
+        channel1Id: null, channel2Id: null, channel3Id: null, leagueName: null,
+        planItem: opts.planItem
+          ? {
+              sourceKey: `liveplan:${opts.id}`,
+              recordingPort:       opts.planItem.recordingPort ?? null,
+              backupRecordingPort: opts.planItem.backupRecordingPort ?? null,
+              plannedStartMinute:  null, plannedEndMinute: null,
+              status: 'WAITING', note: null, jobId: null,
+            }
+          : null,
+        ingestJob: null, scheduleId: null, hasBroadcastSchedule: false,
+      };
+    }
+
+    beforeEach(() => {
+      component.channels.set([]);
+      component.livePlanCandidates.set([]);
+      // livePlanDate componentte computed ve mock'lanmaz; default bugün.
+      // makeLiveCandidate eventStart/End ile sortMinuteFromDate üretiyor.
+    });
+
+    // Tüm row'lar AYNI UTC eventStart/End paylaşır — sortMinute fallback
+    // identik olur (TZ neyse o), overlap kesin true.
+    const SLOT_START = (date: string) => `${date}T17:00:00.000Z`;
+    const SLOT_END   = (date: string) => `${date}T19:00:00.000Z`;
+
+    it('Aynı gün overlap: diğer satırda PRIMARY port → target row dropdown\'unda busy', () => {
+      const d = component.livePlanDate;
+      component.liveEntryCandidates.set([
+        makeLiveCandidate({ id: 10, eventStart: SLOT_START(d), eventEnd: SLOT_END(d),
+          planItem: { recordingPort: 'PortA' } }),
+        makeLiveCandidate({ id: 11, eventStart: SLOT_START(d), eventEnd: SLOT_END(d), planItem: null }),
+      ]);
+      expect(component.isPortBusyForRow('liveplan:11', 'PortA')).toBeTrue();
+    });
+
+    it('Aynı gün overlap: diğer satırda BACKUP port → target row dropdown\'unda busy', () => {
+      const d = component.livePlanDate;
+      component.liveEntryCandidates.set([
+        makeLiveCandidate({ id: 20, eventStart: SLOT_START(d), eventEnd: SLOT_END(d),
+          planItem: { recordingPort: 'PortB', backupRecordingPort: 'PortA' } }),
+        makeLiveCandidate({ id: 21, eventStart: SLOT_START(d), eventEnd: SLOT_END(d), planItem: null }),
+      ]);
+      // PortA başka satırın backup'ı; busy sayılır.
+      expect(component.isPortBusyForRow('liveplan:21', 'PortA')).toBeTrue();
+      // PortB primary olarak da busy
+      expect(component.isPortBusyForRow('liveplan:21', 'PortB')).toBeTrue();
+    });
+
+    it('Kendi satırı exclude: kendi seçtiği port busy gösterilmez', () => {
+      const d = component.livePlanDate;
+      component.liveEntryCandidates.set([
+        makeLiveCandidate({ id: 30, eventStart: SLOT_START(d), eventEnd: SLOT_END(d),
+          planItem: { recordingPort: 'PortA' } }),
+      ]);
+      expect(component.isPortBusyForRow('liveplan:30', 'PortA')).toBeFalse();
+    });
+
+    it('Bitiş==başlangıç ardışık iş: çakışma SAYILMAZ (planItem.plannedMinute ile explicit)', () => {
+      // Bu test sortMinuteFromDate fallback kullanamayız (farklı eventStart);
+      // bunun yerine ingestPlanItems signal ile manual ingest-plan rows üret.
+      const d = component.livePlanDate;
+      component.liveEntryCandidates.set([]);
+      component.livePlanCandidates.set([]);
+      component.ingestPlanItems.set([
+        { id: 40, sourceType: 'live-plan', sourceKey: 'manual:40', dayDate: d,
+          recordingPort: 'PortA', backupRecordingPort: null,
+          plannedStartMinute: 1020, plannedEndMinute: 1140,
+          status: 'WAITING', jobId: null, note: null, createdAt: '', updatedAt: '' } as any,
+        { id: 41, sourceType: 'live-plan', sourceKey: 'manual:41', dayDate: d,
+          recordingPort: null, backupRecordingPort: null,
+          plannedStartMinute: 1140, plannedEndMinute: 1200,
+          status: 'WAITING', jobId: null, note: null, createdAt: '', updatedAt: '' } as any,
+      ]);
+      // ardışık (17:00-19:00 ve 19:00-20:00) — strict overlap formülü ile çakışma değil.
+      expect(component.isPortBusyForRow('manual:41', 'PortA')).toBeFalse();
+    });
+
+    it('Live-plan candidate (DB plan_item YOK) için busy hesabı çalışır (regression fix)', () => {
+      // Görseldeki Kayseri senaryosu: target row planItem yok, eventStart
+      // fallback kullanılır. Diğer row planItem ile aynı eventStart → fallback
+      // identik dakika → overlap garanti. Eski helper bu durumda false dönerdi.
+      const d = component.livePlanDate;
+      component.liveEntryCandidates.set([
+        makeLiveCandidate({ id: 50, eventStart: SLOT_START(d), eventEnd: SLOT_END(d),
+          planItem: { recordingPort: 'PortA' } }),
+        makeLiveCandidate({ id: 51, eventStart: SLOT_START(d), eventEnd: SLOT_END(d), planItem: null }),
+      ]);
+      expect(component.isPortBusyForRow('liveplan:51', 'PortA')).toBeTrue();
+    });
+
+    it('Boş port adı dropdown\'da kontrol edilmez (busy false sayılır)', () => {
+      const d = component.livePlanDate;
+      component.liveEntryCandidates.set([
+        makeLiveCandidate({ id: 60, eventStart: SLOT_START(d), eventEnd: SLOT_END(d),
+          planItem: { recordingPort: 'PortA' } }),
+      ]);
+      expect(component.isPortBusyForRow('liveplan:60', '')).toBeFalse();
+    });
+  });
 });
