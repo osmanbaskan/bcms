@@ -20,6 +20,8 @@ import {
   type BroadcastType,
   type FixtureCompetition,
   type OptaFixtureRow,
+  type ManualLeague,
+  type ManualTeam,
 } from '../../../core/services/schedule.service';
 import {
   composeIstanbulIso,
@@ -199,7 +201,8 @@ function isMatchType(bt: BroadcastType): boolean {
             <mat-form-field appearance="outline" class="full">
               <mat-label>Yayın Adı</mat-label>
               <input matInput
-                     [(ngModel)]="manual.title"
+                     [ngModel]="manual.title"
+                     (ngModelChange)="onManualTitleInput($event)"
                      [ngModelOptions]="{standalone:true}"
                      maxlength="500"
                      required>
@@ -236,21 +239,77 @@ function isMatchType(bt: BroadcastType): boolean {
               </mat-form-field>
             </div>
 
+            <!-- 2026-05-14: Manuel takım listesi destekli lig seçimi (TBL gibi
+                 OPTA fixture'ı olmayan ama DB-backed team listesi olan ligler).
+                 Lig boş = klasik text input modu (geriye uyumlu). Lig seçili =
+                 home/away mat-select. Başlık boşsa kaydederken auto-fill. -->
             <div class="row">
               <mat-form-field appearance="outline" class="grow">
-                <mat-label>Takım 1</mat-label>
-                <input matInput
-                       [(ngModel)]="manual.team1Name"
-                       [ngModelOptions]="{standalone:true}"
-                       maxlength="200">
+                <mat-label>Lig (opsiyonel)</mat-label>
+                <mat-select [ngModel]="manualLeagueId()"
+                            (ngModelChange)="onManualLeagueChange($event)"
+                            [ngModelOptions]="{standalone:true}"
+                            [disabled]="manualLeaguesLoading() || saving()">
+                  <mat-option [value]="null">— Lig Seçimi Yok —</mat-option>
+                  @for (l of manualLeagues(); track l.id) {
+                    <mat-option [value]="l.id">{{ l.name }}</mat-option>
+                  }
+                </mat-select>
+                @if (manualLeaguesLoading()) {
+                  <mat-spinner matSuffix diameter="16"></mat-spinner>
+                }
               </mat-form-field>
-              <mat-form-field appearance="outline" class="grow">
-                <mat-label>Takım 2</mat-label>
-                <input matInput
-                       [(ngModel)]="manual.team2Name"
-                       [ngModelOptions]="{standalone:true}"
-                       maxlength="200">
-              </mat-form-field>
+            </div>
+
+            <div class="row">
+              @if (manualLeagueId() == null) {
+                <mat-form-field appearance="outline" class="grow">
+                  <mat-label>Takım 1</mat-label>
+                  <input matInput
+                         [(ngModel)]="manual.team1Name"
+                         [ngModelOptions]="{standalone:true}"
+                         maxlength="200">
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="grow">
+                  <mat-label>Takım 2</mat-label>
+                  <input matInput
+                         [(ngModel)]="manual.team2Name"
+                         [ngModelOptions]="{standalone:true}"
+                         maxlength="200">
+                </mat-form-field>
+              } @else {
+                <mat-form-field appearance="outline" class="grow">
+                  <mat-label>Ev Sahibi</mat-label>
+                  <mat-select [ngModel]="manualHomeTeamId()"
+                              (ngModelChange)="onManualHomeChange($event)"
+                              [ngModelOptions]="{standalone:true}"
+                              [disabled]="manualTeamsLoading() || saving()">
+                    <mat-option [value]="null">— Seçin —</mat-option>
+                    @for (t of manualTeams(); track t.id) {
+                      <mat-option [value]="t.id" [disabled]="t.id === manualAwayTeamId()">
+                        {{ t.name }}
+                      </mat-option>
+                    }
+                  </mat-select>
+                  @if (manualTeamsLoading()) {
+                    <mat-spinner matSuffix diameter="16"></mat-spinner>
+                  }
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="grow">
+                  <mat-label>Deplasman</mat-label>
+                  <mat-select [ngModel]="manualAwayTeamId()"
+                              (ngModelChange)="onManualAwayChange($event)"
+                              [ngModelOptions]="{standalone:true}"
+                              [disabled]="manualTeamsLoading() || saving()">
+                    <mat-option [value]="null">— Seçin —</mat-option>
+                    @for (t of manualTeams(); track t.id) {
+                      <mat-option [value]="t.id" [disabled]="t.id === manualHomeTeamId()">
+                        {{ t.name }}
+                      </mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              }
             </div>
 
             <mat-form-field appearance="outline" class="full">
@@ -439,6 +498,19 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
     operationNotes: '',
   };
 
+  // 2026-05-14: Manuel takım listesi destekli ligler — TBL gibi OPTA fixture'ı
+  // yok ama DB'de team kaydı bulunan ligler için home/away select. Lig null =
+  // klasik text input mode (geriye uyumlu).
+  manualLeagues         = signal<ManualLeague[]>([]);
+  manualLeaguesLoading  = signal(false);
+  manualLeagueId        = signal<number | null>(null);
+  manualTeams           = signal<ManualTeam[]>([]);
+  manualTeamsLoading    = signal(false);
+  manualHomeTeamId      = signal<number | null>(null);
+  manualAwayTeamId      = signal<number | null>(null);
+  /** Operatör Başlık alanına manuel yazdı mı? `true` ise auto-fill yapılmaz. */
+  private titleManuallyEdited = false;
+
   // ── Computed ────────────────────────────────────────────────────────────
   /** Dropdown'da gösterilecek liste: backend response + fallback Müsabaka
    *  (backend zaten MATCH/Müsabaka döndürdüyse duplicate eklenmez). */
@@ -516,12 +588,80 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
       return this.isOptaMode() && this.selectedFixtureIds().size > 0;
     }
     const m = this.manual;
-    return !!(m.title.trim() && m.startDate && m.startTime && m.endDate && m.endTime);
+    if (!m.startDate || !m.startTime || !m.endDate || !m.endTime) return false;
+    // Lig seçili modda: home+away ZORUNLU (aynı takım engeli zaten handler'da).
+    if (this.manualLeagueId() != null) {
+      const home = this.manualHomeTeamId();
+      const away = this.manualAwayTeamId();
+      if (home == null || away == null || home === away) return false;
+      // Başlık auto-fill ile dolar (refreshAutoTitle). Operatör temizlemişse de
+      // takımlar seçili olduğu sürece save tetiklendiğinde tekrar dolduracağız.
+      return true;
+    }
+    // Klasik manuel mod: başlık serbest, takımlar opsiyonel.
+    return !!m.title.trim();
   }
 
   ngOnInit(): void {
     this.loadBroadcastTypes();
     this.loadCompetitions();
+    this.loadManualLeagues();
+  }
+
+  private loadManualLeagues(): void {
+    this.manualLeaguesLoading.set(true);
+    this.service.getManualLeagues().subscribe({
+      next: (rows) => { this.manualLeagues.set(rows ?? []); this.manualLeaguesLoading.set(false); },
+      error: () => { this.manualLeagues.set([]); this.manualLeaguesLoading.set(false); },
+    });
+  }
+
+  onManualLeagueChange(id: number | null): void {
+    this.manualLeagueId.set(id);
+    this.manualHomeTeamId.set(null);
+    this.manualAwayTeamId.set(null);
+    this.manualTeams.set([]);
+    // Lig değişince auto-title bayrağı reset; operatör henüz title yazmadıysa
+    // takım seçilince otomatik tekrar dolar.
+    if (!this.titleManuallyEdited) this.manual.title = '';
+    if (id == null) return;
+
+    this.manualTeamsLoading.set(true);
+    this.service.getTeamsByLeague(id).subscribe({
+      next: (rows) => { this.manualTeams.set(rows ?? []); this.manualTeamsLoading.set(false); },
+      error: () => { this.manualTeams.set([]); this.manualTeamsLoading.set(false); },
+    });
+  }
+
+  onManualHomeChange(id: number | null): void {
+    if (id != null && id === this.manualAwayTeamId()) return; // aynı takım engeli
+    this.manualHomeTeamId.set(id);
+    this.refreshAutoTitle();
+  }
+
+  onManualAwayChange(id: number | null): void {
+    if (id != null && id === this.manualHomeTeamId()) return; // aynı takım engeli
+    this.manualAwayTeamId.set(id);
+    this.refreshAutoTitle();
+  }
+
+  /** Operatör Başlık alanına dokunmadıysa iki takımdan auto-fill. */
+  private refreshAutoTitle(): void {
+    if (this.titleManuallyEdited) return;
+    const home = this.manualTeams().find((t) => t.id === this.manualHomeTeamId());
+    const away = this.manualTeams().find((t) => t.id === this.manualAwayTeamId());
+    if (home && away) {
+      this.manual.title = `${home.name} - ${away.name}`;
+    } else if (home || away) {
+      this.manual.title = (home?.name ?? away?.name ?? '').trim();
+    } else {
+      this.manual.title = '';
+    }
+  }
+
+  onManualTitleInput(value: string): void {
+    this.manual.title = value;
+    this.titleManuallyEdited = value.trim().length > 0;
   }
 
   // ── Loaders ─────────────────────────────────────────────────────────────
@@ -682,12 +822,26 @@ export class LivePlanEntryAddDialogComponent implements OnInit {
     const startISO = composeIstanbulIso(m.startDate, m.startTime);
     const endISO   = composeIstanbulIso(m.endDate, m.endTime);
 
+    // 2026-05-14: Lig seçili modda team isimleri DB-backed select'ten alınır;
+    // text input alanları ignore edilir. Başlık operatör override etmediyse
+    // `${home} - ${away}` auto-generate.
+    let team1Name = m.team1Name.trim();
+    let team2Name = m.team2Name.trim();
+    let title     = m.title.trim();
+    if (this.manualLeagueId() != null) {
+      const home = this.manualTeams().find((t) => t.id === this.manualHomeTeamId());
+      const away = this.manualTeams().find((t) => t.id === this.manualAwayTeamId());
+      team1Name = home?.name ?? '';
+      team2Name = away?.name ?? '';
+      if (!title && home && away) title = `${home.name} - ${away.name}`;
+    }
+
     this.service.createLivePlanEntry({
-      title:           m.title.trim(),
+      title,
       eventStartTime:  startISO,
       eventEndTime:    endISO,
-      ...(m.team1Name.trim()      ? { team1Name:      m.team1Name.trim() }      : {}),
-      ...(m.team2Name.trim()      ? { team2Name:      m.team2Name.trim() }      : {}),
+      ...(team1Name              ? { team1Name }                                : {}),
+      ...(team2Name              ? { team2Name }                                : {}),
       ...(m.operationNotes.trim() ? { operationNotes: m.operationNotes.trim() } : {}),
     }).subscribe({
       next:  (created) => { this.saving.set(false); this.dialogRef.close(created); },

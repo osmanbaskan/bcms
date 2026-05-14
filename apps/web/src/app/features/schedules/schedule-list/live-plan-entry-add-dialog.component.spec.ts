@@ -10,6 +10,8 @@ import {
   type BroadcastType,
   type FixtureCompetition,
   type OptaFixtureRow,
+  type ManualLeague,
+  type ManualTeam,
 } from '../../../core/services/schedule.service';
 
 const BT_FIXTURE: BroadcastType[] = [
@@ -20,6 +22,17 @@ const BT_FIXTURE: BroadcastType[] = [
 const COMP_FIXTURE: FixtureCompetition[] = [
   { id: '115', name: 'Süper Lig',           season: '2025-2026' },
   { id: 'tbl', name: 'Türkiye Basketbol Ligi', season: '2025-2026' },
+];
+
+const MANUAL_LEAGUES_FIXTURE: ManualLeague[] = [
+  { id: 60, code: 'custom-tbl', name: 'Türkiye Basketbol Ligi', country: 'Türkiye', sportGroup: 'basketball', teamCount: 16 },
+];
+
+const TBL_TEAMS_FIXTURE: ManualTeam[] = [
+  { id: 1001, leagueId: 60, name: 'Fenerbahçe Beko',         shortName: 'FB Beko'  },
+  { id: 1002, leagueId: 60, name: 'Beşiktaş GAİN',           shortName: 'BJK GAİN' },
+  { id: 1003, leagueId: 60, name: 'Anadolu Efes',            shortName: 'EFS'      },
+  { id: 1004, leagueId: 60, name: 'Galatasaray MCT Technic', shortName: 'GS MCT'   },
 ];
 
 const FIXTURES_FIXTURE: OptaFixtureRow[] = [
@@ -66,10 +79,14 @@ describe('LivePlanEntryAddDialogComponent', () => {
       'getOptaFixtures',
       'createLivePlanFromOpta',
       'createLivePlanEntry',
+      'getManualLeagues',
+      'getTeamsByLeague',
     ]);
     svc.getBroadcastTypes.and.returnValue(of(BT_FIXTURE));
     svc.getFixtureCompetitions.and.returnValue(of(COMP_FIXTURE));
     svc.getOptaFixtures.and.returnValue(of(FIXTURES_FIXTURE));
+    svc.getManualLeagues.and.returnValue(of(MANUAL_LEAGUES_FIXTURE));
+    svc.getTeamsByLeague.and.returnValue(of(TBL_TEAMS_FIXTURE));
     (svc.createLivePlanFromOpta as unknown as jasmine.Spy).and.callFake((dto: { optaMatchId: string }) =>
       of({ id: 100, title: dto.optaMatchId }),
     );
@@ -402,5 +419,123 @@ describe('LivePlanEntryAddDialogComponent', () => {
     expect(component.fixtures()).toEqual([]);
     expect(component.selectedFixtureIds().size).toBe(0);
     expect(component.selectedWeek()).toBeNull();
+  });
+
+  // ── Manuel Giriş: lig destekli takım seçimi (2026-05-14, TBL) ───────────
+  describe('Manuel Giriş — lig destekli takım seçimi', () => {
+    it('ngOnInit: getManualLeagues çağrılır + dropdown dolu', () => {
+      fixture.detectChanges();
+      expect(svc.getManualLeagues).toHaveBeenCalledTimes(1);
+      expect(component.manualLeagues().length).toBe(1);
+      expect(component.manualLeagues()[0].name).toBe('Türkiye Basketbol Ligi');
+    });
+
+    it('Lig seçilince getTeamsByLeague çağrılır + takım listesi dolar', () => {
+      fixture.detectChanges();
+      component.onManualLeagueChange(60);
+      expect(svc.getTeamsByLeague).toHaveBeenCalledWith(60);
+      expect(component.manualTeams().length).toBe(4);
+      expect(component.manualTeams()[0].name).toBe('Fenerbahçe Beko');
+    });
+
+    it('Aynı takım hem home hem away seçilemez', () => {
+      fixture.detectChanges();
+      component.onManualLeagueChange(60);
+      component.onManualHomeChange(1001);
+      // away'e home ile aynı id atanırsa state değişmez
+      component.onManualAwayChange(1001);
+      expect(component.manualAwayTeamId()).toBeNull();
+      // farklı bir takıma izin verilir
+      component.onManualAwayChange(1002);
+      expect(component.manualAwayTeamId()).toBe(1002);
+    });
+
+    it('İki takım seçilince başlık otomatik üretilir: "Ev - Deplasman"', () => {
+      fixture.detectChanges();
+      component.onManualLeagueChange(60);
+      component.onManualHomeChange(1001);
+      component.onManualAwayChange(1003);
+      expect(component.manual.title).toBe('Fenerbahçe Beko - Anadolu Efes');
+    });
+
+    it('Operatör Başlık alanını manuel doldurduysa auto-fill üzerine yazmaz', () => {
+      fixture.detectChanges();
+      component.onManualLeagueChange(60);
+      component.onManualTitleInput('Özel Yayın Başlığı');
+      component.onManualHomeChange(1001);
+      component.onManualAwayChange(1003);
+      expect(component.manual.title).toBe('Özel Yayın Başlığı');
+    });
+
+    it('canSave (lig modu): home+away ve start/end gerekli; başlık zorunlu değil (auto-fill)', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.onManualLeagueChange(60);
+      component.manual.startDate = '2026-06-01';
+      component.manual.startTime = '20:00';
+      component.manual.endDate   = '2026-06-01';
+      component.manual.endTime   = '22:00';
+      expect(component.canSave()).toBeFalse(); // takım yok
+
+      component.onManualHomeChange(1001);
+      expect(component.canSave()).toBeFalse(); // away yok
+
+      component.onManualAwayChange(1003);
+      expect(component.canSave()).toBeTrue();
+    });
+
+    it('save (lig modu): team1Name/team2Name select isimlerinden alınır + title auto-fill', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.onManualLeagueChange(60);
+      component.manual.startDate = '2026-06-01';
+      component.manual.startTime = '20:00';
+      component.manual.endDate   = '2026-06-01';
+      component.manual.endTime   = '22:00';
+      component.onManualHomeChange(1001);
+      component.onManualAwayChange(1003);
+      // Text input alanlarına bilgi yazılsa bile lig modu select'i ezer.
+      component.manual.team1Name = 'random-text';
+      component.manual.team2Name = 'random-text';
+      component.save();
+
+      const body = svc.createLivePlanEntry.calls.mostRecent().args[0] as unknown as Record<string, unknown>;
+      expect(body['team1Name']).toBe('Fenerbahçe Beko');
+      expect(body['team2Name']).toBe('Anadolu Efes');
+      expect(body['title']).toBe('Fenerbahçe Beko - Anadolu Efes');
+    });
+
+    it('Lig değişimi: home/away seçimleri ve auto-title temizlenir', () => {
+      fixture.detectChanges();
+      component.onManualLeagueChange(60);
+      component.onManualHomeChange(1001);
+      component.onManualAwayChange(1003);
+      expect(component.manual.title).toContain('Fenerbahçe Beko');
+
+      component.onManualLeagueChange(null);
+      expect(component.manualHomeTeamId()).toBeNull();
+      expect(component.manualAwayTeamId()).toBeNull();
+      expect(component.manualTeams()).toEqual([]);
+      expect(component.manual.title).toBe('');
+    });
+
+    it('Lig seçilmeden klasik manuel mod: text input team isimleri korunur (geriye uyumlu)', () => {
+      fixture.detectChanges();
+      component.activeTab = 1;
+      component.manual.title     = 'Galatasaray vs FB';
+      component.manual.startDate = '2026-06-01';
+      component.manual.startTime = '20:00';
+      component.manual.endDate   = '2026-06-01';
+      component.manual.endTime   = '22:00';
+      component.manual.team1Name = ' GS ';
+      component.manual.team2Name = ' FB ';
+      expect(component.manualLeagueId()).toBeNull();
+      expect(component.canSave()).toBeTrue();
+
+      component.save();
+      const body = svc.createLivePlanEntry.calls.mostRecent().args[0] as unknown as Record<string, unknown>;
+      expect(body['team1Name']).toBe('GS');
+      expect(body['team2Name']).toBe('FB');
+    });
   });
 });

@@ -45,6 +45,24 @@ export interface OptaFixtureRow {
   label?:          string;
 }
 
+/** 2026-05-14: Manuel takım listesi destekli ligler (OPTA fixture'ı olmayan
+ *  ama DB-backed team kaydı bulunan, ör. Türkiye Basketbol Ligi). */
+export interface ManualLeague {
+  id:         number;
+  code:       string;
+  name:       string;
+  country:    string;
+  sportGroup: string;
+  teamCount:  number;
+}
+
+export interface ManualTeam {
+  id:        number;
+  leagueId:  number;
+  name:      string;
+  shortName: string;
+}
+
 export interface ScheduleFilter {
   channel?: number;
   from?: string;
@@ -160,6 +178,18 @@ export class ScheduleService {
     const params: Record<string, string> = { competitionId, season };
     if (fromIso) params['from'] = fromIso;
     return this.api.get<OptaFixtureRow[]>('/opta/fixtures', params);
+  }
+
+  /** 2026-05-14: Manuel takım listesi destekli ligler (OPTA fixture'ı olmayan
+   *  ama DB-backed team listesi olan ligler). Yayın Planlama "Yeni Ekle /
+   *  Manuel Giriş" dropdown'ı için. */
+  getManualLeagues(): Observable<ManualLeague[]> {
+    return this.api.get<ManualLeague[]>('/matches/leagues/manual');
+  }
+
+  /** 2026-05-14: Tek ligin takımları. Home/away select doldurmak için. */
+  getTeamsByLeague(leagueId: number): Observable<ManualTeam[]> {
+    return this.api.get<ManualTeam[]>(`/matches/leagues/${leagueId}/teams`);
   }
 
   /** PATCH /live-plan/:id + If-Match: <version>. K9 — version conflict 412. */

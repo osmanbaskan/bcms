@@ -28,6 +28,56 @@ export async function matchRoutes(app: FastifyInstance) {
     });
   });
 
+  // 2026-05-14: OPTA fixture'ı olmayan ama manuel takım kaydı bulunan
+  // ligler — "Yeni Ekle / Manuel Giriş" lig dropdown'ı. Türkiye Basketbol
+  // Ligi gibi DB-backed manuel takım listesi olan ligler için. Filter:
+  // `deleted_at IS NULL` (lig) ve `teams.count > 0`.
+  app.get('/leagues/manual', {
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
+    schema: {
+      tags: ['Matches'],
+      summary: 'Manuel takım kaydı bulunan ligler',
+    },
+  }, async () => {
+    const rows = await app.prisma.league.findMany({
+      where: { deleted_at: null },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true, code: true, name: true, country: true, sportGroup: true,
+        _count: { select: { teams: { where: { deleted_at: null } } } },
+      },
+    });
+    return rows
+      .filter((l) => l._count.teams > 0)
+      .map(({ _count, ...rest }) => ({ ...rest, teamCount: _count.teams }));
+  });
+
+  // 2026-05-14: Tek ligin takımları — manuel home/away select.
+  app.get<{ Params: { id: string } }>('/leagues/:id/teams', {
+    preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
+    schema: {
+      tags: ['Matches'],
+      summary: 'Ligin takımlarını listele (deleted_at IS NULL)',
+    },
+  }, async (request, reply) => {
+    const id = Number.parseInt(request.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return reply.code(400).send({ statusCode: 400, error: 'Bad Request', message: 'invalid league id' });
+    }
+    const league = await app.prisma.league.findUnique({
+      where:  { id },
+      select: { id: true },
+    });
+    if (!league) {
+      return reply.code(404).send({ statusCode: 404, error: 'Not Found', message: 'league not found' });
+    }
+    return app.prisma.team.findMany({
+      where:   { leagueId: id, deleted_at: null },
+      orderBy: { name: 'asc' },
+      select:  { id: true, leagueId: true, name: true, shortName: true },
+    });
+  });
+
   // GET /api/v1/matches — Fikstür maçlarını listele (leagueId, from, to filtresi)
   app.get('/', {
     preHandler: app.requireGroup(...PERMISSIONS.schedules.read),
