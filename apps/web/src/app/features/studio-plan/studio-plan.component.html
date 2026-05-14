@@ -49,27 +49,34 @@
       (eraserModeChange)="eraserMode.set($event)"
     ></app-studio-plan-toolbar>
 
-    <div class="print-title">
-      <strong>STÜDYO PLANI</strong>
-      <span>{{ dateRangeLabel() }}</span>
-      <button class="fullscreen-inline-button no-print" type="button" (click)="toggleFullscreen()">
-        <mat-icon>{{ fullscreenActive() ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon>
-      </button>
+    <!-- 2026-05-14: Fullscreen'de toolbar / tablo header çakışması çözümü.
+         Toolbar ve scrollable content ayrı flex item'lara bölündü. Tablo
+         başlıkları (day/studio sticky) yeni `.plan-shell-scroll` scroll
+         context'ine yapışır; toolbar dışarıda flex 0 item olarak sabittir.
+         Normal mod: wrapper sadece transparan in-flow div, layout aynı. -->
+    <div class="plan-shell-scroll" #planShellScroll>
+      <div class="print-title">
+        <strong>STÜDYO PLANI</strong>
+        <span>{{ dateRangeLabel() }}</span>
+        <button class="fullscreen-inline-button no-print" type="button" (click)="toggleFullscreen()">
+          <mat-icon>{{ fullscreenActive() ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon>
+        </button>
+      </div>
+
+      <app-studio-plan-table
+        *ngIf="canEdit() && viewMode() !== 'list'"
+        [days]="visibleDays()"
+        [studios]="studios"
+        [timeSlots]="timeSlots"
+        [cells]="cells()"
+        [style.--slot-count]="timeSlots.length"
+        (assignProgram)="onCellAssign($event)"
+      ></app-studio-plan-table>
+
+      <app-studio-plan-list
+        *ngIf="!canEdit() || viewMode() === 'list'"
+        [entries]="listEntries()"
+      ></app-studio-plan-list>
     </div>
-
-    <app-studio-plan-table
-      *ngIf="canEdit() && viewMode() !== 'list'"
-      [days]="visibleDays()"
-      [studios]="studios"
-      [timeSlots]="timeSlots"
-      [cells]="cells()"
-      [style.--slot-count]="timeSlots.length"
-      (assignProgram)="onCellAssign($event)"
-    ></app-studio-plan-table>
-
-    <app-studio-plan-list
-      *ngIf="!canEdit() || viewMode() === 'list'"
-      [entries]="listEntries()"
-    ></app-studio-plan-list>
   </div>
 </section>

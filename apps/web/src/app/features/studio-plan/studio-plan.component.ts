@@ -591,6 +591,9 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   // operasyonel fayda korunur).
 
   @ViewChild('planShell', { static: false }) planShellRef?: ElementRef<HTMLDivElement>;
+  // 2026-05-14: Fullscreen toolbar/tablo split — gerçek scroll wrapper'ı bu.
+  // Auto-pan rect ve scrollLeft/Top hesabı buna bağlı.
+  @ViewChild('planShellScroll', { static: false }) planShellScrollRef?: ElementRef<HTMLDivElement>;
 
   private autoPanFrame: number | null = null;
   private autoPanState: { dx: number; dy: number } = { dx: 0, dy: 0 };
@@ -614,7 +617,9 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     if (this.viewMode() === 'list')   return;
     if (!this.canEdit())              return;
 
-    const el = this.planShellRef?.nativeElement;
+    // 2026-05-14: fullscreen'de gerçek scroll context `.plan-shell-scroll`;
+    // toolbar dışarıda flex item — rect ve scrollLeft/Top onun üzerinden.
+    const el = this.planShellScrollRef?.nativeElement ?? this.planShellRef?.nativeElement;
     if (!el) return;
 
     const r = el.getBoundingClientRect();
@@ -658,7 +663,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     if (this.autoPanFrame !== null) return;
     if (typeof window === 'undefined') return;
     const tick = (): void => {
-      const el = this.planShellRef?.nativeElement;
+      const el = this.planShellScrollRef?.nativeElement ?? this.planShellRef?.nativeElement;
       const { dx, dy } = this.autoPanState;
       if (!el || (dx === 0 && dy === 0)) {
         this.autoPanFrame = null;

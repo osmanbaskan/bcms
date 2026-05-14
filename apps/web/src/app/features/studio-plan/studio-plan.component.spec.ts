@@ -217,7 +217,10 @@ describe('StudioPlanComponent', () => {
         scrollHeight: 3000,
         clientHeight: 800,
       } as unknown as HTMLDivElement;
-      (component as any).planShellRef = { nativeElement: el };
+      // 2026-05-14: auto-pan artık planShellScrollRef'i tercih ediyor;
+      // planShellRef fallback. Test mock her ikisini de set eder.
+      (component as any).planShellRef       = { nativeElement: el };
+      (component as any).planShellScrollRef = { nativeElement: el };
       return el;
     }
 
