@@ -199,9 +199,12 @@ app-root {
 .mat-mdc-header-cell { color: var(--bp-fg-2); }
 
 // MatFormField (input/select)
+// 2026-05-14 UI audit: hover outline `--bp-fg-2` (daha açık) — yoğun
+// formlarda hangi alanın hover'da olduğu net görünür. Label/subscript
+// `--bp-fg-3` zaten audit ile parlatıldı.
 .mat-mdc-form-field {
   --mdc-outlined-text-field-outline-color:           var(--bp-line);
-  --mdc-outlined-text-field-hover-outline-color:     var(--bp-fg-3);
+  --mdc-outlined-text-field-hover-outline-color:     var(--bp-fg-2);
   --mdc-outlined-text-field-focus-outline-color:     var(--bp-purple-500);
   --mdc-outlined-text-field-input-text-color:        var(--bp-fg-1);
   --mdc-outlined-text-field-label-text-color:        var(--bp-fg-3);

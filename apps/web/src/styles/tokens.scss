@@ -114,13 +114,20 @@ html[data-theme="dark"] {
   --bp-bg-3: #383a42;
   --bp-bg-4: #44464f;
   --bp-line:    #4a4c55;
-  --bp-line-2:  rgba(255, 255, 255, 0.08);
+  // 2026-05-14 UI audit: 0.08 input/border alpha çok silikti → 0.14
+  // (input/select kenarları dark zeminde fark edilir; hover/focus ezme
+  // yine devam eder).
+  --bp-line-2:  rgba(255, 255, 255, 0.14);
 
   // ── Foreground / text ──────────────────────────────────────────────────────
   --bp-fg-1: #f4f4f6;
   --bp-fg-2: #c8cad3;
-  --bp-fg-3: #8e909c;
-  --bp-fg-4: #5c5e6a;
+  // 2026-05-14 UI audit: dark theme muted/label rengi #8e909c → #a8aab6.
+  // 59+ component'te kullanılıyor; eski değer bg-1/bg-2 üzerinde ~4.5:1
+  // marjinal kontrastla "okunması zor" eşiğindeydi. Yeni değer ~6.5:1
+  // (WCAG AA bolca geçer; muted/secondary semantiği korunur).
+  --bp-fg-3: #a8aab6;
+  --bp-fg-4: #6e7080;
 
   // ── Schedule status badge (dark) ───────────────────────────────────────────
   --bp-status-DRAFT-bg:     rgba(107, 114, 128, 0.20);
