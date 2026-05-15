@@ -88,7 +88,8 @@ const USER_TYPE_LABELS: Record<KcUser['userType'], string> = {
         </mat-form-field>
         <mat-form-field>
           <mat-label>Yeni Geçici Şifre</mat-label>
-          <input matInput type="password" [(ngModel)]="password" name="password">
+          <input matInput type="password" [(ngModel)]="password" name="password" minlength="6">
+          <mat-hint>Boş bırakılırsa değişmez; en az 6 karakter</mat-hint>
         </mat-form-field>
         <mat-slide-toggle [(ngModel)]="f.enabled" name="enabled">
           {{ f.enabled ? 'Aktif' : 'Pasif' }}
@@ -155,10 +156,41 @@ export class UserEditDialogComponent {
       next:  () => { this.saving.set(false); this.dialogRef.close(true); },
       error: (err) => {
         this.saving.set(false);
-        this.errorMsg.set(err?.error?.message ?? err?.message ?? 'Kullanıcı güncellenemedi');
+        this.errorMsg.set(formatUserApiError(err, 'Kullanıcı güncellenemedi'));
       },
     });
   }
+}
+
+/**
+ * 2026-05-15: Backend Zod `Validation failed` + `issues[]` veya Keycloak
+ * Admin REST hata gövdesi için ortak görüntü helper'ı. Kullanıcıya hangi
+ * alan(lar)ın reddedildiğini gösterir; aksi halde "Validation failed" tek
+ * başına anlamsızdı.
+ *
+ * Beklenen response shape:
+ *   400 Zod   → { statusCode, error, message: 'Validation failed', issues: [{ path, message }] }
+ *   409/4xx   → { statusCode, error, message }
+ *   Keycloak  → { errorMessage } veya text body
+ */
+export function formatUserApiError(err: unknown, fallback = 'Kullanıcı oluşturulamadı'): string {
+  const e = err as { error?: unknown; message?: string };
+  const body = e?.error as { message?: string; errorMessage?: string;
+                              issues?: Array<{ path?: unknown; message?: string }> } | string | undefined;
+
+  if (typeof body === 'string' && body.trim()) return body.trim();
+  if (body && typeof body === 'object') {
+    if (Array.isArray(body.issues) && body.issues.length > 0) {
+      const lines = body.issues.map((iss) => {
+        const path = Array.isArray(iss?.path) ? iss.path.join('.') : (iss?.path ?? '');
+        return path ? `${path}: ${iss?.message ?? ''}` : (iss?.message ?? '');
+      }).filter(Boolean);
+      if (lines.length) return lines.join(' · ');
+    }
+    if (body.errorMessage) return body.errorMessage;
+    if (body.message)      return body.message;
+  }
+  return e?.message ?? fallback;
 }
 
 // ── Yeni Kullanıcı Dialog ─────────────────────────────────────────────────────
@@ -183,15 +215,18 @@ export class UserEditDialogComponent {
         </div>
         <mat-form-field>
           <mat-label>Kullanıcı Adı *</mat-label>
-          <input matInput [(ngModel)]="f.username" name="un">
+          <input matInput [(ngModel)]="f.username" name="un" required
+                 minlength="3" maxlength="64" pattern="[a-zA-Z0-9._\-]+">
+          <mat-hint>3-64 karakter; harf/rakam/. _ - (Türkçe karakter yok)</mat-hint>
         </mat-form-field>
         <mat-form-field>
           <mat-label>E-posta *</mat-label>
-          <input matInput type="email" [(ngModel)]="f.email" name="em">
+          <input matInput type="email" [(ngModel)]="f.email" name="em" required>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Geçici Şifre *</mat-label>
-          <input matInput type="password" [(ngModel)]="f.password" name="pw">
+          <input matInput type="password" [(ngModel)]="f.password" name="pw" required minlength="6">
+          <mat-hint>En az 6 karakter</mat-hint>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Personel Tipi</mat-label>
@@ -201,7 +236,7 @@ export class UserEditDialogComponent {
             <mat-option value="admin">Admin</mat-option>
           </mat-select>
         </mat-form-field>
-        <p style="font-size:12px;color:#aaa;margin:4px 0">Gruplar</p>
+        <p style="font-size:12px;color:#aaa;margin:4px 0">Gruplar * (en az 1)</p>
         <div style="display:flex;flex-wrap:wrap;gap:8px">
           @for (group of allGroups; track group) {
             <mat-checkbox
@@ -243,7 +278,18 @@ export class NewUserDialogComponent {
     userType: KcUser['userType'];
   } = { username: '', email: '', firstName: '', lastName: '', password: '', userType: 'staff' };
 
-  canSave = () => !!(this.f.username && this.f.email && this.f.password);
+  /** 2026-05-15: Backend Zod schema'ya birebir uyum — UI tarafı kabul-edilemez
+   *  payload göndermesin diye client-side gating. Sunucu yine son söz; eski
+   *  davranışta grup boş veya 6 karakter altı şifre 400 üretiyordu. */
+  canSave = () => {
+    const u = this.f.username.trim();
+    const e = this.f.email.trim();
+    const p = this.f.password;
+    return !!u && /^[a-zA-Z0-9._-]+$/.test(u) && u.length >= 3 && u.length <= 64
+        && !!e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)
+        && p.length >= 6
+        && this.selectedGroups.size > 0;
+  };
 
   toggleGroup(group: string, checked: boolean) {
     checked ? this.selectedGroups.add(group) : this.selectedGroups.delete(group);
@@ -257,8 +303,7 @@ export class NewUserDialogComponent {
       next:  () => { this.saving.set(false); this.dialogRef.close(true); },
       error: (err) => {
         this.saving.set(false);
-        const msg = err?.error?.message ?? err?.message ?? 'Kullanıcı oluşturulamadı';
-        this.errorMsg.set(msg);
+        this.errorMsg.set(formatUserApiError(err));
       },
     });
   }

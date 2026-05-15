@@ -8,8 +8,8 @@ type UserType = typeof USER_TYPES[number];
 
 /** HIGH-API-008 fix (2026-05-05): user create/update için zod validasyonu.
  *  - email: RFC 5322 email format
- *  - password: min 12 karakter (NIST SP 800-63B önerisi); UI tarafında temporary
- *    flag set edildiği için ilk girişte zaten değişmesi zorlanıyor.
+ *  - password: min 6 karakter (2026-05-15 revize — operatör iç ekip için
+ *    pratik eşik; UI temporary flag ilk girişte zaten değişmeyi zorluyor).
  *  - groups: BCMS_GROUPS subset
  *  - userType: USER_TYPES enum
  *
@@ -29,7 +29,7 @@ const userCommonInputSchema = z.object({
 });
 
 const userPasswordSchema = z.string()
-  .min(12, 'Şifre en az 12 karakter olmalı')
+  .min(6, 'Şifre en az 6 karakter olmalı')
   .max(256);
 
 const userCreateSchema = userCommonInputSchema.extend({
