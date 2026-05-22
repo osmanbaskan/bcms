@@ -236,11 +236,72 @@ function extractEventId(evd: Record<string, unknown>): string | null {
 }
 
 /**
- * EventData'dan ham tür string'i: classifier'ı besler.
- * Öncelik: NonProgramEvent.Details.AdType > ProgramEvent (=Program) >
- * eventType attribute (Primary-ProgramHeader → ProgramHeader).
+ * Türkçe + İngilizce canlı işaretleri için word-boundary'li regex.
+ * `Liverpool` veya `Olive` gibi substring false positive'leri engeller.
  */
-function deriveRawKind(evd: Record<string, unknown>): string | null {
+const LIVE_TEXT_RE = /\b(live|canlı|canli)\b/i;
+
+/**
+ * Canlı yayın sinyali tespiti. Birden çok BXF field'ı incelenir:
+ *   - `Content > Media > MediaLocation > Location > RouterSource > Name`
+ *     → "Live" (case-insensitive). Provys'in en güçlü canlı işareti
+ *     (dosya playout değil, router üstünden anlık feed).
+ *   - `Content > Description[@type="VersionName"]` → "Canlı" / "Live"
+ *     metin sinyali. UI'da operatöre görünen ad bu alanı taşıyor.
+ *   - `EventData > EventTitle` veya `Content > Name` → text "Canlı"/"Live".
+ *
+ * `StartMode/EndMode = "Manual"` tek başına yetmez (canlı olmayan operatör
+ * trigger'lı event'ler de Manual olabilir); ancak RouterSource veya text
+ * sinyaliyle birlikte güçlü canlı kabul edilir.
+ */
+function hasLiveSignal(
+  scheduledEvent: Record<string, unknown>,
+  evd: Record<string, unknown>,
+): boolean {
+  const content = scheduledEvent['Content'] as Record<string, unknown> | undefined;
+
+  // 1) RouterSource > Name — Provys canonical canlı işareti
+  const routerName = ((((content?.['Media'] as Record<string, unknown> | undefined)
+    ?.['MediaLocation'] as Record<string, unknown> | undefined)
+    ?.['Location'] as Record<string, unknown> | undefined)
+    ?.['RouterSource'] as Record<string, unknown> | undefined)
+    ?.['Name'];
+  if (typeof routerName === 'string' && LIVE_TEXT_RE.test(routerName)) {
+    return true;
+  }
+
+  // 2) VersionName / EventTitle / Content.Name içinde 'canlı' / 'live'
+  const versionName = findDescriptionText(content, 'VersionName');
+  if (versionName && LIVE_TEXT_RE.test(versionName)) return true;
+
+  const eventTitle = evd['EventTitle'];
+  if (typeof eventTitle === 'string' && LIVE_TEXT_RE.test(eventTitle)) return true;
+
+  const contentName = content?.['Name'];
+  if (typeof contentName === 'string' && LIVE_TEXT_RE.test(contentName)) return true;
+
+  // 3) StartMode + EndMode "Manual" tek başına yetmez — yukarıdaki sinyallerden
+  //    biri zaten true olmadan canlı kabul edilmez. (False positive azaltma.)
+  return false;
+}
+
+/**
+ * EventData'dan ham tür string'i: classifier'ı besler.
+ *
+ * Öncelik:
+ *   1. CANLI sinyali (RouterSource.Name veya VersionName/Title 'Canlı/Live')
+ *      → `Live` (classifier 'Live' → CANLI kategorisi).
+ *   2. NonProgramEvent.Details.AdType (Promo / Paid Program / PSA / ...)
+ *   3. ProgramEvent → `Program`
+ *   4. eventType attribute (Primary-ProgramHeader → `ProgramHeader`)
+ */
+function deriveRawKind(
+  scheduledEvent: Record<string, unknown>,
+  evd: Record<string, unknown>,
+): string | null {
+  // (1) Canlı sinyali — ProgramEvent olsa bile öncelikli
+  if (hasLiveSignal(scheduledEvent, evd)) return 'Live';
+
   const primary = evd['PrimaryEvent'] as Record<string, unknown> | undefined;
   if (primary) {
     const npe = primary['NonProgramEvent'] as Record<string, unknown> | undefined;
@@ -405,7 +466,7 @@ export function parseBxf(content: string): ParsedItem[] {
     const title = deriveTitle(sev as Record<string, unknown>, evd);
     if (!title) continue;
 
-    const rawKind = deriveRawKind(evd);
+    const rawKind = deriveRawKind(sev as Record<string, unknown>, evd);
     const durationFields = parseDuration(evd['LengthOption']);
     const dcCode = extractDcCode(sev as Record<string, unknown>);
     const frameRate = startFields.frameRate ?? durationFields.frameRate ?? null;

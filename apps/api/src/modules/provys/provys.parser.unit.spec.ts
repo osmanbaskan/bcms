@@ -338,6 +338,94 @@ describe('provys.parser › parseBxf (SMPTE 2021)', () => {
     expect(c?.dcCode).toBeNull();
   });
 
+  describe('canlı sınıflandırma — ProgramEvent olsa bile CANLI sinyali öncelikli', () => {
+    const wrap = (body: string) => `<?xml version="1.0"?>
+<BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF"><BxfData><Schedule>
+  ${body}
+</Schedule></BxfData></BxfMessage>`;
+
+    const programEv = (id: string, contentInner: string, titleField = 'Haberler') => `
+      <ScheduledEvent>
+        <EventData eventType="Primary">
+          <EventId><EventId>${id}</EventId></EventId>
+          <EventTitle>${titleField}</EventTitle>
+          <PrimaryEvent><ProgramEvent><ProgramName>${titleField}</ProgramName></ProgramEvent></PrimaryEvent>
+          <StartDateTime><SmpteDateTime broadcastDate="2026-05-22" frameRate="25"><SmpteTimeCode>16:00:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+          <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:25:00:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+        </EventData>
+        <Content>${contentInner}</Content>
+      </ScheduledEvent>`;
+
+    it('ProgramEvent + RouterSource Name="Live" → category CANLI, rawKind="Live"', () => {
+      const items = parseBxf(wrap(programEv('LIVE-ROUTER', `
+        <ContentId><HouseNumber>DC00099999</HouseNumber></ContentId>
+        <Name>Haberler</Name>
+        <Media><MediaLocation>
+          <Location><RouterSource><Name>Live</Name></RouterSource></Location>
+        </MediaLocation></Media>`)));
+      expect(items[0]).toMatchObject({ rawKind: 'Live', category: 'CANLI' });
+    });
+
+    it('ProgramEvent + VersionName "Canlı" → category CANLI (DC00055216 fixture)', () => {
+      const items = parseBxf(wrap(programEv('DC00055216-FIXTURE', `
+        <ContentId><HouseNumber>DC00055216</HouseNumber></ContentId>
+        <Name>Haberler</Name>
+        <Description type="VersionName">Haber 16 - Canlı</Description>
+        <Media><MediaLocation>
+          <Location><RouterSource><Name>Live</Name></RouterSource></Location>
+        </MediaLocation></Media>`)));
+      expect(items[0]).toMatchObject({
+        dcCode: 'DC00055216',
+        title: 'Haber 16 - Canlı',
+        rawKind: 'Live',
+        category: 'CANLI',
+      });
+    });
+
+    it('EventTitle "Live" + ProgramEvent → CANLI (RouterSource yoksa bile)', () => {
+      const items = parseBxf(wrap(programEv('LIVE-TITLE', `
+        <ContentId><HouseNumber>DC00077777</HouseNumber></ContentId>
+        <Name>Game</Name>`, 'Live Football')));
+      expect(items[0].category).toBe('CANLI');
+    });
+
+    it('Normal ProgramEvent (canlı sinyal yok) → PROGRAM kalır', () => {
+      const items = parseBxf(wrap(programEv('PROG-NORMAL', `
+        <ContentId><HouseNumber>DC00088888</HouseNumber></ContentId>
+        <Name>Dizi</Name>
+        <Description type="VersionName">Episode 4</Description>`)));
+      expect(items[0]).toMatchObject({ rawKind: 'Program', category: 'PROGRAM' });
+    });
+
+    it('"Liverpool" substring CANLI false positive üretmez (word boundary)', () => {
+      const items = parseBxf(wrap(programEv('LVP', `
+        <ContentId><HouseNumber>DC00066666</HouseNumber></ContentId>
+        <Name>Liverpool vs Chelsea</Name>
+        <Description type="VersionName">Liverpool vs Chelsea — Bant</Description>`, 'Liverpool vs Chelsea')));
+      expect(items[0].category).toBe('PROGRAM');
+    });
+
+    it('Promo / Commercial / Paid Program davranışı bozulmaz (canlı sinyal yok)', () => {
+      const promo = (id: string, adType: string) => `
+        <ScheduledEvent>
+          <EventData eventType="Primary">
+            <EventId><EventId>${id}</EventId></EventId>
+            <EventTitle>Promo</EventTitle>
+            <PrimaryEvent><NonProgramEvent><Details>
+              <AdType>${adType}</AdType><SpotType>Standard</SpotType>
+            </Details></NonProgramEvent></PrimaryEvent>
+            <StartDateTime><SmpteDateTime broadcastDate="2026-05-22" frameRate="25"><SmpteTimeCode>10:00:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+            <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:00:30:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+          </EventData>
+        </ScheduledEvent>`;
+      const items = parseBxf(wrap(promo('P1', 'Promo') + promo('P2', 'Commercial') + promo('P3', 'Paid Program')));
+      const byId = new Map(items.map((i) => [i.eventId, i]));
+      expect(byId.get('P1')?.category).toBe('TANITIM');
+      expect(byId.get('P2')?.category).toBe('REKLAM');
+      expect(byId.get('P3')?.category).toBe('PROGRAM');  // "Paid Program" mevcut sınıflandırma
+    });
+  });
+
   it('converts SmpteDuration HH:MM:SS:FF to ms using frameRate', () => {
     const items = parseBxf(SAMPLE_BXF);
     // 00:15:01:16 @ 25fps = (15*60+1)s + 16/25s = 901.64s → 901640ms
