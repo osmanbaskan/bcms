@@ -243,6 +243,10 @@ services:
       # PROVYS_HOST_MOUNT host tarafında elle mount edilmiş cifs path olur
       # (örn. /mnt/provys); credential repo'ya konmaz, host operasyon sorumlu.
       PROVYS_WATCH_FOLDER: /app/tmp/provys
+      # CIFS mount'ta inotify diğer SMB client'larının yazımını taşımıyor;
+      # polling moduyla yeni dosyalar interval (default 30sn) içinde yakalanır.
+      PROVYS_WATCHER_USE_POLLING: ${PROVYS_WATCHER_USE_POLLING:-false}
+      PROVYS_WATCHER_POLL_INTERVAL_MS: ${PROVYS_WATCHER_POLL_INTERVAL_MS:-30000}
     volumes:
       - ingest_watch:/app/tmp/watch
       - ${PROVYS_HOST_MOUNT:-./tmp/provys}:/app/tmp/provys:ro

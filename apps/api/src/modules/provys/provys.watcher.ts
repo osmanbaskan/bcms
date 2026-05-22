@@ -17,6 +17,34 @@ const DEBOUNCE_MS = Number(process.env.PROVYS_WATCHER_DEBOUNCE_MS ?? '1500');
 const CONCURRENCY = Math.max(1, Number(process.env.PROVYS_WATCHER_CONCURRENCY ?? '3'));
 
 /**
+ * Env'den boolean parse — '1' / 'true' / 'yes' / 'on' (case-insensitive)
+ * truthy; geri kalan her şey false. PROVYS_WATCHER_USE_POLLING için
+ * CIFS/SMB mount'larda inotify event'leri tetiklenmediği için manuel
+ * polling açma sviç'i.
+ */
+export function parseBoolEnv(raw: string | undefined, fallback = false): boolean {
+  if (raw === undefined) return fallback;
+  const v = raw.trim().toLowerCase();
+  if (v === '') return fallback;
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
+
+/**
+ * Sayısal env parse — geçersiz / negatif / NaN → fallback. Polling interval
+ * 0/negatif olamaz (chokidar 0 verilirse her tick'te disk taraması yapar →
+ * IO bombardımanı). Defansif clamp ile minimum 1000 ms zorlanır.
+ */
+export function parsePollIntervalMs(raw: string | undefined, fallback = 30_000): number {
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.max(1000, Math.trunc(n));
+}
+
+const USE_POLLING = parseBoolEnv(process.env.PROVYS_WATCHER_USE_POLLING, false);
+const POLL_INTERVAL_MS = parsePollIntervalMs(process.env.PROVYS_WATCHER_POLL_INTERVAL_MS, 30_000);
+
+/**
  * Worker bağlamında çalışan dosya izleyici. Host-side CIFS mount + Docker
  * bind volume ile PROVYS_WATCH_FOLDER container içinde lokal path olarak
  * görünür; izleyici Samba protokolüne dokunmaz (filesystem watch yeterli).
@@ -47,9 +75,18 @@ export function startProvysWatcher(app: FastifyInstance): void {
     return;
   }
 
+  // CIFS/SMB mount'lar inotify event'lerini başka client'ların yazımı için
+  // güvenilir taşımaz; PROVYS_WATCHER_USE_POLLING=true ile chokidar polling
+  // moduna alınır. `interval` ve `binaryInterval` tarayıcının dosya keşfi
+  // sıklığını yönetir (default 30 sn). `awaitWriteFinish` ayrı bir kontrol —
+  // bir kez tetiklenen yazımın boyutu sabitlenene kadar event geciktirilir,
+  // bu yüzden write-stability poll'u (500 ms) ayrı tutuldu.
   const watcher = chokidar.watch(WATCH_FOLDER, {
     persistent: true,
     ignoreInitial: false,
+    usePolling: USE_POLLING,
+    interval: POLL_INTERVAL_MS,
+    binaryInterval: POLL_INTERVAL_MS,
     awaitWriteFinish: { stabilityThreshold: 3000, pollInterval: 500 },
   });
 
@@ -170,5 +207,14 @@ export function startProvysWatcher(app: FastifyInstance): void {
     }
   });
 
-  app.log.info({ folder: WATCH_FOLDER }, 'Provys watcher başlatıldı');
+  app.log.info(
+    {
+      folder: WATCH_FOLDER,
+      usePolling: USE_POLLING,
+      pollIntervalMs: POLL_INTERVAL_MS,
+      debounceMs: DEBOUNCE_MS,
+      concurrency: CONCURRENCY,
+    },
+    'Provys watcher başlatıldı',
+  );
 }
