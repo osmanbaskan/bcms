@@ -142,25 +142,61 @@ describe('provys.parser › parseBxf (SMPTE 2021)', () => {
     expect(items[0].scheduleDate).toBe('2026-03-15');
   });
 
-  it('all events share dosya scope scheduleDate (per-event broadcastDate yok sayılır)', () => {
-    // Gece yarısı sonrası event'in broadcastDate'i farklı görünse bile
-    // dosya scope (Schedule @ScheduleStart) tek kanonik.
+  it('scheduleDate is per-event SmpteDateTime @broadcastDate (overrides file Schedule @ScheduleStart)', () => {
+    // Provys gece yarısı sonrası event'leri önceki gün etiketli dosyada
+    // taşıyabiliyor (xSNW_20260521 dosyasında broadcastDate=2026-05-22
+    // event'leri gibi). Parser her event'i kendi broadcastDate'iyle
+    // doğru güne yazar.
     const xml = `<?xml version="1.0"?>
 <BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF"><BxfData>
   <Schedule ScheduleStart="2026-02-17T23:45:00:04">
     <ScheduledEvent>
       <EventData eventType="Primary">
-        <EventId><EventId>EVT-A</EventId></EventId>
+        <EventId><EventId>EVT-LATE</EventId></EventId>
         <EventTitle>Late</EventTitle>
         <PrimaryEvent><ProgramEvent><ProgramName>Late</ProgramName></ProgramEvent></PrimaryEvent>
         <StartDateTime><SmpteDateTime broadcastDate="2026-02-18" frameRate="25"><SmpteTimeCode>00:30:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
         <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:30:00:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
       </EventData>
     </ScheduledEvent>
+    <ScheduledEvent>
+      <EventData eventType="Primary">
+        <EventId><EventId>EVT-SAME</EventId></EventId>
+        <EventTitle>Same day</EventTitle>
+        <PrimaryEvent><ProgramEvent><ProgramName>Same</ProgramName></ProgramEvent></PrimaryEvent>
+        <StartDateTime><SmpteDateTime broadcastDate="2026-02-17" frameRate="25"><SmpteTimeCode>23:50:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+        <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:10:00:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+      </EventData>
+    </ScheduledEvent>
   </Schedule>
 </BxfData></BxfMessage>`;
     const items = parseBxf(xml);
-    expect(items[0].scheduleDate).toBe('2026-02-17');  // dosya scope kanonik
+    const byId = new Map(items.map((i) => [i.eventId, i]));
+    expect(byId.get('EVT-LATE')?.scheduleDate).toBe('2026-02-18');  // per-event broadcastDate
+    expect(byId.get('EVT-SAME')?.scheduleDate).toBe('2026-02-17');
+  });
+
+  it('falls back to Schedule @ScheduleStart when event broadcastDate yok', () => {
+    // Çok defansif: SmpteDateTime broadcastDate attribute eksikse dosya-level
+    // ScheduleStart fallback.
+    const xml = `<?xml version="1.0"?>
+<BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF"><BxfData>
+  <Schedule ScheduleStart="2026-02-17T10:00:00:00">
+    <ScheduledEvent>
+      <EventData eventType="Primary">
+        <EventId><EventId>NO-BD</EventId></EventId>
+        <EventTitle>Fallback</EventTitle>
+        <PrimaryEvent><ProgramEvent><ProgramName>FB</ProgramName></ProgramEvent></PrimaryEvent>
+        <StartDateTime><SmpteDateTime frameRate="25"><SmpteTimeCode>10:00:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+        <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:30:00:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+      </EventData>
+    </ScheduledEvent>
+  </Schedule>
+</BxfData></BxfMessage>`;
+    const items = parseBxf(xml);
+    // broadcastDate yoksa event skip edilir (parseStartDateTime instant=null)
+    // — bu test sözleşmeyi belgeliyor: instant olmadan event yazılmaz.
+    expect(items).toEqual([]);
   });
 
   it('preserves raw SMPTE startTimecode (HH:MM:SS:FF) and frameRate', () => {

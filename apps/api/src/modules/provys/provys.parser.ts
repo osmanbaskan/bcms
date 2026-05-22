@@ -144,20 +144,23 @@ interface StartDateTimeFields {
   instant: Date | null;
   timecode: string | null;   // ham SmpteTimeCode (HH:MM:SS:FF)
   frameRate: number | null;
+  /** Event'in kendi yayın günü `YYYY-MM-DD` — scheduleDate kanonik. */
+  broadcastDate: string | null;
 }
 
 function parseStartDateTime(startDt: unknown): StartDateTimeFields {
-  if (!startDt || typeof startDt !== 'object') return { instant: null, timecode: null, frameRate: null };
+  if (!startDt || typeof startDt !== 'object') return { instant: null, timecode: null, frameRate: null, broadcastDate: null };
   const smpte = (startDt as Record<string, unknown>)['SmpteDateTime'] as Record<string, unknown> | undefined;
-  if (!smpte) return { instant: null, timecode: null, frameRate: null };
-  const broadcastDate = String(smpte['@_broadcastDate'] ?? '').trim();
+  if (!smpte) return { instant: null, timecode: null, frameRate: null, broadcastDate: null };
+  const rawBroadcastDate = String(smpte['@_broadcastDate'] ?? '').trim();
+  const broadcastDate = ISO_DATE_RE.test(rawBroadcastDate) ? rawBroadcastDate : null;
   const rawTimecode = String(smpte['SmpteTimeCode'] ?? '').trim();
   const timecode = SMPTE_TIMECODE_RE.test(rawTimecode) ? rawTimecode : null;
   const wall = smpteToWallClock(rawTimecode);
   const frFromAttr = Number(smpte['@_frameRate']);
   const frameRate = Number.isFinite(frFromAttr) && frFromAttr > 0 ? frFromAttr : null;
   if (!broadcastDate || !wall) {
-    return { instant: null, timecode, frameRate };
+    return { instant: null, timecode, frameRate, broadcastDate };
   }
   try {
     const dt = composeIstanbulInstant(broadcastDate, wall);
@@ -165,9 +168,10 @@ function parseStartDateTime(startDt: unknown): StartDateTimeFields {
       instant: Number.isNaN(dt.getTime()) ? null : dt,
       timecode,
       frameRate,
+      broadcastDate,
     };
   } catch {
-    return { instant: null, timecode, frameRate };
+    return { instant: null, timecode, frameRate, broadcastDate };
   }
 }
 
@@ -370,20 +374,14 @@ export function parseBxf(content: string): ParsedItem[] {
   const schedule = bxfData?.['Schedule'] as Record<string, unknown> | undefined;
   const scheduledEvents = toArray(schedule?.['ScheduledEvent']);
 
-  // Yayın günü: dosya scope. Öncelik Schedule @ScheduleStart YYYY-MM-DD
-  // prefix'i (örn. "2026-02-17T23:45:00:04" → "2026-02-17"); yoksa ilk
-  // event'in SmpteDateTime @broadcastDate'i fallback.
+  // Yayın günü kanonik kaynağı: **her event'in kendi** SmpteDateTime
+  // @broadcastDate'i. Provys gece yarısı civarı event'leri önceki gün
+  // etiketli dosyalarda taşıyabiliyor (örn. xSNW_20260521 dosyasında
+  // broadcastDate=2026-05-22 event'leri); per-event broadcastDate doğru
+  // güne yazılmayı garanti eder. Dosya-level Schedule @ScheduleStart sadece
+  // event broadcastDate yoksa fallback.
   const scheduleStart = String(schedule?.['@_ScheduleStart'] ?? '').trim();
-  let scheduleDate = scheduleStart.slice(0, 10);
-  if (!ISO_DATE_RE.test(scheduleDate)) {
-    for (const sev of scheduledEvents) {
-      const evd = (sev as Record<string, unknown> | undefined)?.['EventData'] as Record<string, unknown> | undefined;
-      const smpte = (evd?.['StartDateTime'] as Record<string, unknown> | undefined)?.['SmpteDateTime'] as Record<string, unknown> | undefined;
-      const bd = String(smpte?.['@_broadcastDate'] ?? '').trim();
-      if (ISO_DATE_RE.test(bd)) { scheduleDate = bd; break; }
-    }
-  }
-  if (!ISO_DATE_RE.test(scheduleDate)) return [];  // tarih yoksa parse anlamsız
+  const fileLevelFallback = ISO_DATE_RE.test(scheduleStart.slice(0, 10)) ? scheduleStart.slice(0, 10) : null;
 
   const items: ParsedItem[] = [];
   let seq = 0;
@@ -400,6 +398,9 @@ export function parseBxf(content: string): ParsedItem[] {
     const eventId = extractEventId(evd);
     const startFields = parseStartDateTime(evd['StartDateTime']);
     if (!eventId || !startFields.instant) continue;
+
+    const scheduleDate = startFields.broadcastDate ?? fileLevelFallback;
+    if (!scheduleDate) continue;  // ne event ne dosya tarihi varsa skip
 
     const title = deriveTitle(sev as Record<string, unknown>, evd);
     if (!title) continue;

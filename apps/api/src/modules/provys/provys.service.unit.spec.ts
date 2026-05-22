@@ -39,54 +39,98 @@ describe('provys.service › buildDiff (channel + scheduleDate scope)', () => {
     expect((diff.toCreate[0] as { scheduleDate: Date }).scheduleDate.toISOString().slice(0, 10)).toBe(DATE);
   });
 
-  it('plans deletes for items missing from new parse', () => {
+  it('plans deletes for items missing from new parse — but ONLY if sourceFile matches current', () => {
     const parsed = [p({ eventId: 'A' })];
+    const FILE = '/f.bxf';
     const existing = [
-      { id: 10, eventId: 'A',   payloadHash: computeHash(parsed[0]) },
-      { id: 20, eventId: 'OLD', payloadHash: 'whatever' },
+      { id: 10, eventId: 'A',   payloadHash: computeHash(parsed[0]), sourceFile: FILE },
+      { id: 20, eventId: 'OLD', payloadHash: 'whatever',             sourceFile: FILE },
     ];
-    const diff = buildDiff('beinsports1', DATE, '/f.bxf', mtime, parsed, existing);
+    const diff = buildDiff('beinsports1', DATE, FILE, mtime, parsed, existing);
     expect(diff.toCreate).toHaveLength(0);
     expect(diff.toDeleteIds).toEqual([20]);
   });
 
-  it('plans updates only when payloadHash differs', () => {
+  it('plans updates when payloadHash differs OR sourceFile differs', () => {
     const itemA = p({ eventId: 'A', title: 'Original' });
     const itemB = p({ eventId: 'B', sequence: 1, title: 'B-Original' });
+    const itemC = p({ eventId: 'C', sequence: 2 });
+    const FILE = '/current.bxf';
     const existing = [
-      { id: 1, eventId: 'A', payloadHash: computeHash(itemA) },
-      { id: 2, eventId: 'B', payloadHash: 'stale-hash' },
+      { id: 1, eventId: 'A', payloadHash: computeHash(itemA), sourceFile: FILE },          // unchanged
+      { id: 2, eventId: 'B', payloadHash: 'stale-hash',        sourceFile: FILE },          // hash diff
+      { id: 3, eventId: 'C', payloadHash: computeHash(itemC), sourceFile: '/other.bxf' },  // sourceFile diff
     ];
-    const diff = buildDiff('beinsports1', DATE, '/f.bxf', mtime, [itemA, itemB], existing);
-    expect(diff.toUpdate.map((u) => u.id)).toEqual([2]);
+    const diff = buildDiff('beinsports1', DATE, FILE, mtime, [itemA, itemB, itemC], existing);
+    expect(diff.toUpdate.map((u) => u.id).sort()).toEqual([2, 3]);
   });
 
-  it('is idempotent when same input produces same hashes', () => {
+  it('is idempotent when same input + same sourceFile produces same hashes', () => {
     const a = p({ eventId: 'A' });
     const b = p({ eventId: 'B', sequence: 1 });
+    const FILE = '/f.bxf';
     const existing = [
-      { id: 1, eventId: 'A', payloadHash: computeHash(a) },
-      { id: 2, eventId: 'B', payloadHash: computeHash(b) },
+      { id: 1, eventId: 'A', payloadHash: computeHash(a), sourceFile: FILE },
+      { id: 2, eventId: 'B', payloadHash: computeHash(b), sourceFile: FILE },
     ];
-    const diff = buildDiff('beinsports1', DATE, '/f.bxf', mtime, [a, b], existing);
+    const diff = buildDiff('beinsports1', DATE, FILE, mtime, [a, b], existing);
     expect(diff.toCreate).toEqual([]);
     expect(diff.toUpdate).toEqual([]);
     expect(diff.toDeleteIds).toEqual([]);
   });
 
-  it('mixes insert + update + delete in one diff', () => {
+  it('mixes insert + update + delete in one diff (single sourceFile)', () => {
     const stay   = p({ eventId: 'STAY' });
     const change = p({ eventId: 'CHANGE', title: 'New title' });
     const fresh  = p({ eventId: 'FRESH',  sequence: 2 });
+    const FILE = '/f.bxf';
     const existing = [
-      { id: 1, eventId: 'STAY',   payloadHash: computeHash(stay) },
-      { id: 2, eventId: 'CHANGE', payloadHash: 'stale' },
-      { id: 3, eventId: 'GONE',   payloadHash: 'whatever' },
+      { id: 1, eventId: 'STAY',   payloadHash: computeHash(stay), sourceFile: FILE },
+      { id: 2, eventId: 'CHANGE', payloadHash: 'stale',           sourceFile: FILE },
+      { id: 3, eventId: 'GONE',   payloadHash: 'whatever',        sourceFile: FILE },
     ];
-    const diff = buildDiff('beinsports1', DATE, '/f.bxf', mtime, [stay, change, fresh], existing);
+    const diff = buildDiff('beinsports1', DATE, FILE, mtime, [stay, change, fresh], existing);
     expect(diff.toCreate.map((c) => c.eventId)).toEqual(['FRESH']);
     expect(diff.toUpdate.map((u) => u.id)).toEqual([2]);
     expect(diff.toDeleteIds).toEqual([3]);
+  });
+
+  it('DELETE is sourceFile-scoped — other sources for the same channel+date are NOT deleted', () => {
+    // xSNW_20260521 dosyası parse edildiğinde 22 Mayıs grubunda yalnız o
+    // dosyaya ait olmayan event'leri eklesin/güncellesin; aynı (channel, date)
+    // için xSNW_20260522 dosyasından gelmiş satırlara DOKUNMASIN.
+    const newFromCurrent = p({ eventId: 'A' });
+    const CURRENT = '/xSNW_20260521.bxf';
+    const OTHER   = '/xSNW_20260522.bxf';
+    const existing = [
+      // Diğer dosyadan gelen satır; parsed'de yok ama silinmemeli.
+      { id: 100, eventId: 'OTHER1', payloadHash: 'x', sourceFile: OTHER },
+      { id: 101, eventId: 'OTHER2', payloadHash: 'x', sourceFile: OTHER },
+      // Current dosyadan gelmiş eski satır; parsed'de yok → silinmeli.
+      { id: 200, eventId: 'CURRENT_GONE', payloadHash: 'y', sourceFile: CURRENT },
+    ];
+    const diff = buildDiff('beinhaber', DATE, CURRENT, mtime, [newFromCurrent], existing);
+    expect(diff.toCreate.map((c) => c.eventId)).toEqual(['A']);
+    expect(diff.toDeleteIds).toEqual([200]);
+    // OTHER1/OTHER2 korunmalı.
+    expect(diff.toDeleteIds).not.toContain(100);
+    expect(diff.toDeleteIds).not.toContain(101);
+  });
+
+  it('UPDATE captures sourceFile takeover (same eventId reappears in another file)', () => {
+    // Aynı eventId iki dosyada görünürse son işlenen dosya kazanır:
+    // existing.sourceFile=OTHER, current=THIS → UPDATE (sourceFile takeover).
+    const item = p({ eventId: 'SHARED' });
+    const THIS  = '/this.bxf';
+    const OTHER = '/other.bxf';
+    const existing = [
+      { id: 7, eventId: 'SHARED', payloadHash: computeHash(item), sourceFile: OTHER },
+    ];
+    const diff = buildDiff('beinhaber', DATE, THIS, mtime, [item], existing);
+    // Hash aynı ama sourceFile farklı → UPDATE
+    expect(diff.toUpdate.map((u) => u.id)).toEqual([7]);
+    expect(diff.toDeleteIds).toEqual([]);
+    expect(diff.toCreate).toEqual([]);
   });
 });
 

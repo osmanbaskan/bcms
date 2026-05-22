@@ -51,13 +51,23 @@ function computeHash(item: Pick<ParsedItem, 'eventId' | 'startAt' | 'durationMs'
  * yalnız bu kanal+gün satırlarını içermeli; başka günler caller tarafından
  * filtrelenir.
  */
+/**
+ * Diff scope `(channelSlug, scheduleDate)` ama DELETE filtresi `sourceFile`
+ * eşitliğiyle kısıtlı. Bir gün'ün event'leri **birden çok dosyadan** gelmiş
+ * olabilir (örn. xSNW_20260521.bxf gece yarısı sonrası event'leri 22 Mayıs
+ * snapshot'ına katkı yapar). Bu durumda current dosya parse edilirken
+ * **başka dosyadan** gelmiş kayıtları DELETE etmeyiz; sadece current dosyaya
+ * ait olup artık parsed listede olmayanları sileriz. INSERT/UPDATE upsert
+ * mantığıyla: aynı (channelSlug, scheduleDate, eventId) DB'de varsa
+ * (kaynak dosya ne olursa olsun) UPDATE; yoksa INSERT.
+ */
 function buildDiff(
   channelSlug: ProvysChannelSlug,
   scheduleDate: string,
   sourceFile: string,
   sourceMtime: Date,
   parsed: ParsedItem[],
-  existing: Array<{ id: number; eventId: string; payloadHash: string }>,
+  existing: Array<{ id: number; eventId: string; payloadHash: string; sourceFile: string }>,
 ): DiffPlan {
   const existingByEventId = new Map(existing.map((r) => [r.eventId, r]));
   const parsedByEventId = new Map(parsed.map((p) => [p.eventId, p]));
@@ -90,7 +100,10 @@ function buildDiff(
         sourceMtime,
         payloadHash: hash,
       });
-    } else if (existingRow.payloadHash !== hash) {
+    } else if (existingRow.payloadHash !== hash || existingRow.sourceFile !== sourceFile) {
+      // Hash farkı veya kaynak dosya farkı → güncelle. sourceFile/sourceMtime
+      // yeni dosyaya yazılır; aynı eventId tekrar farklı dosyada görülürse
+      // son işlenen kazanır (upsert davranışı).
       toUpdate.push({
         id: existingRow.id,
         data: {
@@ -112,8 +125,12 @@ function buildDiff(
     }
   }
 
+  // DELETE sadece current dosyaya ait orphan'lar için — diğer dosyadan gelen
+  // satırlar dokunulmaz.
   for (const e of existing) {
-    if (!parsedByEventId.has(e.eventId)) toDeleteIds.push(e.id);
+    if (!parsedByEventId.has(e.eventId) && e.sourceFile === sourceFile) {
+      toDeleteIds.push(e.id);
+    }
   }
 
   return { toCreate, toUpdate, toDeleteIds };
@@ -192,7 +209,7 @@ export async function syncProvysFile(
     const scheduleDateAsDb = new Date(`${scheduleDate}T00:00:00Z`);
     const existing = await prisma.provysItem.findMany({
       where: { channelSlug, scheduleDate: scheduleDateAsDb },
-      select: { id: true, eventId: true, payloadHash: true },
+      select: { id: true, eventId: true, payloadHash: true, sourceFile: true },
     });
 
     const diff = buildDiff(channelSlug, scheduleDate, filePath, stat.mtime, items, existing);
