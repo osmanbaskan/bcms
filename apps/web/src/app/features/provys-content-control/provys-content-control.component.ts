@@ -9,10 +9,17 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatDatepickerModule, MatDatepickerInputEvent } from '@angular/material/datepicker';
 import { MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
+import { MatButtonToggleModule, MatButtonToggleChange } from '@angular/material/button-toggle';
 import { LoggerService } from '../../core/services/logger.service';
 import { ProvysService } from './provys.service';
 import { ProvysChannelPanelComponent } from './provys-channel-panel.component';
-import { PROVYS_CHANNELS, type ProvysChannelSlug } from './provys.types';
+import {
+  PROVYS_CHANNELS,
+  PROVYS_CATEGORIES,
+  PROVYS_CATEGORY_STYLES,
+  type ProvysCategory,
+  type ProvysChannelSlug,
+} from './provys.types';
 
 function isoFromDate(d: Date): string {
   // Date picker user-local; UI Europe/Istanbul varsayar. Naive YYYY-MM-DD.
@@ -40,6 +47,7 @@ function dateFromIso(iso: string): Date {
     MatFormFieldModule,
     MatInputModule,
     MatDatepickerModule,
+    MatButtonToggleModule,
     ProvysChannelPanelComponent,
   ],
   providers: [
@@ -94,6 +102,28 @@ function dateFromIso(iso: string): Date {
           </div>
         </div>
       </header>
+
+      <div class="filter-bar">
+        <span class="filter-label">Kategoriler:</span>
+        <mat-button-toggle-group
+          multiple
+          class="cat-toggle"
+          [value]="selectedCategoryArray()"
+          (change)="onCategoryToggle($event)"
+          hideSingleSelectionIndicator="true"
+          aria-label="Kategori filtresi"
+        >
+          @for (cat of categories; track cat) {
+            <mat-button-toggle [value]="cat" [class]="'cat-toggle-btn cat-toggle--' + cat.toLowerCase()">
+              <span class="cat-swatch" [style.background]="swatchColor(cat)"></span>
+              <span class="cat-toggle-label">{{ categoryLabel(cat) }}</span>
+            </mat-button-toggle>
+          }
+        </mat-button-toggle-group>
+        <span class="count-label" aria-live="polite">
+          {{ visibleCount() }} / {{ totalCount() }} kayıt
+        </span>
+      </div>
 
       <mat-tab-group
         class="provys-tabs"
@@ -164,10 +194,46 @@ function dateFromIso(iso: string): Date {
       border-bottom: 1px solid var(--bp-line);
       background: var(--bp-bg-2);
     }
+    .filter-bar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 4px 16px 0 16px;
+    }
+    .filter-label {
+      font-size: 11.5px; color: var(--bp-fg-3);
+      font-weight: var(--bp-fw-semibold, 600);
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .cat-toggle ::ng-deep .mat-button-toggle {
+      background: var(--bp-bg-3);
+      color: var(--bp-fg-2);
+      border-color: var(--bp-line) !important;
+    }
+    .cat-toggle ::ng-deep .mat-button-toggle-checked {
+      background: var(--bp-bg-1);
+      color: var(--bp-fg-1);
+    }
+    .cat-toggle ::ng-deep .mat-button-toggle-button {
+      height: 28px; padding: 0 8px;
+    }
+    .cat-toggle ::ng-deep .mat-button-toggle-label-content {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11.5px; line-height: 1.2;
+    }
+    .cat-swatch {
+      display: inline-block; width: 9px; height: 9px;
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
+    }
+    .count-label {
+      font-size: 11.5px; color: var(--bp-fg-3);
+      font-variant-numeric: tabular-nums;
+      margin-left: auto;
+    }
   `],
 })
 export class ProvysContentControlComponent implements OnInit, OnDestroy {
   readonly channels = PROVYS_CHANNELS;
+  readonly categories = PROVYS_CATEGORIES;
   readonly selectedIndex = signal(0);
   readonly exporting = signal(false);
 
@@ -182,11 +248,33 @@ export class ProvysContentControlComponent implements OnInit, OnDestroy {
   /** Aktif tab → kanal slug. */
   readonly activeChannel = computed<ProvysChannelSlug>(() => this.channels[this.selectedIndex()].slug);
 
-  /** Export butonları — aktif kanal+gün için satır yoksa disable. */
-  readonly canExport = computed<boolean>(() => {
-    const ch = this.activeChannel();
-    return this.service.itemsFor(ch)().length > 0;
+  /** Kategori toggle-group için ham array (mat-button-toggle-group `value`). */
+  readonly selectedCategoryArray = computed<ProvysCategory[]>(() => {
+    const set = this.service.selectedCategories();
+    return this.categories.filter((c) => set.has(c));
   });
+
+  /** Sayım — aktif kanalın görünür/toplam satır sayısı. */
+  readonly totalCount = computed<number>(() => this.service.itemsFor(this.activeChannel())().length);
+  readonly visibleCount = computed<number>(() => this.service.filteredItemsFor(this.activeChannel())().length);
+
+  /** Export butonları — aktif kanal+gün+filtre için satır yoksa disable. */
+  readonly canExport = computed<boolean>(() => this.visibleCount() > 0);
+
+  categoryLabel(category: ProvysCategory): string {
+    return PROVYS_CATEGORY_STYLES[category]?.label ?? category;
+  }
+
+  /** Toggle UI swatch'ı için accent border rengi. */
+  swatchColor(category: ProvysCategory): string {
+    return PROVYS_CATEGORY_STYLES[category]?.border ?? '#9ca3af';
+  }
+
+  onCategoryToggle(ev: MatButtonToggleChange): void {
+    // `multiple` toggle-group: value = seçili kategori array'i
+    const selected = new Set(ev.value as ProvysCategory[]);
+    this.service.setSelectedCategories(selected);
+  }
 
   ngOnInit(): void {
     void this.service.loadInitial();

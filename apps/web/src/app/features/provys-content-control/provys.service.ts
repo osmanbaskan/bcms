@@ -1,9 +1,11 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, type Signal, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { ProvysSseClient } from './provys-sse.client';
 import {
   PROVYS_CHANNELS,
+  PROVYS_CATEGORIES,
+  type ProvysCategory,
   type ProvysChannelSlug,
   type ProvysItemDto,
   type ProvysStreamEvent,
@@ -40,6 +42,14 @@ export class ProvysService {
 
   /** Aktif yayın günü; UI date picker bunu set eder. */
   readonly activeDate = signal<string>(istanbulTodayDate());
+
+  /**
+   * Kullanıcının ekranda görmek istediği kategoriler. Default: tüm 6
+   * kategori görünür. Tab/tarih değişiminde korunur (date refetch sırasında
+   * sıfırlanmaz). UI client-side filter; raw store her zaman tüm satırları
+   * tutar, sadece `filteredItemsFor()` filtre uygular.
+   */
+  readonly selectedCategories = signal<ReadonlySet<ProvysCategory>>(new Set(PROVYS_CATEGORIES));
   /** O kanal için DB'de mevcut günler (`/provys/dates?channel=` döner). */
   private readonly availableDatesStore = new Map<ProvysChannelSlug, ReturnType<typeof signal<string[]>>>();
 
@@ -57,6 +67,31 @@ export class ProvysService {
     const s = this.channelStores.get(channel);
     if (!s) throw new Error(`Unknown Provys channel: ${channel}`);
     return s.asReadonly();
+  }
+
+  /**
+   * Aktif kategori filtresi uygulanmış liste (UI'da gösterilen). Tüm
+   * kategoriler aktifse ham `itemsFor` ile aynı sonucu döner.
+   */
+  filteredItemsFor(channel: ProvysChannelSlug): Signal<ProvysItemDto[]> {
+    return computed(() => {
+      const items = this.itemsFor(channel)();
+      const allowed = this.selectedCategories();
+      if (allowed.size === PROVYS_CATEGORIES.length) return items;
+      return items.filter((i) => allowed.has(i.category));
+    });
+  }
+
+  /** Aktif filtreyi değiştirir (multi-select). */
+  setSelectedCategories(set: ReadonlySet<ProvysCategory>): void {
+    this.selectedCategories.set(set);
+  }
+
+  toggleCategory(category: ProvysCategory): void {
+    const cur = new Set(this.selectedCategories());
+    if (cur.has(category)) cur.delete(category);
+    else cur.add(category);
+    this.selectedCategories.set(cur);
   }
 
   availableDatesFor(channel: ProvysChannelSlug) {
@@ -114,11 +149,28 @@ export class ProvysService {
    * (ApiService.getBlob + anchor download).
    */
   async exportExcel(channel: ProvysChannelSlug, date: string): Promise<void> {
-    await this.downloadBlob('/provys/export/excel', { channel, date }, `provys_${channel}_${date}.xlsx`);
+    const params: Record<string, string> = { channel, date };
+    const cats = this.activeCategoriesParam();
+    if (cats) params['categories'] = cats;
+    await this.downloadBlob('/provys/export/excel', params, `provys_${channel}_${date}.xlsx`);
   }
 
   async exportPdf(channel: ProvysChannelSlug, date: string): Promise<void> {
-    await this.downloadBlob('/provys/export/pdf', { channel, date }, `provys_${channel}_${date}.pdf`);
+    const params: Record<string, string> = { channel, date };
+    const cats = this.activeCategoriesParam();
+    if (cats) params['categories'] = cats;
+    await this.downloadBlob('/provys/export/pdf', params, `provys_${channel}_${date}.pdf`);
+  }
+
+  /**
+   * Aktif kategori filtresini export query param'ına çevirir. Tüm
+   * kategoriler seçiliyse `null` döner (param gönderme — backend default
+   * "tümü dahil"). Aksi halde virgül-ayrımlı liste.
+   */
+  private activeCategoriesParam(): string | null {
+    const selected = this.selectedCategories();
+    if (selected.size === PROVYS_CATEGORIES.length) return null;
+    return PROVYS_CATEGORIES.filter((c) => selected.has(c)).join(',');
   }
 
   private async downloadBlob(path: string, params: Record<string, string>, filename: string): Promise<void> {

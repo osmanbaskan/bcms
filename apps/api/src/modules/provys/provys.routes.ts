@@ -28,6 +28,28 @@ const channelDateQuerySchema = z.object({
   date: z.string().regex(ISO_DATE_RE).optional(),
 });
 
+const CATEGORY_ENUM = ['REKLAM', 'KAMU_SPOTU', 'CANLI', 'PROGRAM', 'TANITIM', 'DIGER'] as const;
+
+const exportQuerySchema = z.object({
+  channel: z.enum(PROVYS_CHANNEL_SLUGS as [string, ...string[]]),
+  date: z.string().regex(ISO_DATE_RE).optional(),
+  /**
+   * Virgül-ayrımlı kategori listesi (örn. `REKLAM,CANLI,PROGRAM`). Opsiyonel;
+   * verilmezse tüm kategoriler dahil edilir. Tek geçersiz değer dahi 400.
+   */
+  categories: z.string().optional().refine((s) => {
+    if (s === undefined || s === '') return true;
+    return s.split(',').every((c) => (CATEGORY_ENUM as readonly string[]).includes(c.trim()));
+  }, { message: 'Invalid category in categories parameter' }),
+});
+
+function parseCategoriesFilter(value: string | undefined): ReadonlySet<string> | null {
+  if (!value) return null;
+  const set = new Set(value.split(',').map((c) => c.trim()).filter(Boolean));
+  if (set.size === 0) return null;
+  return set;
+}
+
 const itemDtoSchema = z.object({
   id: z.number().int(),
   channelSlug: z.enum(PROVYS_CHANNEL_SLUGS as [string, ...string[]]),
@@ -129,24 +151,29 @@ export async function provysRoutes(app: FastifyInstance) {
     return itemsResponseSchema.parse(items);
   });
 
-  // GET /api/v1/provys/export/excel?channel=<slug>&date=YYYY-MM-DD
+  // GET /api/v1/provys/export/excel?channel=<slug>&date=YYYY-MM-DD&categories=REKLAM,CANLI,...
+  // `categories` opsiyonel — verilmezse tüm kategoriler dahil; verilirse
+  // sadece o kategorilerdeki satırlar export'a yansır (UI filtre paritesi).
   app.get('/export/excel', {
     preHandler: app.requireGroup(...PERMISSIONS.provys.read),
-    schema: { tags: ['Provys'], summary: 'Excel export — kanal × gün snapshot' },
+    schema: { tags: ['Provys'], summary: 'Excel export — kanal × gün snapshot (kategori filtreli)' },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const parsed = channelDateQuerySchema.parse(request.query);
+    const parsed = exportQuerySchema.parse(request.query);
     const date = parsed.date ?? istanbulTodayDate();
+    const allow = parseCategoriesFilter(parsed.categories);
     const items = await fetchChannelDateSnapshot(app, parsed.channel, date);
-    const rows: ProvysExportRow[] = items.map((i) => ({
-      sequence: i.sequence,
-      startTimecode: i.startTimecode,
-      durationTimecode: i.durationTimecode,
-      dcCode: i.dcCode,
-      title: i.title,
-      category: i.category,
-      rawKind: i.rawKind,
-      sourceFile: i.sourceFile,
-    }));
+    const rows: ProvysExportRow[] = items
+      .filter((i) => !allow || allow.has(i.category))
+      .map((i) => ({
+        sequence: i.sequence,
+        startTimecode: i.startTimecode,
+        durationTimecode: i.durationTimecode,
+        dcCode: i.dcCode,
+        title: i.title,
+        category: i.category,
+        rawKind: i.rawKind,
+        sourceFile: i.sourceFile,
+      }));
     const buf = await exportProvysToExcelBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows });
     const filename = exportFilename(parsed.channel, date, 'xlsx');
     return reply
@@ -155,24 +182,27 @@ export async function provysRoutes(app: FastifyInstance) {
       .send(buf);
   });
 
-  // GET /api/v1/provys/export/pdf?channel=<slug>&date=YYYY-MM-DD
+  // GET /api/v1/provys/export/pdf?channel=<slug>&date=YYYY-MM-DD&categories=...
   app.get('/export/pdf', {
     preHandler: app.requireGroup(...PERMISSIONS.provys.read),
-    schema: { tags: ['Provys'], summary: 'PDF export — kanal × gün snapshot' },
+    schema: { tags: ['Provys'], summary: 'PDF export — kanal × gün snapshot (kategori filtreli)' },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const parsed = channelDateQuerySchema.parse(request.query);
+    const parsed = exportQuerySchema.parse(request.query);
     const date = parsed.date ?? istanbulTodayDate();
+    const allow = parseCategoriesFilter(parsed.categories);
     const items = await fetchChannelDateSnapshot(app, parsed.channel, date);
-    const rows: ProvysExportRow[] = items.map((i) => ({
-      sequence: i.sequence,
-      startTimecode: i.startTimecode,
-      durationTimecode: i.durationTimecode,
-      dcCode: i.dcCode,
-      title: i.title,
-      category: i.category,
-      rawKind: i.rawKind,
-      sourceFile: i.sourceFile,
-    }));
+    const rows: ProvysExportRow[] = items
+      .filter((i) => !allow || allow.has(i.category))
+      .map((i) => ({
+        sequence: i.sequence,
+        startTimecode: i.startTimecode,
+        durationTimecode: i.durationTimecode,
+        dcCode: i.dcCode,
+        title: i.title,
+        category: i.category,
+        rawKind: i.rawKind,
+        sourceFile: i.sourceFile,
+      }));
     const buf = await exportProvysToPdfBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows });
     const filename = exportFilename(parsed.channel, date, 'pdf');
     return reply

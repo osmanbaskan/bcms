@@ -29,6 +29,8 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
         <div class="state">Yükleniyor…</div>
       } @else if (items().length === 0) {
         <div class="state empty">Seçili tarih için BXF akışı yok</div>
+      } @else if (visibleItems().length === 0) {
+        <div class="state empty">Seçili kategori filtreleriyle gösterilecek kayıt yok</div>
       } @else {
         <table class="provys-list" role="grid" aria-label="Provys akış listesi">
           <thead>
@@ -43,7 +45,7 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
             </tr>
           </thead>
           <tbody>
-            @for (item of items(); track item.id) {
+            @for (item of visibleItems(); track item.id) {
               <tr
                 class="row"
                 [class.row--reklam]="item.category === 'REKLAM'"
@@ -132,6 +134,8 @@ export class ProvysChannelPanelComponent {
   readonly service = inject(ProvysService);
 
   readonly items = computed<ProvysItemDto[]>(() => this.service.itemsFor(this.channel())());
+  /** Aktif kategori filtresi uygulanmış görünür satırlar. */
+  readonly visibleItems = computed<ProvysItemDto[]>(() => this.service.filteredItemsFor(this.channel())());
 
   styleFor(category: ProvysCategory) {
     return PROVYS_CATEGORY_STYLES[category];

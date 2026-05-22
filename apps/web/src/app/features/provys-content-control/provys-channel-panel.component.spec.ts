@@ -29,12 +29,20 @@ function makeItem(over: Partial<ProvysItemDto>): ProvysItemDto {
 class FakeProvysService {
   private readonly store = signal<ProvysItemDto[]>([]);
   private readonly seen = signal(false);
+  // Tüm kategoriler default seçili — panel mevcut testlerinde tam görünür liste.
+  private readonly selected = signal<Set<string>>(new Set(['REKLAM', 'KAMU_SPOTU', 'CANLI', 'PROGRAM', 'TANITIM', 'DIGER']));
   itemsFor() { return this.store.asReadonly(); }
   hasReceived() { return this.seen(); }
+  filteredItemsFor() {
+    return signal(this.store().filter((i) => this.selected().has(i.category))).asReadonly();
+  }
 
   setItems(items: ProvysItemDto[]) {
     this.seen.set(true);
     this.store.set(items);
+  }
+  setSelectedCategories(set: Set<string>) {
+    this.selected.set(set);
   }
 }
 

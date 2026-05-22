@@ -149,7 +149,7 @@ describe('ProvysService (per-day snapshot)', () => {
     }
   });
 
-  it('exportExcel issues GET /provys/export/excel with channel + date', async () => {
+  it('exportExcel issues GET /provys/export/excel with channel + date (no categories when all selected)', async () => {
     // Anchor click side-effect'i sırasında DOM'a element ekleniyor; jsdom
     // ortamında click() no-op olur, sadece HTTP isteğini doğruluyoruz.
     const promise = service.exportExcel('beinhaber' as any, '2026-05-22');
@@ -165,5 +165,53 @@ describe('ProvysService (per-day snapshot)', () => {
     expect(req.request.responseType).toBe('blob');
     req.flush(new Blob(['pdf-bytes']));
     await promise;
+  });
+
+  it('exportExcel attaches categories param when not all are selected', async () => {
+    service.setSelectedCategories(new Set(['CANLI', 'PROGRAM']));
+    const promise = service.exportExcel('beinhaber' as any, '2026-05-22');
+    const req = http.expectOne((r) => r.url === `${environment.apiUrl}/provys/export/excel`);
+    expect(req.request.params.get('channel')).toBe('beinhaber');
+    expect(req.request.params.get('date')).toBe('2026-05-22');
+    // PROVYS_CATEGORIES sırasıyla: REKLAM, KAMU_SPOTU, CANLI, PROGRAM, TANITIM, DIGER
+    expect(req.request.params.get('categories')).toBe('CANLI,PROGRAM');
+    req.flush(new Blob(['excel-bytes']));
+    await promise;
+  });
+
+  it('selectedCategories defaults to all categories; toggleCategory flips membership', () => {
+    expect(service.selectedCategories().size).toBe(6);
+    service.toggleCategory('REKLAM');
+    expect(service.selectedCategories().has('REKLAM')).toBe(false);
+    expect(service.selectedCategories().size).toBe(5);
+    service.toggleCategory('REKLAM');
+    expect(service.selectedCategories().has('REKLAM')).toBe(true);
+  });
+
+  it('filteredItemsFor returns the raw list when all categories are selected, filtered otherwise', async () => {
+    // Setup: bir kanalda farklı kategoride 3 satır
+    const today = service.activeDate();
+    const items: ProvysItemDto[] = [
+      { ...makeItem('beinhaber', today, 'A'), category: 'PROGRAM' },
+      { ...makeItem('beinhaber', today, 'B'), category: 'REKLAM' },
+      { ...makeItem('beinhaber', today, 'C'), category: 'CANLI' },
+    ];
+    const promise = service.loadInitial();
+    for (const ch of PROVYS_CHANNELS) {
+      const req = http.expectOne(`${environment.apiUrl}/provys/items?channel=${ch.slug}&date=${today}`);
+      req.flush(ch.slug === 'beinhaber' ? items : []);
+    }
+    await promise;
+
+    // 1) Tümü seçili — tüm 3 satır görünür
+    expect(service.filteredItemsFor('beinhaber' as any)().length).toBe(3);
+
+    // 2) Sadece PROGRAM seçili — 1 satır
+    service.setSelectedCategories(new Set(['PROGRAM']));
+    expect(service.filteredItemsFor('beinhaber' as any)().length).toBe(1);
+
+    // 3) Hiçbir kategori seçili değil — 0 satır
+    service.setSelectedCategories(new Set());
+    expect(service.filteredItemsFor('beinhaber' as any)().length).toBe(0);
   });
 });
