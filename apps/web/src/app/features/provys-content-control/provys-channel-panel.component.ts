@@ -38,8 +38,8 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
               <th class="col-seq">#</th>
               <th class="col-time">Başlangıç</th>
               <th class="col-dur">Süre</th>
-              <th class="col-dc">DC Kod</th>
               <th class="col-cat">Kategori</th>
+              <th class="col-dc">DC Kod</th>
               <th class="col-title">Başlık</th>
               <th class="col-kind">Tür</th>
             </tr>
@@ -58,12 +58,12 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
                 <td class="col-seq">{{ item.sequence + 1 }}</td>
                 <td class="col-time mono">{{ formatStart(item) }}</td>
                 <td class="col-dur mono">{{ formatDur(item) }}</td>
-                <td class="col-dc mono" [class.muted]="!item.dcCode">{{ item.dcCode ?? '—' }}</td>
                 <td class="col-cat">
                   <span class="cat-chip" [class]="'cat-chip cat-chip--' + categoryClass(item.category)">
                     {{ styleFor(item.category).label }}
                   </span>
                 </td>
+                <td class="col-dc mono" [class.muted]="!item.dcCode">{{ item.dcCode ?? '—' }}</td>
                 <td class="col-title">{{ item.title }}</td>
                 <td class="col-kind mono muted">{{ item.rawKind ?? '—' }}</td>
               </tr>
@@ -97,10 +97,14 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
       color: var(--bp-fg-1);
     }
     .col-seq { width: 48px; color: var(--bp-fg-4); }
-    .col-time { width: 110px; color: var(--bp-fg-1); }
-    .col-dur { width: 100px; color: var(--bp-fg-2); }
-    .col-dc { width: 110px; color: var(--bp-fg-2); }
+    /* SMPTE 'HH:MM:SS:FF' tabular-nums için yeterli — fazla beyaz boşluk
+       bırakmayacak şekilde daraltıldı. padding (10px+10px) dahil 96px. */
+    .col-time { width: 96px; color: var(--bp-fg-1); }
+    .col-dur { width: 96px; color: var(--bp-fg-2); }
     .col-cat { width: 130px; }
+    .col-dc { width: 110px; color: var(--bp-fg-2); }
+    /* Başlık: leftover'i alır (table-layout: fixed → explicit width yok).
+       DC Kod sabit, Başlık esnek; dar viewport'ta ellipsis devreye girer. */
     .col-title { white-space: normal; color: var(--bp-fg-1); }
     .col-kind { width: 130px; }
     .mono { font-family: var(--bp-font-mono, ui-monospace, 'JetBrains Mono', Menlo, monospace); font-variant-numeric: tabular-nums; }
