@@ -550,7 +550,7 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Yayın Planlama',    icon: 'event',               route: '/yayin-planlama',     groups: [] },
         { label: 'Stüdyo Planı',      icon: 'view_module',         route: '/studio-plan',        groups: [] },
         { label: 'Ingest',            icon: 'cloud_upload',        route: '/ingest',             groups: [GROUP.Admin, GROUP.Ingest] },
-        { label: 'Provys',            icon: 'fact_check',          route: '/provys-content-control', groups: [GROUP.Admin] },
+        { label: 'Provys',            icon: 'fact_check',          route: '/provys-content-control', groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] },
       ],
     },
     {
@@ -573,6 +573,10 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Ayarlar',           icon: 'settings',            route: '/settings',           groups: [GROUP.SystemEng] },
         { label: 'Live-Plan Lookup',  icon: 'tune',                route: '/admin/live-plan-lookups', groups: [] },
         { label: 'OPTA Lig Görünürlüğü', icon: 'visibility',       route: '/admin/opta-competitions', groups: [GROUP.SystemEng] },
+        // 2026-05-20: Manuel Lig Yönetimi sidebar entry — OPTA Lig
+        // Görünürlüğü ile birebir aynı yetki (SystemEng + Admin auto-bypass).
+        // Settings kartı korunur; bu link operatöre alternatif kısayol.
+        { label: 'Manuel Lig Yönetimi', icon: 'edit_note',        route: '/admin/manual-leagues',    groups: [GROUP.SystemEng] },
       ],
     },
   ];

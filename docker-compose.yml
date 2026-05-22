@@ -213,7 +213,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       NODE_ENV: production
-      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller
+      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller,provys-watcher
       OUTBOX_POLLER_ENABLED: ${OUTBOX_POLLER_ENABLED:-false}
       OUTBOX_POLLER_DRY_RUN: ${OUTBOX_POLLER_DRY_RUN:-false}
       # PR-C2 cut-over flag: true → poller authoritative (shadow=pending,
@@ -239,8 +239,13 @@ services:
       SMTP_FROM: ${SMTP_FROM:-noreply@bcms.local}
       STORAGE_HOST: ${STORAGE_HOST}
       WATCH_FOLDER: /app/tmp/watch
+      # Provys SMB akış izleyici — host CIFS mount + bind volume.
+      # PROVYS_HOST_MOUNT host tarafında elle mount edilmiş cifs path olur
+      # (örn. /mnt/provys); credential repo'ya konmaz, host operasyon sorumlu.
+      PROVYS_WATCH_FOLDER: /app/tmp/provys
     volumes:
       - ingest_watch:/app/tmp/watch
+      - ${PROVYS_HOST_MOUNT:-./tmp/provys}:/app/tmp/provys:ro
     # HIGH-INF-017 (kapatıldı 2026-05-05): `api`'ye depends_on kaldırıldı.
     # Worker'ın API'ye runtime bağımlılığı yok; aynı imajdan farklı entry'lerle
     # çalışıyorlar. depends_on sadece startup ordering kontrol eder, ama buradaki

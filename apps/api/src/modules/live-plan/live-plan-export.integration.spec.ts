@@ -36,7 +36,7 @@ describe('POST /api/v1/live-plan/export — selected entries → xlsx', () => {
         return reply.status(400).send({ statusCode: 400, error: 'Bad Request', issues: error.issues });
       }
       const status = (error as { statusCode?: number }).statusCode ?? 500;
-      return reply.status(status).send({ statusCode: status, error: error.message });
+      return reply.status(status).send({ statusCode: status, error: (error as Error).message });
     });
     // Audit plugin yok (test scope; export read-only).
     await app.register(livePlanRoutes, { prefix: PREFIX });
@@ -167,7 +167,7 @@ describe('POST /api/v1/live-plan/export — selected entries → xlsx', () => {
     // ExcelJS ile workbook'u okuyup satırları doğrula.
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(res.rawPayload as Buffer);
+    await wb.xlsx.load(Buffer.from(res.rawPayload as Buffer).buffer);
     const sheet = wb.getWorksheet(1)!;
 
     // Row 1: title; Row 2: header; Row 3: e1 (2026-06-01); Row 4: e2 (2026-06-02)
@@ -209,7 +209,7 @@ describe('POST /api/v1/live-plan/export — selected entries → xlsx', () => {
     // güvenilir; UI'da uzunluk + trim Zod doğrular.
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(res.rawPayload as Buffer);
+    await wb.xlsx.load(Buffer.from(res.rawPayload as Buffer).buffer);
     const sheet = wb.getWorksheet(1)!;
     // Title row mevcut (smoke); sanitize zorunluluğu yok bu PR'da.
     expect(sheet.getRow(1).getCell(1).value).toBeTruthy();

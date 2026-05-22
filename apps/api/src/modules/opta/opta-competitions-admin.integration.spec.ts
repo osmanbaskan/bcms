@@ -36,7 +36,7 @@ describe('OPTA competitions admin — 2026-05-13', () => {
         return reply.status(400).send({ statusCode: 400, error: 'Bad Request', issues: error.issues });
       }
       const status = (error as { statusCode?: number }).statusCode ?? 500;
-      return reply.status(status).send({ statusCode: status, error: error.message });
+      return reply.status(status).send({ statusCode: status, error: (error as Error).message });
     });
     await app.register(optaRoutes, { prefix: PREFIX });
     await app.ready();

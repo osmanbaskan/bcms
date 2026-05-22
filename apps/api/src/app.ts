@@ -29,6 +29,7 @@ import { incidentRoutes } from './modules/incidents/incident.routes.js';
 import { auditRoutes } from './modules/audit/audit.routes.js';
 import { matchRoutes } from './modules/matches/match.routes.js';
 import { optaRoutes }  from './modules/opta/opta.routes.js';
+import { provysRoutes } from './modules/provys/provys.routes.js';
 import { optaSyncRoutes } from './modules/opta/opta.sync.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
 import { broadcastTypeRoutes } from './modules/broadcast-types/broadcast-type.routes.js';
@@ -41,6 +42,7 @@ import { startOptaWatcher, getOptaWatcherStatus } from './modules/opta/opta.watc
 import { startAuditRetentionJob } from './modules/audit/audit-retention.job.js';
 import { startAuditPartitionJob } from './modules/audit/audit-partition.job.js';
 import { startOutboxPoller } from './modules/outbox/outbox.poller.js';
+import { startProvysWatcher } from './modules/provys/provys.watcher.js';
 
 const BACKGROUND_SERVICES = [
   'notifications',
@@ -50,6 +52,7 @@ const BACKGROUND_SERVICES = [
   'audit-retention',
   'audit-partition',
   'outbox-poller',
+  'provys-watcher',
 ] as const;
 
 type BackgroundService = (typeof BACKGROUND_SERVICES)[number];
@@ -133,6 +136,7 @@ async function startBackgroundServices(app: FastifyInstance): Promise<void> {
   await run('audit-retention', () => startAuditRetentionJob(app));
   await run('audit-partition', () => startAuditPartitionJob(app));
   await run('outbox-poller',   () => startOutboxPoller(app));
+  await run('provys-watcher',  () => startProvysWatcher(app));
 }
 
 function errorResponse(error: Error & { statusCode?: number; code?: string }) {
@@ -377,6 +381,7 @@ export async function buildApp() {
   await app.register(broadcastTypeRoutes,  { prefix: '/api/v1/broadcast-types' });
   await app.register(studioPlanRoutes,     { prefix: '/api/v1/studio-plans' });
   await app.register(weeklyShiftRoutes,    { prefix: '/api/v1/weekly-shifts' });
+  await app.register(provysRoutes,         { prefix: '/api/v1/provys' });
 
   return app;
 }

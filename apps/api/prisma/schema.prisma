@@ -1299,3 +1299,30 @@ model ScheduleFormatOption {
 
   @@map("schedule_format_options")
 }
+
+/// Provys İçerik Kontrol (2026-05-22): SMB Provys dizinindeki BXF akış
+/// dosyalarından parse edilen, kanal başına **current snapshot** kayıtları.
+/// Her kanal için en güncel BXF dosyası doğruluk kaynağıdır; eski satırlar
+/// dosya değiştiğinde silinir/replace edilir. Hard-delete domain — soft
+/// delete yok. (channelSlug, eventId) unique; aynı dosya 2x işlense
+/// hash karşılaştırması ile no-op (idempotent).
+model ProvysItem {
+  id           Int       @id @default(autoincrement())
+  channelSlug  String    @map("channel_slug") @db.VarChar(40)
+  eventId      String    @map("event_id") @db.VarChar(120)
+  sequence     Int       @default(0)
+  startAt      DateTime  @map("start_at") @db.Timestamptz(6)
+  durationMs   Int?      @map("duration_ms")
+  title        String    @db.VarChar(500)
+  rawKind      String?   @map("raw_kind") @db.VarChar(100)
+  category     String    @db.VarChar(20)
+  sourceFile   String    @map("source_file") @db.VarChar(500)
+  sourceMtime  DateTime  @map("source_mtime") @db.Timestamptz(6)
+  payloadHash  String    @map("payload_hash") @db.VarChar(64)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt       @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([channelSlug, eventId], name: "provys_items_channel_event_unique")
+  @@index([channelSlug, sequence], name: "provys_items_channel_seq_idx")
+  @@map("provys_items")
+}

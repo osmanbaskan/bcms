@@ -157,4 +157,10 @@ export const PERMISSIONS = {
      *  /admin/opta-competitions UI ve PATCH endpoint'i bu seti kullanır. */
     admin: ['SystemEng'] as BcmsGroup[],
   },
+  /** Provys İçerik Kontrol (2026-05-22): SMB'deki BXF akış dosyaları için
+   *  okuma-yetkili gruplar. Yazma yok (worker DB'yi besler). Admin global
+   *  bypass davranışı korunur; listeye ayrıca eklenmez. */
+  provys: {
+    read: ['MCR', 'PCR', 'SystemEng', 'YayınPlanlama'] as BcmsGroup[],
+  },
 } as const;
