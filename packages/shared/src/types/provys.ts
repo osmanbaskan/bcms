@@ -70,8 +70,16 @@ export interface ProvysItemDto {
   channelSlug: ProvysChannelSlug;
   eventId: string;
   sequence: number;
-  startAt: string;        // ISO-8601 Europe/Istanbul UTC instant
+  startAt: string;                       // ISO-8601 Europe/Istanbul UTC instant
   durationMs: number | null;
+  /** SMPTE timecode `HH:MM:SS:FF` (raw — frame korunur). Eski kayıtlar null. */
+  startTimecode: string | null;
+  /** SMPTE duration `HH:MM:SS:FF`. Eski kayıtlar null → `durationMs` fallback. */
+  durationTimecode: string | null;
+  /** SmpteDateTime / SmpteDuration @frameRate (genelde 25). */
+  frameRate: number | null;
+  /** Content > ContentId > HouseNumber (örn. "DC00041439"). */
+  dcCode: string | null;
   title: string;
   rawKind: string | null;
   category: ProvysCategory;

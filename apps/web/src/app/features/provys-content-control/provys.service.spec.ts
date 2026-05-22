@@ -73,8 +73,9 @@ describe('ProvysService', () => {
       const req = http.expectOne(`${environment.apiUrl}/provys/items?channel=${ch.slug}`);
       const items: ProvysItemDto[] = [{
         id: 1, channelSlug: ch.slug as any, eventId: 'E1', sequence: 0,
-        startAt: '2026-05-22T18:00:00Z', durationMs: 30000, title: 'T',
-        rawKind: 'COMMERCIAL', category: 'REKLAM',
+        startAt: '2026-05-22T18:00:00Z', durationMs: 30000,
+        startTimecode: null, durationTimecode: null, frameRate: null, dcCode: null,
+        title: 'T', rawKind: 'COMMERCIAL', category: 'REKLAM',
         sourceFile: '/x.bxf', updatedAt: '2026-05-22T18:00:00Z',
       }];
       req.flush(items);
@@ -94,8 +95,9 @@ describe('ProvysService', () => {
 
     const sample: ProvysItemDto[] = [{
       id: 99, channelSlug: 'beinhaber' as any, eventId: 'X', sequence: 0,
-      startAt: '2026-05-22T19:00:00Z', durationMs: null, title: 'Haber',
-      rawKind: 'LIVE', category: 'CANLI',
+      startAt: '2026-05-22T19:00:00Z', durationMs: null,
+      startTimecode: null, durationTimecode: null, frameRate: null, dcCode: null,
+      title: 'Haber', rawKind: 'LIVE', category: 'CANLI',
       sourceFile: '/x.bxf', updatedAt: '2026-05-22T19:00:00Z',
     }];
 

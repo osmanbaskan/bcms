@@ -61,16 +61,30 @@ export interface ParsedItem {
   sequence: number;
   startAt: Date;
   durationMs: number | null;
+  /** SMPTE timecode `HH:MM:SS:FF` ham, frame korunur. */
+  startTimecode: string | null;
+  /** SMPTE duration `HH:MM:SS:FF` ham. */
+  durationTimecode: string | null;
+  /** SmpteDateTime / SmpteDuration @frameRate (genelde 25). */
+  frameRate: number | null;
+  /** Content > ContentId > HouseNumber (Provys "DC..." house code). */
+  dcCode: string | null;
   title: string;
   rawKind: string | null;
   category: ProvysCategory;
 }
+
+const SMPTE_TIMECODE_RE = /^\d{1,3}:\d{1,2}:\d{1,2}:\d{1,3}$/;
 
 const ParsedItemSchema = z.object({
   eventId: z.string().min(1).max(120),
   sequence: z.number().int().min(0),
   startAt: z.date(),
   durationMs: z.number().int().nonnegative().nullable(),
+  startTimecode: z.string().max(20).regex(SMPTE_TIMECODE_RE).nullable(),
+  durationTimecode: z.string().max(20).regex(SMPTE_TIMECODE_RE).nullable(),
+  frameRate: z.number().int().positive().nullable(),
+  dcCode: z.string().max(40).regex(/^DC[0-9A-Za-z]+$/).nullable(),
   title: z.string().min(1).max(500),
   rawKind: z.string().max(100).nullable(),
   category: z.enum(PROVYS_CATEGORIES),
@@ -122,28 +136,81 @@ function smpteToWallClock(timecode: string | undefined): string | null {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
-function parseStartDateTime(startDt: unknown): Date | null {
-  if (!startDt || typeof startDt !== 'object') return null;
+interface StartDateTimeFields {
+  instant: Date | null;
+  timecode: string | null;   // ham SmpteTimeCode (HH:MM:SS:FF)
+  frameRate: number | null;
+}
+
+function parseStartDateTime(startDt: unknown): StartDateTimeFields {
+  if (!startDt || typeof startDt !== 'object') return { instant: null, timecode: null, frameRate: null };
   const smpte = (startDt as Record<string, unknown>)['SmpteDateTime'] as Record<string, unknown> | undefined;
-  if (!smpte) return null;
+  if (!smpte) return { instant: null, timecode: null, frameRate: null };
   const broadcastDate = String(smpte['@_broadcastDate'] ?? '').trim();
-  const wall = smpteToWallClock(String(smpte['SmpteTimeCode'] ?? ''));
-  if (!broadcastDate || !wall) return null;
+  const rawTimecode = String(smpte['SmpteTimeCode'] ?? '').trim();
+  const timecode = SMPTE_TIMECODE_RE.test(rawTimecode) ? rawTimecode : null;
+  const wall = smpteToWallClock(rawTimecode);
+  const frFromAttr = Number(smpte['@_frameRate']);
+  const frameRate = Number.isFinite(frFromAttr) && frFromAttr > 0 ? frFromAttr : null;
+  if (!broadcastDate || !wall) {
+    return { instant: null, timecode, frameRate };
+  }
   try {
     const dt = composeIstanbulInstant(broadcastDate, wall);
-    return Number.isNaN(dt.getTime()) ? null : dt;
+    return {
+      instant: Number.isNaN(dt.getTime()) ? null : dt,
+      timecode,
+      frameRate,
+    };
   } catch {
-    return null;
+    return { instant: null, timecode, frameRate };
   }
 }
 
-function parseDuration(lengthOpt: unknown): number | null {
-  if (!lengthOpt || typeof lengthOpt !== 'object') return null;
+interface DurationFields {
+  ms: number | null;
+  timecode: string | null;
+  frameRate: number | null;
+}
+
+function parseDuration(lengthOpt: unknown): DurationFields {
+  if (!lengthOpt || typeof lengthOpt !== 'object') return { ms: null, timecode: null, frameRate: null };
   const dur = (lengthOpt as Record<string, unknown>)['Duration'] as Record<string, unknown> | undefined;
   const smpte = dur?.['SmpteDuration'] as Record<string, unknown> | undefined;
-  if (!smpte) return null;
-  const fr = Number(smpte['@_frameRate']);
-  return smpteTimecodeToMs(String(smpte['SmpteTimeCode'] ?? ''), Number.isFinite(fr) ? fr : 25);
+  if (!smpte) return { ms: null, timecode: null, frameRate: null };
+  const rawTimecode = String(smpte['SmpteTimeCode'] ?? '').trim();
+  const timecode = SMPTE_TIMECODE_RE.test(rawTimecode) ? rawTimecode : null;
+  const frAttr = Number(smpte['@_frameRate']);
+  const frameRate = Number.isFinite(frAttr) && frAttr > 0 ? frAttr : null;
+  const ms = smpteTimecodeToMs(rawTimecode, frameRate ?? undefined);
+  return { ms, timecode, frameRate };
+}
+
+/**
+ * ScheduledEvent > Content > ContentId > HouseNumber → Provys "DC..." house
+ * code. Sadece "DC" ile başlayan değerler döner; aksi durumda null (kontrollü).
+ *
+ * Fallback path: Content > ContentMetaData > ContentId > HouseNumber.
+ */
+function extractDcCode(scheduledEvent: Record<string, unknown>): string | null {
+  const content = scheduledEvent['Content'] as Record<string, unknown> | undefined;
+  if (!content) return null;
+  const direct = (content['ContentId'] as Record<string, unknown> | undefined)?.['HouseNumber'];
+  const fromMeta = ((content['ContentMetaData'] as Record<string, unknown> | undefined)?.['ContentId'] as Record<string, unknown> | undefined)?.['HouseNumber'];
+  const candidates = [direct, fromMeta];
+  for (const c of candidates) {
+    if (typeof c === 'string') {
+      const value = c.trim();
+      if (/^DC[0-9A-Za-z]+$/.test(value)) return value;
+    } else if (c != null && typeof c === 'object') {
+      const text = (c as Record<string, unknown>)['#text'];
+      if (typeof text === 'string') {
+        const value = text.trim();
+        if (/^DC[0-9A-Za-z]+$/.test(value)) return value;
+      }
+    }
+  }
+  return null;
 }
 
 function extractEventId(evd: Record<string, unknown>): string | null {
@@ -253,20 +320,26 @@ export function parseBxf(content: string): ParsedItem[] {
     if (eventType === 'NonPrimary') continue;
 
     const eventId = extractEventId(evd);
-    const startAt = parseStartDateTime(evd['StartDateTime']);
-    if (!eventId || !startAt) continue;
+    const startFields = parseStartDateTime(evd['StartDateTime']);
+    if (!eventId || !startFields.instant) continue;
 
     const title = deriveTitle(evd);
     if (!title) continue;
 
     const rawKind = deriveRawKind(evd);
-    const durationMs = parseDuration(evd['LengthOption']);
+    const durationFields = parseDuration(evd['LengthOption']);
+    const dcCode = extractDcCode(sev as Record<string, unknown>);
+    const frameRate = startFields.frameRate ?? durationFields.frameRate ?? null;
 
     items.push({
       eventId,
       sequence: seq++,
-      startAt,
-      durationMs,
+      startAt: startFields.instant,
+      durationMs: durationFields.ms,
+      startTimecode: startFields.timecode,
+      durationTimecode: durationFields.timecode,
+      frameRate,
+      dcCode,
       title,
       rawKind,
       category: classifyCategory(rawKind),

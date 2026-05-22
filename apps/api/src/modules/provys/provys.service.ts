@@ -26,11 +26,15 @@ interface DiffPlan {
   toDeleteIds: number[];
 }
 
-function computeHash(item: Pick<ParsedItem, 'eventId' | 'startAt' | 'durationMs' | 'title' | 'rawKind' | 'category' | 'sequence'>): string {
+function computeHash(item: Pick<ParsedItem, 'eventId' | 'startAt' | 'durationMs' | 'title' | 'rawKind' | 'category' | 'sequence' | 'startTimecode' | 'durationTimecode' | 'frameRate' | 'dcCode'>): string {
   const canonical = [
     item.eventId,
     item.startAt.toISOString(),
     item.durationMs ?? '',
+    item.startTimecode ?? '',
+    item.durationTimecode ?? '',
+    item.frameRate ?? '',
+    item.dcCode ?? '',
     item.title,
     item.rawKind ?? '',
     item.category,
@@ -63,6 +67,10 @@ function buildDiff(
         sequence: p.sequence,
         startAt: p.startAt,
         durationMs: p.durationMs,
+        startTimecode: p.startTimecode,
+        durationTimecode: p.durationTimecode,
+        frameRate: p.frameRate,
+        dcCode: p.dcCode,
         title: p.title,
         rawKind: p.rawKind,
         category: p.category,
@@ -77,6 +85,10 @@ function buildDiff(
           sequence: p.sequence,
           startAt: p.startAt,
           durationMs: p.durationMs,
+          startTimecode: p.startTimecode,
+          durationTimecode: p.durationTimecode,
+          frameRate: p.frameRate,
+          dcCode: p.dcCode,
           title: p.title,
           rawKind: p.rawKind,
           category: p.category,
@@ -146,17 +158,23 @@ export async function syncProvysFile(
     return { channelSlug, reason: 'unchanged', inserted: 0, updated: 0, deleted: 0 };
   }
 
-  await prisma.$transaction(async (tx) => {
-    if (diff.toDeleteIds.length > 0) {
-      await tx.provysItem.deleteMany({ where: { id: { in: diff.toDeleteIds } } });
-    }
-    if (diff.toCreate.length > 0) {
-      await tx.provysItem.createMany({ data: diff.toCreate });
-    }
-    for (const u of diff.toUpdate) {
-      await tx.provysItem.update({ where: { id: u.id }, data: u.data });
-    }
-  });
+  // Büyük kanallar (~300 satır) tek tx'te bireysel `update` çağrıları default
+  // 5000ms timeout'u aşabiliyor. 30sn yeterli marja sahip; sync zaten kanal
+  // başına debounce'lu olduğu için DB connection pool basıncı düşük.
+  await prisma.$transaction(
+    async (tx) => {
+      if (diff.toDeleteIds.length > 0) {
+        await tx.provysItem.deleteMany({ where: { id: { in: diff.toDeleteIds } } });
+      }
+      if (diff.toCreate.length > 0) {
+        await tx.provysItem.createMany({ data: diff.toCreate });
+      }
+      for (const u of diff.toUpdate) {
+        await tx.provysItem.update({ where: { id: u.id }, data: u.data });
+      }
+    },
+    { timeout: 30_000, maxWait: 5_000 },
+  );
 
   // Notify outside tx — abonelerin commit'den önce hayalet okumasını önle.
   try {

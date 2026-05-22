@@ -20,6 +20,10 @@ const itemDtoSchema = z.object({
   sequence: z.number().int(),
   startAt: z.string(),
   durationMs: z.number().int().nullable(),
+  startTimecode: z.string().nullable(),
+  durationTimecode: z.string().nullable(),
+  frameRate: z.number().int().nullable(),
+  dcCode: z.string().nullable(),
   title: z.string(),
   rawKind: z.string().nullable(),
   category: z.enum(['REKLAM', 'KAMU_SPOTU', 'CANLI', 'PROGRAM', 'TANITIM', 'DIGER']),
@@ -35,6 +39,10 @@ function rowsToDto(rows: Array<{
   sequence: number;
   startAt: Date;
   durationMs: number | null;
+  startTimecode: string | null;
+  durationTimecode: string | null;
+  frameRate: number | null;
+  dcCode: string | null;
   title: string;
   rawKind: string | null;
   category: string;
@@ -48,6 +56,10 @@ function rowsToDto(rows: Array<{
     sequence: r.sequence,
     startAt: r.startAt.toISOString(),
     durationMs: r.durationMs,
+    startTimecode: r.startTimecode,
+    durationTimecode: r.durationTimecode,
+    frameRate: r.frameRate,
+    dcCode: r.dcCode,
     title: r.title,
     rawKind: r.rawKind,
     category: r.category as ProvysItemDto['category'],

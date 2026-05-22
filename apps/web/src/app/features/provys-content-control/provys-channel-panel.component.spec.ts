@@ -12,6 +12,10 @@ function makeItem(over: Partial<ProvysItemDto>): ProvysItemDto {
     sequence: 0,
     startAt: '2026-05-22T18:00:00Z',
     durationMs: 60_000,
+    startTimecode: null,
+    durationTimecode: null,
+    frameRate: null,
+    dcCode: null,
     title: 'Item',
     rawKind: null,
     category: 'DIGER',
@@ -90,26 +94,62 @@ describe('ProvysChannelPanelComponent', () => {
     expect(chip?.textContent?.trim()).toBe(PROVYS_CATEGORY_STYLES.CANLI.label);
   });
 
-  it('formats start time in Europe/Istanbul', () => {
-    fake.setItems([makeItem({ startAt: '2026-05-22T15:00:00Z' })]);
+  it('shows SMPTE timecode HH:MM:SS:FF in the start column when present', () => {
+    fake.setItems([makeItem({ startTimecode: '23:45:00:04' })]);
+    fixture.detectChanges();
+    const cell = (fixture.nativeElement as HTMLElement)
+      .querySelector('tbody tr.row td.col-time')?.textContent?.trim();
+    expect(cell).toBe('23:45:00:04');
+  });
+
+  it('falls back to Europe/Istanbul wall-clock when startTimecode is null', () => {
+    fake.setItems([makeItem({ startTimecode: null, startAt: '2026-05-22T15:00:00Z' })]);
     fixture.detectChanges();
     const cell = (fixture.nativeElement as HTMLElement)
       .querySelector('tbody tr.row td.col-time')?.textContent;
-    // 15:00 UTC = 18:00 Istanbul (UTC+3, DST yok)
+    // 15:00 UTC = 18:00 Istanbul (UTC+3, no DST)
     expect(cell).toContain('18:00');
   });
 
-  it('formats duration as MM:SS / HH:MM:SS and handles null', () => {
+  it('shows SMPTE duration HH:MM:SS:FF when present', () => {
+    fake.setItems([makeItem({ durationTimecode: '00:15:01:16' })]);
+    fixture.detectChanges();
+    const cell = (fixture.nativeElement as HTMLElement)
+      .querySelector('tbody tr.row td.col-dur')?.textContent?.trim();
+    expect(cell).toBe('00:15:01:16');
+  });
+
+  it('falls back to ms-based HH:MM:SS when durationTimecode is null; shows — when both null', () => {
     fake.setItems([
-      makeItem({ id: 1, durationMs: 30_000, sequence: 0 }),
-      makeItem({ id: 2, durationMs: 5_400_000, sequence: 1 }),
-      makeItem({ id: 3, durationMs: null, sequence: 2 }),
+      makeItem({ id: 1, durationTimecode: null, durationMs: 30_000,    sequence: 0 }),
+      makeItem({ id: 2, durationTimecode: null, durationMs: 5_400_000, sequence: 1 }),
+      makeItem({ id: 3, durationTimecode: null, durationMs: null,      sequence: 2 }),
     ]);
     fixture.detectChanges();
     const cells = (fixture.nativeElement as HTMLElement)
       .querySelectorAll('tbody tr.row td.col-dur');
-    expect(cells[0].textContent?.trim()).toBe('00:30');
+    expect(cells[0].textContent?.trim()).toBe('00:00:30');
     expect(cells[1].textContent?.trim()).toBe('01:30:00');
     expect(cells[2].textContent?.trim()).toBe('—');
+  });
+
+  it('renders the DC Kod column; null → "—"', () => {
+    fake.setItems([
+      makeItem({ id: 1, dcCode: 'DC00041439', sequence: 0 }),
+      makeItem({ id: 2, dcCode: null,         sequence: 1 }),
+    ]);
+    fixture.detectChanges();
+    // Header has the new column
+    const headers = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('thead th'),
+    ).map((th) => th.textContent?.trim());
+    expect(headers).toContain('DC Kod');
+
+    const cells = (fixture.nativeElement as HTMLElement)
+      .querySelectorAll('tbody tr.row td.col-dc');
+    expect(cells[0].textContent?.trim()).toBe('DC00041439');
+    expect(cells[1].textContent?.trim()).toBe('—');
+    // Null hücre muted class'ı taşımalı
+    expect(cells[1].classList.contains('muted')).toBe(true);
   });
 });

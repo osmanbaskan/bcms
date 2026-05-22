@@ -118,6 +118,74 @@ describe('provys.parser › parseBxf (SMPTE 2021)', () => {
     expect(items[0].startAt.toISOString()).toBe('2026-02-17T20:45:00.000Z');
   });
 
+  it('preserves raw SMPTE startTimecode (HH:MM:SS:FF) and frameRate', () => {
+    const items = parseBxf(SAMPLE_BXF);
+    expect(items[0].startTimecode).toBe('23:45:00:04');
+    expect(items[0].frameRate).toBe(25);
+    expect(items[2].startTimecode).toBe('23:57:53:26');
+  });
+
+  it('preserves raw SMPTE durationTimecode (frame korunur)', () => {
+    const items = parseBxf(SAMPLE_BXF);
+    expect(items[0].durationTimecode).toBe('00:15:01:16');
+    expect(items[1].durationTimecode).toBe('00:12:53:22');
+    expect(items[2].durationTimecode).toBe('00:00:30:00');
+  });
+
+  it('reads title from EventData > EventTitle (canonical path)', () => {
+    const items = parseBxf(SAMPLE_BXF);
+    expect(items[0].title).toBe('TFF 1. Lig 25-26 Haftanın Golleri');
+    expect(items[1].title).toBe('TFF 1. Lig 25-26 Haftanın Golleri');
+  });
+
+  it('extracts dcCode from ScheduledEvent > Content > ContentId > HouseNumber', () => {
+    const xml = `<?xml version="1.0"?>
+<BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF"><BxfData><Schedule>
+  <ScheduledEvent>
+    <EventData eventType="Primary">
+      <EventId><EventId>EVT-1</EventId></EventId>
+      <EventTitle>Programme A</EventTitle>
+      <PrimaryEvent><ProgramEvent><ProgramName>Programme A</ProgramName></ProgramEvent></PrimaryEvent>
+      <StartDateTime><SmpteDateTime broadcastDate="2026-02-17" frameRate="25"><SmpteTimeCode>10:00:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+      <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:30:00:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+    </EventData>
+    <Content>
+      <ContentId><HouseNumber>DC00041439</HouseNumber></ContentId>
+      <Name>Programme A</Name>
+    </Content>
+  </ScheduledEvent>
+  <ScheduledEvent>
+    <EventData eventType="Primary">
+      <EventId><EventId>EVT-2</EventId></EventId>
+      <EventTitle>No DC</EventTitle>
+      <PrimaryEvent><ProgramEvent><ProgramName>No DC</ProgramName></ProgramEvent></PrimaryEvent>
+      <StartDateTime><SmpteDateTime broadcastDate="2026-02-17" frameRate="25"><SmpteTimeCode>10:30:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+      <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:30:00:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+    </EventData>
+  </ScheduledEvent>
+  <ScheduledEvent>
+    <EventData eventType="Primary">
+      <EventId><EventId>EVT-3</EventId></EventId>
+      <EventTitle>Non-DC house</EventTitle>
+      <PrimaryEvent><ProgramEvent><ProgramName>Non-DC</ProgramName></ProgramEvent></PrimaryEvent>
+      <StartDateTime><SmpteDateTime broadcastDate="2026-02-17" frameRate="25"><SmpteTimeCode>11:00:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+      <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:30:00:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+    </EventData>
+    <Content>
+      <ContentId><HouseNumber>X9999</HouseNumber></ContentId>
+    </Content>
+  </ScheduledEvent>
+</Schedule></BxfData></BxfMessage>`;
+    const items = parseBxf(xml);
+    const a = items.find((i) => i.eventId === 'EVT-1');
+    const b = items.find((i) => i.eventId === 'EVT-2');
+    const c = items.find((i) => i.eventId === 'EVT-3');
+    expect(a?.dcCode).toBe('DC00041439');
+    expect(b?.dcCode).toBeNull();
+    // X9999 DC prefix değil → null (regex: ^DC[...]+)
+    expect(c?.dcCode).toBeNull();
+  });
+
   it('converts SmpteDuration HH:MM:SS:FF to ms using frameRate', () => {
     const items = parseBxf(SAMPLE_BXF);
     // 00:15:01:16 @ 25fps = (15*60+1)s + 16/25s = 901.64s → 901640ms

@@ -36,6 +36,7 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
               <th class="col-seq">#</th>
               <th class="col-time">Başlangıç</th>
               <th class="col-dur">Süre</th>
+              <th class="col-dc">DC Kod</th>
               <th class="col-cat">Kategori</th>
               <th class="col-title">Başlık</th>
               <th class="col-kind">Tür</th>
@@ -53,8 +54,9 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
                 [class.row--diger]="item.category === 'DIGER'"
               >
                 <td class="col-seq">{{ item.sequence + 1 }}</td>
-                <td class="col-time mono">{{ formatTime(item.startAt) }}</td>
-                <td class="col-dur mono">{{ formatDuration(item.durationMs) }}</td>
+                <td class="col-time mono">{{ formatStart(item) }}</td>
+                <td class="col-dur mono">{{ formatDur(item) }}</td>
+                <td class="col-dc mono" [class.muted]="!item.dcCode">{{ item.dcCode ?? '—' }}</td>
                 <td class="col-cat">
                   <span class="cat-chip" [class]="'cat-chip cat-chip--' + categoryClass(item.category)">
                     {{ styleFor(item.category).label }}
@@ -94,7 +96,8 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     }
     .col-seq { width: 48px; color: var(--bp-fg-4); }
     .col-time { width: 110px; color: var(--bp-fg-1); }
-    .col-dur { width: 80px; color: var(--bp-fg-2); }
+    .col-dur { width: 100px; color: var(--bp-fg-2); }
+    .col-dc { width: 110px; color: var(--bp-fg-2); }
     .col-cat { width: 130px; }
     .col-title { white-space: normal; color: var(--bp-fg-1); }
     .col-kind { width: 130px; }
@@ -139,11 +142,16 @@ export class ProvysChannelPanelComponent {
     return CATEGORY_CLASS[category];
   }
 
-  formatTime(iso: string): string {
-    if (!iso) return '';
-    // Europe/Istanbul timezone lock (CLAUDE.md). Native Intl ile explicit TZ.
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return iso;
+  /**
+   * Başlangıç gösterimi — primer: SMPTE timecode `HH:MM:SS:FF` (frame korunur).
+   * Eski kayıtta `startTimecode` null ise Istanbul wall-clock `HH:MM:SS`
+   * fallback'i (frame yok).
+   */
+  formatStart(item: ProvysItemDto): string {
+    if (item.startTimecode) return item.startTimecode;
+    if (!item.startAt) return '';
+    const date = new Date(item.startAt);
+    if (Number.isNaN(date.getTime())) return item.startAt;
     return new Intl.DateTimeFormat('tr-TR', {
       timeZone: 'Europe/Istanbul',
       hour: '2-digit',
@@ -153,13 +161,20 @@ export class ProvysChannelPanelComponent {
     }).format(date);
   }
 
-  formatDuration(ms: number | null): string {
+  /**
+   * Süre gösterimi — primer: SMPTE duration `HH:MM:SS:FF`. Eski kayıtta
+   * `durationTimecode` null ise `durationMs` üstünden ms→HH:MM:SS hesaplanır
+   * (frame yok). `durationMs` da yoksa `—`.
+   */
+  formatDur(item: ProvysItemDto): string {
+    if (item.durationTimecode) return item.durationTimecode;
+    const ms = item.durationMs;
     if (ms == null || !Number.isFinite(ms)) return '—';
     const sec = Math.round(ms / 1000);
     const h = Math.floor(sec / 3600);
     const m = Math.floor((sec % 3600) / 60);
     const s = sec % 60;
     const pad = (n: number) => n.toString().padStart(2, '0');
-    return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
   }
 }
