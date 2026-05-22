@@ -45,7 +45,7 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
             </tr>
           </thead>
           <tbody>
-            @for (item of visibleItems(); track item.id) {
+            @for (item of visibleItems(); track item.id; let i = $index) {
               <tr
                 class="row"
                 [class.row--reklam]="item.category === 'REKLAM'"
@@ -55,7 +55,10 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
                 [class.row--tanitim]="item.category === 'TANITIM'"
                 [class.row--diger]="item.category === 'DIGER'"
               >
-                <td class="col-seq">{{ item.sequence + 1 }}</td>
+                <!-- # kolonu DB sequence değil görünür satır index'idir;
+                     multi-BXF günlerde sequence tekrarlanabildiği için gerçek
+                     akış sırasını sadece template $index garantiler. -->
+                <td class="col-seq">{{ i + 1 }}</td>
                 <td class="col-time mono">{{ formatStart(item) }}</td>
                 <td class="col-dur mono">{{ formatDur(item) }}</td>
                 <td class="col-cat">

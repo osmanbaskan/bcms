@@ -131,7 +131,16 @@ async function fetchChannelDateSnapshot(
   const dt = new Date(`${scheduleDate}T00:00:00Z`);
   const rows = await app.prisma.provysItem.findMany({
     where: { channelSlug, scheduleDate: dt },
-    orderBy: [{ sequence: 'asc' }, { startAt: 'asc' }],
+    // Multi-BXF günlerde sequence file-scoped olduğundan tek başına yetmez
+    // (aynı sequence numarası birden çok dosyada tekrarlanabilir, saat
+    // sıralaması ters dönerdi). startAt birinci kriter; timecode frame'i
+    // ayırt eder; sourceFile + sequence file-içi deterministic tie-break.
+    orderBy: [
+      { startAt: 'asc' },
+      { startTimecode: 'asc' },
+      { sourceFile: 'asc' },
+      { sequence: 'asc' },
+    ],
   });
   return rowsToDto(rows);
 }

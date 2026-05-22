@@ -3,13 +3,9 @@ import path from 'node:path';
 import chokidar from 'chokidar';
 import type { FastifyInstance } from 'fastify';
 import { als } from '../../plugins/audit.js';
-import { clearChannelDateSnapshot, syncProvysFile } from './provys.service.js';
+import { syncChannelDate } from './provys.service.js';
 import { extractFileCode, resolveChannel } from './provys.channel-mapping.js';
-import {
-  extractScheduleDate,
-  listBxfFiles,
-  pickLatestForFileCodeAndDate,
-} from './provys.file-resolver.js';
+import { extractScheduleDate } from './provys.file-resolver.js';
 import { ConcurrencyLimiter } from './provys.concurrency.js';
 
 const WATCH_FOLDER = process.env.PROVYS_WATCH_FOLDER ?? './tmp/provys';
@@ -115,46 +111,40 @@ export function startProvysWatcher(app: FastifyInstance): void {
   const limiter = new ConcurrencyLimiter(CONCURRENCY);
 
   /**
-   * Bir `(channelSlug, scheduleDate)` group için latest BXF revision'ı sync
-   * eder veya hiç dosya kalmadıysa o gün snapshot'ını temizler. Başka
-   * günlere DOKUNMAZ.
+   * Composed snapshot sync — folder'daki o kanal için tüm aday dosyalardan
+   * (target day + bir önceki gün) latest-wins coverage merge çalıştırır.
+   * `syncChannelDate` snapshot boşsa o gün satırlarını temizler.
    */
   const flushGroup = async (
-    fileCode: string,
     channelSlug: string,
     scheduleDate: string,
     triggerFile: string,
     op: 'add' | 'change' | 'unlink',
   ): Promise<void> => {
     try {
-      const files = await listBxfFiles(WATCH_FOLDER);
-      const latest = pickLatestForFileCodeAndDate(files, fileCode, scheduleDate);
       await runWithAuditContext(async () => {
-        if (!latest) {
-          app.log.info(
-            { channelSlug, scheduleDate, fileCode, op, triggerFile },
-            'Provys watcher: kanal+gün için BXF kalmadı, snapshot temizleniyor',
-          );
-          await clearChannelDateSnapshot(app.prisma, channelSlug, scheduleDate, app.log);
-          return;
-        }
-        if (latest.path !== triggerFile) {
-          app.log.debug(
-            { triggerFile, selectedFile: latest.path, fileCode, scheduleDate, op },
-            'Provys watcher: event eski revision; aynı gün daha güncel dosya seçildi',
-          );
-        }
-        await syncProvysFile(app.prisma, latest.path, app.log);
+        await syncChannelDate(
+          app.prisma,
+          channelSlug as Parameters<typeof syncChannelDate>[1],
+          scheduleDate,
+          WATCH_FOLDER,
+          app.log,
+        );
       });
     } catch (err) {
-      app.log.error({ err, fileCode, scheduleDate, triggerFile, op }, 'Provys watcher: sync hatası');
+      app.log.error(
+        { err, channelSlug, scheduleDate, triggerFile, op },
+        'Provys watcher: sync hatası',
+      );
     }
   };
 
   /**
-   * Event-bazlı orchestrator. (fileCode, scheduleDate) group'unu dizinin
-   * tamamından yeniden hesaplar; tekrar event geldiğinde timer reset →
-   * DEBOUNCE_MS sonra tek atış.
+   * Bir filesystem event'i — `(channel, fileNameDate, fileNameDate+1)`
+   * günlerini etkileyebilir: dosya kendi günü için kaynak; aynı dosya gece
+   * yarısı sonrası event'leri ile bir sonraki güne de katkı yapabilir
+   * (per-event `broadcastDate`). Debounce hala `(fileCode, scheduleDate)`
+   * scope'lu — aynı gün için art arda gelen event'ler tek sync'e indirgenir.
    */
   const handle = (filePath: string, op: 'add' | 'change' | 'unlink'): void => {
     if (path.extname(filePath).toLowerCase() !== '.bxf') return;
@@ -168,25 +158,31 @@ export function startProvysWatcher(app: FastifyInstance): void {
       app.log.warn({ filePath, fileCode }, 'Provys watcher: bilinmeyen file code, import edilmedi');
       return;
     }
-    const scheduleDate = extractScheduleDate(filePath);
-    if (!scheduleDate) {
+    const filenameDate = extractScheduleDate(filePath);
+    if (!filenameDate) {
       app.log.warn({ filePath, fileCode }, 'Provys watcher: dosya adından tarih çıkartılamadı, atlandı');
       return;
     }
+    const nextDate = addDays(filenameDate, 1);
+    for (const scheduleDate of [filenameDate, nextDate]) {
+      const key = debounceKey(fileCode, scheduleDate);
+      const existing = debounceTimers.get(key);
+      if (existing) clearTimeout(existing);
 
-    const key = debounceKey(fileCode, scheduleDate);
-    const existing = debounceTimers.get(key);
-    if (existing) clearTimeout(existing);
-
-    const timer = setTimeout(() => {
-      debounceTimers.delete(key);
-      // Limiter ile sarmala — eş zamanlı sync sayısı CONCURRENCY ile sınırlı,
-      // diğerleri FIFO sıraya alınır (pool tükenmesi engellenir).
-      void limiter.run(() => flushGroup(fileCode, channel.slug, scheduleDate, filePath, op));
-    }, DEBOUNCE_MS);
-    if (typeof timer.unref === 'function') timer.unref();
-    debounceTimers.set(key, timer);
+      const timer = setTimeout(() => {
+        debounceTimers.delete(key);
+        void limiter.run(() => flushGroup(channel.slug, scheduleDate, filePath, op));
+      }, DEBOUNCE_MS);
+      if (typeof timer.unref === 'function') timer.unref();
+      debounceTimers.set(key, timer);
+    }
   };
+
+  function addDays(date: string, n: number): string {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
 
   watcher.on('add',    (p: string) => handle(p, 'add'));
   watcher.on('change', (p: string) => handle(p, 'change'));
