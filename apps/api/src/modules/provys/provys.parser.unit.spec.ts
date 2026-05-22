@@ -495,6 +495,52 @@ describe('provys.parser › parseBxf (SMPTE 2021)', () => {
     expect(items[0].durationMs).toBeNull();
   });
 
+  it('rawKind = "ProgramHeader" when eventType is Primary-ProgramHeader (even with ProgramEvent child)', () => {
+    // Provys ProgramHeader event'ini ProgramEvent child'ı ile de gönderir;
+    // parser eventType önceliğiyle "ProgramHeader" döndürmeli, "Program"
+    // değil. classifyCategory yine PROGRAM döner (substring "program").
+    const xml = `<?xml version="1.0"?>
+<BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF"><BxfData><Schedule>
+  <ScheduledEvent>
+    <EventData eventType="Primary-ProgramHeader">
+      <EventId><EventId>HDR-1</EventId></EventId>
+      <EventTitle>Premier League 25-26 Netbusters</EventTitle>
+      <PrimaryEvent><ProgramEvent>
+        <SegmentNumber>0</SegmentNumber>
+        <ProgramName>Premier League 25-26 Netbusters</ProgramName>
+      </ProgramEvent></PrimaryEvent>
+      <StartDateTime><SmpteDateTime broadcastDate="2026-05-22" frameRate="25"><SmpteTimeCode>20:45:13:20</SmpteTimeCode></SmpteDateTime></StartDateTime>
+      <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:29:37:13</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+    </EventData>
+  </ScheduledEvent>
+  <ScheduledEvent>
+    <EventData eventType="Primary">
+      <EventId><EventId>PRG-1</EventId></EventId>
+      <EventTitle>Premier League 25-26 Netbusters</EventTitle>
+      <PrimaryEvent><ProgramEvent>
+        <SegmentNumber>1</SegmentNumber>
+        <ProgramName>Premier League 25-26 Netbusters</ProgramName>
+      </ProgramEvent></PrimaryEvent>
+      <StartDateTime><SmpteDateTime broadcastDate="2026-05-22" frameRate="25"><SmpteTimeCode>20:45:13:20</SmpteTimeCode></SmpteDateTime></StartDateTime>
+      <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:14:05:09</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+    </EventData>
+    <Content>
+      <ContentId><HouseNumber>DC00042141</HouseNumber></ContentId>
+      <Name>Netbusters 37.Hafta</Name>
+      <Description type="VersionName">Netbusters 37.Hafta</Description>
+    </Content>
+  </ScheduledEvent>
+</Schedule></BxfData></BxfMessage>`;
+    const items = parseBxf(xml);
+    const byId = new Map(items.map((i) => [i.eventId, i]));
+    // HDR-1: ProgramHeader rawKind, category PROGRAM (substring match)
+    expect(byId.get('HDR-1')?.rawKind).toBe('ProgramHeader');
+    expect(byId.get('HDR-1')?.category).toBe('PROGRAM');
+    // PRG-1: normal Program rawKind
+    expect(byId.get('PRG-1')?.rawKind).toBe('Program');
+    expect(byId.get('PRG-1')?.category).toBe('PROGRAM');
+  });
+
   it('classifies different AdType values (Commercial / PSA / Live / Other)', () => {
     const ev = (id: string, adType: string) => `
       <ScheduledEvent><EventData eventType="Primary">

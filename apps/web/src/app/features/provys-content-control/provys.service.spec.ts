@@ -149,32 +149,46 @@ describe('ProvysService (per-day snapshot)', () => {
     }
   });
 
-  it('exportExcel issues GET /provys/export/excel with channel + date (no categories when all selected)', async () => {
-    // Anchor click side-effect'i sırasında DOM'a element ekleniyor; jsdom
-    // ortamında click() no-op olur, sadece HTTP isteğini doğruluyoruz.
+  it('exportExcel issues GET /provys/export/excel with channel + date + includeProgramHeaders=false default', async () => {
     const promise = service.exportExcel('beinhaber' as any, '2026-05-22');
-    const req = http.expectOne(`${environment.apiUrl}/provys/export/excel?channel=beinhaber&date=2026-05-22`);
+    const req = http.expectOne((r) => r.url === `${environment.apiUrl}/provys/export/excel`);
     expect(req.request.responseType).toBe('blob');
+    expect(req.request.params.get('channel')).toBe('beinhaber');
+    expect(req.request.params.get('date')).toBe('2026-05-22');
+    expect(req.request.params.get('includeProgramHeaders')).toBe('false');
+    // Tüm kategoriler default → categories param yok
+    expect(req.request.params.get('categories')).toBeNull();
     req.flush(new Blob(['excel-bytes']));
     await promise;
   });
 
-  it('exportPdf issues GET /provys/export/pdf with channel + date', async () => {
+  it('exportPdf issues GET /provys/export/pdf with channel + date + includeProgramHeaders=false', async () => {
     const promise = service.exportPdf('beinsports1' as any, '2026-02-17');
-    const req = http.expectOne(`${environment.apiUrl}/provys/export/pdf?channel=beinsports1&date=2026-02-17`);
+    const req = http.expectOne((r) => r.url === `${environment.apiUrl}/provys/export/pdf`);
     expect(req.request.responseType).toBe('blob');
+    expect(req.request.params.get('channel')).toBe('beinsports1');
+    expect(req.request.params.get('date')).toBe('2026-02-17');
+    expect(req.request.params.get('includeProgramHeaders')).toBe('false');
     req.flush(new Blob(['pdf-bytes']));
     await promise;
   });
 
-  it('exportExcel attaches categories param when not all are selected', async () => {
+  it('exportExcel attaches categories param when not all are selected (with headers off)', async () => {
     service.setSelectedCategories(new Set(['CANLI', 'PROGRAM']));
     const promise = service.exportExcel('beinhaber' as any, '2026-05-22');
     const req = http.expectOne((r) => r.url === `${environment.apiUrl}/provys/export/excel`);
-    expect(req.request.params.get('channel')).toBe('beinhaber');
-    expect(req.request.params.get('date')).toBe('2026-05-22');
     // PROVYS_CATEGORIES sırasıyla: REKLAM, KAMU_SPOTU, CANLI, PROGRAM, TANITIM, DIGER
     expect(req.request.params.get('categories')).toBe('CANLI,PROGRAM');
+    expect(req.request.params.get('includeProgramHeaders')).toBe('false');
+    req.flush(new Blob(['excel-bytes']));
+    await promise;
+  });
+
+  it('exportExcel sends includeProgramHeaders=true when toggle is on', async () => {
+    service.setShowProgramHeaders(true);
+    const promise = service.exportExcel('beinhaber' as any, '2026-05-22');
+    const req = http.expectOne((r) => r.url === `${environment.apiUrl}/provys/export/excel`);
+    expect(req.request.params.get('includeProgramHeaders')).toBe('true');
     req.flush(new Blob(['excel-bytes']));
     await promise;
   });
@@ -186,6 +200,26 @@ describe('ProvysService (per-day snapshot)', () => {
     expect(service.selectedCategories().size).toBe(5);
     service.toggleCategory('REKLAM');
     expect(service.selectedCategories().has('REKLAM')).toBe(true);
+  });
+
+  it('filteredItemsFor default hides ProgramHeader rows; toggle ON keeps them', async () => {
+    const today = service.activeDate();
+    const items: ProvysItemDto[] = [
+      { ...makeItem('beinhaber', today, 'HDR'), rawKind: 'ProgramHeader', category: 'PROGRAM', dcCode: null },
+      { ...makeItem('beinhaber', today, 'CONTENT'), rawKind: 'Program', category: 'PROGRAM', dcCode: 'DC00042141' },
+    ];
+    const promise = service.loadInitial();
+    for (const ch of PROVYS_CHANNELS) {
+      const req = http.expectOne(`${environment.apiUrl}/provys/items?channel=${ch.slug}&date=${today}`);
+      req.flush(ch.slug === 'beinhaber' ? items : []);
+    }
+    await promise;
+
+    // Default: showProgramHeaders=false → HDR satırı gizli
+    expect(service.filteredItemsFor('beinhaber' as any)().map((i) => i.eventId)).toEqual(['CONTENT']);
+
+    service.setShowProgramHeaders(true);
+    expect(service.filteredItemsFor('beinhaber' as any)().map((i) => i.eventId).sort()).toEqual(['CONTENT', 'HDR']);
   });
 
   it('filteredItemsFor returns the raw list when all categories are selected, filtered otherwise', async () => {

@@ -50,6 +50,14 @@ export class ProvysService {
    * tutar, sadece `filteredItemsFor()` filtre uygular.
    */
   readonly selectedCategories = signal<ReadonlySet<ProvysCategory>>(new Set(PROVYS_CATEGORIES));
+
+  /**
+   * "Program başlıkları" toggle'ı — `Primary-ProgramHeader` event'lerini
+   * (rawKind='ProgramHeader', DC'siz block manşetleri) gösterip gizler.
+   * Default kapalı: kullanıcı gerçek Content satırlarını görür; aynı
+   * timecode'da çakışan duplicate görünüm önlenir.
+   */
+  readonly showProgramHeaders = signal<boolean>(false);
   /** O kanal için DB'de mevcut günler (`/provys/dates?channel=` döner). */
   private readonly availableDatesStore = new Map<ProvysChannelSlug, ReturnType<typeof signal<string[]>>>();
 
@@ -70,15 +78,21 @@ export class ProvysService {
   }
 
   /**
-   * Aktif kategori filtresi uygulanmış liste (UI'da gösterilen). Tüm
-   * kategoriler aktifse ham `itemsFor` ile aynı sonucu döner.
+   * Aktif kategori filtresi + ProgramHeader toggle uygulanmış liste
+   * (UI'da gösterilen).
    */
   filteredItemsFor(channel: ProvysChannelSlug): Signal<ProvysItemDto[]> {
     return computed(() => {
       const items = this.itemsFor(channel)();
       const allowed = this.selectedCategories();
-      if (allowed.size === PROVYS_CATEGORIES.length) return items;
-      return items.filter((i) => allowed.has(i.category));
+      const showHeaders = this.showProgramHeaders();
+      const allCategoriesActive = allowed.size === PROVYS_CATEGORIES.length;
+      if (allCategoriesActive && showHeaders) return items;
+      return items.filter((i) => {
+        if (!allCategoriesActive && !allowed.has(i.category)) return false;
+        if (!showHeaders && i.rawKind === 'ProgramHeader') return false;
+        return true;
+      });
     });
   }
 
@@ -92,6 +106,10 @@ export class ProvysService {
     if (cur.has(category)) cur.delete(category);
     else cur.add(category);
     this.selectedCategories.set(cur);
+  }
+
+  setShowProgramHeaders(show: boolean): void {
+    this.showProgramHeaders.set(show);
   }
 
   availableDatesFor(channel: ProvysChannelSlug) {
@@ -149,17 +167,23 @@ export class ProvysService {
    * (ApiService.getBlob + anchor download).
    */
   async exportExcel(channel: ProvysChannelSlug, date: string): Promise<void> {
-    const params: Record<string, string> = { channel, date };
-    const cats = this.activeCategoriesParam();
-    if (cats) params['categories'] = cats;
-    await this.downloadBlob('/provys/export/excel', params, `provys_${channel}_${date}.xlsx`);
+    await this.downloadBlob('/provys/export/excel', this.buildExportParams(channel, date), `provys_${channel}_${date}.xlsx`);
   }
 
   async exportPdf(channel: ProvysChannelSlug, date: string): Promise<void> {
+    await this.downloadBlob('/provys/export/pdf', this.buildExportParams(channel, date), `provys_${channel}_${date}.pdf`);
+  }
+
+  /** Aktif UI filtrelerini export query param setine taşır. */
+  private buildExportParams(channel: ProvysChannelSlug, date: string): Record<string, string> {
     const params: Record<string, string> = { channel, date };
     const cats = this.activeCategoriesParam();
     if (cats) params['categories'] = cats;
-    await this.downloadBlob('/provys/export/pdf', params, `provys_${channel}_${date}.pdf`);
+    // ProgramHeader gösterimi default kapalı → export'a hariç (default
+    // server-side davranışı zaten kapalı; explicit göndermesek de OK ama
+    // niyet netliği için her zaman gönderelim).
+    params['includeProgramHeaders'] = this.showProgramHeaders() ? 'true' : 'false';
+    return params;
   }
 
   /**

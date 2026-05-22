@@ -41,6 +41,12 @@ const exportQuerySchema = z.object({
     if (s === undefined || s === '') return true;
     return s.split(',').every((c) => (CATEGORY_ENUM as readonly string[]).includes(c.trim()));
   }, { message: 'Invalid category in categories parameter' }),
+  /**
+   * `Primary-ProgramHeader` satırlarını export'a dahil et. Default `false`
+   * — UI'nın default davranışıyla aynı (Program başlıkları block manşeti,
+   * aynı timecode'da Content satırıyla collision yapar).
+   */
+  includeProgramHeaders: z.enum(['true', 'false']).optional(),
 });
 
 function parseCategoriesFilter(value: string | undefined): ReadonlySet<string> | null {
@@ -48,6 +54,10 @@ function parseCategoriesFilter(value: string | undefined): ReadonlySet<string> |
   const set = new Set(value.split(',').map((c) => c.trim()).filter(Boolean));
   if (set.size === 0) return null;
   return set;
+}
+
+function shouldIncludeProgramHeaders(value: string | undefined): boolean {
+  return value === 'true';
 }
 
 const itemDtoSchema = z.object({
@@ -161,9 +171,11 @@ export async function provysRoutes(app: FastifyInstance) {
     const parsed = exportQuerySchema.parse(request.query);
     const date = parsed.date ?? istanbulTodayDate();
     const allow = parseCategoriesFilter(parsed.categories);
+    const includeHeaders = shouldIncludeProgramHeaders(parsed.includeProgramHeaders);
     const items = await fetchChannelDateSnapshot(app, parsed.channel, date);
     const rows: ProvysExportRow[] = items
       .filter((i) => !allow || allow.has(i.category))
+      .filter((i) => includeHeaders || i.rawKind !== 'ProgramHeader')
       .map((i) => ({
         sequence: i.sequence,
         startTimecode: i.startTimecode,
@@ -190,9 +202,11 @@ export async function provysRoutes(app: FastifyInstance) {
     const parsed = exportQuerySchema.parse(request.query);
     const date = parsed.date ?? istanbulTodayDate();
     const allow = parseCategoriesFilter(parsed.categories);
+    const includeHeaders = shouldIncludeProgramHeaders(parsed.includeProgramHeaders);
     const items = await fetchChannelDateSnapshot(app, parsed.channel, date);
     const rows: ProvysExportRow[] = items
       .filter((i) => !allow || allow.has(i.category))
+      .filter((i) => includeHeaders || i.rawKind !== 'ProgramHeader')
       .map((i) => ({
         sequence: i.sequence,
         startTimecode: i.startTimecode,

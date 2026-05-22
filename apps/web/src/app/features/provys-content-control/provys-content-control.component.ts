@@ -10,6 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatDatepickerModule, MatDatepickerInputEvent } from '@angular/material/datepicker';
 import { MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
 import { MatButtonToggleModule, MatButtonToggleChange } from '@angular/material/button-toggle';
+import { MatSlideToggleModule, MatSlideToggleChange } from '@angular/material/slide-toggle';
 import { LoggerService } from '../../core/services/logger.service';
 import { ProvysService } from './provys.service';
 import { ProvysChannelPanelComponent } from './provys-channel-panel.component';
@@ -48,6 +49,7 @@ function dateFromIso(iso: string): Date {
     MatInputModule,
     MatDatepickerModule,
     MatButtonToggleModule,
+    MatSlideToggleModule,
     ProvysChannelPanelComponent,
   ],
   providers: [
@@ -120,6 +122,14 @@ function dateFromIso(iso: string): Date {
             </mat-button-toggle>
           }
         </mat-button-toggle-group>
+        <mat-slide-toggle
+          class="header-toggle"
+          [checked]="showProgramHeaders()"
+          (change)="onShowProgramHeadersToggle($event)"
+          aria-label="Program başlıklarını göster"
+        >
+          Program başlıkları
+        </mat-slide-toggle>
         <span class="count-label" aria-live="polite">
           {{ visibleCount() }} / {{ totalCount() }} kayıt
         </span>
@@ -229,6 +239,8 @@ function dateFromIso(iso: string): Date {
       font-variant-numeric: tabular-nums;
       margin-left: auto;
     }
+    .header-toggle ::ng-deep .mdc-form-field { font-size: 11.5px; color: var(--bp-fg-2); }
+    .header-toggle ::ng-deep label { color: var(--bp-fg-2); }
   `],
 })
 export class ProvysContentControlComponent implements OnInit, OnDestroy {
@@ -274,6 +286,13 @@ export class ProvysContentControlComponent implements OnInit, OnDestroy {
     // `multiple` toggle-group: value = seçili kategori array'i
     const selected = new Set(ev.value as ProvysCategory[]);
     this.service.setSelectedCategories(selected);
+  }
+
+  /** Service'in showProgramHeaders signal'ini computed olarak okur. */
+  readonly showProgramHeaders = computed<boolean>(() => this.service.showProgramHeaders());
+
+  onShowProgramHeadersToggle(ev: MatSlideToggleChange): void {
+    this.service.setShowProgramHeaders(ev.checked);
   }
 
   ngOnInit(): void {

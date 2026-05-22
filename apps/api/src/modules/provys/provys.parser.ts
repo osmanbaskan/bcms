@@ -302,6 +302,17 @@ function deriveRawKind(
   // (1) Canlı sinyali — ProgramEvent olsa bile öncelikli
   if (hasLiveSignal(scheduledEvent, evd)) return 'Live';
 
+  // (2) Primary-ProgramHeader → blok manşeti. ProgramEvent child'ı olsa
+  // bile "Program" değil "ProgramHeader" döner. Aynı timecode'da gerçek
+  // Content satırı (Primary, SegmentNumber≥1) ayrıca parse edilir; UI
+  // default ProgramHeader satırlarını gizleyebilir, opt-in toggle ile
+  // gösterilir. classifyCategory yine 'PROGRAM' döner (rawKind substring
+  // "program" eşleşmesi).
+  const evType = evd['@_eventType'];
+  if (typeof evType === 'string' && evType.includes('ProgramHeader')) {
+    return 'ProgramHeader';
+  }
+
   const primary = evd['PrimaryEvent'] as Record<string, unknown> | undefined;
   if (primary) {
     const npe = primary['NonProgramEvent'] as Record<string, unknown> | undefined;
@@ -312,9 +323,7 @@ function deriveRawKind(
     }
     if (primary['ProgramEvent']) return 'Program';
   }
-  const evType = evd['@_eventType'];
   if (typeof evType === 'string' && evType.trim()) {
-    if (evType.includes('ProgramHeader')) return 'ProgramHeader';
     if (evType === 'Primary') return 'Primary';
     return evType.trim();
   }
