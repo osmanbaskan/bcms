@@ -252,21 +252,80 @@ function deriveRawKind(evd: Record<string, unknown>): string | null {
   return null;
 }
 
-/** Başlık fallback'i: EventTitle boşsa ProgramName / AdType + SpotType / boş. */
-function deriveTitle(evd: Record<string, unknown>): string {
-  const titleRaw = evd['EventTitle'];
-  if (typeof titleRaw === 'string') {
-    const t = titleRaw.trim();
-    if (t) return t.length > 500 ? t.slice(0, 500) : t;
+/**
+ * Description element'i tek obje veya array olabilir; `type` attribute'una
+ * göre eşleşen ilk dolu text'i döner.
+ */
+function findDescriptionText(content: Record<string, unknown> | undefined, type: string): string | null {
+  if (!content) return null;
+  const raw = content['Description'];
+  const candidates = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+  for (const c of candidates) {
+    if (!c || typeof c !== 'object') continue;
+    const cr = c as Record<string, unknown>;
+    if (cr['@_type'] !== type) continue;
+    const text = cr['#text'];
+    if (typeof text === 'string' && text.trim()) return text.trim();
   }
+  return null;
+}
+
+/** İlk dolu string'i (trim'li) seçer, 500 char'a kısar. */
+function pickFirstString(...candidates: unknown[]): string | null {
+  for (const c of candidates) {
+    if (typeof c === 'string') {
+      const s = c.trim();
+      if (s) return s.length > 500 ? s.slice(0, 500) : s;
+    }
+  }
+  return null;
+}
+
+/**
+ * Başlık kaynağı (en zenginden generic'e). Provys 6+ farklı alanda metin
+ * taşıyor; UI'da operatöre en faydalı olan zengin açıklayıcı VersionName /
+ * EpisodeName öncelikli, generic EventTitle / ProgramName fallback.
+ *
+ * Sıra:
+ *   1. Content > Description[@type="VersionName"]   — örn. "... 34. Hafta Trabzonspor - Gençlerbirliği Maçı Bant - HD"
+ *   2. Content > ContentDetail > ProgramContent > Series > EpisodeName
+ *   3. EventData > EventTitle                       — generic ad
+ *   4. Content > Name                               — kısa içerik adı
+ *   5. PrimaryEvent > ProgramEvent > ProgramName    — program adı
+ *   6. NonProgramEvent > Details > AdType (+ SpotType) — promo/reklam etiketi
+ */
+function deriveTitle(
+  scheduledEvent: Record<string, unknown>,
+  evd: Record<string, unknown>,
+): string {
+  const content = scheduledEvent['Content'] as Record<string, unknown> | undefined;
+
+  // 1. VersionName (en zengin)
+  const versionName = findDescriptionText(content, 'VersionName');
+  if (versionName) return versionName.slice(0, 500);
+
+  // 2. Series > EpisodeName
+  const series = ((content?.['ContentDetail'] as Record<string, unknown> | undefined)
+    ?.['ProgramContent'] as Record<string, unknown> | undefined)
+    ?.['Series'] as Record<string, unknown> | undefined;
+  const episodeName = pickFirstString(series?.['EpisodeName']);
+  if (episodeName) return episodeName;
+
+  // 3. EventTitle (generic)
+  const eventTitle = pickFirstString(evd['EventTitle']);
+  if (eventTitle) return eventTitle;
+
+  // 4. Content > Name
+  const contentName = pickFirstString(content?.['Name']);
+  if (contentName) return contentName;
+
+  // 5. ProgramEvent > ProgramName
   const primary = evd['PrimaryEvent'] as Record<string, unknown> | undefined;
-  const programName = (primary?.['ProgramEvent'] as Record<string, unknown> | undefined)?.['ProgramName'];
-  if (typeof programName === 'string' && programName.trim()) {
-    const s = programName.trim();
-    return s.length > 500 ? s.slice(0, 500) : s;
-  }
-  const npe = primary?.['NonProgramEvent'] as Record<string, unknown> | undefined;
-  const details = npe?.['Details'] as Record<string, unknown> | undefined;
+  const programName = pickFirstString((primary?.['ProgramEvent'] as Record<string, unknown> | undefined)?.['ProgramName']);
+  if (programName) return programName;
+
+  // 6. AdType (+ SpotType) — promo/reklam fallback
+  const details = (primary?.['NonProgramEvent'] as Record<string, unknown> | undefined)?.['Details'] as Record<string, unknown> | undefined;
   const adType = details?.['AdType'];
   const spotType = details?.['SpotType'];
   if (typeof adType === 'string' && adType.trim()) {
@@ -323,7 +382,7 @@ export function parseBxf(content: string): ParsedItem[] {
     const startFields = parseStartDateTime(evd['StartDateTime']);
     if (!eventId || !startFields.instant) continue;
 
-    const title = deriveTitle(evd);
+    const title = deriveTitle(sev as Record<string, unknown>, evd);
     if (!title) continue;
 
     const rawKind = deriveRawKind(evd);

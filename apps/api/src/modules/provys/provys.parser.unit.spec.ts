@@ -132,10 +132,81 @@ describe('provys.parser › parseBxf (SMPTE 2021)', () => {
     expect(items[2].durationTimecode).toBe('00:00:30:00');
   });
 
-  it('reads title from EventData > EventTitle (canonical path)', () => {
+  it('reads title from EventData > EventTitle when Content lacks richer fields', () => {
     const items = parseBxf(SAMPLE_BXF);
     expect(items[0].title).toBe('TFF 1. Lig 25-26 Haftanın Golleri');
     expect(items[1].title).toBe('TFF 1. Lig 25-26 Haftanın Golleri');
+  });
+
+  it('title source priority: VersionName > EpisodeName > EventTitle > Name > ProgramName > AdType', () => {
+    const ev = (id: string, body: string) => `
+      <ScheduledEvent>
+        <EventData eventType="Primary">
+          <EventId><EventId>${id}</EventId></EventId>
+          <EventTitle>Generic Event Title</EventTitle>
+          <PrimaryEvent><ProgramEvent><ProgramName>Generic Program Name</ProgramName></ProgramEvent></PrimaryEvent>
+          <StartDateTime><SmpteDateTime broadcastDate="2026-02-17" frameRate="25"><SmpteTimeCode>10:00:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+          <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:30:00:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+        </EventData>
+        ${body}
+      </ScheduledEvent>`;
+
+    const xml = `<?xml version="1.0"?>
+<BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF"><BxfData><Schedule>
+  ${ev('A', `<Content>
+    <ContentId><HouseNumber>DC00040243</HouseNumber></ContentId>
+    <Name>Short Content Name</Name>
+    <Description type="VersionName">Trendyol Süper Lig Season 2025/2026 34. Hafta Trabzonspor - Gençlerbirliği Maçı Bant - HD</Description>
+    <ContentDetail><ProgramContent><Series>
+      <EpisodeName>Should not win against VersionName</EpisodeName>
+    </Series></ProgramContent></ContentDetail>
+  </Content>`)}
+  ${ev('B', `<Content>
+    <ContentId><HouseNumber>DC00040999</HouseNumber></ContentId>
+    <Name>Short Content Name</Name>
+    <ContentDetail><ProgramContent><Series>
+      <EpisodeName>34. Hafta Episode Detail</EpisodeName>
+    </Series></ProgramContent></ContentDetail>
+  </Content>`)}
+  ${ev('C', '')}
+  ${ev('D', `<Content>
+    <ContentId><HouseNumber>DC00040998</HouseNumber></ContentId>
+    <Name>Just Content Name</Name>
+  </Content>`)}
+</Schedule></BxfData></BxfMessage>`;
+
+    const items = parseBxf(xml);
+    const titleOf = (id: string) => items.find((i) => i.eventId === id)?.title;
+    // A: VersionName seçilmeli — diğerleri (EpisodeName, EventTitle, Name) bastırılır
+    expect(titleOf('A')).toBe('Trendyol Süper Lig Season 2025/2026 34. Hafta Trabzonspor - Gençlerbirliği Maçı Bant - HD');
+    // B: VersionName yok → EpisodeName seçilir; EventTitle bastırılır
+    expect(titleOf('B')).toBe('34. Hafta Episode Detail');
+    // C: Content yok → EventTitle generic fallback
+    expect(titleOf('C')).toBe('Generic Event Title');
+    // D: VersionName + EpisodeName yok; EventTitle generic var → onu seçer (Name'i değil)
+    expect(titleOf('D')).toBe('Generic Event Title');
+  });
+
+  it('skips Description elements with other "type" attributes (e.g. SynopsisShort)', () => {
+    const xml = `<?xml version="1.0"?>
+<BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF"><BxfData><Schedule>
+  <ScheduledEvent>
+    <EventData eventType="Primary">
+      <EventId><EventId>EVT-X</EventId></EventId>
+      <EventTitle>Generic</EventTitle>
+      <PrimaryEvent><ProgramEvent><ProgramName>Programme</ProgramName></ProgramEvent></PrimaryEvent>
+      <StartDateTime><SmpteDateTime broadcastDate="2026-02-17" frameRate="25"><SmpteTimeCode>10:00:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+      <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:30:00:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+    </EventData>
+    <Content>
+      <ContentId><HouseNumber>DC00040243</HouseNumber></ContentId>
+      <Description type="SynopsisShort">kısa özet</Description>
+      <Description type="VersionName">Trendyol Süper Lig - Bant 1. Devre - HD</Description>
+    </Content>
+  </ScheduledEvent>
+</Schedule></BxfData></BxfMessage>`;
+    const items = parseBxf(xml);
+    expect(items[0].title).toBe('Trendyol Süper Lig - Bant 1. Devre - HD');
   });
 
   it('extracts dcCode from ScheduledEvent > Content > ContentId > HouseNumber', () => {
