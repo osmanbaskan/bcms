@@ -38,23 +38,47 @@ import { PROVYS_CHANNELS } from './provys.types';
     </section>
   `,
   styles: [`
-    .page { display: flex; flex-direction: column; gap: 12px; padding: 0; }
+    :host { display: block; color: var(--bp-fg-1); }
+    .page {
+      display: flex; flex-direction: column; gap: 12px; padding: 0;
+      background: var(--bp-bg-1); min-height: 100%;
+    }
     .page-head {
       display: flex; justify-content: space-between; align-items: center;
       padding: 12px 16px 0 16px;
     }
-    h1 { margin: 0; font-size: 22px; font-weight: 600; }
-    .subtitle { margin: 2px 0 0 0; font-size: 12.5px; color: #6b7280; }
+    h1 {
+      margin: 0; font-size: 22px;
+      font-weight: var(--bp-fw-semibold, 600);
+      color: var(--bp-fg-1);
+      font-family: var(--bp-font-display, var(--bp-font-sans));
+      letter-spacing: var(--bp-ls-tight);
+    }
+    .subtitle {
+      margin: 2px 0 0 0; font-size: 12.5px;
+      color: var(--bp-fg-3);
+    }
     .status {
       display: inline-flex; align-items: center; gap: 6px;
-      font-size: 12.5px; padding: 4px 10px; border-radius: 14px;
-      background: #f3f4f6; color: #6b7280;
+      font-size: 12.5px; padding: 4px 10px;
+      border-radius: var(--bp-r-pill, 999px);
+      background: var(--bp-bg-3); color: var(--bp-fg-2);
+      border: 1px solid var(--bp-line-2);
     }
     .status .dot { font-size: 16px; width: 16px; height: 16px; }
-    .status--ok { background: #ecfdf5; color: #047857; }
-    .status--err { background: #fef2f2; color: #b91c1c; }
-    .provys-tabs { background: #ffffff; }
-    ::ng-deep .provys-tabs .mat-mdc-tab-header { border-bottom: 1px solid #e5e7eb; }
+    .status--ok  {
+      background: rgba(16, 185, 129, 0.16); color: #6ee7b7;
+      border-color: rgba(16, 185, 129, 0.40);
+    }
+    .status--err {
+      background: rgba(239, 68, 68, 0.18); color: #fca5a5;
+      border-color: rgba(239, 68, 68, 0.40);
+    }
+    .provys-tabs { background: var(--bp-bg-2); }
+    ::ng-deep .provys-tabs .mat-mdc-tab-header {
+      border-bottom: 1px solid var(--bp-line);
+      background: var(--bp-bg-2);
+    }
   `],
 })
 export class ProvysContentControlComponent implements OnInit, OnDestroy {

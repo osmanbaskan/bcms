@@ -8,6 +8,16 @@ import {
   type ProvysItemDto,
 } from './provys.types';
 
+/** Kategori → CSS class fragment (template'te `cat-chip--<frag>` / `row--<frag>`). */
+const CATEGORY_CLASS: Record<ProvysCategory, string> = {
+  REKLAM: 'reklam',
+  KAMU_SPOTU: 'kamu',
+  CANLI: 'canli',
+  PROGRAM: 'program',
+  TANITIM: 'tanitim',
+  DIGER: 'diger',
+};
+
 @Component({
   selector: 'app-provys-channel-panel',
   standalone: true,
@@ -46,7 +56,7 @@ import {
                 <td class="col-time mono">{{ formatTime(item.startAt) }}</td>
                 <td class="col-dur mono">{{ formatDuration(item.durationMs) }}</td>
                 <td class="col-cat">
-                  <span class="cat-chip" [style.background]="styleFor(item.category).background" [style.color]="styleFor(item.category).text">
+                  <span class="cat-chip" [class]="'cat-chip cat-chip--' + categoryClass(item.category)">
                     {{ styleFor(item.category).label }}
                   </span>
                 </td>
@@ -60,44 +70,58 @@ import {
     </div>
   `,
   styles: [`
-    :host { display: block; }
-    .panel { background: #ffffff; }
-    .state { padding: 32px; text-align: center; color: #6b7280; font-size: 13px; }
-    .state.empty { color: #9ca3af; }
+    :host { display: block; color: var(--bp-fg-1); }
+    .panel { background: var(--bp-bg-2); }
+    .state {
+      padding: 32px; text-align: center;
+      color: var(--bp-fg-3); font-size: 13px;
+    }
+    .state.empty { color: var(--bp-fg-4); }
     table.provys-list {
       width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12.5px;
+      color: var(--bp-fg-1);
     }
     thead th {
       position: sticky; top: 0; z-index: 1;
-      background: #f9fafb; color: #374151; font-weight: 600;
-      text-align: left; padding: 6px 10px; border-bottom: 1px solid #e5e7eb;
+      background: var(--bp-bg-3); color: var(--bp-fg-2); font-weight: 600;
+      text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--bp-line);
       font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em;
     }
     tbody td {
-      padding: 4px 10px; border-bottom: 1px solid #f3f4f6; line-height: 1.35;
+      padding: 4px 10px; border-bottom: 1px solid var(--bp-line-2); line-height: 1.35;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      color: var(--bp-fg-1);
     }
-    .col-seq { width: 48px; color: #9ca3af; }
-    .col-time { width: 110px; }
-    .col-dur { width: 80px; color: #6b7280; }
+    .col-seq { width: 48px; color: var(--bp-fg-4); }
+    .col-time { width: 110px; color: var(--bp-fg-1); }
+    .col-dur { width: 80px; color: var(--bp-fg-2); }
     .col-cat { width: 130px; }
-    .col-title { white-space: normal; }
+    .col-title { white-space: normal; color: var(--bp-fg-1); }
     .col-kind { width: 130px; }
-    .mono { font-family: ui-monospace, 'JetBrains Mono', 'Fira Code', Menlo, monospace; }
-    .muted { color: #9ca3af; }
+    .mono { font-family: var(--bp-font-mono, ui-monospace, 'JetBrains Mono', Menlo, monospace); font-variant-numeric: tabular-nums; }
+    .muted { color: var(--bp-fg-3); }
     .cat-chip {
-      display: inline-block; padding: 2px 8px; border-radius: 10px;
-      font-size: 11px; font-weight: 600; line-height: 1.4;
+      display: inline-block; padding: 2px 8px; border-radius: var(--bp-r-pill, 999px);
+      font-size: 11px; font-weight: var(--bp-fw-semibold, 600); line-height: 1.4;
+      border: 1px solid transparent;
     }
-    .row { transition: background 80ms linear; }
-    .row:hover { background: #f9fafb; }
-    /* Sol-bar tint — kategori renkleri tek kaynaktan gelir (PROVYS_CATEGORY_STYLES) */
+    /* Kategori chip — dark uyumlu: translucent bg + soft border + parlak fg */
+    .cat-chip--reklam   { background: rgba(245, 158, 11, 0.18); color: #fcd34d; border-color: rgba(245, 158, 11, 0.40); }
+    .cat-chip--kamu     { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; border-color: rgba(99, 102, 241, 0.40); }
+    .cat-chip--canli    { background: rgba(239, 68, 68, 0.22);  color: #fca5a5; border-color: rgba(239, 68, 68, 0.45); }
+    .cat-chip--program  { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.40); }
+    .cat-chip--tanitim  { background: rgba(168, 85, 247, 0.18); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.40); }
+    .cat-chip--diger    { background: rgba(156, 163, 175, 0.16); color: #d1d5db; border-color: rgba(156, 163, 175, 0.35); }
+    .row { transition: background var(--bp-dur-fast, 100ms) linear; }
+    .row:hover { background: var(--bp-bg-3); }
+    /* Sol-bar accent — dark zeminde okunabilir kalsın; CANLI için ek soft tint */
     .row--reklam  { box-shadow: inset 3px 0 0 #f59e0b; }
     .row--kamu    { box-shadow: inset 3px 0 0 #6366f1; }
-    .row--canli   { box-shadow: inset 3px 0 0 #dc2626; background: #fff7f7; }
+    .row--canli   { box-shadow: inset 3px 0 0 #ef4444; background: rgba(239, 68, 68, 0.06); }
+    .row--canli:hover { background: rgba(239, 68, 68, 0.12); }
     .row--program { box-shadow: inset 3px 0 0 #10b981; }
     .row--tanitim { box-shadow: inset 3px 0 0 #a855f7; }
-    .row--diger   { box-shadow: inset 3px 0 0 #9ca3af; }
+    .row--diger   { box-shadow: inset 3px 0 0 #6b7280; }
   `],
 })
 export class ProvysChannelPanelComponent {
@@ -108,6 +132,11 @@ export class ProvysChannelPanelComponent {
 
   styleFor(category: ProvysCategory) {
     return PROVYS_CATEGORY_STYLES[category];
+  }
+
+  /** Kategori → CSS class fragment (chip + row için ortak). */
+  categoryClass(category: ProvysCategory): string {
+    return CATEGORY_CLASS[category];
   }
 
   formatTime(iso: string): string {
