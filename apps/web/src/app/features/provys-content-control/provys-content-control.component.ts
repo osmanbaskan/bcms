@@ -3,13 +3,16 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatDatepickerModule, MatDatepickerInputEvent } from '@angular/material/datepicker';
 import { MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
+import { LoggerService } from '../../core/services/logger.service';
 import { ProvysService } from './provys.service';
 import { ProvysChannelPanelComponent } from './provys-channel-panel.component';
-import { PROVYS_CHANNELS } from './provys.types';
+import { PROVYS_CHANNELS, type ProvysChannelSlug } from './provys.types';
 
 function isoFromDate(d: Date): string {
   // Date picker user-local; UI Europe/Istanbul varsayar. Naive YYYY-MM-DD.
@@ -32,6 +35,8 @@ function dateFromIso(iso: string): Date {
     FormsModule,
     MatTabsModule,
     MatIconModule,
+    MatButtonModule,
+    MatTooltipModule,
     MatFormFieldModule,
     MatInputModule,
     MatDatepickerModule,
@@ -61,6 +66,28 @@ function dateFromIso(iso: string): Date {
             <mat-datepicker-toggle matIconSuffix [for]="picker" />
             <mat-datepicker #picker />
           </mat-form-field>
+          <button
+            type="button"
+            mat-stroked-button
+            class="export-btn"
+            matTooltip="Excel olarak indir"
+            [disabled]="!canExport() || exporting()"
+            (click)="onExportExcel()"
+          >
+            <mat-icon>table_view</mat-icon>
+            <span class="btn-label">Excel</span>
+          </button>
+          <button
+            type="button"
+            mat-stroked-button
+            class="export-btn"
+            matTooltip="PDF olarak indir"
+            [disabled]="!canExport() || exporting()"
+            (click)="onExportPdf()"
+          >
+            <mat-icon>picture_as_pdf</mat-icon>
+            <span class="btn-label">PDF</span>
+          </button>
           <div class="status" [class.status--ok]="connected()" [class.status--err]="!!error()">
             <mat-icon class="dot" aria-hidden="true">{{ connected() ? 'sensors' : 'sensors_off' }}</mat-icon>
             <span>{{ connected() ? 'Canlı' : (error() ?? 'Bağlanıyor…') }}</span>
@@ -106,6 +133,16 @@ function dateFromIso(iso: string): Date {
     }
     .date-field { width: 180px; }
     ::ng-deep .date-field .mat-mdc-form-field-subscript-wrapper { display: none; }
+    .export-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      min-height: 36px; padding: 0 12px;
+      border-color: var(--bp-line) !important;
+      color: var(--bp-fg-1) !important;
+      background: var(--bp-bg-3);
+    }
+    .export-btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+    .export-btn mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .export-btn .btn-label { font-size: 12.5px; font-weight: var(--bp-fw-medium, 500); }
     .status {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 12.5px; padding: 4px 10px;
@@ -132,13 +169,24 @@ function dateFromIso(iso: string): Date {
 export class ProvysContentControlComponent implements OnInit, OnDestroy {
   readonly channels = PROVYS_CHANNELS;
   readonly selectedIndex = signal(0);
+  readonly exporting = signal(false);
 
   private readonly service = inject(ProvysService);
+  private readonly logger = inject(LoggerService);
   readonly connected = computed(() => this.service.connected());
   readonly error = computed(() => this.service.lastError());
 
   /** Date picker `Date` objesi olarak okur; service ISO string saklar. */
   readonly dateValue = computed<Date>(() => dateFromIso(this.service.activeDate()));
+
+  /** Aktif tab → kanal slug. */
+  readonly activeChannel = computed<ProvysChannelSlug>(() => this.channels[this.selectedIndex()].slug);
+
+  /** Export butonları — aktif kanal+gün için satır yoksa disable. */
+  readonly canExport = computed<boolean>(() => {
+    const ch = this.activeChannel();
+    return this.service.itemsFor(ch)().length > 0;
+  });
 
   ngOnInit(): void {
     void this.service.loadInitial();
@@ -152,5 +200,29 @@ export class ProvysContentControlComponent implements OnInit, OnDestroy {
   onDateChange(ev: MatDatepickerInputEvent<Date>): void {
     if (!ev.value) return;
     void this.service.setActiveDate(isoFromDate(ev.value));
+  }
+
+  async onExportExcel(): Promise<void> {
+    if (this.exporting()) return;
+    this.exporting.set(true);
+    try {
+      await this.service.exportExcel(this.activeChannel(), this.service.activeDate());
+    } catch (err) {
+      this.logger.error('Provys Excel export failed', err);
+    } finally {
+      this.exporting.set(false);
+    }
+  }
+
+  async onExportPdf(): Promise<void> {
+    if (this.exporting()) return;
+    this.exporting.set(true);
+    try {
+      await this.service.exportPdf(this.activeChannel(), this.service.activeDate());
+    } catch (err) {
+      this.logger.error('Provys PDF export failed', err);
+    } finally {
+      this.exporting.set(false);
+    }
   }
 }

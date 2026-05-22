@@ -108,6 +108,35 @@ export class ProvysService {
     } catch { /* sessiz geç */ }
   }
 
+  /**
+   * Excel/PDF export — aktif kanal + tarih için backend endpoint'i çağırır,
+   * Blob'u browser'a indirir. Mevcut `live-plan` export pattern paritesi
+   * (ApiService.getBlob + anchor download).
+   */
+  async exportExcel(channel: ProvysChannelSlug, date: string): Promise<void> {
+    await this.downloadBlob('/provys/export/excel', { channel, date }, `provys_${channel}_${date}.xlsx`);
+  }
+
+  async exportPdf(channel: ProvysChannelSlug, date: string): Promise<void> {
+    await this.downloadBlob('/provys/export/pdf', { channel, date }, `provys_${channel}_${date}.pdf`);
+  }
+
+  private async downloadBlob(path: string, params: Record<string, string>, filename: string): Promise<void> {
+    const blob = await firstValueFrom(this.api.getBlob(path, params));
+    const url = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      // Browser yeterli süre tutması için kısa gecikme + revoke.
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    }
+  }
+
   ensureStreaming(): void {
     if (this.streamingStarted) return;
     this.streamingStarted = true;

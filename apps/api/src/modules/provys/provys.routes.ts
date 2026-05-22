@@ -9,6 +9,12 @@ import {
 } from '@bcms/shared';
 import { istanbulTodayDate } from '../../core/tz.js';
 import { closeProvysPgListener, getProvysPgListener } from './provys.pg-listener.js';
+import {
+  exportFilename,
+  exportProvysToExcelBuffer,
+  exportProvysToPdfBuffer,
+  type ProvysExportRow,
+} from './provys.export.js';
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -121,6 +127,58 @@ export async function provysRoutes(app: FastifyInstance) {
     const date = parsed.date ?? istanbulTodayDate();
     const items = await fetchChannelDateSnapshot(app, parsed.channel, date);
     return itemsResponseSchema.parse(items);
+  });
+
+  // GET /api/v1/provys/export/excel?channel=<slug>&date=YYYY-MM-DD
+  app.get('/export/excel', {
+    preHandler: app.requireGroup(...PERMISSIONS.provys.read),
+    schema: { tags: ['Provys'], summary: 'Excel export — kanal × gün snapshot' },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const parsed = channelDateQuerySchema.parse(request.query);
+    const date = parsed.date ?? istanbulTodayDate();
+    const items = await fetchChannelDateSnapshot(app, parsed.channel, date);
+    const rows: ProvysExportRow[] = items.map((i) => ({
+      sequence: i.sequence,
+      startTimecode: i.startTimecode,
+      durationTimecode: i.durationTimecode,
+      dcCode: i.dcCode,
+      title: i.title,
+      category: i.category,
+      rawKind: i.rawKind,
+      sourceFile: i.sourceFile,
+    }));
+    const buf = await exportProvysToExcelBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows });
+    const filename = exportFilename(parsed.channel, date, 'xlsx');
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(buf);
+  });
+
+  // GET /api/v1/provys/export/pdf?channel=<slug>&date=YYYY-MM-DD
+  app.get('/export/pdf', {
+    preHandler: app.requireGroup(...PERMISSIONS.provys.read),
+    schema: { tags: ['Provys'], summary: 'PDF export — kanal × gün snapshot' },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const parsed = channelDateQuerySchema.parse(request.query);
+    const date = parsed.date ?? istanbulTodayDate();
+    const items = await fetchChannelDateSnapshot(app, parsed.channel, date);
+    const rows: ProvysExportRow[] = items.map((i) => ({
+      sequence: i.sequence,
+      startTimecode: i.startTimecode,
+      durationTimecode: i.durationTimecode,
+      dcCode: i.dcCode,
+      title: i.title,
+      category: i.category,
+      rawKind: i.rawKind,
+      sourceFile: i.sourceFile,
+    }));
+    const buf = await exportProvysToPdfBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows });
+    const filename = exportFilename(parsed.channel, date, 'pdf');
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(buf);
   });
 
   // GET /api/v1/provys/dates?channel=<slug>

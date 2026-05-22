@@ -47,6 +47,9 @@ COPY --from=builder --chown=fastify:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=fastify:nodejs /app/packages/shared ./packages/shared
 COPY --from=builder --chown=fastify:nodejs /app/apps/api/dist ./dist
 COPY --from=builder --chown=fastify:nodejs /app/apps/api/prisma ./prisma
+# Static assets (Provys PDF export TTF fontları vb.) — production'da
+# runtime path `/app/assets/...` olarak resolve edilir.
+COPY --from=builder --chown=fastify:nodejs /app/apps/api/assets ./assets
 USER fastify
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

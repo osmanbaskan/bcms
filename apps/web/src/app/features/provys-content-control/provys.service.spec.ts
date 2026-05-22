@@ -148,4 +148,22 @@ describe('ProvysService (per-day snapshot)', () => {
       expect(service.itemsFor(ch.slug)()).toEqual([]);
     }
   });
+
+  it('exportExcel issues GET /provys/export/excel with channel + date', async () => {
+    // Anchor click side-effect'i sırasında DOM'a element ekleniyor; jsdom
+    // ortamında click() no-op olur, sadece HTTP isteğini doğruluyoruz.
+    const promise = service.exportExcel('beinhaber' as any, '2026-05-22');
+    const req = http.expectOne(`${environment.apiUrl}/provys/export/excel?channel=beinhaber&date=2026-05-22`);
+    expect(req.request.responseType).toBe('blob');
+    req.flush(new Blob(['excel-bytes']));
+    await promise;
+  });
+
+  it('exportPdf issues GET /provys/export/pdf with channel + date', async () => {
+    const promise = service.exportPdf('beinsports1' as any, '2026-02-17');
+    const req = http.expectOne(`${environment.apiUrl}/provys/export/pdf?channel=beinsports1&date=2026-02-17`);
+    expect(req.request.responseType).toBe('blob');
+    req.flush(new Blob(['pdf-bytes']));
+    await promise;
+  });
 });
