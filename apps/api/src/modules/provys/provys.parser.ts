@@ -286,14 +286,49 @@ function hasLiveSignal(
 }
 
 /**
+ * Kamu spotu / PSA sinyali için güçlü pattern'ler. AdType'tan bağımsız —
+ * Provys "KAMU" prefix'iyle kamu spotunu Promo olarak işaretliyor; başlık
+ * metni doğru kategoriye düşürmek için override.
+ *
+ * Eşleşme:
+ *   - Başlangıçta `KAMU\b` (word boundary) — örn. "KAMU (ÖY) ..."
+ *   - Metin içinde `kamu spotu`, `\bPSA\b`, `public service`
+ *
+ * Aranan field'lar: EventTitle, Content.Name, Content.Description@VersionName.
+ */
+const PSA_PREFIX_RE = /^\s*KAMU\b/i;
+const PSA_INLINE_RE = /\bkamu spotu\b|\bPSA\b|\bpublic service\b/i;
+
+function hasPublicServiceSignal(
+  scheduledEvent: Record<string, unknown>,
+  evd: Record<string, unknown>,
+): boolean {
+  const content = scheduledEvent['Content'] as Record<string, unknown> | undefined;
+  const candidates: unknown[] = [
+    evd['EventTitle'],
+    content?.['Name'],
+    findDescriptionText(content, 'VersionName'),
+  ];
+  for (const c of candidates) {
+    if (typeof c !== 'string' || !c.trim()) continue;
+    if (PSA_PREFIX_RE.test(c) || PSA_INLINE_RE.test(c)) return true;
+  }
+  return false;
+}
+
+/**
  * EventData'dan ham tür string'i: classifier'ı besler.
  *
  * Öncelik:
  *   1. CANLI sinyali (RouterSource.Name veya VersionName/Title 'Canlı/Live')
  *      → `Live` (classifier 'Live' → CANLI kategorisi).
- *   2. NonProgramEvent.Details.AdType (Promo / Paid Program / PSA / ...)
- *   3. ProgramEvent → `Program`
- *   4. eventType attribute (Primary-ProgramHeader → `ProgramHeader`)
+ *   2. PSA / Kamu Spotu sinyali (EventTitle/Content.Name/VersionName "KAMU "
+ *      prefix veya inline) → `PSA` (classifier → KAMU_SPOTU). Provys AdType
+ *      "Promo" işaretlese bile başlık metni kamu spotunu öncelikli yapar.
+ *   3. eventType Primary-ProgramHeader → `ProgramHeader`.
+ *   4. NonProgramEvent.Details.AdType (Promo / Paid Program / Commercial / …)
+ *   5. ProgramEvent → `Program`.
+ *   6. eventType fallback.
  */
 function deriveRawKind(
   scheduledEvent: Record<string, unknown>,
@@ -302,7 +337,11 @@ function deriveRawKind(
   // (1) Canlı sinyali — ProgramEvent olsa bile öncelikli
   if (hasLiveSignal(scheduledEvent, evd)) return 'Live';
 
-  // (2) Primary-ProgramHeader → blok manşeti. ProgramEvent child'ı olsa
+  // (2) Kamu spotu sinyali — AdType=Promo olsa bile başlık "KAMU" ile
+  // başlıyorsa veya "PSA"/"kamu spotu"/"public service" geçiyorsa KAMU_SPOTU.
+  if (hasPublicServiceSignal(scheduledEvent, evd)) return 'PSA';
+
+  // (3) Primary-ProgramHeader → blok manşeti. ProgramEvent child'ı olsa
   // bile "Program" değil "ProgramHeader" döner. Aynı timecode'da gerçek
   // Content satırı (Primary, SegmentNumber≥1) ayrıca parse edilir; UI
   // default ProgramHeader satırlarını gizleyebilir, opt-in toggle ile

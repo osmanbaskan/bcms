@@ -428,6 +428,106 @@ describe('provys.parser › parseBxf (SMPTE 2021)', () => {
     });
   });
 
+  describe('kamu spotu sınıflandırma — AdType=Promo olsa bile başlık sinyali öncelikli', () => {
+    const wrap = (body: string) => `<?xml version="1.0"?>
+<BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF"><BxfData><Schedule>
+  ${body}
+</Schedule></BxfData></BxfMessage>`;
+
+    const promoEv = (
+      id: string,
+      titleField: string,
+      contentInner: string,
+    ) => `
+      <ScheduledEvent>
+        <EventData eventType="Primary">
+          <EventId><EventId>${id}</EventId></EventId>
+          <EventTitle>${titleField}</EventTitle>
+          <PrimaryEvent><NonProgramEvent><Details>
+            <AdType>Promo</AdType><SpotType>Standard</SpotType>
+          </Details></NonProgramEvent></PrimaryEvent>
+          <StartDateTime><SmpteDateTime broadcastDate="2026-05-22" frameRate="25"><SmpteTimeCode>10:00:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+          <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:00:30:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+        </EventData>
+        <Content>${contentInner}</Content>
+      </ScheduledEvent>`;
+
+    it('DC00043561 fixture: AdType=Promo + EventTitle "KAMU (ÖY) ..." → KAMU_SPOTU', () => {
+      const items = parseBxf(
+        wrap(
+          promoEv(
+            'DC00043561-FIXTURE',
+            'KAMU (ÖY) OCY SAĞLIKLI AİLE SAĞLIKLI GELECEK',
+            `<ContentId><HouseNumber>DC00043561</HouseNumber></ContentId>
+             <Name>KAMU (ÖY) OCY SAĞLIKLI AİLE SAĞLIKLI GELECEK</Name>
+             <Description type="VersionName">KAMU (ÖY) OCY SAĞLIKLI AİLE SAĞLIKLI GELECEK</Description>`,
+          ),
+        ),
+      );
+      expect(items[0]).toMatchObject({
+        dcCode: 'DC00043561',
+        rawKind: 'PSA',
+        category: 'KAMU_SPOTU',
+      });
+    });
+
+    it('Content.Name "KAMU" prefix (EventTitle boş) → KAMU_SPOTU', () => {
+      const items = parseBxf(
+        wrap(
+          promoEv('KAMU-NAME', '', `<ContentId><HouseNumber>DC00043562</HouseNumber></ContentId>
+             <Name>KAMU SPOTU - TRAFİK GÜVENLİĞİ</Name>`),
+        ),
+      );
+      expect(items[0].category).toBe('KAMU_SPOTU');
+    });
+
+    it('VersionName "Public Service Announcement" inline → KAMU_SPOTU', () => {
+      const items = parseBxf(
+        wrap(
+          promoEv(
+            'PSA-INLINE',
+            'Sağlık Bakanlığı',
+            `<ContentId><HouseNumber>DC00043563</HouseNumber></ContentId>
+             <Name>Sağlık Bakanlığı</Name>
+             <Description type="VersionName">Sağlık Bakanlığı Public Service Announcement</Description>`,
+          ),
+        ),
+      );
+      expect(items[0].category).toBe('KAMU_SPOTU');
+    });
+
+    it('Normal Promo başlığı (örn. "Maç Önü") TANITIM kalır — regression', () => {
+      const items = parseBxf(
+        wrap(
+          promoEv(
+            'PROMO-NORMAL',
+            'Maç Önü',
+            `<ContentId><HouseNumber>DC00043600</HouseNumber></ContentId>
+             <Name>Maç Önü</Name>`,
+          ),
+        ),
+      );
+      expect(items[0]).toMatchObject({ rawKind: 'Promo', category: 'TANITIM' });
+    });
+
+    it('"Kamuya açık" gibi "KAMU" prefix word-boundary ihlali edilmez (içerikte ama başta değil)', () => {
+      // "KAMUYA" "KAMU"+"YA"; PSA_PREFIX_RE \b ile word boundary → "KAMUYA"
+      // başlığı PSA değil, çünkü "KAMU\b" eşleşmiyor. Inline pattern'lere de
+      // takılmıyor. TANITIM kalmalı.
+      const items = parseBxf(
+        wrap(
+          promoEv(
+            'NOT-PSA',
+            'Kamuya Açık Tanıtım',
+            `<ContentId><HouseNumber>DC00043601</HouseNumber></ContentId>
+             <Name>Kamuya Açık Tanıtım</Name>`,
+          ),
+        ),
+      );
+      expect(items[0].category).toBe('TANITIM');
+    });
+  });
+
   it('converts SmpteDuration HH:MM:SS:FF to ms using frameRate', () => {
     const items = parseBxf(SAMPLE_BXF);
     // 00:15:01:16 @ 25fps = (15*60+1)s + 16/25s = 901.64s → 901640ms
