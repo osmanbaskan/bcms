@@ -17,8 +17,11 @@ const PATTERN_TABLE: ReadonlyArray<{ patterns: string[]; category: ProvysCategor
   { patterns: ['kamu spotu', 'kamuspot', 'psa', 'public service', 'public_service'], category: 'KAMU_SPOTU' },
   // CANLI — live, naklen
   { patterns: ['canli', 'canlı', 'live', 'naklen'], category: 'CANLI' },
-  // REKLAM — commercial, advertisement, reklam
-  { patterns: ['reklam', 'commercial', 'advert', 'spot reklam'], category: 'REKLAM' },
+  // REKLAM — commercial, advertisement, reklam, paid program (infomercial).
+  // "paid program" Provys'te ücretli reklam programı (sponsorlu yayın); UI'da
+  // REKLAM olarak sınıflandırılması istendi. Sıra REKLAM > PROGRAM olduğu için
+  // "paid program" PROGRAM substring eşleşmesinden önce yakalanır.
+  { patterns: ['reklam', 'commercial', 'advert', 'spot reklam', 'paid program'], category: 'REKLAM' },
   // TANITIM — promo, tanitim, trailer, bumper, jingle
   { patterns: ['tanitim', 'tanıtım', 'promo', 'trailer', 'bumper', 'jingle', 'teaser'], category: 'TANITIM' },
   // PROGRAM — program, episode, dizi, film, mac

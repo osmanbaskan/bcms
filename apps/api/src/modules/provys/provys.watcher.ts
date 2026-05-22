@@ -10,9 +10,11 @@ import {
   listBxfFiles,
   pickLatestForFileCodeAndDate,
 } from './provys.file-resolver.js';
+import { ConcurrencyLimiter } from './provys.concurrency.js';
 
 const WATCH_FOLDER = process.env.PROVYS_WATCH_FOLDER ?? './tmp/provys';
 const DEBOUNCE_MS = Number(process.env.PROVYS_WATCHER_DEBOUNCE_MS ?? '1500');
+const CONCURRENCY = Math.max(1, Number(process.env.PROVYS_WATCHER_CONCURRENCY ?? '3'));
 
 /**
  * Worker bağlamında çalışan dosya izleyici. Host-side CIFS mount + Docker
@@ -67,6 +69,13 @@ export function startProvysWatcher(app: FastifyInstance): void {
    */
   const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const debounceKey = (fileCode: string, scheduleDate: string) => `${fileCode}|${scheduleDate}`;
+
+  /**
+   * Eş zamanlı sync sayısını sınırla — 150+ group debounce timer'ı aynı
+   * anda ateşlendiğinde Prisma connection pool (worker default 5) tükenir
+   * ve P2024 fırlar. CONCURRENCY (default 3) ile burst FIFO sıralanır.
+   */
+  const limiter = new ConcurrencyLimiter(CONCURRENCY);
 
   /**
    * Bir `(channelSlug, scheduleDate)` group için latest BXF revision'ı sync
@@ -134,7 +143,9 @@ export function startProvysWatcher(app: FastifyInstance): void {
 
     const timer = setTimeout(() => {
       debounceTimers.delete(key);
-      void flushGroup(fileCode, channel.slug, scheduleDate, filePath, op);
+      // Limiter ile sarmala — eş zamanlı sync sayısı CONCURRENCY ile sınırlı,
+      // diğerleri FIFO sıraya alınır (pool tükenmesi engellenir).
+      void limiter.run(() => flushGroup(fileCode, channel.slug, scheduleDate, filePath, op));
     }, DEBOUNCE_MS);
     if (typeof timer.unref === 'function') timer.unref();
     debounceTimers.set(key, timer);

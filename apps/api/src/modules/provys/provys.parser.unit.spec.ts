@@ -422,7 +422,9 @@ describe('provys.parser › parseBxf (SMPTE 2021)', () => {
       const byId = new Map(items.map((i) => [i.eventId, i]));
       expect(byId.get('P1')?.category).toBe('TANITIM');
       expect(byId.get('P2')?.category).toBe('REKLAM');
-      expect(byId.get('P3')?.category).toBe('PROGRAM');  // "Paid Program" mevcut sınıflandırma
+      // "Paid Program" infomercial → REKLAM (rawKind ham "Paid Program" kalır)
+      expect(byId.get('P3')?.rawKind).toBe('Paid Program');
+      expect(byId.get('P3')?.category).toBe('REKLAM');
     });
   });
 

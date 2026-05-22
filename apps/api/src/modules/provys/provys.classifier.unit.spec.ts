@@ -61,4 +61,11 @@ describe('provys.classifier › classifyCategory', () => {
     expect(classifyCategory('Program')).toBe('PROGRAM');
     expect(classifyCategory('ProgramHeader')).toBe('PROGRAM');
   });
+
+  it('classifies "Paid Program" as REKLAM (infomercial / ücretli reklam programı), not PROGRAM', () => {
+    expect(classifyCategory('Paid Program')).toBe('REKLAM');
+    // Pattern table order: REKLAM matches before PROGRAM substring fallback
+    expect(classifyCategory('paid program')).toBe('REKLAM');
+    expect(classifyCategory('PAID PROGRAM')).toBe('REKLAM');
+  });
 });
