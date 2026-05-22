@@ -9,12 +9,24 @@ import {
   type ProvysStreamEvent,
 } from './provys.types';
 
+/** Europe/Istanbul bugünün `YYYY-MM-DD` tarihini döner. */
+function istanbulTodayDate(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
 /**
- * Provys kanal listelerinin tek kaynak signal store'u. Sayfa açıldığında
- * `ensureStreaming()` çağrılır; ilk snapshot + SSE update'leri tek
- * bağlantı üstünden 6 kanala dağıtılır.
+ * Provys per-day snapshot store. UI tarafı aktif `(channel, scheduleDate)`
+ * çiftine ait listeyi okur; SSE update event'i geldiğinde sadece eşleşen
+ * (channel, date) için store güncellenir.
  *
- * Polling YOK — UI yalnızca SSE event'i geldikçe re-render eder.
+ * Polling YOK. SSE'de gelen event farklı bir güne aitse görmezden gelinir
+ * (UI o günü zaten göstermiyor) — REST `/items?channel&date` sorgusu
+ * yeni güne geçince yapılır.
  */
 @Injectable({ providedIn: 'root' })
 export class ProvysService {
@@ -26,12 +38,18 @@ export class ProvysService {
   private dispose: (() => void) | null = null;
   private streamingStarted = false;
 
+  /** Aktif yayın günü; UI date picker bunu set eder. */
+  readonly activeDate = signal<string>(istanbulTodayDate());
+  /** O kanal için DB'de mevcut günler (`/provys/dates?channel=` döner). */
+  private readonly availableDatesStore = new Map<ProvysChannelSlug, ReturnType<typeof signal<string[]>>>();
+
   readonly connected = computed(() => this.sse.connected());
   readonly lastError = computed(() => this.sse.lastError());
 
   constructor() {
     for (const channel of PROVYS_CHANNELS) {
       this.channelStores.set(channel.slug, signal<ProvysItemDto[]>([]));
+      this.availableDatesStore.set(channel.slug, signal<string[]>([]));
     }
   }
 
@@ -41,24 +59,53 @@ export class ProvysService {
     return s.asReadonly();
   }
 
+  availableDatesFor(channel: ProvysChannelSlug) {
+    const s = this.availableDatesStore.get(channel);
+    if (!s) throw new Error(`Unknown Provys channel: ${channel}`);
+    return s.asReadonly();
+  }
+
   hasReceived(channel: ProvysChannelSlug): boolean {
     return this.receivedFor().has(channel);
   }
 
-  /** Initial fetch — SSE snapshot beklerken hızlı dolum. Idempotent. */
+  /** Tarih değişiminde çağrılır — store'ları sıfırla, yeni tarih için REST fetch. */
+  async setActiveDate(date: string): Promise<void> {
+    if (date === this.activeDate()) return;
+    this.activeDate.set(date);
+    this.resetReceived();
+    await this.loadInitial();
+  }
+
+  /**
+   * Aktif tarih için tüm kanal listelerini REST üstünden çeker (paralel).
+   * SSE update'leri için ek context — aktif kanal+tarih dışındaki notify'lar
+   * görmezden gelinir.
+   */
   async loadInitial(): Promise<void> {
+    const date = this.activeDate();
     await Promise.all(
       PROVYS_CHANNELS.map(async (c) => {
         try {
           const items = await firstValueFrom(
-            this.api.get<ProvysItemDto[]>('/provys/items', { channel: c.slug }),
+            this.api.get<ProvysItemDto[]>('/provys/items', { channel: c.slug, date }),
           );
-          this.applySnapshot(c.slug, items);
+          this.applySnapshot(c.slug, date, items);
         } catch {
-          // SSE snapshot bağlantıyla tamamlayacak; initial REST hatasını sessiz geç.
+          // SSE veya retry ileride deneyecek; sessiz geç.
         }
       }),
     );
+  }
+
+  /** O kanal için mevcut yayın günlerini çeker — date picker filter'ı için. */
+  async loadAvailableDates(channel: ProvysChannelSlug): Promise<void> {
+    try {
+      const dates = await firstValueFrom(
+        this.api.get<string[]>('/provys/dates', { channel }),
+      );
+      this.availableDatesStore.get(channel)?.set(dates);
+    } catch { /* sessiz geç */ }
   }
 
   ensureStreaming(): void {
@@ -76,18 +123,24 @@ export class ProvysService {
   }
 
   private handleEvent(event: ProvysStreamEvent): void {
-    if (event.type === 'snapshot' || event.type === 'update') {
-      this.applySnapshot(event.channel, event.items);
-    }
-    // heartbeat → no-op
+    if (event.type !== 'snapshot' && event.type !== 'update') return;
+    // SSE event'in tarihi UI aktif tarihinden farklıysa görmezden gel.
+    if (event.scheduleDate !== this.activeDate()) return;
+    this.applySnapshot(event.channel, event.scheduleDate, event.items);
   }
 
-  private applySnapshot(channel: ProvysChannelSlug, items: ProvysItemDto[]): void {
+  private applySnapshot(channel: ProvysChannelSlug, scheduleDate: string, items: ProvysItemDto[]): void {
+    if (scheduleDate !== this.activeDate()) return;
     const store = this.channelStores.get(channel);
     if (!store) return;
     store.set(items);
     const next = new Set(this.receivedFor());
     next.add(channel);
     this.receivedFor.set(next);
+  }
+
+  private resetReceived(): void {
+    for (const store of this.channelStores.values()) store.set([]);
+    this.receivedFor.set(new Set());
   }
 }

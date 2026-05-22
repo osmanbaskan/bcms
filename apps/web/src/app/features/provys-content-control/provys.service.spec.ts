@@ -24,7 +24,6 @@ class FakeSseClient {
   }
 }
 
-// Minimal signal stub (avoids importing core/signal during test bootstrap noise).
 function signalFake<T>(initial: T) {
   let value = initial;
   const fn: any = () => value;
@@ -34,7 +33,18 @@ function signalFake<T>(initial: T) {
   return fn;
 }
 
-describe('ProvysService', () => {
+function makeItem(slug: string, scheduleDate: string, eventId = 'E1'): ProvysItemDto {
+  return {
+    id: 1, channelSlug: slug as any, scheduleDate,
+    eventId, sequence: 0,
+    startAt: `${scheduleDate}T18:00:00Z`, durationMs: 30000,
+    startTimecode: null, durationTimecode: null, frameRate: null, dcCode: null,
+    title: 'T', rawKind: null, category: 'PROGRAM',
+    sourceFile: '/x.bxf', updatedAt: `${scheduleDate}T18:00:00Z`,
+  };
+}
+
+describe('ProvysService (per-day snapshot)', () => {
   let service: ProvysService;
   let http: HttpTestingController;
   let fakeSse: FakeSseClient;
@@ -55,56 +65,80 @@ describe('ProvysService', () => {
 
   afterEach(() => http.verify());
 
-  it('exposes a separate signal store per channel', () => {
+  it('exposes a separate signal store per channel; throws on unknown channel', () => {
     for (const ch of PROVYS_CHANNELS) {
-      const sig = service.itemsFor(ch.slug);
-      expect(sig()).toEqual([]);
+      expect(service.itemsFor(ch.slug)()).toEqual([]);
     }
-  });
-
-  it('throws on unknown channel', () => {
     expect(() => service.itemsFor('zzz' as any)).toThrow();
   });
 
-  it('loadInitial issues one GET per channel and stores results', async () => {
+  it('defaults activeDate to today (Istanbul) and loadInitial sends channel + date GETs', async () => {
+    const today = service.activeDate();
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
     const promise = service.loadInitial();
-
     for (const ch of PROVYS_CHANNELS) {
-      const req = http.expectOne(`${environment.apiUrl}/provys/items?channel=${ch.slug}`);
-      const items: ProvysItemDto[] = [{
-        id: 1, channelSlug: ch.slug as any, eventId: 'E1', sequence: 0,
-        startAt: '2026-05-22T18:00:00Z', durationMs: 30000,
-        startTimecode: null, durationTimecode: null, frameRate: null, dcCode: null,
-        title: 'T', rawKind: 'COMMERCIAL', category: 'REKLAM',
-        sourceFile: '/x.bxf', updatedAt: '2026-05-22T18:00:00Z',
-      }];
-      req.flush(items);
+      const req = http.expectOne(`${environment.apiUrl}/provys/items?channel=${ch.slug}&date=${today}`);
+      req.flush([makeItem(ch.slug, today)]);
     }
-
     await promise;
 
     for (const ch of PROVYS_CHANNELS) {
       expect(service.itemsFor(ch.slug)().length).toBe(1);
-      expect(service.itemsFor(ch.slug)()[0].channelSlug).toBe(ch.slug);
       expect(service.hasReceived(ch.slug)).toBe(true);
     }
   });
 
-  it('SSE update events route to the correct channel only', () => {
+  it('setActiveDate updates activeDate, resets stores, and re-fetches per-channel', async () => {
+    // 1. initial today
+    const today = service.activeDate();
+    const initial = service.loadInitial();
+    for (const ch of PROVYS_CHANNELS) {
+      http.expectOne(`${environment.apiUrl}/provys/items?channel=${ch.slug}&date=${today}`)
+        .flush([makeItem(ch.slug, today)]);
+    }
+    await initial;
+    expect(service.itemsFor('beinsports1' as any)().length).toBe(1);
+
+    // 2. switch date
+    const newDate = '2026-02-17';
+    const next = service.setActiveDate(newDate);
+    for (const ch of PROVYS_CHANNELS) {
+      http.expectOne(`${environment.apiUrl}/provys/items?channel=${ch.slug}&date=${newDate}`)
+        .flush([makeItem(ch.slug, newDate, 'NEW')]);
+    }
+    await next;
+
+    expect(service.activeDate()).toBe(newDate);
+    for (const ch of PROVYS_CHANNELS) {
+      expect(service.itemsFor(ch.slug)()[0].eventId).toBe('NEW');
+    }
+  });
+
+  it('SSE update for ACTIVE date is applied; OTHER days are ignored', () => {
     service.ensureStreaming();
+    const active = service.activeDate();
+    const sample = [makeItem('beinhaber', active, 'X')];
 
-    const sample: ProvysItemDto[] = [{
-      id: 99, channelSlug: 'beinhaber' as any, eventId: 'X', sequence: 0,
-      startAt: '2026-05-22T19:00:00Z', durationMs: null,
-      startTimecode: null, durationTimecode: null, frameRate: null, dcCode: null,
-      title: 'Haber', rawKind: 'LIVE', category: 'CANLI',
-      sourceFile: '/x.bxf', updatedAt: '2026-05-22T19:00:00Z',
-    }];
+    // Active day → applied
+    fakeSse.emit({ type: 'update', channel: 'beinhaber' as any, scheduleDate: active, items: sample });
+    expect(service.itemsFor('beinhaber' as any)().length).toBe(1);
 
-    fakeSse.emit({ type: 'snapshot', channel: 'beinhaber' as any, items: sample });
+    // Different day → IGNORED (UI o günü göstermiyor)
+    fakeSse.emit({
+      type: 'update', channel: 'beinhaber' as any,
+      scheduleDate: '2099-01-01', items: [makeItem('beinhaber', '2099-01-01', 'Y')],
+    });
+    expect(service.itemsFor('beinhaber' as any)().length).toBe(1);
+    expect(service.itemsFor('beinhaber' as any)()[0].eventId).toBe('X');
+  });
 
-    expect(service.itemsFor('beinhaber' as any)()).toEqual(sample);
-    expect(service.itemsFor('beinsports1' as any)()).toEqual([]);
+  it('loadAvailableDates calls /provys/dates and stores per-channel list', async () => {
+    const promise = service.loadAvailableDates('beinsports1' as any);
+    http.expectOne(`${environment.apiUrl}/provys/dates?channel=beinsports1`)
+      .flush(['2026-02-18', '2026-02-17']);
+    await promise;
+    expect(service.availableDatesFor('beinsports1' as any)()).toEqual(['2026-02-18', '2026-02-17']);
   });
 
   it('heartbeat events do not mutate any channel', () => {

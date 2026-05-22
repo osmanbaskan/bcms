@@ -14,6 +14,8 @@ import { PG_NOTIFY_CHANNEL } from './provys.service.js';
  */
 export interface ProvysNotifyPayload {
   channelSlug: string;
+  /** `YYYY-MM-DD` — etkilenen yayın günü. */
+  scheduleDate: string;
 }
 
 export class ProvysPgListener {

@@ -2,74 +2,116 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { listBxfFiles, pickLatestForFileCode, type BxfFileInfo } from './provys.file-resolver.js';
+import {
+  extractScheduleDate,
+  listBxfFiles,
+  listScheduleDatesForFileCode,
+  pickLatestForFileCodeAndDate,
+  type BxfFileInfo,
+} from './provys.file-resolver.js';
 
-function f(p: string, fileCode: string, mtime: number): BxfFileInfo {
-  return { path: p, fileCode, mtime: new Date(mtime) };
+function f(p: string, fileCode: string, scheduleDate: string, mtime: number): BxfFileInfo {
+  return { path: p, fileCode, scheduleDate, mtime: new Date(mtime) };
 }
 
-describe('provys.file-resolver › pickLatestForFileCode (pure)', () => {
-  it('returns the file with the newest mtime for the given fileCode', () => {
-    const files = [
-      f('/dir/ltv-old.bxf', 'ltv', 1000),
-      f('/dir/ltv-mid.bxf', 'ltv', 2000),
-      f('/dir/ltv-new.bxf', 'ltv', 3000),
-    ];
-    expect(pickLatestForFileCode(files, 'ltv')?.path).toBe('/dir/ltv-new.bxf');
+describe('provys.file-resolver › extractScheduleDate', () => {
+  it('parses YYYYMMDD from BXF_Playlist_<CODE>_<YYYYMMDD>_... filenames', () => {
+    expect(extractScheduleDate('BXF_Playlist_LT2_20260217_20260217_20260216_195715_caf.bxf')).toBe('2026-02-17');
+    expect(extractScheduleDate('BXF_Playlist_LTV_20260518_x.bxf')).toBe('2026-05-18');
+    expect(extractScheduleDate('BXF_Playlist_xSNW_20260101_a.bxf')).toBe('2026-01-01');
   });
 
-  it('ignores files belonging to other channels', () => {
-    const files = [
-      f('/dir/lt2-2026.bxf', 'lt2', 9_999_999),    // newer but wrong code
-      f('/dir/ltv-001.bxf', 'ltv', 100),
-      f('/dir/ltv-002.bxf', 'ltv', 500),
-    ];
-    expect(pickLatestForFileCode(files, 'ltv')?.path).toBe('/dir/ltv-002.bxf');
+  it('supports legacy short form <code>-YYYY-MM-DD.bxf', () => {
+    expect(extractScheduleDate('ltv-2026-05-22.bxf')).toBe('2026-05-22');
   });
 
-  it('does not regress when an OLDER file fires the event but newer exists', () => {
-    // Watcher event eski dosya için tetiklenmiş olsa bile resolver
-    // dizindeki en güncel mtime'a göre seçer; eski snapshot ezilmez.
+  it('returns null when no date can be extracted', () => {
+    expect(extractScheduleDate('random.bxf')).toBeNull();
+    expect(extractScheduleDate('BXF_Playlist_LT2_invalid.bxf')).toBeNull();
+    expect(extractScheduleDate('')).toBeNull();
+  });
+});
+
+describe('provys.file-resolver › pickLatestForFileCodeAndDate (pure)', () => {
+  it('picks the newest mtime for the SAME (fileCode, scheduleDate) group', () => {
     const files = [
-      f('/dir/ltv-old.bxf', 'ltv', 1000),
-      f('/dir/ltv-new.bxf', 'ltv', 5000),
+      f('/dir/A_caf.bxf', 'lt2', '2026-02-17', 1000),
+      f('/dir/A_zec.bxf', 'lt2', '2026-02-17', 2000),
+      f('/dir/A_new.bxf', 'lt2', '2026-02-17', 3000),
     ];
-    const pickedAfterOldEvent = pickLatestForFileCode(files, 'ltv');
-    expect(pickedAfterOldEvent?.path).toBe('/dir/ltv-new.bxf');
-    expect(pickedAfterOldEvent?.mtime.getTime()).toBe(5000);
+    expect(pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-17')?.path).toBe('/dir/A_new.bxf');
   });
 
-  it('falls back to the next newest when the latest is removed', () => {
-    // Önce 3 dosya; ardından en güncel "silinmiş" gibi listeden çıkarılıyor.
+  it('does NOT mix days — different scheduleDate is a separate group', () => {
+    const files = [
+      f('/dir/2026-02-17.bxf', 'lt2', '2026-02-17', 1000),
+      f('/dir/2026-02-18.bxf', 'lt2', '2026-02-18', 9_999_999),  // newer but different day
+    ];
+    expect(pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-17')?.path).toBe('/dir/2026-02-17.bxf');
+    expect(pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-18')?.path).toBe('/dir/2026-02-18.bxf');
+  });
+
+  it('older revision event does not regress same-day snapshot', () => {
+    const files = [
+      f('/dir/old.bxf', 'lt2', '2026-02-17', 1000),
+      f('/dir/new.bxf', 'lt2', '2026-02-17', 5000),
+    ];
+    // Caller eski dosya path'iyle event tetiklemiş olsa bile resolver günün
+    // en güncel revision'ını döner — eski snapshot ezilmez.
+    const picked = pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-17');
+    expect(picked?.path).toBe('/dir/new.bxf');
+    expect(picked?.mtime.getTime()).toBe(5000);
+  });
+
+  it('latest removed → falls back to next newest in the SAME day', () => {
     const before = [
-      f('/dir/ltv-a.bxf', 'ltv', 1000),
-      f('/dir/ltv-b.bxf', 'ltv', 2000),
-      f('/dir/ltv-c.bxf', 'ltv', 3000),
+      f('/dir/a.bxf', 'lt2', '2026-02-17', 1000),
+      f('/dir/b.bxf', 'lt2', '2026-02-17', 2000),
+      f('/dir/c.bxf', 'lt2', '2026-02-17', 3000),
     ];
-    expect(pickLatestForFileCode(before, 'ltv')?.path).toBe('/dir/ltv-c.bxf');
-
-    const afterRemoval = before.filter((x) => x.path !== '/dir/ltv-c.bxf');
-    expect(pickLatestForFileCode(afterRemoval, 'ltv')?.path).toBe('/dir/ltv-b.bxf');
+    expect(pickLatestForFileCodeAndDate(before, 'lt2', '2026-02-17')?.path).toBe('/dir/c.bxf');
+    const afterRemoval = before.filter((x) => x.path !== '/dir/c.bxf');
+    expect(pickLatestForFileCodeAndDate(afterRemoval, 'lt2', '2026-02-17')?.path).toBe('/dir/b.bxf');
   });
 
-  it('returns null when no files match the fileCode (channel should be cleared)', () => {
-    expect(pickLatestForFileCode([], 'ltv')).toBeNull();
-    expect(
-      pickLatestForFileCode([f('/dir/xsnw-x.bxf', 'xsnw', 1)], 'ltv'),
-    ).toBeNull();
-  });
-
-  it('uses deterministic tie-break on equal mtime (lexicographic path)', () => {
+  it('removing all files of one day does NOT affect other days', () => {
     const files = [
-      f('/dir/ltv-a.bxf', 'ltv', 5000),
-      f('/dir/ltv-z.bxf', 'ltv', 5000),
+      f('/dir/D1_a.bxf', 'lt2', '2026-02-17', 100),
+      f('/dir/D1_b.bxf', 'lt2', '2026-02-17', 200),
+      f('/dir/D2_a.bxf', 'lt2', '2026-02-18', 300),
     ];
-    expect(pickLatestForFileCode(files, 'ltv')?.path).toBe('/dir/ltv-z.bxf');
+    // 17 Şubat dosyaları temizlendiyse 18 Şubat group'u dokunulmamalı.
+    const onlyOtherDay = files.filter((x) => x.scheduleDate !== '2026-02-17');
+    expect(pickLatestForFileCodeAndDate(onlyOtherDay, 'lt2', '2026-02-17')).toBeNull();
+    expect(pickLatestForFileCodeAndDate(onlyOtherDay, 'lt2', '2026-02-18')?.path).toBe('/dir/D2_a.bxf');
   });
 
-  it('matches case-insensitively and trims the requested fileCode', () => {
-    const files = [f('/dir/ltv-1.bxf', 'ltv', 100)];
-    expect(pickLatestForFileCode(files, ' LTV ')?.path).toBe('/dir/ltv-1.bxf');
+  it('returns null for unknown fileCode or unknown date', () => {
+    const files = [f('/dir/x.bxf', 'lt2', '2026-02-17', 1)];
+    expect(pickLatestForFileCodeAndDate(files, 'ltv', '2026-02-17')).toBeNull();
+    expect(pickLatestForFileCodeAndDate(files, 'lt2', '2099-12-31')).toBeNull();
+  });
+
+  it('deterministic tie-break on equal mtime (lex max path)', () => {
+    const files = [
+      f('/dir/a.bxf', 'lt2', '2026-02-17', 5000),
+      f('/dir/z.bxf', 'lt2', '2026-02-17', 5000),
+    ];
+    expect(pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-17')?.path).toBe('/dir/z.bxf');
+  });
+});
+
+describe('provys.file-resolver › listScheduleDatesForFileCode', () => {
+  it('returns sorted distinct dates for a fileCode', () => {
+    const files = [
+      f('/dir/a.bxf', 'lt2', '2026-02-18', 1),
+      f('/dir/b.bxf', 'lt2', '2026-02-17', 2),
+      f('/dir/c.bxf', 'lt2', '2026-02-17', 3),  // duplicate day
+      f('/dir/d.bxf', 'ltv', '2026-02-19', 4),  // different channel
+    ];
+    expect(listScheduleDatesForFileCode(files, 'lt2')).toEqual(['2026-02-17', '2026-02-18']);
+    expect(listScheduleDatesForFileCode(files, 'ltv')).toEqual(['2026-02-19']);
+    expect(listScheduleDatesForFileCode(files, 'lt3')).toEqual([]);
   });
 });
 
@@ -91,41 +133,48 @@ describe('provys.file-resolver › listBxfFiles (real fs, tmpdir)', () => {
     return full;
   }
 
-  it('enumerates .bxf files with fileCode + mtime, skips non-bxf and unknown codes', async () => {
-    await writeWithMtime('ltv-2026-01.bxf', 1_000_000);
-    await writeWithMtime('ltv-2026-02.bxf', 2_000_000);
-    await writeWithMtime('lt2-feed.bxf',   1_500_000);
-    await writeWithMtime('readme.txt',     9_999_999);  // wrong extension
-    await writeWithMtime('.bxf',           9_999_999);  // no stem → no fileCode
+  it('enumerates BXF_Playlist files with fileCode + scheduleDate + mtime', async () => {
+    await writeWithMtime('BXF_Playlist_LT2_20260217_x.bxf', 1_000);
+    await writeWithMtime('BXF_Playlist_LT2_20260217_y.bxf', 2_000);
+    await writeWithMtime('BXF_Playlist_LT2_20260218_z.bxf', 3_000);
+    await writeWithMtime('BXF_Playlist_LTV_20260601_a.bxf', 4_000);
+    await writeWithMtime('readme.txt', 9_999);                  // ignored
+    await writeWithMtime('BXF_Playlist_LT2_invalid.bxf', 9_999); // no date → skipped
 
     const files = await listBxfFiles(dir);
-    const byCode = files.map((f) => f.fileCode).sort();
-    expect(byCode).toEqual(['lt2', 'ltv', 'ltv']);
+    expect(files.map((f) => `${f.fileCode}@${f.scheduleDate}`).sort())
+      .toEqual(['lt2@2026-02-17', 'lt2@2026-02-17', 'lt2@2026-02-18', 'ltv@2026-06-01']);
 
-    const ltvLatest = pickLatestForFileCode(files, 'ltv');
-    expect(path.basename(ltvLatest!.path)).toBe('ltv-2026-02.bxf');
+    const lt2_17 = pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-17');
+    expect(path.basename(lt2_17!.path)).toBe('BXF_Playlist_LT2_20260217_y.bxf');
   });
 
-  it('returns [] when the directory does not exist (does not throw)', async () => {
+  it('returns [] when the directory does not exist (no throw)', async () => {
     const out = await listBxfFiles(path.join(dir, 'missing'));
     expect(out).toEqual([]);
   });
 
-  it('after the latest file is removed, resolver picks the next newest', async () => {
-    const latest = await writeWithMtime('ltv-new.bxf', 3_000_000);
-    await writeWithMtime('ltv-old.bxf', 1_000_000);
-    await writeWithMtime('ltv-mid.bxf', 2_000_000);
+  it('latest revision removed → next newest same day; all removed → null only for that day', async () => {
+    const newest = await writeWithMtime('BXF_Playlist_LT2_20260217_new.bxf', 3_000);
+    await writeWithMtime('BXF_Playlist_LT2_20260217_mid.bxf', 2_000);
+    await writeWithMtime('BXF_Playlist_LT2_20260217_old.bxf', 1_000);
+    // Different day, should never be touched by 17 Şubat cleanup.
+    const otherDay = await writeWithMtime('BXF_Playlist_LT2_20260218_a.bxf', 500);
 
     let files = await listBxfFiles(dir);
-    expect(pickLatestForFileCode(files, 'ltv')?.path).toBe(latest);
+    expect(pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-17')?.path).toBe(newest);
 
-    await fs.unlink(latest);
+    await fs.unlink(newest);
     files = await listBxfFiles(dir);
-    expect(path.basename(pickLatestForFileCode(files, 'ltv')!.path)).toBe('ltv-mid.bxf');
+    expect(path.basename(pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-17')!.path))
+      .toBe('BXF_Playlist_LT2_20260217_mid.bxf');
 
-    // Hepsi silindiğinde resolver null → caller snapshot temizler.
-    for (const f of files) await fs.unlink(f.path);
-    const finalFiles = await listBxfFiles(dir);
-    expect(pickLatestForFileCode(finalFiles, 'ltv')).toBeNull();
+    // 17 Şubat tüm dosyalar silindi; 18 Şubat dokunulmamalı.
+    for (const f of files) {
+      if (f.scheduleDate === '2026-02-17') await fs.unlink(f.path);
+    }
+    files = await listBxfFiles(dir);
+    expect(pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-17')).toBeNull();
+    expect(pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-18')?.path).toBe(otherDay);
   });
 });

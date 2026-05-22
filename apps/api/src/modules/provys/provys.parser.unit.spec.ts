@@ -118,6 +118,51 @@ describe('provys.parser › parseBxf (SMPTE 2021)', () => {
     expect(items[0].startAt.toISOString()).toBe('2026-02-17T20:45:00.000Z');
   });
 
+  it('extracts scheduleDate from Schedule @ScheduleStart (broadcast day, dosya scope)', () => {
+    const items = parseBxf(SAMPLE_BXF);
+    for (const it of items) {
+      expect(it.scheduleDate).toBe('2026-02-17');
+    }
+  });
+
+  it('falls back to first event broadcastDate when Schedule @ScheduleStart yok', () => {
+    const xml = `<?xml version="1.0"?>
+<BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF"><BxfData><Schedule>
+  <ScheduledEvent>
+    <EventData eventType="Primary">
+      <EventId><EventId>EVT-1</EventId></EventId>
+      <EventTitle>Sample</EventTitle>
+      <PrimaryEvent><ProgramEvent><ProgramName>Sample</ProgramName></ProgramEvent></PrimaryEvent>
+      <StartDateTime><SmpteDateTime broadcastDate="2026-03-15" frameRate="25"><SmpteTimeCode>10:00:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+      <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:30:00:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+    </EventData>
+  </ScheduledEvent>
+</Schedule></BxfData></BxfMessage>`;
+    const items = parseBxf(xml);
+    expect(items[0].scheduleDate).toBe('2026-03-15');
+  });
+
+  it('all events share dosya scope scheduleDate (per-event broadcastDate yok sayılır)', () => {
+    // Gece yarısı sonrası event'in broadcastDate'i farklı görünse bile
+    // dosya scope (Schedule @ScheduleStart) tek kanonik.
+    const xml = `<?xml version="1.0"?>
+<BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF"><BxfData>
+  <Schedule ScheduleStart="2026-02-17T23:45:00:04">
+    <ScheduledEvent>
+      <EventData eventType="Primary">
+        <EventId><EventId>EVT-A</EventId></EventId>
+        <EventTitle>Late</EventTitle>
+        <PrimaryEvent><ProgramEvent><ProgramName>Late</ProgramName></ProgramEvent></PrimaryEvent>
+        <StartDateTime><SmpteDateTime broadcastDate="2026-02-18" frameRate="25"><SmpteTimeCode>00:30:00:00</SmpteTimeCode></SmpteDateTime></StartDateTime>
+        <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:30:00:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+      </EventData>
+    </ScheduledEvent>
+  </Schedule>
+</BxfData></BxfMessage>`;
+    const items = parseBxf(xml);
+    expect(items[0].scheduleDate).toBe('2026-02-17');  // dosya scope kanonik
+  });
+
   it('preserves raw SMPTE startTimecode (HH:MM:SS:FF) and frameRate', () => {
     const items = parseBxf(SAMPLE_BXF);
     expect(items[0].startTimecode).toBe('23:45:00:04');

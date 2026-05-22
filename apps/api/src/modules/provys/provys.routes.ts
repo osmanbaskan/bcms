@@ -7,15 +7,25 @@ import {
   type ProvysItemDto,
   type ProvysStreamEvent,
 } from '@bcms/shared';
+import { istanbulTodayDate } from '../../core/tz.js';
 import { closeProvysPgListener, getProvysPgListener } from './provys.pg-listener.js';
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const channelQuerySchema = z.object({
   channel: z.enum(PROVYS_CHANNEL_SLUGS as [string, ...string[]]),
 });
 
+const channelDateQuerySchema = z.object({
+  channel: z.enum(PROVYS_CHANNEL_SLUGS as [string, ...string[]]),
+  // Default: Europe/Istanbul bugünün tarihi. UI date picker tarihi sağlar.
+  date: z.string().regex(ISO_DATE_RE).optional(),
+});
+
 const itemDtoSchema = z.object({
   id: z.number().int(),
   channelSlug: z.enum(PROVYS_CHANNEL_SLUGS as [string, ...string[]]),
+  scheduleDate: z.string().regex(ISO_DATE_RE),
   eventId: z.string(),
   sequence: z.number().int(),
   startAt: z.string(),
@@ -32,9 +42,15 @@ const itemDtoSchema = z.object({
 });
 const itemsResponseSchema = z.array(itemDtoSchema);
 
+function dateToIso(d: Date): string {
+  // @db.Date sütunu UTC midnight olarak okunur — slice 0..10 doğru günü verir.
+  return d.toISOString().slice(0, 10);
+}
+
 function rowsToDto(rows: Array<{
   id: number;
   channelSlug: string;
+  scheduleDate: Date;
   eventId: string;
   sequence: number;
   startAt: Date;
@@ -52,6 +68,7 @@ function rowsToDto(rows: Array<{
   return rows.map((r) => ({
     id: r.id,
     channelSlug: r.channelSlug as ProvysItemDto['channelSlug'],
+    scheduleDate: dateToIso(r.scheduleDate),
     eventId: r.eventId,
     sequence: r.sequence,
     startAt: r.startAt.toISOString(),
@@ -68,12 +85,14 @@ function rowsToDto(rows: Array<{
   }));
 }
 
-async function fetchChannelSnapshot(
+async function fetchChannelDateSnapshot(
   app: FastifyInstance,
   channelSlug: string,
+  scheduleDate: string,
 ): Promise<ProvysItemDto[]> {
+  const dt = new Date(`${scheduleDate}T00:00:00Z`);
   const rows = await app.prisma.provysItem.findMany({
-    where: { channelSlug },
+    where: { channelSlug, scheduleDate: dt },
     orderBy: [{ sequence: 'asc' }, { startAt: 'asc' }],
   });
   return rowsToDto(rows);
@@ -92,21 +111,39 @@ export async function provysRoutes(app: FastifyInstance) {
     }));
   });
 
-  // GET /api/v1/provys/items?channel=<slug>
+  // GET /api/v1/provys/items?channel=<slug>&date=YYYY-MM-DD
+  // `date` opsiyonel — default Europe/Istanbul bugünün tarihi.
   app.get('/items', {
     preHandler: app.requireGroup(...PERMISSIONS.provys.read),
-    schema: { tags: ['Provys'], summary: 'Kanalın current akış listesi' },
+    schema: { tags: ['Provys'], summary: 'Kanalın seçili güne ait akış listesi' },
   }, async (request: FastifyRequest) => {
-    const parsed = channelQuerySchema.parse(request.query);
-    const items = await fetchChannelSnapshot(app, parsed.channel);
+    const parsed = channelDateQuerySchema.parse(request.query);
+    const date = parsed.date ?? istanbulTodayDate();
+    const items = await fetchChannelDateSnapshot(app, parsed.channel, date);
     return itemsResponseSchema.parse(items);
   });
 
+  // GET /api/v1/provys/dates?channel=<slug>
+  // O kanal için DB'de bulunan tüm yayın günlerini (en yeniden eskiye) döner.
+  app.get('/dates', {
+    preHandler: app.requireGroup(...PERMISSIONS.provys.read),
+    schema: { tags: ['Provys'], summary: 'Kanal için mevcut yayın günleri' },
+  }, async (request: FastifyRequest) => {
+    const parsed = channelQuerySchema.parse(request.query);
+    const rows = await app.prisma.provysItem.findMany({
+      where: { channelSlug: parsed.channel },
+      select: { scheduleDate: true },
+      distinct: ['scheduleDate'],
+      orderBy: { scheduleDate: 'desc' },
+    });
+    return rows.map((r) => dateToIso(r.scheduleDate));
+  });
+
   // GET /api/v1/provys/stream — SSE
-  // Bearer JWT cookie tabanlı değil; native EventSource Authorization header
-  // setleyemez → client tarafında fetch-streaming SSE reader kullanılır
-  // (frontend: provys-sse.client.ts). Token query param'a YAZILMAZ.
-  // requireGroup zaten preHandler'da kontrol eder.
+  // Native EventSource Authorization header setleyemez → client tarafında
+  // fetch-streaming reader (Bearer JWT). Token query param'a YAZILMAZ.
+  // SSE sadece update + heartbeat yayar; initial snapshot REST `/items`.
+  // Client kendi state'inde aktif (channel, date) filtreleyerek uygular.
   app.get('/stream', {
     preHandler: app.requireGroup(...PERMISSIONS.provys.read),
     config: { rateLimit: false },
@@ -128,27 +165,23 @@ export async function provysRoutes(app: FastifyInstance) {
       if (reply.raw.writableEnded) return;
       reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
     };
-
     const writeComment = (text: string): void => {
       if (reply.raw.writableEnded) return;
       reply.raw.write(`: ${text}\n\n`);
     };
 
-    // İlk snapshot — tüm kanalların güncel hali (UI 6 tab'ı tek bağlantıyla besler).
-    for (const channel of PROVYS_CHANNELS) {
-      const items = await fetchChannelSnapshot(app, channel.slug);
-      writeEvent({ type: 'snapshot', channel: channel.slug, items });
-    }
-
     const listener = getProvysPgListener(databaseUrl, app.log);
     let unsubscribe: (() => Promise<void>) | null = null;
     try {
       unsubscribe = await listener.subscribe((payload) => {
-        // Notify alındı — etkilenen kanalı yeniden oku ve push'la.
-        fetchChannelSnapshot(app, payload.channelSlug)
+        const channelSlug = payload.channelSlug;
+        const scheduleDate = payload.scheduleDate;
+        if (!channelSlug || !scheduleDate || !ISO_DATE_RE.test(scheduleDate)) return;
+        fetchChannelDateSnapshot(app, channelSlug, scheduleDate)
           .then((items) => writeEvent({
             type: 'update',
-            channel: payload.channelSlug as ProvysItemDto['channelSlug'],
+            channel: channelSlug as ProvysItemDto['channelSlug'],
+            scheduleDate,
             items,
           }))
           .catch((err) => app.log.warn({ err, payload }, 'Provys SSE: snapshot fetch hatası'));
@@ -180,8 +213,6 @@ export async function provysRoutes(app: FastifyInstance) {
     reply.raw.on('close', () => { void cleanup(); });
     request.raw.on('error', () => { void cleanup(); });
 
-    // Fastify'ın "lifecycle bitti" sayması için reply tamamlanmadan tutuyoruz.
-    // Hijack: raw yanıt kullanılıyor.
     reply.hijack();
   });
 

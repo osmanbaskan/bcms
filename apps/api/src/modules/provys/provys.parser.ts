@@ -58,6 +58,8 @@ export class ProvysParseError extends Error {
 
 export interface ParsedItem {
   eventId: string;
+  /** Broadcast day `YYYY-MM-DD` (Europe/Istanbul naive). Dosya scope tarih. */
+  scheduleDate: string;
   sequence: number;
   startAt: Date;
   durationMs: number | null;
@@ -75,9 +77,11 @@ export interface ParsedItem {
 }
 
 const SMPTE_TIMECODE_RE = /^\d{1,3}:\d{1,2}:\d{1,2}:\d{1,3}$/;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const ParsedItemSchema = z.object({
   eventId: z.string().min(1).max(120),
+  scheduleDate: z.string().regex(ISO_DATE_RE),
   sequence: z.number().int().min(0),
   startAt: z.date(),
   durationMs: z.number().int().nonnegative().nullable(),
@@ -366,6 +370,21 @@ export function parseBxf(content: string): ParsedItem[] {
   const schedule = bxfData?.['Schedule'] as Record<string, unknown> | undefined;
   const scheduledEvents = toArray(schedule?.['ScheduledEvent']);
 
+  // Yayın günü: dosya scope. Öncelik Schedule @ScheduleStart YYYY-MM-DD
+  // prefix'i (örn. "2026-02-17T23:45:00:04" → "2026-02-17"); yoksa ilk
+  // event'in SmpteDateTime @broadcastDate'i fallback.
+  const scheduleStart = String(schedule?.['@_ScheduleStart'] ?? '').trim();
+  let scheduleDate = scheduleStart.slice(0, 10);
+  if (!ISO_DATE_RE.test(scheduleDate)) {
+    for (const sev of scheduledEvents) {
+      const evd = (sev as Record<string, unknown> | undefined)?.['EventData'] as Record<string, unknown> | undefined;
+      const smpte = (evd?.['StartDateTime'] as Record<string, unknown> | undefined)?.['SmpteDateTime'] as Record<string, unknown> | undefined;
+      const bd = String(smpte?.['@_broadcastDate'] ?? '').trim();
+      if (ISO_DATE_RE.test(bd)) { scheduleDate = bd; break; }
+    }
+  }
+  if (!ISO_DATE_RE.test(scheduleDate)) return [];  // tarih yoksa parse anlamsız
+
   const items: ParsedItem[] = [];
   let seq = 0;
 
@@ -392,6 +411,7 @@ export function parseBxf(content: string): ParsedItem[] {
 
     items.push({
       eventId,
+      scheduleDate,
       sequence: seq++,
       startAt: startFields.instant,
       durationMs: durationFields.ms,

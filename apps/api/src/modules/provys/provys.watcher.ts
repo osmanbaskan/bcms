@@ -3,9 +3,13 @@ import path from 'node:path';
 import chokidar from 'chokidar';
 import type { FastifyInstance } from 'fastify';
 import { als } from '../../plugins/audit.js';
-import { clearChannelSnapshot, syncProvysFile } from './provys.service.js';
+import { clearChannelDateSnapshot, syncProvysFile } from './provys.service.js';
 import { extractFileCode, resolveChannel } from './provys.channel-mapping.js';
-import { listBxfFiles, pickLatestForFileCode } from './provys.file-resolver.js';
+import {
+  extractScheduleDate,
+  listBxfFiles,
+  pickLatestForFileCodeAndDate,
+} from './provys.file-resolver.js';
 
 const WATCH_FOLDER = process.env.PROVYS_WATCH_FOLDER ?? './tmp/provys';
 const DEBOUNCE_MS = Number(process.env.PROVYS_WATCHER_DEBOUNCE_MS ?? '1500');
@@ -19,8 +23,7 @@ const DEBOUNCE_MS = Number(process.env.PROVYS_WATCHER_DEBOUNCE_MS ?? '1500');
  * 'system:provys-watcher' olarak işaretlenir.
  *
  * Defansif: dizin yoksa worker süreci çökertilmez; kontrollü warn loglanır
- * ve izleyici başlatılmaz. Ops mount'u sonradan kurarsa worker restart
- * gerekir (mevcut ingest-watcher davranışıyla aynı).
+ * ve izleyici başlatılmaz.
  */
 export function startProvysWatcher(app: FastifyInstance): void {
   if (!fs.existsSync(WATCH_FOLDER)) {
@@ -30,7 +33,6 @@ export function startProvysWatcher(app: FastifyInstance): void {
     );
     return;
   }
-
   let stat: fs.Stats;
   try {
     stat = fs.statSync(WATCH_FOLDER);
@@ -53,61 +55,60 @@ export function startProvysWatcher(app: FastifyInstance): void {
     await new Promise<void>((resolve, reject) => {
       als.run(
         { userId: 'system:provys-watcher', pendingAuditLogs: [] },
-        () => {
-          fn().then(resolve, reject);
-        },
+        () => { fn().then(resolve, reject); },
       );
     });
   };
 
   /**
-   * Kanal başına debounce timer'ları. Initial scan'de chokidar 500+ `add`
-   * event'i burst'leyebilir; her event dizinin tamamını taradığı için aynı
-   * kanalın en güncel BXF'ini N kez parse etmek anlamsız. Per-channel
-   * debounce ile event'ler birleştirilir: son event'ten DEBOUNCE_MS sonra
-   * tek bir sync ateşlenir.
+   * Debounce key: `fileCode + scheduleDate`. Initial scan'de chokidar bir
+   * burst halinde 500+ add event'i fırlatır; aynı kanal+gün group'una ait
+   * çoklu event tek sync'e indirgenir.
    */
   const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const debounceKey = (fileCode: string, scheduleDate: string) => `${fileCode}|${scheduleDate}`;
 
   /**
-   * Bir kanal için latest BXF'i sync eder veya kalmadıysa snapshot temizler.
-   * (Debounce timer fire'lar bunu çağırır.)
+   * Bir `(channelSlug, scheduleDate)` group için latest BXF revision'ı sync
+   * eder veya hiç dosya kalmadıysa o gün snapshot'ını temizler. Başka
+   * günlere DOKUNMAZ.
    */
-  const flushChannel = async (
+  const flushGroup = async (
     fileCode: string,
     channelSlug: string,
+    scheduleDate: string,
     triggerFile: string,
     op: 'add' | 'change' | 'unlink',
   ): Promise<void> => {
     try {
       const files = await listBxfFiles(WATCH_FOLDER);
-      const latest = pickLatestForFileCode(files, fileCode);
+      const latest = pickLatestForFileCodeAndDate(files, fileCode, scheduleDate);
       await runWithAuditContext(async () => {
         if (!latest) {
           app.log.info(
-            { channelSlug, fileCode, op, triggerFile },
-            'Provys watcher: kanal için BXF kalmadı, snapshot temizleniyor',
+            { channelSlug, scheduleDate, fileCode, op, triggerFile },
+            'Provys watcher: kanal+gün için BXF kalmadı, snapshot temizleniyor',
           );
-          await clearChannelSnapshot(app.prisma, channelSlug, app.log);
+          await clearChannelDateSnapshot(app.prisma, channelSlug, scheduleDate, app.log);
           return;
         }
         if (latest.path !== triggerFile) {
           app.log.debug(
-            { triggerFile, selectedFile: latest.path, fileCode, op },
-            'Provys watcher: event eski mtime; daha güncel dosya seçildi',
+            { triggerFile, selectedFile: latest.path, fileCode, scheduleDate, op },
+            'Provys watcher: event eski revision; aynı gün daha güncel dosya seçildi',
           );
         }
         await syncProvysFile(app.prisma, latest.path, app.log);
       });
     } catch (err) {
-      app.log.error({ err, fileCode, triggerFile, op }, 'Provys watcher: sync hatası');
+      app.log.error({ err, fileCode, scheduleDate, triggerFile, op }, 'Provys watcher: sync hatası');
     }
   };
 
   /**
-   * Event-bazlı orchestrator. fileCode bazında dizinin tamamını yeniden
-   * tarayıp **en güncel mtime'lı** dosyayı seçer ve sadece onu sync eder.
-   * Tekrar event geldiğinde timer reset → DEBOUNCE_MS sonra tek atış.
+   * Event-bazlı orchestrator. (fileCode, scheduleDate) group'unu dizinin
+   * tamamından yeniden hesaplar; tekrar event geldiğinde timer reset →
+   * DEBOUNCE_MS sonra tek atış.
    */
   const handle = (filePath: string, op: 'add' | 'change' | 'unlink'): void => {
     if (path.extname(filePath).toLowerCase() !== '.bxf') return;
@@ -121,17 +122,22 @@ export function startProvysWatcher(app: FastifyInstance): void {
       app.log.warn({ filePath, fileCode }, 'Provys watcher: bilinmeyen file code, import edilmedi');
       return;
     }
+    const scheduleDate = extractScheduleDate(filePath);
+    if (!scheduleDate) {
+      app.log.warn({ filePath, fileCode }, 'Provys watcher: dosya adından tarih çıkartılamadı, atlandı');
+      return;
+    }
 
-    const existing = debounceTimers.get(fileCode);
+    const key = debounceKey(fileCode, scheduleDate);
+    const existing = debounceTimers.get(key);
     if (existing) clearTimeout(existing);
 
     const timer = setTimeout(() => {
-      debounceTimers.delete(fileCode);
-      void flushChannel(fileCode, channel.slug, filePath, op);
+      debounceTimers.delete(key);
+      void flushGroup(fileCode, channel.slug, scheduleDate, filePath, op);
     }, DEBOUNCE_MS);
-    // Timer'lar process hold yapmasın (graceful shutdown'da takılmasın).
     if (typeof timer.unref === 'function') timer.unref();
-    debounceTimers.set(fileCode, timer);
+    debounceTimers.set(key, timer);
   };
 
   watcher.on('add',    (p: string) => handle(p, 'add'));

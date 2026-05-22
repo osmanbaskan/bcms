@@ -8,6 +8,7 @@ function makeItem(over: Partial<ProvysItemDto>): ProvysItemDto {
   return {
     id: 1,
     channelSlug: 'beinsports1' as any,
+    scheduleDate: '2026-05-22',
     eventId: 'E1',
     sequence: 0,
     startAt: '2026-05-22T18:00:00Z',
@@ -62,7 +63,7 @@ describe('ProvysChannelPanelComponent', () => {
     fake.setItems([]);
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.textContent).toContain('akış kaydı yok');
+    expect(el.textContent).toContain('Seçili tarih için BXF akışı yok');
   });
 
   it('applies the correct row CSS class for each category', () => {

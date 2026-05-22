@@ -18,6 +18,8 @@ export interface ProvysSyncResult {
   inserted: number;
   updated: number;
   deleted: number;
+  /** Bu sync'te etkilenen kanal+gün çiftleri (SSE notify scope). */
+  affectedDates: string[];
 }
 
 interface DiffPlan {
@@ -26,9 +28,10 @@ interface DiffPlan {
   toDeleteIds: number[];
 }
 
-function computeHash(item: Pick<ParsedItem, 'eventId' | 'startAt' | 'durationMs' | 'title' | 'rawKind' | 'category' | 'sequence' | 'startTimecode' | 'durationTimecode' | 'frameRate' | 'dcCode'>): string {
+function computeHash(item: Pick<ParsedItem, 'eventId' | 'startAt' | 'durationMs' | 'title' | 'rawKind' | 'category' | 'sequence' | 'startTimecode' | 'durationTimecode' | 'frameRate' | 'dcCode' | 'scheduleDate'>): string {
   const canonical = [
     item.eventId,
+    item.scheduleDate,
     item.startAt.toISOString(),
     item.durationMs ?? '',
     item.startTimecode ?? '',
@@ -43,8 +46,14 @@ function computeHash(item: Pick<ParsedItem, 'eventId' | 'startAt' | 'durationMs'
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }
 
+/**
+ * Pure diff — `(channelSlug, scheduleDate)` scope. `existing` listesi
+ * yalnız bu kanal+gün satırlarını içermeli; başka günler caller tarafından
+ * filtrelenir.
+ */
 function buildDiff(
   channelSlug: ProvysChannelSlug,
+  scheduleDate: string,
   sourceFile: string,
   sourceMtime: Date,
   parsed: ParsedItem[],
@@ -57,12 +66,15 @@ function buildDiff(
   const toUpdate: Array<{ id: number; data: Prisma.ProvysItemUpdateInput }> = [];
   const toDeleteIds: number[] = [];
 
+  const scheduleDateAsDb = new Date(`${scheduleDate}T00:00:00Z`);
+
   for (const p of parsed) {
     const hash = computeHash(p);
     const existingRow = existingByEventId.get(p.eventId);
     if (!existingRow) {
       toCreate.push({
         channelSlug,
+        scheduleDate: scheduleDateAsDb,
         eventId: p.eventId,
         sequence: p.sequence,
         startAt: p.startAt,
@@ -108,12 +120,35 @@ function buildDiff(
 }
 
 /**
- * Dosyayı parse eder, kanalı çözer, current-snapshot tablosunu diff'leyerek
- * günceller, değişiklik varsa pg_notify yayınlar.
+ * Parsed items'ı scheduleDate'lere gruplandırır. Pratikte tek dosya tek
+ * gündür (Provys exporter sözleşmesi); yine de gece yarısı sonrası event'i
+ * farklı broadcastDate'e düşerse generic destek için.
+ */
+function groupByScheduleDate(items: ParsedItem[]): Map<string, ParsedItem[]> {
+  const map = new Map<string, ParsedItem[]>();
+  for (const p of items) {
+    const arr = map.get(p.scheduleDate) ?? [];
+    arr.push(p);
+    map.set(p.scheduleDate, arr);
+  }
+  return map;
+}
+
+async function emitNotify(prisma: PrismaClient, logger: FastifyBaseLogger, channelSlug: string, scheduleDate: string): Promise<void> {
+  try {
+    const payload = JSON.stringify({ channelSlug, scheduleDate });
+    await prisma.$executeRaw`SELECT pg_notify(${PG_NOTIFY_CHANNEL}, ${payload})`;
+  } catch (err) {
+    logger.warn({ err, channelSlug, scheduleDate }, 'Provys: pg_notify başarısız');
+  }
+}
+
+/**
+ * Dosyayı parse eder, kanalı çözer, `(channelSlug, scheduleDate)` scope'unda
+ * snapshot diff'ler. Bir dosya birden çok scheduleDate'e parsed item üretirse
+ * her grup ayrı tx'te işlenir.
  *
  * Audit: tüm yazımlar Prisma audit extension üstünden geçer (bypass yok).
- * Worker bağlamı için actor='system:provys-watcher' caller tarafından
- * ALS sarmalanarak set edilir (bkz. provys.watcher.ts).
  */
 export async function syncProvysFile(
   prisma: PrismaClient,
@@ -126,7 +161,7 @@ export async function syncProvysFile(
       { filePath, fileCode: extractFileCode(filePath) },
       'Provys: bilinmeyen file code, import edilmedi',
     );
-    return { channelSlug: null, reason: 'unknown-channel', inserted: 0, updated: 0, deleted: 0 };
+    return { channelSlug: null, reason: 'unknown-channel', inserted: 0, updated: 0, deleted: 0, affectedDates: [] };
   }
 
   let content: string;
@@ -144,89 +179,101 @@ export async function syncProvysFile(
   const parsed = parseBxf(content);
   if (parsed.length === 0) {
     logger.info({ filePath, channelSlug }, 'Provys: parse boş, sync atlandı');
-    return { channelSlug, reason: 'parse-empty', inserted: 0, updated: 0, deleted: 0 };
+    return { channelSlug, reason: 'parse-empty', inserted: 0, updated: 0, deleted: 0, affectedDates: [] };
   }
 
-  const existing = await prisma.provysItem.findMany({
-    where: { channelSlug },
-    select: { id: true, eventId: true, payloadHash: true },
-  });
+  const groups = groupByScheduleDate(parsed);
+  let totalInserted = 0;
+  let totalUpdated = 0;
+  let totalDeleted = 0;
+  const affectedDates: string[] = [];
 
-  const diff = buildDiff(channelSlug, filePath, stat.mtime, parsed, existing);
-  const changeCount = diff.toCreate.length + diff.toUpdate.length + diff.toDeleteIds.length;
-  if (changeCount === 0) {
-    return { channelSlug, reason: 'unchanged', inserted: 0, updated: 0, deleted: 0 };
+  for (const [scheduleDate, items] of groups) {
+    const scheduleDateAsDb = new Date(`${scheduleDate}T00:00:00Z`);
+    const existing = await prisma.provysItem.findMany({
+      where: { channelSlug, scheduleDate: scheduleDateAsDb },
+      select: { id: true, eventId: true, payloadHash: true },
+    });
+
+    const diff = buildDiff(channelSlug, scheduleDate, filePath, stat.mtime, items, existing);
+    const changeCount = diff.toCreate.length + diff.toUpdate.length + diff.toDeleteIds.length;
+    if (changeCount === 0) continue;
+
+    // Büyük gün snapshot'ları (~300 satır) tek tx'te bireysel `update` çağrıları
+    // default 5000ms timeout'u aşabilir. 30sn yeterli marj; debounce'lu sync
+    // sırasında connection pool basıncı düşük.
+    await prisma.$transaction(
+      async (tx) => {
+        if (diff.toDeleteIds.length > 0) {
+          await tx.provysItem.deleteMany({ where: { id: { in: diff.toDeleteIds } } });
+        }
+        if (diff.toCreate.length > 0) {
+          await tx.provysItem.createMany({ data: diff.toCreate });
+        }
+        for (const u of diff.toUpdate) {
+          await tx.provysItem.update({ where: { id: u.id }, data: u.data });
+        }
+      },
+      { timeout: 30_000, maxWait: 5_000 },
+    );
+
+    await emitNotify(prisma, logger, channelSlug, scheduleDate);
+
+    totalInserted += diff.toCreate.length;
+    totalUpdated += diff.toUpdate.length;
+    totalDeleted += diff.toDeleteIds.length;
+    affectedDates.push(scheduleDate);
+
+    logger.info(
+      {
+        channelSlug,
+        scheduleDate,
+        inserted: diff.toCreate.length,
+        updated: diff.toUpdate.length,
+        deleted: diff.toDeleteIds.length,
+        sourceFile: filePath,
+      },
+      'Provys: kanal/gün senkronize edildi',
+    );
   }
 
-  // Büyük kanallar (~300 satır) tek tx'te bireysel `update` çağrıları default
-  // 5000ms timeout'u aşabiliyor. 30sn yeterli marja sahip; sync zaten kanal
-  // başına debounce'lu olduğu için DB connection pool basıncı düşük.
-  await prisma.$transaction(
-    async (tx) => {
-      if (diff.toDeleteIds.length > 0) {
-        await tx.provysItem.deleteMany({ where: { id: { in: diff.toDeleteIds } } });
-      }
-      if (diff.toCreate.length > 0) {
-        await tx.provysItem.createMany({ data: diff.toCreate });
-      }
-      for (const u of diff.toUpdate) {
-        await tx.provysItem.update({ where: { id: u.id }, data: u.data });
-      }
-    },
-    { timeout: 30_000, maxWait: 5_000 },
-  );
-
-  // Notify outside tx — abonelerin commit'den önce hayalet okumasını önle.
-  try {
-    const payload = JSON.stringify({ channelSlug });
-    // pg_notify(channel, payload) — write değil; audit ext bypass'i gerekmez.
-    await prisma.$executeRaw`SELECT pg_notify(${PG_NOTIFY_CHANNEL}, ${payload})`;
-  } catch (err) {
-    logger.warn({ err, channelSlug }, 'Provys: pg_notify başarısız (sync tamam, listener bypass)');
+  if (affectedDates.length === 0) {
+    return { channelSlug, reason: 'unchanged', inserted: 0, updated: 0, deleted: 0, affectedDates: [] };
   }
-
-  logger.info(
-    {
-      channelSlug,
-      inserted: diff.toCreate.length,
-      updated: diff.toUpdate.length,
-      deleted: diff.toDeleteIds.length,
-      sourceFile: filePath,
-    },
-    'Provys: kanal senkronize edildi',
-  );
-
   return {
     channelSlug,
     reason: 'applied',
-    inserted: diff.toCreate.length,
-    updated: diff.toUpdate.length,
-    deleted: diff.toDeleteIds.length,
+    inserted: totalInserted,
+    updated: totalUpdated,
+    deleted: totalDeleted,
+    affectedDates,
   };
 }
 
 /**
- * Kanalın tüm satırlarını siler ve pg_notify yayar. Dizinde aynı kanala
- * ait BXF kalmadığında watcher tarafından çağrılır. Audit ext devrede
- * (deleteMany → DELETE audit kaydı).
+ * `(channelSlug, scheduleDate)` snapshot'ını siler ve pg_notify yayar.
+ * Dizinde o kanal+gün için BXF kalmadığında watcher çağırır. Audit ext
+ * devrede (deleteMany → DELETE audit kaydı). Diğer günlere DOKUNULMAZ.
  */
-export async function clearChannelSnapshot(
+export async function clearChannelDateSnapshot(
   prisma: PrismaClient,
   channelSlug: string,
+  scheduleDate: string,
   logger: FastifyBaseLogger,
 ): Promise<{ deleted: number }> {
-  const result = await prisma.provysItem.deleteMany({ where: { channelSlug } });
+  const scheduleDateAsDb = new Date(`${scheduleDate}T00:00:00Z`);
+  const result = await prisma.provysItem.deleteMany({
+    where: { channelSlug, scheduleDate: scheduleDateAsDb },
+  });
   if (result.count > 0) {
-    try {
-      const payload = JSON.stringify({ channelSlug });
-      await prisma.$executeRaw`SELECT pg_notify(${PG_NOTIFY_CHANNEL}, ${payload})`;
-    } catch (err) {
-      logger.warn({ err, channelSlug }, 'Provys: pg_notify başarısız (clear sırasında)');
-    }
-    logger.info({ channelSlug, deleted: result.count }, 'Provys: kanal snapshot temizlendi');
+    await emitNotify(prisma, logger, channelSlug, scheduleDate);
+    logger.info(
+      { channelSlug, scheduleDate, deleted: result.count },
+      'Provys: kanal/gün snapshot temizlendi',
+    );
   }
   return { deleted: result.count };
 }
 
 /** Pure diff — test edilebilir. */
-export const __internals__ = { buildDiff, computeHash };
+export const __internals__ = { buildDiff, computeHash, groupByScheduleDate };

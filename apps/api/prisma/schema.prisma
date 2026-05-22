@@ -1309,6 +1309,11 @@ model ScheduleFormatOption {
 model ProvysItem {
   id               Int       @id @default(autoincrement())
   channelSlug      String    @map("channel_slug") @db.VarChar(40)
+  /// Broadcast day (Europe/Istanbul naive date). Provys BXF dosyası bir
+  /// "yayın günü" exporter çıktısıdır; aynı dosya gece yarısı sonrası
+  /// event'leri taşısa bile scheduleDate dosya scope tarihidir.
+  /// (channelSlug + scheduleDate) bir snapshot'ı tek olarak tanımlar.
+  scheduleDate     DateTime  @map("schedule_date") @db.Date
   eventId          String    @map("event_id") @db.VarChar(120)
   sequence         Int       @default(0)
   startAt          DateTime  @map("start_at") @db.Timestamptz(6)
@@ -1331,7 +1336,7 @@ model ProvysItem {
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime  @updatedAt       @map("updated_at") @db.Timestamptz(6)
 
-  @@unique([channelSlug, eventId], name: "provys_items_channel_event_unique")
-  @@index([channelSlug, sequence], name: "provys_items_channel_seq_idx")
+  @@unique([channelSlug, scheduleDate, eventId], name: "provys_items_channel_date_event_unique")
+  @@index([channelSlug, scheduleDate, sequence], name: "provys_items_channel_date_seq_idx")
   @@map("provys_items")
 }

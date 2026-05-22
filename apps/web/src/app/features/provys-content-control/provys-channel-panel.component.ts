@@ -28,7 +28,7 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
       @if (!service.hasReceived(channel())) {
         <div class="state">Yükleniyor…</div>
       } @else if (items().length === 0) {
-        <div class="state empty">Bu kanal için akış kaydı yok.</div>
+        <div class="state empty">Seçili tarih için BXF akışı yok</div>
       } @else {
         <table class="provys-list" role="grid" aria-label="Provys akış listesi">
           <thead>

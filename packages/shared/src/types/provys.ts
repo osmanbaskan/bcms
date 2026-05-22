@@ -56,18 +56,25 @@ export const PROVYS_CATEGORY_STYLES: Record<ProvysCategory, ProvysCategoryStyle>
 
 /**
  * SSE event tipleri. Worker → API LISTEN → client stream.
- * `snapshot`: bağlantı açıldığında ilk gelen tam liste.
- * `update`: kanalın güncel snapshot'ı (toplu replace; current-snapshot semantiği).
+ *
+ * Per-day snapshot semantiği (2026-05-22): event her zaman bir kanal+gün
+ * çiftine ait olur. UI sadece aktif `(channel, date)` çiftine ait event'leri
+ * uygular; başka günün update'i mevcut listeyi etkilemez.
+ *
+ * `snapshot`: bağlantı açıldığında ilk gelen tam liste (kanal+gün için).
+ * `update`:   kanalın o güne ait güncel snapshot'ı (toplu replace).
  * `heartbeat`: idle keepalive.
  */
 export type ProvysStreamEvent =
-  | { type: 'snapshot'; channel: ProvysChannelSlug; items: ProvysItemDto[] }
-  | { type: 'update';   channel: ProvysChannelSlug; items: ProvysItemDto[] }
+  | { type: 'snapshot';  channel: ProvysChannelSlug; scheduleDate: string; items: ProvysItemDto[] }
+  | { type: 'update';    channel: ProvysChannelSlug; scheduleDate: string; items: ProvysItemDto[] }
   | { type: 'heartbeat'; ts: number };
 
 export interface ProvysItemDto {
   id: number;
   channelSlug: ProvysChannelSlug;
+  /** Yayın günü, Europe/Istanbul naive tarih `YYYY-MM-DD`. */
+  scheduleDate: string;
   eventId: string;
   sequence: number;
   startAt: string;                       // ISO-8601 Europe/Istanbul UTC instant

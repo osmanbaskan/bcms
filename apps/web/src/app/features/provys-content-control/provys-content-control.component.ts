@@ -1,25 +1,70 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatIconModule } from '@angular/material/icon';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatDatepickerModule, MatDatepickerInputEvent } from '@angular/material/datepicker';
+import { MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
 import { ProvysService } from './provys.service';
 import { ProvysChannelPanelComponent } from './provys-channel-panel.component';
 import { PROVYS_CHANNELS } from './provys.types';
 
+function isoFromDate(d: Date): string {
+  // Date picker user-local; UI Europe/Istanbul varsayar. Naive YYYY-MM-DD.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function dateFromIso(iso: string): Date {
+  const [y, m, d] = iso.split('-').map((s) => Number(s));
+  return new Date(y, m - 1, d);
+}
+
 @Component({
   selector: 'app-provys-content-control',
   standalone: true,
-  imports: [CommonModule, MatTabsModule, MatIconModule, ProvysChannelPanelComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    MatTabsModule,
+    MatIconModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatDatepickerModule,
+    ProvysChannelPanelComponent,
+  ],
+  providers: [
+    provideNativeDateAdapter(),
+    { provide: MAT_DATE_LOCALE, useValue: 'tr-TR' },
+  ],
   template: `
     <section class="page">
       <header class="page-head">
         <div>
           <h1>Provys İçerik Kontrol</h1>
-          <p class="subtitle">SMB Provys dizinindeki BXF akış dosyaları — kanal başına güncel snapshot.</p>
+          <p class="subtitle">SMB Provys dizinindeki BXF akış dosyaları — kanal+gün başına snapshot.</p>
         </div>
-        <div class="status" [class.status--ok]="connected()" [class.status--err]="!!error()">
-          <mat-icon class="dot" aria-hidden="true">{{ connected() ? 'sensors' : 'sensors_off' }}</mat-icon>
-          <span>{{ connected() ? 'Canlı' : (error() ?? 'Bağlanıyor…') }}</span>
+        <div class="head-right">
+          <mat-form-field appearance="outline" class="date-field" subscriptSizing="dynamic">
+            <mat-label>Yayın günü</mat-label>
+            <input
+              matInput
+              [matDatepicker]="picker"
+              [value]="dateValue()"
+              (dateChange)="onDateChange($event)"
+              readonly
+            />
+            <mat-datepicker-toggle matIconSuffix [for]="picker" />
+            <mat-datepicker #picker />
+          </mat-form-field>
+          <div class="status" [class.status--ok]="connected()" [class.status--err]="!!error()">
+            <mat-icon class="dot" aria-hidden="true">{{ connected() ? 'sensors' : 'sensors_off' }}</mat-icon>
+            <span>{{ connected() ? 'Canlı' : (error() ?? 'Bağlanıyor…') }}</span>
+          </div>
         </div>
       </header>
 
@@ -45,8 +90,9 @@ import { PROVYS_CHANNELS } from './provys.types';
     }
     .page-head {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 12px 16px 0 16px;
+      padding: 12px 16px 0 16px; gap: 12px; flex-wrap: wrap;
     }
+    .head-right { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     h1 {
       margin: 0; font-size: 22px;
       font-weight: var(--bp-fw-semibold, 600);
@@ -58,6 +104,8 @@ import { PROVYS_CHANNELS } from './provys.types';
       margin: 2px 0 0 0; font-size: 12.5px;
       color: var(--bp-fg-3);
     }
+    .date-field { width: 180px; }
+    ::ng-deep .date-field .mat-mdc-form-field-subscript-wrapper { display: none; }
     .status {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 12.5px; padding: 4px 10px;
@@ -89,13 +137,20 @@ export class ProvysContentControlComponent implements OnInit, OnDestroy {
   readonly connected = computed(() => this.service.connected());
   readonly error = computed(() => this.service.lastError());
 
+  /** Date picker `Date` objesi olarak okur; service ISO string saklar. */
+  readonly dateValue = computed<Date>(() => dateFromIso(this.service.activeDate()));
+
   ngOnInit(): void {
-    // Initial REST + SSE birlikte — SSE snapshot da gelir, idempotent set.
     void this.service.loadInitial();
     this.service.ensureStreaming();
   }
 
   ngOnDestroy(): void {
     this.service.stopStreaming();
+  }
+
+  onDateChange(ev: MatDatepickerInputEvent<Date>): void {
+    if (!ev.value) return;
+    void this.service.setActiveDate(isoFromDate(ev.value));
   }
 }
