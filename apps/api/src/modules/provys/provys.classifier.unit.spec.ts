@@ -48,4 +48,17 @@ describe('provys.classifier › classifyCategory', () => {
     expect(classifyCategory('SOMETHING_ELSE')).toBe('DIGER');
     expect(classifyCategory('XYZ')).toBe('DIGER');
   });
+
+  it('classifies SMPTE 2021 BXF AdType values from real Provys output', () => {
+    expect(classifyCategory('Commercial')).toBe('REKLAM');
+    expect(classifyCategory('Promo')).toBe('TANITIM');
+    expect(classifyCategory('PSA')).toBe('KAMU_SPOTU');
+    expect(classifyCategory('Live')).toBe('CANLI');
+    expect(classifyCategory('Other')).toBe('DIGER');
+  });
+
+  it('treats Program and ProgramHeader as PROGRAM (PrimaryEvent.ProgramEvent + Primary-ProgramHeader)', () => {
+    expect(classifyCategory('Program')).toBe('PROGRAM');
+    expect(classifyCategory('ProgramHeader')).toBe('PROGRAM');
+  });
 });

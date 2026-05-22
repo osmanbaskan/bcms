@@ -3,6 +3,9 @@ dist/
 .env
 .env.local
 .env.bak
+
+# CIFS / SMB credentials — repo'ya KESİNLİKLE girmez (host /home altında yaşar)
+.bcms-*.cred
 *.log
 coverage/
 .nyc_output/

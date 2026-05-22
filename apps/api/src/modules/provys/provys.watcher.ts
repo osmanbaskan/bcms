@@ -8,6 +8,7 @@ import { extractFileCode, resolveChannel } from './provys.channel-mapping.js';
 import { listBxfFiles, pickLatestForFileCode } from './provys.file-resolver.js';
 
 const WATCH_FOLDER = process.env.PROVYS_WATCH_FOLDER ?? './tmp/provys';
+const DEBOUNCE_MS = Number(process.env.PROVYS_WATCHER_DEBOUNCE_MS ?? '1500');
 
 /**
  * Worker bağlamında çalışan dosya izleyici. Host-side CIFS mount + Docker
@@ -60,16 +61,55 @@ export function startProvysWatcher(app: FastifyInstance): void {
   };
 
   /**
+   * Kanal başına debounce timer'ları. Initial scan'de chokidar 500+ `add`
+   * event'i burst'leyebilir; her event dizinin tamamını taradığı için aynı
+   * kanalın en güncel BXF'ini N kez parse etmek anlamsız. Per-channel
+   * debounce ile event'ler birleştirilir: son event'ten DEBOUNCE_MS sonra
+   * tek bir sync ateşlenir.
+   */
+  const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /**
+   * Bir kanal için latest BXF'i sync eder veya kalmadıysa snapshot temizler.
+   * (Debounce timer fire'lar bunu çağırır.)
+   */
+  const flushChannel = async (
+    fileCode: string,
+    channelSlug: string,
+    triggerFile: string,
+    op: 'add' | 'change' | 'unlink',
+  ): Promise<void> => {
+    try {
+      const files = await listBxfFiles(WATCH_FOLDER);
+      const latest = pickLatestForFileCode(files, fileCode);
+      await runWithAuditContext(async () => {
+        if (!latest) {
+          app.log.info(
+            { channelSlug, fileCode, op, triggerFile },
+            'Provys watcher: kanal için BXF kalmadı, snapshot temizleniyor',
+          );
+          await clearChannelSnapshot(app.prisma, channelSlug, app.log);
+          return;
+        }
+        if (latest.path !== triggerFile) {
+          app.log.debug(
+            { triggerFile, selectedFile: latest.path, fileCode, op },
+            'Provys watcher: event eski mtime; daha güncel dosya seçildi',
+          );
+        }
+        await syncProvysFile(app.prisma, latest.path, app.log);
+      });
+    } catch (err) {
+      app.log.error({ err, fileCode, triggerFile, op }, 'Provys watcher: sync hatası');
+    }
+  };
+
+  /**
    * Event-bazlı orchestrator. fileCode bazında dizinin tamamını yeniden
    * tarayıp **en güncel mtime'lı** dosyayı seçer ve sadece onu sync eder.
-   * Bu sayede:
-   *   - Eski mtime'lı bir dosyaya `change` event'i gelirse yeni snapshot
-   *     geriye düşmez (resolver halen yeniyi seçer).
-   *   - En güncel dosya silinirse, dizinde aynı kanala ait bir sonraki en
-   *     güncel dosya seçilir ve onun snapshot'ı yazılır.
-   *   - Kanala ait hiç dosya kalmazsa snapshot temizlenir.
+   * Tekrar event geldiğinde timer reset → DEBOUNCE_MS sonra tek atış.
    */
-  const handle = async (filePath: string, op: 'add' | 'change' | 'unlink'): Promise<void> => {
+  const handle = (filePath: string, op: 'add' | 'change' | 'unlink'): void => {
     if (path.extname(filePath).toLowerCase() !== '.bxf') return;
     const fileCode = extractFileCode(filePath);
     if (!fileCode) {
@@ -82,42 +122,29 @@ export function startProvysWatcher(app: FastifyInstance): void {
       return;
     }
 
-    try {
-      const files = await listBxfFiles(WATCH_FOLDER);
-      const latest = pickLatestForFileCode(files, fileCode);
+    const existing = debounceTimers.get(fileCode);
+    if (existing) clearTimeout(existing);
 
-      await runWithAuditContext(async () => {
-        if (!latest) {
-          // Kanala ait dosya kalmadı → snapshot temizle.
-          app.log.info(
-            { channelSlug: channel.slug, fileCode, op, triggerFile: filePath },
-            'Provys watcher: kanal için BXF kalmadı, snapshot temizleniyor',
-          );
-          await clearChannelSnapshot(app.prisma, channel.slug, app.log);
-          return;
-        }
-        if (latest.path !== filePath) {
-          app.log.debug(
-            { triggerFile: filePath, selectedFile: latest.path, fileCode, op },
-            'Provys watcher: event eski mtime; daha güncel dosya seçildi',
-          );
-        }
-        await syncProvysFile(app.prisma, latest.path, app.log);
-      });
-    } catch (err) {
-      app.log.error({ err, filePath, op }, 'Provys watcher: sync hatası');
-    }
+    const timer = setTimeout(() => {
+      debounceTimers.delete(fileCode);
+      void flushChannel(fileCode, channel.slug, filePath, op);
+    }, DEBOUNCE_MS);
+    // Timer'lar process hold yapmasın (graceful shutdown'da takılmasın).
+    if (typeof timer.unref === 'function') timer.unref();
+    debounceTimers.set(fileCode, timer);
   };
 
-  watcher.on('add',    (p: string) => { void handle(p, 'add'); });
-  watcher.on('change', (p: string) => { void handle(p, 'change'); });
-  watcher.on('unlink', (p: string) => { void handle(p, 'unlink'); });
+  watcher.on('add',    (p: string) => handle(p, 'add'));
+  watcher.on('change', (p: string) => handle(p, 'change'));
+  watcher.on('unlink', (p: string) => handle(p, 'unlink'));
 
   watcher.on('error', (err: unknown) => {
     app.log.error({ err }, 'Provys watcher: izleyici hatası');
   });
 
   app.addHook('onClose', async () => {
+    for (const t of debounceTimers.values()) clearTimeout(t);
+    debounceTimers.clear();
     try {
       await watcher.close();
       app.log.info('Provys watcher kapandı');
