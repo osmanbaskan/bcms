@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAsrunBxf, AsrunParseError } from './asrun.parser.js';
+import { parseAsrunBxf, classifyAsrunEvent, AsrunParseError } from './asrun.parser.js';
 
 const SINGLE = `<?xml version="1.0" encoding="utf-8"?>
 <BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF" xmlns:ext="http://smpte-ra.org/schemas/2021/2017/BXF/Extension" ext:usage="AsRun">
@@ -150,7 +150,7 @@ describe('asrun.parser › parseAsrunBxf', () => {
     expect(items[0].scheduleDate).toBe('2026-04-02');
   });
 
-  it('classifies AsRunDetail.Type via classifier', () => {
+  it('classifies AsRunDetail.Type via classifier (title="X" generic)', () => {
     const ev = (type: string) => `
       <AsRun><BasicAsRun>
         <AsRunEventId><EventId>urn:uuid:T-${type}</EventId></AsRunEventId>
@@ -169,16 +169,80 @@ describe('asrun.parser › parseAsrunBxf', () => {
   ${ev('PSA')}
   ${ev('Live')}
   ${ev('UnknownType')}
+  ${ev('Comment')}
 </Schedule></BxfData></BxfMessage>`;
     const items = parseAsrunBxf(xml);
+    // Title="X" — sinyal yok, Type-fallback devreye girer
     expect(items.map((i) => i.category)).toEqual([
-      'PROGRAM',     // Primary → "primary" matches none directly but contains "primar"... actually classifier won't match → DIGER
-      'REKLAM',
-      'TANITIM',
-      'KAMU_SPOTU',
-      'CANLI',
-      'DIGER',
+      'PROGRAM',     // Primary → PROGRAM (rawKind=Primary korunur)
+      'REKLAM',     // Type=Commercial → classifier match
+      'TANITIM',    // Type=Promo
+      'KAMU_SPOTU', // Type=PSA
+      'CANLI',      // Type=Live
+      'DIGER',      // Type=UnknownType → classifier DIGER
+      'DIGER',      // Type=Comment → DIGER (rawKind=Comment korunur)
     ]);
+  });
+
+  describe('classifyAsrunEvent (title/description signals)', () => {
+    it('A) numeric-only title → REKLAM/Commercial (overrides Type=Primary)', () => {
+      expect(classifyAsrunEvent('Primary', '12345')).toEqual({ rawKind: 'Commercial', category: 'REKLAM' });
+      expect(classifyAsrunEvent('Primary', '000123')).toEqual({ rawKind: 'Commercial', category: 'REKLAM' });
+      expect(classifyAsrunEvent('Primary', '987654321')).toEqual({ rawKind: 'Commercial', category: 'REKLAM' });
+    });
+
+    it('A) DC0001 / "123 ABC" / mixed → numeric kuralı tetiklemez', () => {
+      // DC ile başlıyor → harfli, numeric değil
+      expect(classifyAsrunEvent('Primary', 'DC000123').category).toBe('PROGRAM');
+      // boşluk içeren karışık → numeric değil
+      expect(classifyAsrunEvent('Primary', '123 ABC').category).toBe('PROGRAM');
+      // boşluk trim sonrası bile karışık
+      expect(classifyAsrunEvent('Primary', '  12 34  ').category).toBe('PROGRAM');
+    });
+
+    it('B) CANLI/LIVE title → CANLI/Live', () => {
+      expect(classifyAsrunEvent('Primary', 'BEIN BASKETBOL CANLI')).toEqual({ rawKind: 'Live', category: 'CANLI' });
+      expect(classifyAsrunEvent('Primary', 'Some Live Show')).toEqual({ rawKind: 'Live', category: 'CANLI' });
+      // "Liverpool" — word boundary ihlali yok, "live" \b match etmemeli
+      expect(classifyAsrunEvent('Primary', 'Liverpool vs Chelsea').category).toBe('PROGRAM');
+    });
+
+    it('C) KAMU prefix / Kamu Spotu / PSA → KAMU_SPOTU/PSA', () => {
+      expect(classifyAsrunEvent('Primary', 'KAMU (ÖY) OCY KIS LASTIGI')).toEqual({ rawKind: 'PSA', category: 'KAMU_SPOTU' });
+      expect(classifyAsrunEvent('Primary', 'Kamu Spotu - Lösev 28 Yaşında')).toEqual({ rawKind: 'PSA', category: 'KAMU_SPOTU' });
+      expect(classifyAsrunEvent('Primary', 'Sağlık PSA Yayını')).toEqual({ rawKind: 'PSA', category: 'KAMU_SPOTU' });
+      // "Kamuya açık" — KAMU\b word boundary değil → skip
+      expect(classifyAsrunEvent('Primary', 'Kamuya açık tanıtım').category).toBe('TANITIM');
+    });
+
+    it('D) PROMO/TANITIM title → TANITIM/Promo', () => {
+      expect(classifyAsrunEvent('Primary', 'PRO TENIS PROMO 24-25')).toEqual({ rawKind: 'Promo', category: 'TANITIM' });
+      expect(classifyAsrunEvent('Primary', 'Bant Tanıtım Spotu')).toEqual({ rawKind: 'Promo', category: 'TANITIM' });
+    });
+
+    it('E) REKLAM/COMMERCIAL/PAID keyword → REKLAM/Commercial', () => {
+      expect(classifyAsrunEvent('Primary', 'REKLAM 10')).toEqual({ rawKind: 'Commercial', category: 'REKLAM' });
+      expect(classifyAsrunEvent('Primary', 'Paid Program Spot')).toEqual({ rawKind: 'Commercial', category: 'REKLAM' });
+    });
+
+    it('F) Type=Primary + normal title → PROGRAM (Primary korunur)', () => {
+      expect(classifyAsrunEvent('Primary', 'İngiltere Premier Lig Maçı Bant'))
+        .toEqual({ rawKind: 'Primary', category: 'PROGRAM' });
+    });
+
+    it('G) Type=Comment + sinyalsiz title → DIGER (Comment korunur)', () => {
+      expect(classifyAsrunEvent('Comment', 'X')).toEqual({ rawKind: 'Comment', category: 'DIGER' });
+    });
+
+    it('description sinyali de yakalanır', () => {
+      expect(classifyAsrunEvent('Primary', 'X', 'Reklam blok 1').category).toBe('REKLAM');
+      expect(classifyAsrunEvent('Primary', 'X', 'CANLI yayın').category).toBe('CANLI');
+    });
+
+    it('numeric-only kuralı description rakamlarından etkilenmez', () => {
+      // Title harfli, description sayısal → Type=Primary fallback PROGRAM
+      expect(classifyAsrunEvent('Primary', 'Programme A', '12345').category).toBe('PROGRAM');
+    });
   });
 
   it('returns [] for empty input or missing Schedule', () => {

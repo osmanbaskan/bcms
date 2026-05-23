@@ -2,6 +2,7 @@ import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { classifyCategory } from '../provys/provys.classifier.js';
 import { composeIstanbulInstant } from '../../core/tz.js';
 import type { ParsedItem } from '../provys/provys.parser.js';
+import type { ProvysCategory } from '@bcms/shared';
 
 /**
  * Asrun (as-run playout log) BXF parser — Provys playlist parser'ından
@@ -134,12 +135,110 @@ function pickTitle(content: Record<string, unknown> | undefined, dcCode: string 
   return 'Untitled';
 }
 
+function pickDescription(content: Record<string, unknown> | undefined): string | null {
+  if (!content) return null;
+  const desc = content['Description'];
+  if (typeof desc === 'string' && desc.trim()) return desc.trim();
+  if (desc && typeof desc === 'object') {
+    // Description bazen `{ '#text': 'xxx', '@_type': 'Y' }` formatında
+    const text = (desc as Record<string, unknown>)['#text'];
+    if (typeof text === 'string' && text.trim()) return text.trim();
+  }
+  return null;
+}
+
 function pickDcCode(content: Record<string, unknown> | undefined): string | null {
   if (!content) return null;
   const cid = content['ContentId'] as Record<string, unknown> | undefined;
   const house = cid?.['HouseNumber'];
   if (typeof house === 'string' && /^DC[0-9A-Za-z]+$/.test(house.trim())) return house.trim();
   return null;
+}
+
+/**
+ * Asrun event sınıflandırma — Asrun BXF dosyalarında ayrı kategori alanı
+ * YOK (`AsRunDetail/Type` yalnız `Primary`/`Comment`). Bu yüzden kategori
+ * Content.Name ve Description metin sinyallerinden çıkarılır; Type sadece
+ * fallback.
+ *
+ * Öncelik sırası:
+ *   A) Title sadece rakamlardan oluşuyorsa  → REKLAM ("12345", "000123";
+ *      "DC000123" veya "123 ABC" KAPSAM DIŞI çünkü saf rakam değil).
+ *   B) Canlı sinyali  `\bCANLI\b` / `\bLIVE\b`           → CANLI
+ *   C) Kamu/PSA sinyali (title ^KAMU\b, kamu spotu, PSA, public service)
+ *                                                       → KAMU_SPOTU
+ *   D) Promo/Tanıtım sinyali (PROMO/TANITIM/TANITIM)    → TANITIM
+ *   E) Reklam sinyali (REKLAM/COMMERCIAL/PAID)          → REKLAM
+ *   F) Type=Primary  → PROGRAM (rawKind 'Primary' korunur)
+ *   G) Type=Comment  → DIGER   (rawKind 'Comment' korunur)
+ *   H) Fallback: `classifyCategory(rawKind)` sonucu DIGER ise DIGER.
+ *
+ * rawKind davranışı: A-E sinyallerinden biri tetiklenirse semantic değer
+ * yazılır (`Commercial`, `Live`, `PSA`, `Promo`); aksi halde ham
+ * `AsRunDetail/Type` değeri (`Primary` / `Comment`) korunur. Bu UI/export
+ * "Tür" kolonu için anlamlı olur (orijinal SMPTE Type bilgisi sinyal varsa
+ * kaybolur — V1 trade-off; Asrun "Status" alanı zaten ayrı).
+ */
+// JS `\b` word boundary `\w = [A-Za-z0-9_]` ile çalışır; Türkçe `ı`, `İ`,
+// `ş`, `ğ` vb. word char sayılmaz → `\bcanlı\b` "Canlı" eşleşmesini kaçırır.
+// Çözüm: `\p{L}` (Unicode letter) sınıfı + `/u` flag ile non-letter boundary.
+const ONLY_DIGITS_RE = /^\d+$/;
+const LIVE_RE = /(?:^|[^\p{L}\p{N}])(canl[iı]|live|naklen)(?=[^\p{L}\p{N}]|$)/iu;
+const PSA_TITLE_PREFIX_RE = /^\s*KAMU(?=[^\p{L}\p{N}]|$)/iu;
+// Asrun başlıkları "DC0001 - KAMU (ÖY) ..." gibi prefix-DC + ortada KAMU
+// kelimesi şeklinde geliyor. `^KAMU` yetmediği için standalone `KAMU`
+// kelimesi de PSA sinyali sayılır. "Kamuya/Kamuoyu" gibi türevler
+// `(?=[^letter])` lookahead ile dışlanır.
+const PSA_INLINE_RE = /(?:^|[^\p{L}\p{N}])(kamu\s+spotu|kamu|psa|public\s+service)(?=[^\p{L}\p{N}]|$)/iu;
+const PROMO_RE = /(?:^|[^\p{L}\p{N}])(promo|tan[iı]t[iı]m|trailer|bumper|teaser)(?=[^\p{L}\p{N}]|$)/iu;
+const REKLAM_RE = /(?:^|[^\p{L}\p{N}])(reklam|commercial|paid)(?=[^\p{L}\p{N}]|$)/iu;
+
+export function classifyAsrunEvent(
+  rawKind: string | null,
+  title: string,
+  description?: string | null,
+): { rawKind: string | null; category: ProvysCategory } {
+  const t = (title ?? '').trim();
+  const text = `${t} ${description ?? ''}`;
+
+  // A) Numeric-only title — Asrun playout'unda reklam blokları başlıksız
+  // numerik ID'lerle (örn. "12345") gelir. Description hariç, sadece title.
+  if (t && ONLY_DIGITS_RE.test(t)) {
+    return { rawKind: 'Commercial', category: 'REKLAM' };
+  }
+
+  // B) Live
+  if (LIVE_RE.test(text)) {
+    return { rawKind: 'Live', category: 'CANLI' };
+  }
+
+  // C) Kamu / PSA (title prefix güçlü sinyal; içinde "kamu spotu" da yakalanır)
+  if (PSA_TITLE_PREFIX_RE.test(t) || PSA_INLINE_RE.test(text)) {
+    return { rawKind: 'PSA', category: 'KAMU_SPOTU' };
+  }
+
+  // D) Promo / Tanıtım
+  if (PROMO_RE.test(text)) {
+    return { rawKind: 'Promo', category: 'TANITIM' };
+  }
+
+  // E) Reklam / Commercial / Paid
+  if (REKLAM_RE.test(text)) {
+    return { rawKind: 'Commercial', category: 'REKLAM' };
+  }
+
+  // F) Type=Primary → PROGRAM (rawKind ham korunur)
+  if (rawKind && /^primary$/i.test(rawKind)) {
+    return { rawKind, category: 'PROGRAM' };
+  }
+
+  // G) Type=Comment → DIGER (rawKind ham korunur)
+  if (rawKind && /^comment$/i.test(rawKind)) {
+    return { rawKind, category: 'DIGER' };
+  }
+
+  // H) Fallback — diğer Type değerleri için classifier
+  return { rawKind, category: classifyCategory(rawKind ?? undefined) };
 }
 
 export interface ParseAsrunOptions {
@@ -209,14 +308,14 @@ export function parseAsrunBxf(content: string, opts: ParseAsrunOptions = {}): Pa
 
     const dcCode = pickDcCode(content);
     const title = pickTitle(content, dcCode);
+    const description = pickDescription(content);
     const rawType = detail['Type'];
-    const rawKind = typeof rawType === 'string' && rawType.trim() ? rawType.trim() : null;
-    // Asrun "Primary" = main programme content; Provys classifier "primary"
-    // pattern'ini taşımıyor (oradaki eventType "Program"). Mapping ile
-    // Primary → PROGRAM, Secondary → DIGER, diğer (Promo/Commercial/PSA/Live)
-    // ham değerle classifier'a verilir.
-    const classifierInput = rawKind && /^primary$/i.test(rawKind) ? 'Program' : rawKind;
-    const category = classifyCategory(classifierInput ?? undefined);
+    const initialRawKind = typeof rawType === 'string' && rawType.trim() ? rawType.trim() : null;
+    // Asrun XML'inde gerçek kategori alanı yok; Content.Name/Description
+    // metin sinyalleri ile sınıflandır (numeric-only title → REKLAM dahil).
+    const classified = classifyAsrunEvent(initialRawKind, title, description);
+    const rawKind = classified.rawKind;
+    const category = classified.category;
 
     const startTimecode = start.timecode;
     const frameRate = start.frameRate ?? dur.frameRate ?? null;
