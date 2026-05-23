@@ -79,4 +79,31 @@ describe('AppComponent — nav visibility (2026-05-13 yeni "OPTA Lig Görünürl
     const item = findOptaItem(cmp);
     expect(item).toBeUndefined();
   });
+
+  describe('ProvysViewer izolasyonu (tek-grup kullanıcı)', () => {
+    it('Yalnız Provys nav item görünür', () => {
+      const cmp = setup([GROUP.ProvysViewer]);
+      const groups = cmp.visibleGroups() as NavGroup[];
+      const allItems = groups.flatMap((g) => g.items);
+      expect(allItems.length).toBe(1);
+      expect(allItems[0].route).toBe('/provys-content-control');
+    });
+
+    it('Çoklu grup (ProvysViewer + YayınPlanlama) izolasyon devreye girmez', () => {
+      const cmp = setup([GROUP.ProvysViewer, GROUP.YayınPlanlama]);
+      const groups = cmp.visibleGroups() as NavGroup[];
+      const allItems = groups.flatMap((g) => g.items);
+      // Çoklu grup → auth-only itemları (groups: []) görünür; sayım > 1
+      expect(allItems.length).toBeGreaterThan(1);
+    });
+
+    it('Çoklu kullanıcı (Booking) ProvysViewer-only davranışından etkilenmez', () => {
+      const cmp = setup([GROUP.Booking]);
+      const groups = cmp.visibleGroups() as NavGroup[];
+      const allItems = groups.flatMap((g) => g.items);
+      // Booking için Provys görünmez ama auth-only itemlar (dashboard vs) görünür
+      expect(allItems.some((it) => it.route === '/provys-content-control')).toBeFalse();
+      expect(allItems.length).toBeGreaterThan(1);
+    });
+  });
 });

@@ -41,6 +41,7 @@ const GROUP_COLORS: Record<string, string> = {
   [GROUP.PCR]:           '#0277bd',
   [GROUP.Ses]:           '#558b2f',
   [GROUP.StudyoSefi]:    '#37474f',
+  [GROUP.ProvysViewer]:  '#7c3aed',
 };
 
 const USER_TYPE_LABELS: Record<KcUser['userType'], string> = {

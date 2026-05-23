@@ -58,4 +58,43 @@ describe('AuthGuard', () => {
     await guard.isAccessAllowed({ data: {} } as any);
     expect(routerSpy.parseUrl).toHaveBeenCalledWith('/login-error');
   });
+
+  describe('ProvysViewer izolasyonu', () => {
+    function asProvysViewerRoute(path: string[]) {
+      return {
+        data: {},
+        url: path.map((p) => ({ path: p })),
+      } as any;
+    }
+
+    it('Tek grubu ProvysViewer ise non-provys route Provys sayfasina yonlendirir', async () => {
+      keycloakSpy.getKeycloakInstance.and.returnValue({
+        tokenParsed: { groups: ['ProvysViewer'] },
+      } as any);
+      (guard as any).authenticated = true;
+      await guard.isAccessAllowed(asProvysViewerRoute(['dashboard']));
+      expect(routerSpy.parseUrl).toHaveBeenCalledWith('/provys-content-control');
+    });
+
+    it('Tek grubu ProvysViewer ise /provys-content-control allow', async () => {
+      keycloakSpy.getKeycloakInstance.and.returnValue({
+        tokenParsed: { groups: ['ProvysViewer'] },
+      } as any);
+      (guard as any).authenticated = true;
+      const result = await guard.isAccessAllowed(
+        asProvysViewerRoute(['provys-content-control']),
+      );
+      expect(result).toBeTrue();
+    });
+
+    it('Çoklu grup (ProvysViewer + Booking) ise izolasyon devreye girmez', async () => {
+      keycloakSpy.getKeycloakInstance.and.returnValue({
+        tokenParsed: { groups: ['ProvysViewer', 'Booking'] },
+      } as any);
+      (guard as any).authenticated = true;
+      const result = await guard.isAccessAllowed({ data: {}, url: [{ path: 'bookings' }] } as any);
+      // 2 grup → izolasyon yok, route.data.groups boş → auth-only allow
+      expect(result).toBeTrue();
+    });
+  });
 });

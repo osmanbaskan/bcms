@@ -11,6 +11,11 @@ export const BCMS_GROUPS = [
   'PCR',
   'Ses',
   'StudyoSefi',
+  // V1 UI izolasyonu (2026-05-23): yalnız Provys İçerik Kontrol sekmesini
+  // gören kullanıcı için "viewer" grubu. Frontend nav + AuthGuard tarafından
+  // tek-grup izolasyonu uygulanır; backend "auth only" endpoint'ler V1'de
+  // kapsanmaz (V2 RBAC hardening).
+  'ProvysViewer',
 ] as const;
 
 export type BcmsGroup = typeof BCMS_GROUPS[number];
@@ -29,6 +34,7 @@ export const GROUP = {
   PCR: 'PCR',
   Ses: 'Ses',
   StudyoSefi: 'StudyoSefi',
+  ProvysViewer: 'ProvysViewer',
 } as const satisfies Record<BcmsGroup, BcmsGroup>;
 
 export interface JwtPayload {
@@ -161,6 +167,12 @@ export const PERMISSIONS = {
    *  okuma-yetkili gruplar. Yazma yok (worker DB'yi besler). Admin global
    *  bypass davranışı korunur; listeye ayrıca eklenmez. */
   provys: {
-    read: ['MCR', 'PCR', 'SystemEng', 'YayınPlanlama'] as BcmsGroup[],
+    read: [
+      GROUP.MCR,
+      GROUP.PCR,
+      GROUP.SystemEng,
+      GROUP.YayınPlanlama,
+      GROUP.ProvysViewer,
+    ] as BcmsGroup[],
   },
 } as const;

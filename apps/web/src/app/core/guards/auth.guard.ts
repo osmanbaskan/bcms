@@ -43,11 +43,27 @@ export class AuthGuard extends KeycloakAuthGuard {
       return false;
     }
 
+    const tokenParsed = this.keycloak.getKeycloakInstance().tokenParsed as BcmsTokenParsed | undefined;
+    const userGroups: string[] = tokenParsed?.groups ?? [];
+
+    // ProvysViewer izolasyonu (2026-05-23): tek grubu ProvysViewer olan
+    // kullanıcı yalnız `/provys-content-control` altına erişebilir; başka
+    // route URL'i (dashboard, /schedules, /bookings, vb.) yazılırsa
+    // otomatik Provys sayfasına yönlenir. Admin/çoklu grup kullanıcıları
+    // etkilenmez (Admin bypass aşağıda zaten var).
+    const isolatedProvys =
+      userGroups.length === 1 && userGroups[0] === GROUP.ProvysViewer;
+    if (isolatedProvys) {
+      const targetUrl = '/' + (route.url ?? []).map((s) => s.path).join('/');
+      if (!targetUrl.startsWith('/provys-content-control')) {
+        return this.router.parseUrl('/provys-content-control');
+      }
+      return true;
+    }
+
     const requiredGroups: string[] = route.data['groups'] ?? [];
     if (requiredGroups.length === 0) return true;
 
-    const tokenParsed = this.keycloak.getKeycloakInstance().tokenParsed as BcmsTokenParsed | undefined;
-    const userGroups: string[] = tokenParsed?.groups ?? [];
     if (userGroups.includes(GROUP.Admin)) return true;
     const hasGroup = requiredGroups.some((g) => userGroups.includes(g));
     if (!hasGroup) return this.router.parseUrl('/schedules');

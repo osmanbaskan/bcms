@@ -26,7 +26,8 @@
     { "name": "MCR" },
     { "name": "PCR" },
     { "name": "Ses" },
-    { "name": "StudyoSefi" }
+    { "name": "StudyoSefi" },
+    { "name": "ProvysViewer" }
   ],
   "clients": [
     {

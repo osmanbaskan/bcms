@@ -550,7 +550,7 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Yayın Planlama',    icon: 'event',               route: '/yayin-planlama',     groups: [] },
         { label: 'Stüdyo Planı',      icon: 'view_module',         route: '/studio-plan',        groups: [] },
         { label: 'Ingest',            icon: 'cloud_upload',        route: '/ingest',             groups: [GROUP.Admin, GROUP.Ingest] },
-        { label: 'Provys',            icon: 'fact_check',          route: '/provys-content-control', groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] },
+        { label: 'Provys',            icon: 'fact_check',          route: '/provys-content-control', groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama, GROUP.ProvysViewer] },
       ],
     },
     {
@@ -581,16 +581,27 @@ export class AppComponent implements OnInit, OnDestroy {
     },
   ];
 
-  /** RBAC filter — Admin bypass + group membership (mevcut visibleNavItems pattern). */
+  /**
+   * RBAC filter — Admin bypass + group membership.
+   *
+   * "ProvysViewer" izolasyonu (2026-05-23): kullanıcının tek grubu
+   * `ProvysViewer` ise yalnız `groups` listesinde ProvysViewer geçen nav
+   * item'ları görünür; `groups: []` "auth-only" muafiyeti bu kullanıcıda
+   * devreye girmez. Diğer kullanıcılar (Admin / çoklu grup / başka tek
+   * grup) mevcut davranışla devam eder.
+   */
   visibleGroups = computed<NavGroup[]>(() => {
     const groups = this.userGroups();
     const isAdmin = groups.includes(GROUP.Admin);
+    const isolatedProvys = groups.length === 1 && groups[0] === GROUP.ProvysViewer;
     return this.navGroups
       .map((g) => ({
         label: g.label,
-        items: g.items.filter(
-          (it) => isAdmin || it.groups.length === 0 || it.groups.some((x) => groups.includes(x)),
-        ),
+        items: g.items.filter((it) => {
+          if (isAdmin) return true;
+          if (isolatedProvys) return it.groups.includes(GROUP.ProvysViewer);
+          return it.groups.length === 0 || it.groups.some((x) => groups.includes(x));
+        }),
       }))
       .filter((g) => g.items.length > 0);
   });
