@@ -100,10 +100,17 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
       color: var(--bp-fg-1);
     }
     .col-seq { width: 48px; color: var(--bp-fg-4); }
-    /* SMPTE 'HH:MM:SS:FF' tabular-nums için yeterli — fazla beyaz boşluk
-       bırakmayacak şekilde daraltıldı. padding (10px+10px) dahil 96px. */
-    .col-time { width: 96px; color: var(--bp-fg-1); }
-    .col-dur { width: 96px; color: var(--bp-fg-2); }
+    /* SMPTE 'HH:MM:SS:FF' (11 char + ':' separator) tabular-nums + padding
+       (10px+10px) için 112px güvenli alt sınır. nowrap + clip ile frame ':FF'
+       hiçbir koşulda kesilmez (ellipsis explicit kapatıldı). */
+    .col-time, .col-dur {
+      width: 112px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: clip;
+    }
+    .col-time { color: var(--bp-fg-1); }
+    .col-dur  { color: var(--bp-fg-2); }
     .col-cat { width: 130px; }
     .col-dc { width: 110px; color: var(--bp-fg-2); }
     /* Başlık: leftover'i alır (table-layout: fixed → explicit width yok).
@@ -124,6 +131,43 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     .cat-chip--program  { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.40); }
     .cat-chip--tanitim  { background: rgba(168, 85, 247, 0.18); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.40); }
     .cat-chip--diger    { background: rgba(156, 163, 175, 0.16); color: #d1d5db; border-color: rgba(156, 163, 175, 0.35); }
+
+    /* ───── LIGHT MODE NETLİK GÜÇLENDİRMESİ ─────
+       Sadece html[data-theme="light"] altında devreye giren override'lar:
+       1) thead/td border'ları --bp-line ile patlıcan mor (default --bp-line-2
+          %42 alfa tone'u açık zeminde silik kalıyor)
+       2) chip fg/border kontrastı artırıldı — koyu metin + güçlü border + biraz
+          daha dolgun fill (fw-700 ile birlikte WCAG AA okunabilir)
+       Dark theme yolu (default kurallar yukarıda) etkilenmez. */
+    :host-context(html[data-theme="light"]) thead th {
+      border-bottom-color: var(--bp-line);
+      background: var(--bp-bg-4);
+      color: var(--bp-fg-1);
+    }
+    :host-context(html[data-theme="light"]) tbody td {
+      border-bottom-color: rgba(76, 29, 149, 0.28);
+    }
+    :host-context(html[data-theme="light"]) .cat-chip {
+      font-weight: 700;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--reklam {
+      background: rgba(245, 158, 11, 0.22); color: #92400e; border-color: #d97706;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--kamu {
+      background: rgba(99, 102, 241, 0.20); color: #3730a3; border-color: #4f46e5;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--canli {
+      background: rgba(239, 68, 68, 0.20); color: #991b1b; border-color: #dc2626;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--program {
+      background: rgba(16, 185, 129, 0.20); color: #065f46; border-color: #059669;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--tanitim {
+      background: rgba(168, 85, 247, 0.20); color: #6b21a8; border-color: #9333ea;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--diger {
+      background: rgba(75, 85, 99, 0.16); color: #1f2937; border-color: #4b5563;
+    }
     .row { transition: background var(--bp-dur-fast, 100ms) linear; }
     .row:hover { background: var(--bp-bg-3); }
     /* Sol-bar accent — dark zeminde okunabilir kalsın; CANLI için ek soft tint */

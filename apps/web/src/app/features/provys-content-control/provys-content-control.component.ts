@@ -241,6 +241,39 @@ function dateFromIso(iso: string): Date {
     }
     .header-toggle ::ng-deep .mdc-form-field { font-size: 11.5px; color: var(--bp-fg-2); }
     .header-toggle ::ng-deep label { color: var(--bp-fg-2); }
+
+    /* ───── LIGHT MODE NETLİK ─────
+       Sadece html[data-theme="light"] altında çerçeveleri kuvvetlendir.
+       Dark theme dokunulmadan kalır. */
+    :host-context(html[data-theme="light"]) .provys-tabs {
+      border: 1px solid var(--bp-line);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .provys-tabs .mat-mdc-tab-header {
+      border-bottom: 2px solid var(--bp-line);
+      background: var(--bp-bg-4);
+    }
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .provys-tabs .mat-mdc-tab .mdc-tab__text-label {
+      color: var(--bp-fg-2);
+      font-weight: var(--bp-fw-semibold, 600);
+    }
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .provys-tabs .mat-mdc-tab--active .mdc-tab__text-label {
+      color: var(--bp-fg-1);
+    }
+    /* Filter bar (kategori toggle + count + ProgramHeader switch) zemini
+       light mode'da kart kenarıyla net ayrılsın. */
+    :host-context(html[data-theme="light"]) .filter-bar {
+      border-bottom: 1px solid rgba(76, 29, 149, 0.28);
+    }
+    :host-context(html[data-theme="light"]) .cat-toggle ::ng-deep
+      .mat-button-toggle {
+      border-color: var(--bp-line) !important;
+      color: var(--bp-fg-1);
+    }
   `],
 })
 export class ProvysContentControlComponent implements OnInit, OnDestroy {
