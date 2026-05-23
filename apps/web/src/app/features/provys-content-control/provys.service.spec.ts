@@ -40,7 +40,7 @@ function makeItem(slug: string, scheduleDate: string, eventId = 'E1'): ProvysIte
     startAt: `${scheduleDate}T18:00:00Z`, durationMs: 30000,
     startTimecode: null, durationTimecode: null, frameRate: null, dcCode: null,
     title: 'T', rawKind: null, category: 'PROGRAM',
-    sourceFile: '/x.bxf', updatedAt: `${scheduleDate}T18:00:00Z`,
+    sourceFile: '/x.bxf', userNote: null, updatedAt: `${scheduleDate}T18:00:00Z`,
   };
 }
 

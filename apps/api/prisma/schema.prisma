@@ -1333,6 +1333,11 @@ model ProvysItem {
   sourceFile       String    @map("source_file") @db.VarChar(500)
   sourceMtime      DateTime  @map("source_mtime") @db.Timestamptz(6)
   payloadHash      String    @map("payload_hash") @db.VarChar(64)
+  /// Kullanıcı tarafından eklenen serbest metin not (BCMS UI). BXF parser
+  /// veya watcher tarafından yazılmaz; PATCH /provys/items/:id/note ile
+  /// güncellenir. Composed snapshot diff bu alana dokunmaz — `update` data
+  /// objesinde yer almadığı için Prisma korur.
+  userNote         String?   @map("user_note") @db.Text
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime  @updatedAt       @map("updated_at") @db.Timestamptz(6)
 

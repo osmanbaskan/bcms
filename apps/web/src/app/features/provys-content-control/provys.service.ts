@@ -122,6 +122,32 @@ export class ProvysService {
     return this.receivedFor().has(channel);
   }
 
+  /**
+   * Kullanıcı serbest notu güncelle (PATCH /provys/items/:id/note).
+   * Optimistic: önce store'da güncelle, sonra API; başarısız olursa eski
+   * değere geri al ve hata fırlat. Boş string → null (silme).
+   */
+  async updateNote(channel: ProvysChannelSlug, id: number, note: string | null): Promise<void> {
+    const trimmed = note == null || note.trim() === '' ? null : note;
+    const store = this.channelStores.get(channel);
+    if (!store) throw new Error(`Unknown Provys channel: ${channel}`);
+    const prev = store();
+    const previousValue = prev.find((i) => i.id === id)?.userNote ?? null;
+    // Optimistic — ekranda hemen güncelle
+    store.set(prev.map((i) => (i.id === id ? { ...i, userNote: trimmed } : i)));
+    try {
+      const dto = await firstValueFrom(
+        this.api.patch<ProvysItemDto>(`/provys/items/${id}/note`, { note: trimmed }),
+      );
+      // Backend authoritative DTO ile replace
+      store.set(store().map((i) => (i.id === id ? dto : i)));
+    } catch (err) {
+      // Hata: önceki nota geri dön ve fırlat
+      store.set(store().map((i) => (i.id === id ? { ...i, userNote: previousValue } : i)));
+      throw err;
+    }
+  }
+
   /** Tarih değişiminde çağrılır — store'ları sıfırla, yeni tarih için REST fetch. */
   async setActiveDate(date: string): Promise<void> {
     if (date === this.activeDate()) return;

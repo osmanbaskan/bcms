@@ -21,6 +21,7 @@ function makeItem(over: Partial<ProvysItemDto>): ProvysItemDto {
     rawKind: null,
     category: 'DIGER',
     sourceFile: '/f.bxf',
+    userNote: null,
     updatedAt: '2026-05-22T18:00:00Z',
     ...over,
   };
@@ -31,6 +32,10 @@ class FakeProvysService {
   private readonly seen = signal(false);
   // Tüm kategoriler default seçili — panel mevcut testlerinde tam görünür liste.
   private readonly selected = signal<Set<string>>(new Set(['REKLAM', 'KAMU_SPOTU', 'CANLI', 'PROGRAM', 'TANITIM', 'DIGER']));
+  /** Test spy — gerçek HTTP yapmadan optimistic store update. */
+  updateNoteCalls: Array<{ channel: string; id: number; note: string | null }> = [];
+  updateNoteShouldThrow = false;
+
   itemsFor() { return this.store.asReadonly(); }
   hasReceived() { return this.seen(); }
   filteredItemsFor() {
@@ -43,6 +48,12 @@ class FakeProvysService {
   }
   setSelectedCategories(set: Set<string>) {
     this.selected.set(set);
+  }
+
+  async updateNote(channel: string, id: number, note: string | null): Promise<void> {
+    this.updateNoteCalls.push({ channel, id, note });
+    if (this.updateNoteShouldThrow) throw new Error('PATCH fail');
+    this.store.set(this.store().map((i) => (i.id === id ? { ...i, userNote: note } : i)));
   }
 }
 
@@ -160,5 +171,62 @@ describe('ProvysChannelPanelComponent', () => {
     expect(cells[1].textContent?.trim()).toBe('—');
     // Null hücre muted class'ı taşımalı
     expect(cells[1].classList.contains('muted')).toBe(true);
+  });
+
+  describe('Not (userNote) editable kolonu', () => {
+    it('header artık "Tür" değil "Not"', () => {
+      fake.setItems([makeItem({ id: 1, dcCode: 'DC00041439' })]);
+      fixture.detectChanges();
+      const headers = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll('thead th'),
+      ).map((th) => th.textContent?.trim());
+      expect(headers).toContain('Not');
+      expect(headers).not.toContain('Tür');
+    });
+
+    it('mevcut userNote input value\'sunda görünür', () => {
+      fake.setItems([makeItem({ id: 1, userNote: 'kontrol' })]);
+      fixture.detectChanges();
+      const input = (fixture.nativeElement as HTMLElement)
+        .querySelector('tbody tr.row td.col-note input.note-input') as HTMLInputElement;
+      expect(input).toBeTruthy();
+      expect(input.value).toBe('kontrol');
+    });
+
+    it('input blur servisi PATCH ile çağırır (değer değiştiyse)', async () => {
+      fake.setItems([makeItem({ id: 7, userNote: '' })]);
+      fixture.detectChanges();
+      const input = (fixture.nativeElement as HTMLElement)
+        .querySelector('tbody tr.row td.col-note input.note-input') as HTMLInputElement;
+      input.value = 'yeni not';
+      input.dispatchEvent(new Event('blur'));
+      await fixture.whenStable();
+      expect(fake.updateNoteCalls.length).toBe(1);
+      expect(fake.updateNoteCalls[0]).toEqual(jasmine.objectContaining({ id: 7, note: 'yeni not' }));
+    });
+
+    it('input blur değer aynıysa PATCH yapmaz', async () => {
+      fake.setItems([makeItem({ id: 9, userNote: 'aynı' })]);
+      fixture.detectChanges();
+      const input = (fixture.nativeElement as HTMLElement)
+        .querySelector('tbody tr.row td.col-note input.note-input') as HTMLInputElement;
+      input.value = 'aynı';
+      input.dispatchEvent(new Event('blur'));
+      await fixture.whenStable();
+      expect(fake.updateNoteCalls.length).toBe(0);
+    });
+
+    it('PATCH hatası aria-invalid set eder', async () => {
+      fake.updateNoteShouldThrow = true;
+      fake.setItems([makeItem({ id: 3, userNote: null })]);
+      fixture.detectChanges();
+      const input = (fixture.nativeElement as HTMLElement)
+        .querySelector('tbody tr.row td.col-note input.note-input') as HTMLInputElement;
+      input.value = 'deneme';
+      input.dispatchEvent(new Event('blur'));
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(input.getAttribute('aria-invalid')).toBe('true');
+    });
   });
 });

@@ -76,9 +76,15 @@ const itemDtoSchema = z.object({
   rawKind: z.string().nullable(),
   category: z.enum(['REKLAM', 'KAMU_SPOTU', 'CANLI', 'PROGRAM', 'TANITIM', 'DIGER']),
   sourceFile: z.string(),
+  userNote: z.string().nullable(),
   updatedAt: z.string(),
 });
 const itemsResponseSchema = z.array(itemDtoSchema);
+
+/** PATCH /provys/items/:id/note body. 2000 char limit yeterli marj. */
+const noteUpdateBodySchema = z.object({
+  note: z.string().max(2000).nullable(),
+});
 
 function dateToIso(d: Date): string {
   // @db.Date sütunu UTC midnight olarak okunur — slice 0..10 doğru günü verir.
@@ -101,6 +107,7 @@ function rowsToDto(rows: Array<{
   rawKind: string | null;
   category: string;
   sourceFile: string;
+  userNote: string | null;
   updatedAt: Date;
 }>): ProvysItemDto[] {
   return rows.map((r) => ({
@@ -119,6 +126,7 @@ function rowsToDto(rows: Array<{
     rawKind: r.rawKind,
     category: r.category as ProvysItemDto['category'],
     sourceFile: r.sourceFile,
+    userNote: r.userNote,
     updatedAt: r.updatedAt.toISOString(),
   }));
 }
@@ -170,6 +178,50 @@ export async function provysRoutes(app: FastifyInstance) {
     return itemsResponseSchema.parse(items);
   });
 
+  // PATCH /api/v1/provys/items/:id/note — kullanıcı serbest not güncellemesi.
+  // Provys composed snapshot diff bu kolona dokunmaz (buildDiff update data'sında
+  // user_note yok); watcher sync sırasında not korunur.
+  app.patch<{ Params: { id: string }; Body: { note: string | null } }>(
+    '/items/:id/note',
+    {
+      preHandler: app.requireGroup(...PERMISSIONS.provys.read),
+      schema: { tags: ['Provys'], summary: 'Provys item için kullanıcı notu güncelle' },
+    },
+    async (request, reply) => {
+      const id = Number(request.params.id);
+      if (!Number.isInteger(id) || id <= 0) {
+        return reply.code(400).send({ statusCode: 400, error: 'Bad Request', message: 'invalid id' });
+      }
+      const body = noteUpdateBodySchema.parse(request.body);
+      const trimmed = body.note == null ? null : body.note.trim() === '' ? null : body.note;
+      try {
+        const updated = await app.prisma.provysItem.update({
+          where: { id },
+          data: { userNote: trimmed },
+          select: {
+            id: true, channelSlug: true, scheduleDate: true, eventId: true,
+            sequence: true, startAt: true, durationMs: true,
+            startTimecode: true, durationTimecode: true, frameRate: true,
+            dcCode: true, title: true, rawKind: true, category: true,
+            sourceFile: true, userNote: true, updatedAt: true,
+          },
+        });
+        const [dto] = rowsToDto([updated]);
+        // pg_notify ile SSE consumer'ları taze DTO'yu çekecek
+        await app.prisma.$executeRaw`SELECT pg_notify('provys_changed', ${JSON.stringify({
+          channelSlug: updated.channelSlug,
+          scheduleDate: updated.scheduleDate.toISOString().slice(0, 10),
+        })})`;
+        return itemDtoSchema.parse(dto);
+      } catch (err) {
+        if ((err as { code?: string }).code === 'P2025') {
+          return reply.code(404).send({ statusCode: 404, error: 'Not Found', message: 'provys item not found' });
+        }
+        throw err;
+      }
+    },
+  );
+
   // GET /api/v1/provys/export/excel?channel=<slug>&date=YYYY-MM-DD&categories=REKLAM,CANLI,...
   // `categories` opsiyonel — verilmezse tüm kategoriler dahil; verilirse
   // sadece o kategorilerdeki satırlar export'a yansır (UI filtre paritesi).
@@ -194,6 +246,7 @@ export async function provysRoutes(app: FastifyInstance) {
         category: i.category,
         rawKind: i.rawKind,
         sourceFile: i.sourceFile,
+        userNote: i.userNote,
       }));
     const buf = await exportProvysToExcelBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows });
     const filename = exportFilename(parsed.channel, date, 'xlsx');
@@ -225,6 +278,7 @@ export async function provysRoutes(app: FastifyInstance) {
         category: i.category,
         rawKind: i.rawKind,
         sourceFile: i.sourceFile,
+        userNote: i.userNote,
       }));
     const buf = await exportProvysToPdfBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows });
     const filename = exportFilename(parsed.channel, date, 'pdf');

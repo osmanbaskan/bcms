@@ -91,6 +91,10 @@ export interface ProvysItemDto {
   rawKind: string | null;
   category: ProvysCategory;
   sourceFile: string;
+  /** Kullanıcı serbest notu (BCMS UI tarafından PATCH ile yazılır). BXF
+   *  parser/watcher bu alana dokunmaz; composed snapshot sync sırasında
+   *  korunur. Export "Not" kolonu olarak bu değer kullanılır. */
+  userNote: string | null;
   updatedAt: string;
 }
 

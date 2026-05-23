@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ProvysService } from './provys.service';
 import {
@@ -41,7 +41,7 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
               <th class="col-cat">Kategori</th>
               <th class="col-dc">DC Kod</th>
               <th class="col-title">Başlık</th>
-              <th class="col-kind">Tür</th>
+              <th class="col-note">Not</th>
             </tr>
           </thead>
           <tbody>
@@ -68,7 +68,19 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
                 </td>
                 <td class="col-dc mono" [class.muted]="!item.dcCode">{{ item.dcCode ?? '—' }}</td>
                 <td class="col-title">{{ item.title }}</td>
-                <td class="col-kind mono muted">{{ item.rawKind ?? '—' }}</td>
+                <td class="col-note">
+                  <!-- Serbest kullanıcı notu — blur'da PATCH. Optimistic UI;
+                       hata olursa servis önceki değere döner ve aria-invalid set. -->
+                  <input
+                    type="text"
+                    class="note-input"
+                    [value]="item.userNote ?? ''"
+                    [attr.aria-invalid]="noteErrors().has(item.id) || null"
+                    [title]="(noteErrors().get(item.id)) ?? (item.userNote ?? '')"
+                    placeholder="Not"
+                    (blur)="onNoteBlur(item, $any($event.target).value)"
+                  />
+                </td>
               </tr>
             }
           </tbody>
@@ -116,7 +128,27 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     /* Başlık: leftover'i alır (table-layout: fixed → explicit width yok).
        DC Kod sabit, Başlık esnek; dar viewport'ta ellipsis devreye girer. */
     .col-title { white-space: normal; color: var(--bp-fg-1); }
-    .col-kind { width: 130px; }
+    .col-note { width: 200px; }
+    .note-input {
+      width: 100%;
+      min-width: 0;
+      padding: 3px 8px;
+      background: var(--bp-bg-2);
+      color: var(--bp-fg-1);
+      border: 1px solid var(--bp-line-2);
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.3;
+      font-family: var(--bp-font-sans, system-ui);
+      outline: none;
+    }
+    .note-input::placeholder { color: var(--bp-fg-4); }
+    .note-input:hover { border-color: var(--bp-fg-3); }
+    .note-input:focus { border-color: var(--bp-purple-500, #7c3aed); }
+    .note-input[aria-invalid="true"] {
+      border-color: #ef4444;
+      background: rgba(239, 68, 68, 0.08);
+    }
     .mono { font-family: var(--bp-font-mono, ui-monospace, 'JetBrains Mono', Menlo, monospace); font-variant-numeric: tabular-nums; }
     .muted { color: var(--bp-fg-3); }
     .cat-chip {
@@ -187,6 +219,27 @@ export class ProvysChannelPanelComponent {
   readonly items = computed<ProvysItemDto[]>(() => this.service.itemsFor(this.channel())());
   /** Aktif kategori filtresi uygulanmış görünür satırlar. */
   readonly visibleItems = computed<ProvysItemDto[]>(() => this.service.filteredItemsFor(this.channel())());
+
+  /** Not kaydetme hataları — id → kullanıcıya gösterilecek mesaj. */
+  readonly noteErrors = signal<ReadonlyMap<number, string>>(new Map());
+
+  async onNoteBlur(item: ProvysItemDto, value: string): Promise<void> {
+    const current = item.userNote ?? '';
+    if (value === current) return;
+    // Önceki hatayı temizle (yeni deneme)
+    if (this.noteErrors().has(item.id)) {
+      const next = new Map(this.noteErrors());
+      next.delete(item.id);
+      this.noteErrors.set(next);
+    }
+    try {
+      await this.service.updateNote(this.channel(), item.id, value);
+    } catch (err) {
+      const next = new Map(this.noteErrors());
+      next.set(item.id, (err as Error)?.message || 'Not kaydedilemedi');
+      this.noteErrors.set(next);
+    }
+  }
 
   styleFor(category: ProvysCategory) {
     return PROVYS_CATEGORY_STYLES[category];

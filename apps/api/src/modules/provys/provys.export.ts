@@ -7,13 +7,16 @@ import { PROVYS_CHANNELS, PROVYS_CATEGORY_STYLES, type ProvysCategory } from '@b
 /**
  * Provys "kanal × gün" snapshot'ı için Excel + PDF export.
  *
- * Kolonlar:
- *   Excel: Sıra | Başlangıç | Süre | DC Kod | Başlık | Kategori | Tür
- *          (2026-05-23: "Kaynak" kolonu Excel çıktısından kaldırıldı —
- *          composed-snapshot sonrası kaynak dosya operasyonel anlam taşımıyor;
- *          PDF korunur.)
- *   PDF:   Sıra | Başlangıç (HH:MM:SS:FF) | Süre (HH:MM:SS:FF) | DC Kod |
- *          Başlık | Kategori | Tür | Kaynak
+ * Kolonlar (Excel + PDF aynı sözleşme, 2026-05-23):
+ *   Sıra | Başlangıç (HH:MM:SS:FF) | Süre (HH:MM:SS:FF) | DC Kod |
+ *   Başlık | Kategori | Not
+ *
+ * Tarihçe:
+ *   - "Kaynak" kolonu Excel'den 2026-05-23 kaldırıldı (composed-snapshot
+ *     sonrası kaynak dosya operasyonel anlam taşımıyor); PDF'te hiç olmadı.
+ *   - "Tür" kolonu (rawKind) 2026-05-23 hem Excel hem PDF'ten kaldırıldı,
+ *     yerine kullanıcı serbest notu "Not" kolonu eklendi (BCMS UI tarafından
+ *     PATCH ile yazılır; BXF parser'dan gelmez).
  *
  * Excel: ExcelJS — live-plan.export pattern paritesi. Satırlar kategoriye
  *        göre pastel fill ile renklenir; orijinal Türkçe karakterler korunur
@@ -34,6 +37,10 @@ export interface ProvysExportRow {
   category: ProvysCategory;
   rawKind: string | null;
   sourceFile: string;
+  /** Kullanıcı serbest notu (BCMS UI tarafından girilen). 2026-05-23:
+   *  exportlarda "Tür" kolonu yerine "Not" olarak çıkar; rawKind exporttan
+   *  kalktı, API DTO'sunda kalır. */
+  userNote: string | null;
 }
 
 export interface ProvysExportOptions {
@@ -72,10 +79,6 @@ function categoryLabel(category: ProvysCategory): string {
   return PROVYS_CATEGORY_STYLES[category]?.label ?? category;
 }
 
-function basename(filePath: string): string {
-  return path.basename(filePath);
-}
-
 function generationStampIstanbul(): string {
   return new Intl.DateTimeFormat('tr-TR', {
     timeZone: 'Europe/Istanbul',
@@ -111,7 +114,7 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
   sheet.addRow([`Üretim: ${generationStampIstanbul()} (Europe/Istanbul)`, '', '', '', '', '', '']);
   sheet.mergeCells('A2:G2');
   // 3: sütun başlıkları
-  sheet.addRow(['Sıra', 'Başlangıç', 'Süre', 'DC Kod', 'Başlık', 'Kategori', 'Tür']);
+  sheet.addRow(['Sıra', 'Başlangıç', 'Süre', 'DC Kod', 'Başlık', 'Kategori', 'Not']);
 
   if (opts.rows.length === 0) {
     sheet.addRow(['Seçili tarih için BXF akışı yok', '', '', '', '', '', '']);
@@ -128,7 +131,7 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
         sanitizeCell(r.dcCode ?? '—'),
         sanitizeCell(r.title),
         sanitizeCell(categoryLabel(r.category)),
-        sanitizeCell(r.rawKind ?? '—'),
+        sanitizeCell(r.userNote ?? ''),
       ]);
       // Kategori bazlı pastel fill — tüm satır.
       const palette = EXPORT_PALETTE[r.category];
@@ -149,7 +152,7 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
     { width: 14 },   // DC Kod
     { width: 60 },   // Başlık
     { width: 14 },   // Kategori
-    { width: 18 },   // Tür
+    { width: 30 },   // Not — serbest metin için daha geniş
   ];
   // Timecode + DC sütunları text formatında — Excel saat/sayı autoconvert engellensin.
   for (const col of ['B', 'C', 'D']) {
@@ -207,9 +210,9 @@ export async function exportProvysToPdfBuffer(opts: ProvysExportOptions): Promis
     { key: 'start',    label: 'Başlangıç',  width:  68 },
     { key: 'duration', label: 'Süre',       width:  62 },
     { key: 'dcCode',   label: 'DC Kod',     width:  72 },
-    { key: 'title',    label: 'Başlık',     width: 314 },
+    { key: 'title',    label: 'Başlık',     width: 254 },
     { key: 'category', label: 'Kategori',   width:  60 },
-    { key: 'rawKind',  label: 'Tür',        width:  70 },
+    { key: 'userNote', label: 'Not',        width: 130 },
   ] as const;
   const rowHeight = 14;
   const accentBarWidth = 3;       // Sol kategori bandı genişliği
@@ -250,7 +253,7 @@ export async function exportProvysToPdfBuffer(opts: ProvysExportOptions): Promis
       r.dcCode ?? '—',
       r.title,
       categoryLabel(r.category),
-      r.rawKind ?? '—',
+      r.userNote ?? '',
     ];
     let x = startX;
     doc.font('NotoSans').fontSize(7.5).fillColor('black');
