@@ -1345,3 +1345,37 @@ model ProvysItem {
   @@index([channelSlug, scheduleDate, sequence], name: "provys_items_channel_date_seq_idx")
   @@map("provys_items")
 }
+
+/// Asrun — playout sonrası gerçekleşen yayın kaydı (as-run log).
+/// Provys'in (planlanan) playlist'inden ayrı bir SMB Outbox/Ok kaynağından
+/// `asrun-watcher` tarafından import edilir. Composed merge davranışı YOK
+/// — geçmiş event'ler sabit; aynı eventId yeniden gelirse latest sourceMtime
+/// upsert kazanır. Not özelliği V1 kapsamında değil.
+model AsrunItem {
+  id               Int       @id @default(autoincrement())
+  channelSlug      String    @map("channel_slug") @db.VarChar(40)
+  /// Broadcast day (Europe/Istanbul naive date). Dosya filename'inden
+  /// (örn. `BXF_..._20260523_..bxf`) çıkarılır; per-event broadcastDate
+  /// override mevcut event'in scheduleDate'i olarak kullanılır.
+  scheduleDate     DateTime  @map("schedule_date") @db.Date
+  eventId          String    @map("event_id") @db.VarChar(120)
+  sequence         Int       @default(0)
+  startAt          DateTime  @map("start_at") @db.Timestamptz(6)
+  durationMs       Int?      @map("duration_ms")
+  startTimecode    String?   @map("start_timecode")    @db.VarChar(20)
+  durationTimecode String?   @map("duration_timecode") @db.VarChar(20)
+  frameRate        Int?      @map("frame_rate")
+  dcCode           String?   @map("dc_code") @db.VarChar(40)
+  title            String    @db.VarChar(500)
+  rawKind          String?   @map("raw_kind") @db.VarChar(100)
+  category         String    @db.VarChar(20)
+  sourceFile       String    @map("source_file") @db.VarChar(500)
+  sourceMtime      DateTime  @map("source_mtime") @db.Timestamptz(6)
+  payloadHash      String    @map("payload_hash") @db.VarChar(64)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt       @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([channelSlug, scheduleDate, eventId], name: "asrun_items_channel_date_event_unique")
+  @@index([channelSlug, scheduleDate, startAt], name: "asrun_items_channel_date_start_idx")
+  @@map("asrun_items")
+}

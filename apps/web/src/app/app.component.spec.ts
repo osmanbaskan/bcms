@@ -106,4 +106,30 @@ describe('AppComponent — nav visibility (2026-05-13 yeni "OPTA Lig Görünürl
       expect(allItems.length).toBeGreaterThan(1);
     });
   });
+
+  describe('Asrun nav visibility', () => {
+    function findAsrun(cmp: AppComponent): NavItem | undefined {
+      const groups = cmp.visibleGroups() as NavGroup[];
+      for (const g of groups) for (const it of g.items) if (it.route === '/asrun') return it;
+      return undefined;
+    }
+
+    it('Admin: Asrun görünür', () => {
+      expect(findAsrun(setup([GROUP.Admin]))).toBeDefined();
+    });
+    it('MCR: Asrun görünür', () => {
+      expect(findAsrun(setup([GROUP.MCR]))).toBeDefined();
+    });
+    it('SystemEng: Asrun görünür', () => {
+      expect(findAsrun(setup([GROUP.SystemEng]))).toBeDefined();
+    });
+    it('ProvysViewer: Asrun GÖRÜNMEZ (V1 izolasyon)', () => {
+      // ProvysViewer izolasyon branch'i sadece Provys'i içeren item'ları gösterir;
+      // Asrun groups listesinde ProvysViewer yok → izolasyon zaten filtreler.
+      expect(findAsrun(setup([GROUP.ProvysViewer]))).toBeUndefined();
+    });
+    it('Booking (yetkisiz): Asrun gizli', () => {
+      expect(findAsrun(setup([GROUP.Booking]))).toBeUndefined();
+    });
+  });
 });

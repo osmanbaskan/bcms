@@ -60,6 +60,13 @@ export const routes: Routes = [
     data: { groups: [GROUP.Admin] },
   },
   {
+    path: 'asrun',
+    loadComponent: () =>
+      import('./features/asrun/asrun-content.component').then((m) => m.AsrunContentComponent),
+    canActivate: [AuthGuard],
+    data: { groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] },
+  },
+  {
     path: 'channels',
     loadChildren: () =>
       import('./features/channels/channels.routes').then((m) => m.channelsRoutes),

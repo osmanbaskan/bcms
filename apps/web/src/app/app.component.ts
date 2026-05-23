@@ -551,6 +551,9 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Stüdyo Planı',      icon: 'view_module',         route: '/studio-plan',        groups: [] },
         { label: 'Ingest',            icon: 'cloud_upload',        route: '/ingest',             groups: [GROUP.Admin, GROUP.Ingest] },
         { label: 'Provys',            icon: 'fact_check',          route: '/provys-content-control', groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama, GROUP.ProvysViewer] },
+        // Asrun = playout SONRASI gerçekleşen yayın kaydı. ProvysViewer
+        // bu sekmeye erişmez (rol yalnız Provys'i içerir, V1 izolasyon).
+        { label: 'Asrun',             icon: 'history',             route: '/asrun',                  groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] },
       ],
     },
     {

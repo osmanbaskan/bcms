@@ -10,3 +10,4 @@ export * from './types/match.js';
 export * from './types/monitoring.js';
 export * from './types/studio-plan.js';
 export * from './types/provys.js';
+export * from './types/asrun.js';

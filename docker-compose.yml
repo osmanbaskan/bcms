@@ -213,7 +213,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       NODE_ENV: production
-      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller,provys-watcher
+      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller,provys-watcher,asrun-watcher
       OUTBOX_POLLER_ENABLED: ${OUTBOX_POLLER_ENABLED:-false}
       OUTBOX_POLLER_DRY_RUN: ${OUTBOX_POLLER_DRY_RUN:-false}
       # PR-C2 cut-over flag: true → poller authoritative (shadow=pending,
@@ -247,9 +247,20 @@ services:
       # polling moduyla yeni dosyalar interval (default 30sn) içinde yakalanır.
       PROVYS_WATCHER_USE_POLLING: ${PROVYS_WATCHER_USE_POLLING:-false}
       PROVYS_WATCHER_POLL_INTERVAL_MS: ${PROVYS_WATCHER_POLL_INTERVAL_MS:-30000}
+      # Asrun SMB Outbox/Ok izleyici — Provys'ten ayrı mount + ayrı polling.
+      # ASRUN_HOST_MOUNT host tarafında elle CIFS mount edilen yol
+      # (örn. /mnt/asrun-ok). Credential repo'ya konmaz; host operasyon
+      # sorumlu. Mount yoksa watcher kontrollü warn ile başlatılmaz —
+      # container crash'lemez (bkz. asrun.watcher.ts existsSync guard).
+      ASRUN_WATCH_FOLDER: /app/tmp/asrun
+      ASRUN_WATCHER_USE_POLLING: ${ASRUN_WATCHER_USE_POLLING:-false}
+      ASRUN_WATCHER_POLL_INTERVAL_MS: ${ASRUN_WATCHER_POLL_INTERVAL_MS:-30000}
+      ASRUN_WATCHER_DEBOUNCE_MS: ${ASRUN_WATCHER_DEBOUNCE_MS:-1500}
+      ASRUN_WATCHER_CONCURRENCY: ${ASRUN_WATCHER_CONCURRENCY:-3}
     volumes:
       - ingest_watch:/app/tmp/watch
       - ${PROVYS_HOST_MOUNT:-./tmp/provys}:/app/tmp/provys:ro
+      - ${ASRUN_HOST_MOUNT:-./tmp/asrun}:/app/tmp/asrun:ro
     # HIGH-INF-017 (kapatıldı 2026-05-05): `api`'ye depends_on kaldırıldı.
     # Worker'ın API'ye runtime bağımlılığı yok; aynı imajdan farklı entry'lerle
     # çalışıyorlar. depends_on sadece startup ordering kontrol eder, ama buradaki

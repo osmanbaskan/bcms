@@ -30,6 +30,7 @@ import { auditRoutes } from './modules/audit/audit.routes.js';
 import { matchRoutes } from './modules/matches/match.routes.js';
 import { optaRoutes }  from './modules/opta/opta.routes.js';
 import { provysRoutes } from './modules/provys/provys.routes.js';
+import { asrunRoutes } from './modules/asrun/asrun.routes.js';
 import { optaSyncRoutes } from './modules/opta/opta.sync.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
 import { broadcastTypeRoutes } from './modules/broadcast-types/broadcast-type.routes.js';
@@ -43,6 +44,7 @@ import { startAuditRetentionJob } from './modules/audit/audit-retention.job.js';
 import { startAuditPartitionJob } from './modules/audit/audit-partition.job.js';
 import { startOutboxPoller } from './modules/outbox/outbox.poller.js';
 import { startProvysWatcher } from './modules/provys/provys.watcher.js';
+import { startAsrunWatcher } from './modules/asrun/asrun.watcher.js';
 
 const BACKGROUND_SERVICES = [
   'notifications',
@@ -53,6 +55,7 @@ const BACKGROUND_SERVICES = [
   'audit-partition',
   'outbox-poller',
   'provys-watcher',
+  'asrun-watcher',
 ] as const;
 
 type BackgroundService = (typeof BACKGROUND_SERVICES)[number];
@@ -137,6 +140,7 @@ async function startBackgroundServices(app: FastifyInstance): Promise<void> {
   await run('audit-partition', () => startAuditPartitionJob(app));
   await run('outbox-poller',   () => startOutboxPoller(app));
   await run('provys-watcher',  () => startProvysWatcher(app));
+  await run('asrun-watcher',   () => startAsrunWatcher(app));
 }
 
 function errorResponse(error: Error & { statusCode?: number; code?: string }) {
@@ -382,6 +386,7 @@ export async function buildApp() {
   await app.register(studioPlanRoutes,     { prefix: '/api/v1/studio-plans' });
   await app.register(weeklyShiftRoutes,    { prefix: '/api/v1/weekly-shifts' });
   await app.register(provysRoutes,         { prefix: '/api/v1/provys' });
+  await app.register(asrunRoutes,          { prefix: '/api/v1/asrun' });
 
   return app;
 }

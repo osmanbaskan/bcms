@@ -175,4 +175,10 @@ export const PERMISSIONS = {
       GROUP.ProvysViewer,
     ] as BcmsGroup[],
   },
+  /** Asrun (as-run playout kaydı, 2026-05-23): SMB Outbox/Ok dizini.
+   *  ProvysViewer rolü Asrun'a erişmez — bu rol yalnız Provys'i içerir.
+   *  Operasyonel ekipler + SystemEng allowlist'ten okur; Admin auto-bypass. */
+  asrun: {
+    read: [GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] as BcmsGroup[],
+  },
 } as const;
