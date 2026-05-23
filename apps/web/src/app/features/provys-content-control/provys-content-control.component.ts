@@ -204,6 +204,27 @@ function dateFromIso(iso: string): Date {
       border-bottom: 1px solid var(--bp-line);
       background: var(--bp-bg-2);
     }
+    /* Aktif kanal ismi her iki temada da pasiflerden net büyük olsun.
+       Material default 14px → pasif 12.5 (mevcut header), aktif 15.5 + 700.
+       letter-spacing hafif sıkı, layout shift olmaması için min-width: auto. */
+    ::ng-deep .provys-tabs .mat-mdc-tab .mdc-tab__text-label {
+      font-size: 12.5px;
+      font-weight: var(--bp-fw-medium, 500);
+      transition:
+        font-size var(--bp-dur-fast, 100ms) linear,
+        font-weight var(--bp-dur-fast, 100ms) linear,
+        color var(--bp-dur-fast, 100ms) linear;
+    }
+    ::ng-deep .provys-tabs .mdc-tab--active .mdc-tab__text-label,
+    ::ng-deep .provys-tabs .mat-mdc-tab[aria-selected="true"] .mdc-tab__text-label {
+      font-size: 15.5px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+    /* Aktif tab indicator (alt çubuk) tema-agnostik kalınlık + renk. */
+    ::ng-deep .provys-tabs .mdc-tab-indicator__content--underline {
+      border-top-width: 3px;
+    }
     .filter-bar {
       display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
       padding: 4px 16px 0 16px;
@@ -257,12 +278,28 @@ function dateFromIso(iso: string): Date {
     }
     :host-context(html[data-theme="light"]) ::ng-deep
       .provys-tabs .mat-mdc-tab .mdc-tab__text-label {
-      color: var(--bp-fg-2);
-      font-weight: var(--bp-fw-semibold, 600);
+      color: var(--bp-fg-3);
     }
     :host-context(html[data-theme="light"]) ::ng-deep
-      .provys-tabs .mat-mdc-tab--active .mdc-tab__text-label {
+      .provys-tabs .mdc-tab--active .mdc-tab__text-label,
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .provys-tabs .mat-mdc-tab[aria-selected="true"] .mdc-tab__text-label {
       color: var(--bp-fg-1);
+    }
+    /* Light mode aktif tab: kart-beyazı zemin (bg-4 mor header üstünde
+       ayrımı net) + üst kenar accent. */
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .provys-tabs .mdc-tab--active,
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .provys-tabs .mat-mdc-tab[aria-selected="true"] {
+      background: var(--bp-bg-2);
+      box-shadow: inset 0 3px 0 var(--bp-line);
+    }
+    /* Light mode aktif indicator: Material default rengi tema rengine zorla. */
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .provys-tabs .mdc-tab-indicator--active
+      .mdc-tab-indicator__content--underline {
+      border-color: var(--bp-line) !important;
     }
     /* Filter bar (kategori toggle + count + ProgramHeader switch) zemini
        light mode'da kart kenarıyla net ayrılsın. */
