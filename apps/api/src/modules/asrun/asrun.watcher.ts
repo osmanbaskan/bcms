@@ -4,7 +4,7 @@ import chokidar from 'chokidar';
 import type { FastifyInstance } from 'fastify';
 import { als } from '../../plugins/audit.js';
 import { ingestAsrunFile } from './asrun.service.js';
-import { extractFileCode, resolveChannel } from '../provys/provys.channel-mapping.js';
+import { parseAsrunFilename } from './asrun.filename.js';
 import { ConcurrencyLimiter } from '../provys/provys.concurrency.js';
 import { parseBoolEnv, parsePollIntervalMs } from '../provys/provys.watcher.js';
 
@@ -91,14 +91,12 @@ export function startAsrunWatcher(app: FastifyInstance): void {
 
   const handle = (filePath: string, op: 'add' | 'change' | 'unlink'): void => {
     if (path.extname(filePath).toLowerCase() !== '.bxf') return;
-    const fileCode = extractFileCode(filePath);
-    if (!fileCode) {
-      app.log.debug({ filePath }, 'Asrun watcher: .bxf değil veya kod çıkarılamadı, atlandı');
-      return;
-    }
-    const channel = resolveChannel(fileCode);
-    if (!channel) {
-      app.log.warn({ filePath, fileCode }, 'Asrun watcher: bilinmeyen file code, import edilmedi');
+    // Asrun-specific filename şeması — Provys helper yok; parseAsrunFilename
+    // null dönerse sessizce skip (Outbox/Ok dizinine düşen non-asrun dosyalar
+    // veya kanal prefix'i tanınmayan playlist'ler).
+    const fn = parseAsrunFilename(filePath);
+    if (!fn) {
+      app.log.warn({ filePath }, 'Asrun watcher: dosya adı çözülemedi, atlandı');
       return;
     }
     const key = filePath; // dosya bazlı debounce — Asrun'da composed merge yok

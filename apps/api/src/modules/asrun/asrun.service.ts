@@ -2,8 +2,9 @@ import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import type { FastifyBaseLogger } from 'fastify';
-import { parseBxf, type ParsedItem } from '../provys/provys.parser.js';
-import { resolveChannelFromPath, extractFileCode } from '../provys/provys.channel-mapping.js';
+import type { ParsedItem } from '../provys/provys.parser.js';
+import { parseAsrunBxf } from './asrun.parser.js';
+import { parseAsrunFilename } from './asrun.filename.js';
 import type { AsrunChannelSlug } from '@bcms/shared';
 
 /**
@@ -65,14 +66,17 @@ export async function ingestAsrunFile(
   filePath: string,
   logger: FastifyBaseLogger,
 ): Promise<AsrunSyncResult> {
-  const channelSlug = resolveChannelFromPath(filePath) as AsrunChannelSlug | null;
-  if (!channelSlug) {
+  // Asrun-specific filename → kanal + filename-tarih (per-event broadcastDate
+  // parser tarafından çıkar; service item.scheduleDate'i kanonik kabul eder).
+  const fn = parseAsrunFilename(filePath);
+  if (!fn) {
     logger.warn(
-      { filePath, fileCode: extractFileCode(filePath) },
-      'Asrun: bilinmeyen file code, import edilmedi',
+      { filePath },
+      'Asrun: dosya adı çözülemedi (kanal/tarih çıkartılamadı), import atlandı',
     );
     return { channelSlug: null, reason: 'unknown-channel', inserted: 0, updated: 0, affectedDates: [] };
   }
+  const channelSlug: AsrunChannelSlug = fn.channelSlug;
 
   let content: string;
   let stat: { mtime: Date };
@@ -86,7 +90,10 @@ export async function ingestAsrunFile(
     throw err;
   }
 
-  const parsed = parseBxf(content);
+  // Asrun XML schema (<AsRun><BasicAsRun>) Provys playlist (<ScheduledEvent>)
+  // ile uyumsuz — ayrı parser. broadcastDate yoksa filename'den çıkarılan
+  // tarih fallback olarak kullanılır.
+  const parsed = parseAsrunBxf(content, { fallbackDate: fn.scheduleDate });
   if (parsed.length === 0) {
     logger.info({ filePath, channelSlug }, 'Asrun: parse boş, import atlandı');
     return { channelSlug, reason: 'parse-empty', inserted: 0, updated: 0, affectedDates: [] };
