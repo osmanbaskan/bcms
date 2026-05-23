@@ -28,6 +28,8 @@ const CATEGORY_CLASS: Record<AsrunCategory, string> = {
         <div class="state">Yükleniyor…</div>
       } @else if (items().length === 0) {
         <div class="state empty">Seçili tarih için as-run kaydı yok</div>
+      } @else if (visibleItems().length === 0) {
+        <div class="state empty">Seçili kategori filtreleriyle gösterilecek kayıt yok</div>
       } @else {
         <table class="asrun-list" role="grid" aria-label="Asrun kayıt listesi">
           <thead>
@@ -41,7 +43,7 @@ const CATEGORY_CLASS: Record<AsrunCategory, string> = {
             </tr>
           </thead>
           <tbody>
-            @for (item of items(); track item.id; let i = $index) {
+            @for (item of visibleItems(); track item.id; let i = $index) {
               <tr
                 class="row"
                 [class.row--reklam]="item.category === 'REKLAM'"
@@ -123,6 +125,8 @@ export class AsrunChannelPanelComponent {
   readonly service = inject(AsrunService);
 
   readonly items = computed<AsrunItemDto[]>(() => this.service.itemsFor(this.channel())());
+  /** Aktif kategori filtresi uygulanmış görünür satırlar. */
+  readonly visibleItems = computed<AsrunItemDto[]>(() => this.service.filteredItemsFor(this.channel())());
 
   styleFor(category: AsrunCategory) {
     return PROVYS_CATEGORY_STYLES[category];

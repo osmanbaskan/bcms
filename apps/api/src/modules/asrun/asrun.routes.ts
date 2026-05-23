@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
   ASRUN_CHANNELS,
@@ -8,8 +8,15 @@ import {
   type AsrunCategory,
 } from '@bcms/shared';
 import { PERMISSIONS } from '@bcms/shared';
+import {
+  asrunExportFilename,
+  exportAsrunToExcelBuffer,
+  exportAsrunToPdfBuffer,
+  type AsrunExportRow,
+} from './asrun.export.js';
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const CATEGORY_ENUM = ['REKLAM', 'KAMU_SPOTU', 'CANLI', 'PROGRAM', 'TANITIM', 'DIGER'] as const;
 
 const channelQuerySchema = z.object({
   channel: z.enum(ASRUN_CHANNEL_SLUGS as [string, ...string[]]),
@@ -19,6 +26,23 @@ const channelDateQuerySchema = z.object({
   channel: z.enum(ASRUN_CHANNEL_SLUGS as [string, ...string[]]),
   date: z.string().regex(ISO_DATE_RE).optional(),
 });
+
+const exportQuerySchema = z.object({
+  channel: z.enum(ASRUN_CHANNEL_SLUGS as [string, ...string[]]),
+  date: z.string().regex(ISO_DATE_RE).optional(),
+  /** Virgül-ayrımlı kategori listesi. Opsiyonel; verilmezse tümü dahil. */
+  categories: z.string().optional().refine((s) => {
+    if (s === undefined || s === '') return true;
+    return s.split(',').every((c) => (CATEGORY_ENUM as readonly string[]).includes(c.trim()));
+  }, { message: 'Invalid category in categories parameter' }),
+});
+
+function parseCategoriesFilter(value: string | undefined): ReadonlySet<string> | null {
+  if (!value) return null;
+  const set = new Set(value.split(',').map((c) => c.trim()).filter(Boolean));
+  if (set.size === 0) return null;
+  return set;
+}
 
 function istanbulTodayDate(): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -102,6 +126,78 @@ export async function asrunRoutes(app: FastifyInstance) {
       ],
     });
     return rows.map(rowToDto);
+  });
+
+  // GET /api/v1/asrun/export/excel?channel=<slug>&date=YYYY-MM-DD&categories=REKLAM,CANLI,...
+  app.get('/export/excel', {
+    preHandler: app.requireGroup(...PERMISSIONS.asrun.read),
+    schema: { tags: ['Asrun'], summary: 'Excel export — kanal × gün as-run (kategori filtreli)' },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const parsed = exportQuerySchema.parse(request.query);
+    const date = parsed.date ?? istanbulTodayDate();
+    const allow = parseCategoriesFilter(parsed.categories);
+    const dt = new Date(`${date}T00:00:00Z`);
+    const rows = await app.prisma.asrunItem.findMany({
+      where: { channelSlug: parsed.channel, scheduleDate: dt },
+      orderBy: [
+        { startAt: 'asc' },
+        { startTimecode: 'asc' },
+        { sourceFile: 'asc' },
+        { sequence: 'asc' },
+      ],
+    });
+    const exportRows: AsrunExportRow[] = rows
+      .filter((r) => !allow || allow.has(r.category))
+      .map((r) => ({
+        sequence: r.sequence,
+        startTimecode: r.startTimecode,
+        durationTimecode: r.durationTimecode,
+        dcCode: r.dcCode,
+        title: r.title,
+        category: r.category as AsrunCategory,
+      }));
+    const buf = await exportAsrunToExcelBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows: exportRows });
+    const filename = asrunExportFilename(parsed.channel, date, 'xlsx');
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(buf);
+  });
+
+  // GET /api/v1/asrun/export/pdf?channel=<slug>&date=YYYY-MM-DD&categories=...
+  app.get('/export/pdf', {
+    preHandler: app.requireGroup(...PERMISSIONS.asrun.read),
+    schema: { tags: ['Asrun'], summary: 'PDF export — kanal × gün as-run (kategori filtreli)' },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const parsed = exportQuerySchema.parse(request.query);
+    const date = parsed.date ?? istanbulTodayDate();
+    const allow = parseCategoriesFilter(parsed.categories);
+    const dt = new Date(`${date}T00:00:00Z`);
+    const rows = await app.prisma.asrunItem.findMany({
+      where: { channelSlug: parsed.channel, scheduleDate: dt },
+      orderBy: [
+        { startAt: 'asc' },
+        { startTimecode: 'asc' },
+        { sourceFile: 'asc' },
+        { sequence: 'asc' },
+      ],
+    });
+    const exportRows: AsrunExportRow[] = rows
+      .filter((r) => !allow || allow.has(r.category))
+      .map((r) => ({
+        sequence: r.sequence,
+        startTimecode: r.startTimecode,
+        durationTimecode: r.durationTimecode,
+        dcCode: r.dcCode,
+        title: r.title,
+        category: r.category as AsrunCategory,
+      }));
+    const buf = await exportAsrunToPdfBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows: exportRows });
+    const filename = asrunExportFilename(parsed.channel, date, 'pdf');
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(buf);
   });
 
   // GET /api/v1/asrun/dates?channel=<slug> — DB'de mevcut günler (newest first)

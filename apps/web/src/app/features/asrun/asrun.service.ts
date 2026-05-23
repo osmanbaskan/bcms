@@ -1,8 +1,10 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, type Signal, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import {
   ASRUN_CHANNELS,
+  ASRUN_CATEGORIES,
+  type AsrunCategory,
   type AsrunChannelSlug,
   type AsrunItemDto,
 } from './asrun.types';
@@ -25,13 +27,28 @@ export class AsrunService {
   private readonly api = inject(ApiService);
 
   private readonly channelStores = new Map<AsrunChannelSlug, ReturnType<typeof signal<AsrunItemDto[]>>>();
+  private readonly filteredStores = new Map<AsrunChannelSlug, Signal<AsrunItemDto[]>>();
   private readonly receivedFor = signal<Set<AsrunChannelSlug>>(new Set());
 
   readonly activeDate = signal<string>(istanbulTodayDate());
 
+  /** Aktif kategori filtresi — default tüm 6 kategori seçili. */
+  readonly selectedCategories = signal<ReadonlySet<AsrunCategory>>(new Set(ASRUN_CATEGORIES));
+
   constructor() {
     for (const c of ASRUN_CHANNELS) {
-      this.channelStores.set(c.slug as AsrunChannelSlug, signal<AsrunItemDto[]>([]));
+      const slug = c.slug as AsrunChannelSlug;
+      const store = signal<AsrunItemDto[]>([]);
+      this.channelStores.set(slug, store);
+      // Kanal başına TEK computed — filteredItemsFor() çağrı sayısından
+      // bağımsız, sabit reactive node.
+      const filtered = computed(() => {
+        const items = store();
+        const allowed = this.selectedCategories();
+        if (allowed.size === ASRUN_CATEGORIES.length) return items;
+        return items.filter((i) => allowed.has(i.category));
+      });
+      this.filteredStores.set(slug, filtered);
     }
   }
 
@@ -39,6 +56,24 @@ export class AsrunService {
     const s = this.channelStores.get(channel);
     if (!s) throw new Error(`Unknown Asrun channel: ${channel}`);
     return s.asReadonly();
+  }
+
+  /** Kategori filtresi uygulanmış görünür liste (kanal başına tek cached signal). */
+  filteredItemsFor(channel: AsrunChannelSlug): Signal<AsrunItemDto[]> {
+    const s = this.filteredStores.get(channel);
+    if (!s) throw new Error(`Unknown Asrun channel: ${channel}`);
+    return s;
+  }
+
+  setSelectedCategories(set: ReadonlySet<AsrunCategory>): void {
+    this.selectedCategories.set(set);
+  }
+
+  toggleCategory(category: AsrunCategory): void {
+    const cur = new Set(this.selectedCategories());
+    if (cur.has(category)) cur.delete(category);
+    else cur.add(category);
+    this.selectedCategories.set(cur);
   }
 
   hasReceived(channel: AsrunChannelSlug): boolean {
@@ -84,4 +119,45 @@ export class AsrunService {
   }
 
   readonly hasAnyData = computed(() => this.receivedFor().size > 0);
+
+  /**
+   * Excel/PDF export — aktif kanal + tarih + kategori filtresi backend
+   * endpoint'ine iletilir; Blob anchor download.
+   */
+  async exportExcel(channel: AsrunChannelSlug, date: string): Promise<void> {
+    await this.downloadBlob('/asrun/export/excel', this.buildExportParams(channel, date), `asrun_${channel}_${date}.xlsx`);
+  }
+
+  async exportPdf(channel: AsrunChannelSlug, date: string): Promise<void> {
+    await this.downloadBlob('/asrun/export/pdf', this.buildExportParams(channel, date), `asrun_${channel}_${date}.pdf`);
+  }
+
+  private buildExportParams(channel: AsrunChannelSlug, date: string): Record<string, string> {
+    const params: Record<string, string> = { channel, date };
+    const cats = this.activeCategoriesParam();
+    if (cats) params['categories'] = cats;
+    return params;
+  }
+
+  /** Tüm kategoriler seçiliyse `null` döner (default davranış = tümünü dahil). */
+  private activeCategoriesParam(): string | null {
+    const selected = this.selectedCategories();
+    if (selected.size === ASRUN_CATEGORIES.length) return null;
+    return ASRUN_CATEGORIES.filter((c) => selected.has(c)).join(',');
+  }
+
+  private async downloadBlob(path: string, params: Record<string, string>, filename: string): Promise<void> {
+    const blob = await firstValueFrom(this.api.getBlob(path, params));
+    const url = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    }
+  }
 }
