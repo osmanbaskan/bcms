@@ -118,6 +118,48 @@ const CATEGORY_CLASS: Record<AsrunCategory, string> = {
     .row--program { box-shadow: inset 3px 0 0 #10b981; }
     .row--tanitim { box-shadow: inset 3px 0 0 #a855f7; }
     .row--diger   { box-shadow: inset 3px 0 0 #6b7280; }
+
+    /* ───── LIGHT MODE NETLİK GÜÇLENDİRMESİ ─────
+       Provys panel light override pattern paritesi (cat-chip kontrast +
+       border tonu). Dark default kurallar yukarıda; light override yalnız
+       html[data-theme="light"] altında uygulanır. */
+    :host-context(html[data-theme="light"]) thead th {
+      border-bottom-color: var(--bp-line);
+      background: var(--bp-bg-4);
+      color: var(--bp-fg-1);
+    }
+    :host-context(html[data-theme="light"]) tbody td {
+      border-bottom-color: rgba(76, 29, 149, 0.28);
+    }
+    :host-context(html[data-theme="light"]) .cat-chip {
+      font-weight: 700;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--reklam {
+      background: rgba(245, 158, 11, 0.22); color: #92400e; border-color: #d97706;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--kamu {
+      background: rgba(99, 102, 241, 0.20); color: #3730a3; border-color: #4f46e5;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--canli {
+      background: rgba(239, 68, 68, 0.20); color: #991b1b; border-color: #dc2626;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--program {
+      background: rgba(16, 185, 129, 0.20); color: #065f46; border-color: #059669;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--tanitim {
+      background: rgba(168, 85, 247, 0.20); color: #6b21a8; border-color: #9333ea;
+    }
+    :host-context(html[data-theme="light"]) .cat-chip--diger {
+      background: rgba(75, 85, 99, 0.16); color: #1f2937; border-color: #4b5563;
+    }
+    /* Row hover light tema'da bg-3 zaten varolan token; ekstra override gereksiz.
+       CANLI satırının soft tint'i light'ta da okunabilir (rgba kırmızı zayıf). */
+    :host-context(html[data-theme="light"]) .row--canli {
+      background: rgba(239, 68, 68, 0.10);
+    }
+    :host-context(html[data-theme="light"]) .row--canli:hover {
+      background: rgba(239, 68, 68, 0.18);
+    }
   `],
 })
 export class AsrunChannelPanelComponent {

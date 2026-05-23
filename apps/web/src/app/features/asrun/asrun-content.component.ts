@@ -180,18 +180,90 @@ import {
       background: var(--bp-bg-2);
     }
     ::ng-deep .asrun-tabs .mat-mdc-tab .mdc-tab__text-label {
-      font-size: 12.5px; font-weight: var(--bp-fw-medium, 500);
+      font-size: 12.5px;
+      font-weight: var(--bp-fw-medium, 500);
+      transition:
+        font-size var(--bp-dur-fast, 100ms) linear,
+        font-weight var(--bp-dur-fast, 100ms) linear,
+        color var(--bp-dur-fast, 100ms) linear;
     }
     ::ng-deep .asrun-tabs .mdc-tab--active .mdc-tab__text-label,
     ::ng-deep .asrun-tabs .mat-mdc-tab[aria-selected="true"] .mdc-tab__text-label {
-      font-size: 15.5px; font-weight: 700;
+      font-size: 15.5px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
     }
+    ::ng-deep .asrun-tabs .mdc-tab-indicator__content--underline {
+      border-top-width: 3px;
+    }
+
+    /* ───── LIGHT MODE NETLİK ─────
+       Provys content-control light override pattern paritesi. Dark theme
+       dokunulmaz. */
+    :host-context(html[data-theme="light"]) .asrun-tabs {
+      border: 1px solid var(--bp-line);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .asrun-tabs .mat-mdc-tab-header {
+      border-bottom: 2px solid var(--bp-line);
+      background: var(--bp-bg-4);
+    }
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .asrun-tabs .mat-mdc-tab .mdc-tab__text-label {
+      color: var(--bp-fg-3);
+    }
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .asrun-tabs .mdc-tab--active .mdc-tab__text-label,
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .asrun-tabs .mat-mdc-tab[aria-selected="true"] .mdc-tab__text-label {
+      color: var(--bp-fg-1);
+    }
+    /* Light mode aktif tab: kart-beyazı zemin (bg-4 mor header üstünde
+       ayrımı net) + üst kenar accent. */
     :host-context(html[data-theme="light"]) ::ng-deep
       .asrun-tabs .mdc-tab--active,
     :host-context(html[data-theme="light"]) ::ng-deep
       .asrun-tabs .mat-mdc-tab[aria-selected="true"] {
       background: var(--bp-bg-2);
       box-shadow: inset 0 3px 0 var(--bp-line);
+    }
+    :host-context(html[data-theme="light"]) ::ng-deep
+      .asrun-tabs .mdc-tab-indicator--active
+      .mdc-tab-indicator__content--underline {
+      border-color: var(--bp-line) !important;
+    }
+    /* Filter bar (kategori toggle + count) zemini light mode'da kart
+       kenarıyla net ayrılsın. */
+    :host-context(html[data-theme="light"]) .filter-bar {
+      border-bottom: 1px solid rgba(76, 29, 149, 0.28);
+    }
+    :host-context(html[data-theme="light"]) .cat-toggle ::ng-deep
+      .mat-button-toggle {
+      border-color: var(--bp-line) !important;
+      color: var(--bp-fg-1);
+    }
+    /* Export butonu light tema'da disabled iken hafif soluk değil tamamen
+       grileşsin — okunabilirlik + state algısı netleşir. */
+    :host-context(html[data-theme="light"]) .export-btn {
+      background: var(--bp-bg-2);
+      color: var(--bp-fg-1) !important;
+    }
+    :host-context(html[data-theme="light"]) .export-btn[disabled] {
+      background: var(--bp-bg-3);
+      color: var(--bp-fg-4) !important;
+      border-color: rgba(76, 29, 149, 0.28) !important;
+      opacity: 0.85;
+    }
+    /* Date input native widget — light'ta kontrast garantisi. */
+    :host-context(html[data-theme="light"]) .date-control input {
+      background: #ffffff;
+      color: var(--bp-fg-1);
+      border-color: var(--bp-line);
+    }
+    :host-context(html[data-theme="light"]) .date-label {
+      color: var(--bp-fg-2);
     }
   `],
 })
