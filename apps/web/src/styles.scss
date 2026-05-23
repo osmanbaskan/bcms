@@ -766,5 +766,54 @@ html[data-theme="light"] {
     border: 1px solid var(--bp-line-2);
     box-shadow: var(--bp-shadow-lg);
   }
+
+  // Checkbox kareleri — light bg üstünde Material default border palette-50
+  // ile silinmiş görünüyor (Yayın Planlama satır seçimi vb.). Açık zeminde
+  // beyaz fill + purple-700 (--bp-fg-3) net kenar zorunlu.
+  .mat-mdc-checkbox .mdc-checkbox__background {
+    border-color: var(--bp-fg-3) !important;
+    background-color: var(--bp-bg-2) !important;
+  }
+  .mat-mdc-checkbox .mdc-checkbox__native-control:enabled:checked
+    ~ .mdc-checkbox__background,
+  .mat-mdc-checkbox .mdc-checkbox__native-control:enabled:indeterminate
+    ~ .mdc-checkbox__background {
+    background-color: var(--bp-purple-500) !important;
+    border-color: var(--bp-purple-500) !important;
+  }
+
+  // Radio button ring — checkbox ile aynı sebep
+  .mat-mdc-radio-button .mdc-radio__background .mdc-radio__outer-circle {
+    border-color: var(--bp-fg-3) !important;
+  }
+
+  // Inline <code> — settings sayfasında `~/.bcms-opta.cred` gibi token
+  // light bg'de tipografik vurgu olmadan kayboluyor; dark'ta token bg-3
+  // grisi var. Light'a da yumuşak bg + border ile token görünümü.
+  code {
+    background: var(--bp-bg-3);
+    border: 1px solid var(--bp-line-2);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: var(--bp-font-mono, ui-monospace, monospace);
+    color: var(--bp-fg-1);
+  }
+
+  // Sidebar active link — bookings/ingest/provys vb. sayfalarda aktif
+  // sidebar item'in seçimi light bg'de subtle. Sol bar accent ile vurgula.
+  // (Sidebar zaten purple gradient zemine sahip ama active item highlight
+  // beyaz/morumsu border'ı dark için yazılmış — light'ta korunsun.)
+  app-shell .nav-item.active,
+  app-root .nav-item.active {
+    box-shadow: inset 3px 0 0 #fff;
+  }
+
+  // Mat-table header underline daha net (light bg'de --bp-line-2 silik)
+  .mat-mdc-header-cell {
+    border-bottom-color: rgba(76, 29, 149, 0.45) !important;
+  }
+  .mat-mdc-cell {
+    border-bottom-color: rgba(76, 29, 149, 0.20) !important;
+  }
 }
 
