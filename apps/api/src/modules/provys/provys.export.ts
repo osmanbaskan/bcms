@@ -7,9 +7,13 @@ import { PROVYS_CHANNELS, PROVYS_CATEGORY_STYLES, type ProvysCategory } from '@b
 /**
  * Provys "kanal × gün" snapshot'ı için Excel + PDF export.
  *
- * Kolonlar (UI tablo paritesi):
- *   Sıra | Başlangıç (HH:MM:SS:FF) | Süre (HH:MM:SS:FF) | DC Kod | Başlık |
- *   Kategori | Tür | Kaynak
+ * Kolonlar:
+ *   Excel: Sıra | Başlangıç | Süre | DC Kod | Başlık | Kategori | Tür
+ *          (2026-05-23: "Kaynak" kolonu Excel çıktısından kaldırıldı —
+ *          composed-snapshot sonrası kaynak dosya operasyonel anlam taşımıyor;
+ *          PDF korunur.)
+ *   PDF:   Sıra | Başlangıç (HH:MM:SS:FF) | Süre (HH:MM:SS:FF) | DC Kod |
+ *          Başlık | Kategori | Tür | Kaynak
  *
  * Excel: ExcelJS — live-plan.export pattern paritesi. Satırlar kategoriye
  *        göre pastel fill ile renklenir; orijinal Türkçe karakterler korunur
@@ -100,18 +104,18 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
   const channelName = channelDisplayName(opts.channelSlug);
   const titleText = `Provys Akış — ${channelName} — ${opts.scheduleDate}`;
 
-  // 1: başlık (8 kolon merge)
-  sheet.addRow([titleText, '', '', '', '', '', '', '']);
-  sheet.mergeCells('A1:H1');
+  // 1: başlık (7 kolon merge — Kaynak kolonu Excel'de yok)
+  sheet.addRow([titleText, '', '', '', '', '', '']);
+  sheet.mergeCells('A1:G1');
   // 2: meta (üretim zamanı)
-  sheet.addRow([`Üretim: ${generationStampIstanbul()} (Europe/Istanbul)`, '', '', '', '', '', '', '']);
-  sheet.mergeCells('A2:H2');
+  sheet.addRow([`Üretim: ${generationStampIstanbul()} (Europe/Istanbul)`, '', '', '', '', '', '']);
+  sheet.mergeCells('A2:G2');
   // 3: sütun başlıkları
-  sheet.addRow(['Sıra', 'Başlangıç', 'Süre', 'DC Kod', 'Başlık', 'Kategori', 'Tür', 'Kaynak']);
+  sheet.addRow(['Sıra', 'Başlangıç', 'Süre', 'DC Kod', 'Başlık', 'Kategori', 'Tür']);
 
   if (opts.rows.length === 0) {
-    sheet.addRow(['Seçili tarih için BXF akışı yok', '', '', '', '', '', '', '']);
-    sheet.mergeCells(`A4:H4`);
+    sheet.addRow(['Seçili tarih için BXF akışı yok', '', '', '', '', '', '']);
+    sheet.mergeCells(`A4:G4`);
     sheet.getRow(4).font = { italic: true, color: { argb: 'FF6B7280' } };
     sheet.getRow(4).alignment = { horizontal: 'center' };
   } else {
@@ -125,7 +129,6 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
         sanitizeCell(r.title),
         sanitizeCell(categoryLabel(r.category)),
         sanitizeCell(r.rawKind ?? '—'),
-        sanitizeCell(basename(r.sourceFile)),
       ]);
       // Kategori bazlı pastel fill — tüm satır.
       const palette = EXPORT_PALETTE[r.category];
@@ -147,7 +150,6 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
     { width: 60 },   // Başlık
     { width: 14 },   // Kategori
     { width: 18 },   // Tür
-    { width: 50 },   // Kaynak
   ];
   // Timecode + DC sütunları text formatında — Excel saat/sayı autoconvert engellensin.
   for (const col of ['B', 'C', 'D']) {
