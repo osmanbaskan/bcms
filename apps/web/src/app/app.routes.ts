@@ -113,14 +113,16 @@ export const routes: Routes = [
   },
   {
     /** Madde 5 M5-B6 (2026-05-06): Live-plan lookup master data yönetimi.
-     *  Page-level read = all authenticated; write/delete butonları
-     *  PERMISSIONS.livePlanLookups.write/delete (SystemEng + Admin auto-bypass)
-     *  ile component içinde gizlenir. */
+     *  2026-05-25: route guard Admin/SystemEng'e daraltıldı (UI nav ile eş).
+     *  Backend lookup read endpoint'i hâlâ auth-only; UI gizler ama direkt
+     *  API çağrısı tüm authenticated kullanıcılarda erişilebilir.
+     *  Write/delete butonları PERMISSIONS.livePlanLookups.write/delete
+     *  (SystemEng + Admin auto-bypass) ile component içinde gizlenir. */
     path: 'admin/live-plan-lookups',
     loadComponent: () =>
       import('./features/live-plan/admin-lookups/admin-lookups.component').then((m) => m.AdminLookupsComponent),
     canActivate: [AuthGuard],
-    data: { groups: [] },
+    data: { groups: [GROUP.Admin, GROUP.SystemEng] },
   },
   {
     /** 2026-05-13: OPTA lig/turnuva görünürlük yönetimi.

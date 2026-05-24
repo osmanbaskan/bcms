@@ -135,4 +135,34 @@ describe('AppComponent — nav visibility (2026-05-13 yeni "OPTA Lig Görünürl
       expect(findAsrun(setup([GROUP.Booking]))).toBeUndefined();
     });
   });
+
+  describe('Live-Plan Lookup nav visibility (2026-05-25: Admin/SystemEng only)', () => {
+    function findLpLookup(cmp: AppComponent): NavItem | undefined {
+      const groups = cmp.visibleGroups() as NavGroup[];
+      for (const g of groups) for (const it of g.items) if (it.route === '/admin/live-plan-lookups') return it;
+      return undefined;
+    }
+
+    it('Admin: Live-Plan Lookup görünür', () => {
+      expect(findLpLookup(setup([GROUP.Admin]))).toBeDefined();
+    });
+    it('SystemEng: Live-Plan Lookup görünür', () => {
+      expect(findLpLookup(setup([GROUP.SystemEng]))).toBeDefined();
+    });
+    it('Booking (normal): Live-Plan Lookup gizli', () => {
+      expect(findLpLookup(setup([GROUP.Booking]))).toBeUndefined();
+    });
+    it('Tekyon (normal): Live-Plan Lookup gizli', () => {
+      expect(findLpLookup(setup([GROUP.Tekyon]))).toBeUndefined();
+    });
+    it('YayınPlanlama (normal): Live-Plan Lookup gizli', () => {
+      expect(findLpLookup(setup([GROUP.YayınPlanlama]))).toBeUndefined();
+    });
+    it('ProvysViewer-only: YÖNETİM başlığı tamamen gizli (LP Lookup dahil)', () => {
+      const groups = setup([GROUP.ProvysViewer]).visibleGroups() as NavGroup[];
+      const yonetim = groups.find((g) => g.label === 'YÖNETİM');
+      expect(yonetim).toBeUndefined();
+      expect(findLpLookup(setup([GROUP.ProvysViewer]))).toBeUndefined();
+    });
+  });
 });

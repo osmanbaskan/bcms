@@ -584,7 +584,11 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Kanallar',          icon: 'tune',                route: '/channels',           groups: [GROUP.Admin] },
         { label: 'Kullanıcılar',      icon: 'manage_accounts',     route: '/users',              groups: [GROUP.SystemEng] },
         { label: 'Ayarlar',           icon: 'settings',            route: '/settings',           groups: [GROUP.SystemEng] },
-        { label: 'Live-Plan Lookup',  icon: 'tune',                route: '/admin/live-plan-lookups', groups: [] },
+        // 2026-05-25: Live-Plan Lookup nav yalnız Admin/SystemEng'e. Önceden
+        // `groups: []` (auth-only) idi — normal kullanıcılar da görüyordu.
+        // Backend lookup read hâlâ auth-only (UI gizler, API erişimi açık);
+        // master-data düzenleme zaten SystemEng + Admin auto-bypass.
+        { label: 'Live-Plan Lookup',  icon: 'tune',                route: '/admin/live-plan-lookups', groups: [GROUP.Admin, GROUP.SystemEng] },
         { label: 'OPTA Lig Görünürlüğü', icon: 'visibility',       route: '/admin/opta-competitions', groups: [GROUP.SystemEng] },
         // 2026-05-20: Manuel Lig Yönetimi sidebar entry — OPTA Lig
         // Görünürlüğü ile birebir aynı yetki (SystemEng + Admin auto-bypass).
