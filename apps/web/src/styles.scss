@@ -817,3 +817,70 @@ html[data-theme="light"] {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-05-23 LIGHT MODE — stroked button + form-field outlined border audit
+//
+// Sebep:
+//   a) `.mat-mdc-stroked-button` / `.mat-mdc-outlined-button` light tema'da
+//      `--mdc-outlined-button-outline-color` token `--bp-line` (purple-800)
+//      olarak ayarlı (line 260) ANCAK Material 18+ compiled CSS default
+//      tone-50 ile başka selector'larda border rengini ezerek silik kalıyor.
+//      Etkilenen: yayin-planlama "Excel (0)/PDF (0)", studio-plan "Tam Ekran/
+//      Export PDF", weekly-shift "Yenile/Excel/PDF", audit "Yenile/X temizle/
+//      Ara", settings "Aç", ingest "Yenile".
+//   b) `.mat-mdc-form-field` outline appearance light'ta notched outline
+//      3-parça (leading/notch/trailing) border-color compiled token
+//      `--mdc-outlined-text-field-outline-color` --bp-line set olsa da
+//      MDC specifity'i ezmiyor → tüm 3 parça silik tone-50 default.
+//      Etkilenen: yayin-planlama "Lig/Hafta/Bitiş", studio-plan "Hafta
+//      Başlangıcı/Renk/Program", audit-logs "Tablo/İşlem/Kullanıcı/Kayıt
+//      ID/Başlangıç/Bitiş", opta-competitions "Spor", weekly-shift "İzin"
+//      dropdownlar, ingest port-select.
+//
+// Çözüm: selector-level light override; dark tema dokunulmaz.
+// ─────────────────────────────────────────────────────────────────────────────
+html[data-theme="light"] .mat-mdc-outlined-button:not(.mat-warn):not(.mat-accent):not([color="warn"]):not([color="accent"]),
+html[data-theme="light"] .mat-mdc-stroked-button:not(.mat-warn):not(.mat-accent):not([color="warn"]):not([color="accent"]) {
+  --mdc-outlined-button-outline-color: var(--bp-line);
+  border-color: var(--bp-line) !important;
+}
+// Disabled stroked button — mor border tonunu yarıya düşür, tamamen kaybolmasın.
+html[data-theme="light"] .mat-mdc-outlined-button[disabled],
+html[data-theme="light"] .mat-mdc-stroked-button[disabled] {
+  border-color: rgba(76, 29, 149, 0.35) !important;
+  color: var(--bp-fg-4) !important;
+}
+
+// Mat-form-field outlined appearance: 3-parça notched outline rengini ez.
+// MDC default token `--mdc-outlined-text-field-outline-color` yetmedi; her
+// segmenti explicit border-color ile zorla.
+html[data-theme="light"] .mat-mdc-form-field.mat-mdc-form-field-type-mat-input,
+html[data-theme="light"] .mat-mdc-form-field.mat-mdc-form-field-type-mat-select,
+html[data-theme="light"] .mat-mdc-form-field {
+  --mdc-outlined-text-field-outline-color:           var(--bp-line);
+  --mdc-outlined-text-field-hover-outline-color:     var(--bp-fg-1);
+  --mdc-outlined-text-field-focus-outline-color:     var(--bp-purple-500);
+  --mdc-outlined-text-field-disabled-outline-color:  rgba(76, 29, 149, 0.35);
+}
+html[data-theme="light"] .mat-mdc-form-field .mdc-notched-outline__leading,
+html[data-theme="light"] .mat-mdc-form-field .mdc-notched-outline__notch,
+html[data-theme="light"] .mat-mdc-form-field .mdc-notched-outline__trailing {
+  border-color: var(--bp-line) !important;
+}
+// Hover & focus durumlarında outline biraz daha kalın değil ama tone değişir
+// (--bp-fg-1 = purple-900 hover, --bp-purple-500 = focus). Kullanıcı net
+// state algısı korunur.
+html[data-theme="light"] .mat-mdc-form-field:hover:not(.mat-focused):not(.mat-form-field-invalid)
+  .mdc-notched-outline__leading,
+html[data-theme="light"] .mat-mdc-form-field:hover:not(.mat-focused):not(.mat-form-field-invalid)
+  .mdc-notched-outline__notch,
+html[data-theme="light"] .mat-mdc-form-field:hover:not(.mat-focused):not(.mat-form-field-invalid)
+  .mdc-notched-outline__trailing {
+  border-color: var(--bp-fg-1) !important;
+}
+html[data-theme="light"] .mat-mdc-form-field.mat-focused .mdc-notched-outline__leading,
+html[data-theme="light"] .mat-mdc-form-field.mat-focused .mdc-notched-outline__notch,
+html[data-theme="light"] .mat-mdc-form-field.mat-focused .mdc-notched-outline__trailing {
+  border-color: var(--bp-purple-500) !important;
+}
+
