@@ -97,12 +97,15 @@ describe('AppComponent — nav visibility (2026-05-13 yeni "OPTA Lig Görünürl
       expect(allItems.length).toBeGreaterThan(1);
     });
 
-    it('Çoklu kullanıcı (Booking) ProvysViewer-only davranışından etkilenmez', () => {
+    it('Çoklu kullanıcı (Booking) ProvysViewer-only izolasyonundan etkilenmez', () => {
       const cmp = setup([GROUP.Booking]);
       const groups = cmp.visibleGroups() as NavGroup[];
       const allItems = groups.flatMap((g) => g.items);
-      // Booking için Provys görünmez ama auth-only itemlar (dashboard vs) görünür
-      expect(allItems.some((it) => it.route === '/provys-content-control')).toBeFalse();
+      // 2026-05-25: Provys tüm Keycloak gruplarına açıldı; Booking artık
+      // Provys'i görür. İzolasyon kuralı değişmedi: Booking tek-grup
+      // ProvysViewer izolasyon branch'ine düşmediği için normal nav +
+      // Provys erişimi alır.
+      expect(allItems.some((it) => it.route === '/provys-content-control')).toBeTrue();
       expect(allItems.length).toBeGreaterThan(1);
     });
   });

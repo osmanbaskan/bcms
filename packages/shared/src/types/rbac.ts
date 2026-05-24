@@ -163,17 +163,15 @@ export const PERMISSIONS = {
      *  /admin/opta-competitions UI ve PATCH endpoint'i bu seti kullanır. */
     admin: ['SystemEng'] as BcmsGroup[],
   },
-  /** Provys İçerik Kontrol (2026-05-22): SMB'deki BXF akış dosyaları için
-   *  okuma-yetkili gruplar. Yazma yok (worker DB'yi besler). Admin global
-   *  bypass davranışı korunur; listeye ayrıca eklenmez. */
+  /** Provys İçerik Kontrol: 2026-05-25 itibarıyla TÜM Keycloak gruplarına
+   *  read açıldı. PATCH `userNote` endpoint'i de aynı `read` permission'ı
+   *  kullanır → liste değişikliği tüm gruplara not yazma hakkı verir (kabul
+   *  edilen davranış). ProvysViewer izolasyonu UI nav tarafında ayrı kuralla
+   *  korunur (`app.component.ts:visibleGroups` `isolatedProvys` branch).
+   *  Admin auto-bypass yine `isAdminPrincipal()` üzerinden işler; explicit
+   *  listede olması zararsız. */
   provys: {
-    read: [
-      GROUP.MCR,
-      GROUP.PCR,
-      GROUP.SystemEng,
-      GROUP.YayınPlanlama,
-      GROUP.ProvysViewer,
-    ] as BcmsGroup[],
+    read: [...BCMS_GROUPS] as BcmsGroup[],
   },
   /** Asrun (as-run playout kaydı, 2026-05-23): SMB Outbox/Ok dizini.
    *  ProvysViewer rolü Asrun'a erişmez — bu rol yalnız Provys'i içerir.

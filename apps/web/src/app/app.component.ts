@@ -550,7 +550,17 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Yayın Planlama',    icon: 'event',               route: '/yayin-planlama',     groups: [] },
         { label: 'Stüdyo Planı',      icon: 'view_module',         route: '/studio-plan',        groups: [] },
         { label: 'Ingest',            icon: 'cloud_upload',        route: '/ingest',             groups: [GROUP.Admin, GROUP.Ingest] },
-        { label: 'Provys',            icon: 'fact_check',          route: '/provys-content-control', groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama, GROUP.ProvysViewer] },
+        // 2026-05-25: Provys tüm Keycloak gruplarına açıldı (PERMISSIONS.provys.read
+        // ile eş; PATCH userNote da read ile korunduğu için aynı kapsam not yazımı
+        // kapsar). `groups: []` (auth-only) yerine explicit 13-grup listesi:
+        // ProvysViewer izolasyonu (`isolatedProvys` branch) yalnız `groups`
+        // dizisinde ProvysViewer içeren itemları gösterir; explicit liste bu
+        // davranışı korur. groups: [] ProvysViewer'ı dışlardı.
+        { label: 'Provys',            icon: 'fact_check',          route: '/provys-content-control', groups: [
+            GROUP.Admin, GROUP.Tekyon, GROUP.Transmisyon, GROUP.Booking,
+            GROUP.YayınPlanlama, GROUP.SystemEng, GROUP.Ingest, GROUP.Kurgu,
+            GROUP.MCR, GROUP.PCR, GROUP.Ses, GROUP.StudyoSefi, GROUP.ProvysViewer,
+          ] },
         // Asrun = playout SONRASI gerçekleşen yayın kaydı. ProvysViewer
         // bu sekmeye erişmez (rol yalnız Provys'i içerir, V1 izolasyon).
         { label: 'Asrun',             icon: 'history',             route: '/asrun',                  groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] },
