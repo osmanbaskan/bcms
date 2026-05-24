@@ -53,11 +53,20 @@ export const routes: Routes = [
     data: { groups: [] },
   },
   {
+    /** 2026-05-25: Provys tüm Keycloak gruplarına açıldı (PERMISSIONS.provys.read
+     *  + app.component.ts nav ile eş). Önceki `[Admin]` route guard
+     *  StudyoSefi/Booking/Ingest vb. gruplara nav linki gösterip route'a
+     *  girince /dashboard'a redirect oluyordu. ProvysViewer izolasyonu UI nav
+     *  tarafında ayrı kuralla korunur; route guard tüm 13 grubu kabul eder. */
     path: 'provys-content-control',
     loadComponent: () =>
       import('./features/provys-content-control/provys-content-control.component').then((m) => m.ProvysContentControlComponent),
     canActivate: [AuthGuard],
-    data: { groups: [GROUP.Admin] },
+    data: { groups: [
+      GROUP.Admin, GROUP.Tekyon, GROUP.Transmisyon, GROUP.Booking,
+      GROUP.YayınPlanlama, GROUP.SystemEng, GROUP.Ingest, GROUP.Kurgu,
+      GROUP.MCR, GROUP.PCR, GROUP.Ses, GROUP.StudyoSefi, GROUP.ProvysViewer,
+    ] },
   },
   {
     path: 'asrun',
