@@ -317,6 +317,47 @@ function hasPublicServiceSignal(
 }
 
 /**
+ * "REK N ..." reklam blok kısa kodu Provys exporter'ında kimi zaman
+ * ProgramEvent içinde gönderiliyor (Main Programme metadata, AdType yok)
+ * → classifier 'Program' görüp PROGRAM kategorisi atıyor. Operasyonel
+ * gerçek bunlar reklam kuşağı içeriği; başlık prefix'i sıkı pattern'le
+ * yakalanır.
+ *
+ * Pattern güvenlik:
+ *   - `^REK\b\s*\d+` → "REK 6", "REK 12 ..." eşleşir.
+ *   - `\b` kelime sınırı sayesinde "REKLAM" eşleşmez (K|L bitişik harf).
+ *   - "REKABET", "REKOR" da `\b` ile elenir.
+ *   - Sayı zorunlu → "REKABET 1" gibi yanlış pozitifler için ek koruma.
+ * Yalnız title kaynaklı alanlara bakar (EventTitle, Content.Name,
+ * VersionName); dc_code gibi metadata alanlarına dokunmaz.
+ */
+const REK_COMMERCIAL_TITLE_RE = /^REK\b\s*\d+/i;
+
+export function isRekCommercialTitle(title: string | null | undefined): boolean {
+  if (!title) return false;
+  return REK_COMMERCIAL_TITLE_RE.test(title.trim());
+}
+
+function hasRekCommercialSignal(
+  scheduledEvent: Record<string, unknown>,
+  evd: Record<string, unknown>,
+): boolean {
+  const content = scheduledEvent['Content'] as Record<string, unknown> | undefined;
+  const candidates: unknown[] = [
+    evd['EventTitle'],
+    content?.['Name'],
+    findDescriptionText(content, 'VersionName'),
+    ((evd['PrimaryEvent'] as Record<string, unknown> | undefined)
+      ?.['ProgramEvent'] as Record<string, unknown> | undefined)?.['ProgramName'],
+  ];
+  for (const c of candidates) {
+    if (typeof c !== 'string') continue;
+    if (isRekCommercialTitle(c)) return true;
+  }
+  return false;
+}
+
+/**
  * EventData'dan ham tür string'i: classifier'ı besler.
  *
  * Öncelik:
@@ -340,6 +381,13 @@ function deriveRawKind(
   // (2) Kamu spotu sinyali — AdType=Promo olsa bile başlık "KAMU" ile
   // başlıyorsa veya "PSA"/"kamu spotu"/"public service" geçiyorsa KAMU_SPOTU.
   if (hasPublicServiceSignal(scheduledEvent, evd)) return 'PSA';
+
+  // (2b) "REK <sayı>" reklam blok kısa kodu — Provys exporter bazen reklam
+  // satırını ProgramEvent içinde gönderiyor (AdType yok). Title sinyali ile
+  // REKLAM'a düzeltilir; rawKind 'Commercial' → classifyCategory REKLAM.
+  // Live/PSA sinyallerinden sonra; çünkü "REK 1 CANLI..." gibi karma başlık
+  // varsa CANLI/PSA önceliği korunur (yayın akışında nadir ama mantıklı).
+  if (hasRekCommercialSignal(scheduledEvent, evd)) return 'Commercial';
 
   // (3) Primary-ProgramHeader → blok manşeti. ProgramEvent child'ı olsa
   // bile "Program" değil "ProgramHeader" döner. Aynı timecode'da gerçek

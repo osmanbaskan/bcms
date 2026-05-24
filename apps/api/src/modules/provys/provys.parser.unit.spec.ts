@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBxf, ProvysParseError } from './provys.parser.js';
+import { parseBxf, ProvysParseError, isRekCommercialTitle } from './provys.parser.js';
 
 /**
  * SMPTE 2021 BXF fixture — gerçek Provys exporter çıktısının küçültülmüş
@@ -664,5 +664,98 @@ describe('provys.parser › parseBxf (SMPTE 2021)', () => {
     expect(items.find((i) => i.eventId === 'B')?.category).toBe('KAMU_SPOTU');
     expect(items.find((i) => i.eventId === 'C')?.category).toBe('CANLI');
     expect(items.find((i) => i.eventId === 'D')?.category).toBe('DIGER');
+  });
+
+  describe('REK <sayı> reklam blok başlığı — ProgramEvent içinde gelse bile REKLAM', () => {
+    const wrap = (body: string) => `<?xml version="1.0"?>
+<BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF"><BxfData><Schedule>
+  ${body}
+</Schedule></BxfData></BxfMessage>`;
+
+    const programEv = (id: string, title: string, programName?: string) => `
+      <ScheduledEvent>
+        <EventData eventType="Primary">
+          <EventId><EventId>${id}</EventId></EventId>
+          <EventTitle>${title}</EventTitle>
+          <PrimaryEvent><ProgramEvent>
+            <SegmentNumber>1</SegmentNumber>
+            <ProgramName>${programName ?? title}</ProgramName>
+          </ProgramEvent></PrimaryEvent>
+          <StartDateTime><SmpteDateTime broadcastDate="2026-05-25" frameRate="25"><SmpteTimeCode>00:12:08:07</SmpteTimeCode></SmpteDateTime></StartDateTime>
+          <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:00:05:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+        </EventData>
+      </ScheduledEvent>`;
+
+    it('"REK 1 START LINE" → REKLAM (rawKind=Commercial)', () => {
+      const items = parseBxf(wrap(programEv('REK-1', 'REK 1 START LINE')));
+      expect(items[0]).toMatchObject({ rawKind: 'Commercial', category: 'REKLAM' });
+    });
+
+    it('"REK 6 SIRALAMA SUNDU" (LT4 beinsports4 fixture) → REKLAM', () => {
+      const items = parseBxf(wrap(programEv('REK-6', 'REK 6 SIRALAMA SUNDU')));
+      expect(items[0]).toMatchObject({ rawKind: 'Commercial', category: 'REKLAM' });
+    });
+
+    it('"REKABET PROGRAMI" → PROGRAM (REK\\b sınırı ile false-positive engellenir)', () => {
+      const items = parseBxf(wrap(programEv('REKABET', 'REKABET PROGRAMI')));
+      expect(items[0]).toMatchObject({ rawKind: 'Program', category: 'PROGRAM' });
+    });
+
+    it('"REKOR YAYINI" → PROGRAM (REK + harf bitişik, sayı yok)', () => {
+      const items = parseBxf(wrap(programEv('REKOR', 'REKOR YAYINI')));
+      expect(items[0]).toMatchObject({ rawKind: 'Program', category: 'PROGRAM' });
+    });
+
+    it('"REKLAM 19" Paid Program AdType ile gelmeye devam ederse REKLAM (mevcut davranış bozulmaz)', () => {
+      const paid = `
+        <ScheduledEvent>
+          <EventData eventType="Primary">
+            <EventId><EventId>REKLAM-19</EventId></EventId>
+            <EventTitle>REKLAM 19</EventTitle>
+            <PrimaryEvent><NonProgramEvent><Details>
+              <AdType>Paid Program</AdType><SpotType>Standard</SpotType>
+            </Details></NonProgramEvent></PrimaryEvent>
+            <StartDateTime><SmpteDateTime broadcastDate="2026-05-25" frameRate="25"><SmpteTimeCode>23:58:24:11</SmpteTimeCode></SmpteDateTime></StartDateTime>
+            <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:00:30:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+          </EventData>
+        </ScheduledEvent>`;
+      const items = parseBxf(wrap(paid));
+      expect(items[0]).toMatchObject({ rawKind: 'Paid Program', category: 'REKLAM' });
+    });
+
+    it('Normal ProgramEvent başlığı → PROGRAM kalır', () => {
+      const items = parseBxf(wrap(programEv('NORMAL', 'Dünya Kupası Final Maçı')));
+      expect(items[0]).toMatchObject({ rawKind: 'Program', category: 'PROGRAM' });
+    });
+
+    it('ProgramName REK ile başlıyor ama EventTitle farklıysa REKLAM (4 kaynağın herhangi biri)', () => {
+      const items = parseBxf(wrap(programEv('PN-REK', 'F1 Yarış Önü', 'REK 2 F1 YARIŞ ÖNÜ')));
+      // deriveTitle EventTitle'ı önceler (sıra 3), ama hasRekCommercialSignal
+      // ProgramName'i de görür → kategori REKLAM olur.
+      expect(items[0].category).toBe('REKLAM');
+      expect(items[0].rawKind).toBe('Commercial');
+    });
+
+    describe('isRekCommercialTitle helper (pure)', () => {
+      it.each([
+        ['REK 1', true],
+        ['REK 12', true],
+        ['REK 6 SIRALAMA SUNDU', true],
+        ['rek 99', true],         // case-insensitive
+        ['  REK 4 ABC', true],    // leading whitespace trim
+        ['REKLAM', false],        // K|L bitişik, \b yok
+        ['REKLAM 19', false],
+        ['REKABET', false],
+        ['REKOR', false],
+        ['REK', false],           // sayı yok
+        ['REK ABC', false],       // sayı yok
+        ['REK1', false],          // boşluk yok, K|1 bitişik \b yok
+        ['', false],
+        [null, false],
+        [undefined, false],
+      ])('isRekCommercialTitle(%j) === %s', (input, expected) => {
+        expect(isRekCommercialTitle(input as string | null | undefined)).toBe(expected);
+      });
+    });
   });
 });
