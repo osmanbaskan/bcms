@@ -1,0 +1,129 @@
+:host { display: block; }
+
+.page { padding: 16px 24px; max-width: 1100px; margin: 0 auto; }
+
+.head {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-bottom: 16px; gap: 16px;
+}
+.title { font-size: 22px; font-weight: 600; color: var(--bp-fg-1); }
+.subtitle { font-size: 13px; color: var(--bp-fg-3); margin-top: 2px; max-width: 720px; }
+.actions { display: flex; gap: 8px; align-items: center; }
+
+.edit-section { margin-bottom: 24px; }
+.section-title {
+  font-size: 16px; font-weight: 600; color: var(--bp-fg-1);
+  margin-bottom: 8px;
+}
+.section-note { color: var(--bp-fg-3); font-weight: 400; font-size: 12px; margin-left: 6px; }
+.count { color: var(--bp-fg-3); font-weight: 400; font-size: 13px; }
+
+// ── Time form ────────────────────────────────────────────────────────────
+.time-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 8px 12px; align-items: end;
+  padding: 12px 16px;
+  border: 1px solid var(--bp-line);
+  border-radius: 6px;
+  background: var(--bp-bg-2);
+}
+.time-form .field { width: 100%; }
+.swatch {
+  display: inline-block; width: 12px; height: 12px;
+  border-radius: 2px; border: 1px solid rgba(0,0,0,0.2);
+  margin-right: 8px; vertical-align: middle;
+}
+.time-summary {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 12px;
+  font-size: 13px; color: var(--bp-fg-2);
+}
+.time-summary-label { color: var(--bp-fg-3); }
+.time-summary-value { color: var(--bp-fg-1); font-weight: 600; }
+.time-clear { margin-left: auto; }
+
+.inline-errors {
+  grid-column: 1 / -1; list-style: disc; padding-left: 18px;
+  color: #ef4444; font-size: 12.5px;
+}
+
+.info-note {
+  grid-column: 1 / -1; color: var(--bp-fg-3); font-size: 12px;
+  line-height: 1.45; margin-top: 4px;
+}
+.persisted-badge {
+  display: inline-block; margin-left: 6px;
+  padding: 1px 8px; border-radius: 999px;
+  background: rgba(16, 185, 129, 0.15); color: #10b981;
+  font-size: 11px; font-weight: 600;
+}
+.default-badge {
+  display: inline-block; margin-left: 6px;
+  padding: 1px 8px; border-radius: 999px;
+  background: rgba(156, 163, 175, 0.18); color: var(--bp-fg-3);
+  font-size: 11px; font-weight: 600;
+}
+
+// ── Tablolar ─────────────────────────────────────────────────────────────
+.catalog-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+  background: var(--bp-bg-2); margin-bottom: 8px;
+}
+.catalog-table thead th {
+  background: var(--bp-bg-3); color: var(--bp-fg-2);
+  text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--bp-line);
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0;
+}
+.catalog-table tbody td {
+  padding: 6px 12px; border-bottom: 1px solid var(--bp-line-2);
+  vertical-align: middle;
+}
+.catalog-table .col-order { width: 80px; }
+.catalog-table .col-color { width: 220px; }
+.catalog-table .col-active { width: 80px; }
+.catalog-table .col-actions { width: 64px; text-align: center; }
+.catalog-table .cell-center { text-align: center; }
+.catalog-table input[type="number"],
+.catalog-table input[type="text"] {
+  width: 100%; padding: 4px 8px; border: 1px solid var(--bp-line-2);
+  background: var(--bp-bg-2); color: var(--bp-fg-1); border-radius: 4px;
+  font-size: 12.5px;
+}
+.catalog-table input.invalid-cell {
+  border-color: #ef4444; background: rgba(239,68,68,0.06);
+}
+.color-input { display: flex; gap: 8px; align-items: center; }
+.color-input input[type="color"] {
+  width: 36px; height: 28px; padding: 0;
+  border: 1px solid var(--bp-line-2); border-radius: 4px; cursor: pointer;
+}
+
+// ── Draft color (Yeni Renk için) ─────────────────────────────────────────
+.draft-color {
+  display: flex; gap: 10px; align-items: center;
+  padding: 8px 12px; margin-bottom: 8px;
+  background: var(--bp-bg-2); border: 1px dashed var(--bp-line-2); border-radius: 6px;
+}
+.draft-label { color: var(--bp-fg-3); font-size: 12.5px; }
+.draft-picker {
+  width: 36px; height: 28px; padding: 0;
+  border: 1px solid var(--bp-line-2); border-radius: 4px; cursor: pointer;
+}
+.draft-text {
+  width: 100px; padding: 4px 8px; border: 1px solid var(--bp-line-2);
+  background: var(--bp-bg-2); color: var(--bp-fg-1); border-radius: 4px; font-size: 12.5px;
+}
+.draft-text.invalid-cell { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+.draft-hint { color: var(--bp-fg-3); font-size: 11.5px; }
+
+// ── Durum/hata blokları ──────────────────────────────────────────────────
+.state { padding: 16px; text-align: center; color: var(--bp-fg-3); }
+.state.error { color: #ef4444; }
+.state.ok { color: #10b981; }
+.errors {
+  border: 1px solid #ef4444; border-radius: 6px;
+  background: rgba(239,68,68,0.06); padding: 12px 16px; margin: 12px 0;
+}
+.errors h3 { font-size: 13px; color: #ef4444; margin-bottom: 6px; }
+.errors ul { font-size: 12.5px; color: var(--bp-fg-1); padding-left: 18px; }

@@ -5,20 +5,23 @@ import { MatIconModule } from '@angular/material/icon';
 import { KeycloakService } from 'keycloak-angular';
 import { Subject, Subscription, debounceTime, switchMap, finalize, tap } from 'rxjs';
 import ExcelJS from 'exceljs';
+import { ApiService } from '../../core/services/api.service';
 import { StudioPlanService } from '../../core/services/studio-plan.service';
 import { formatIstanbulTime } from '../../core/time/tz.helpers';
+import { firstValueFrom } from 'rxjs';
 import { GROUP } from '@bcms/shared';
 import type { StudioPlan, StudioPlanSlot } from '@bcms/shared';
 import { StudioPlanListComponent } from './components/studio-plan-list.component';
 import { StudioPlanTableComponent } from './components/studio-plan-table.component';
 import { StudioPlanToolbarComponent } from './components/studio-plan-toolbar.component';
-import type {
-  StudioPlanAssignment,
-  StudioPlanColor,
-  StudioPlanDay,
-  StudioPlanListEntry,
-  StudioPlanViewMode,
-  StudioPlanWeekOption,
+import {
+  buildSlotsForRange,
+  type StudioPlanAssignment,
+  type StudioPlanColor,
+  type StudioPlanDay,
+  type StudioPlanListEntry,
+  type StudioPlanViewMode,
+  type StudioPlanWeekOption,
 } from './studio-plan.types';
 
 const DAY_LABELS = [
@@ -89,20 +92,20 @@ const DEFAULT_COLORS: StudioPlanColor[] = [
 // (studio_plan_slots.start_minute INT) 15 dk için zaten yeterli; migration
 // gerekmez. Eski 30 dk kayıtlar yeni gridde tek 15 dk slot olarak görünür.
 export const STUDIO_PLAN_SLOT_MINUTES = 15;
-export const STUDIO_PLAN_START_MINUTE = 6 * 60;    // 06:00
-export const STUDIO_PLAN_END_MINUTE   = 26 * 60;   // ertesi gün 02:00
+// 2026-05-25 (rev): per-week settings'le birlikte default time range artık
+// 07:00-03:00 (önceden 06:00-02:00). Bu sabitler **fallback** olarak kullanılır;
+// gerçek grid `buildSlotsForRange()` ile dinamik hesaplanır. Eski tüketici
+// kodlar için global TIME_SLOTS export'u korundu (Excel export legacy yol).
+export const STUDIO_PLAN_DEFAULT_START = '07:00';
+export const STUDIO_PLAN_DEFAULT_END   = '03:00';
 
-function buildTimeSlots(): string[] {
-  const slots: string[] = [];
-  for (let minute = STUDIO_PLAN_START_MINUTE; minute < STUDIO_PLAN_END_MINUTE; minute += STUDIO_PLAN_SLOT_MINUTES) {
-    const hour = Math.floor(minute / 60) % 24;
-    const mins = minute % 60;
-    slots.push(`${String(hour).padStart(2, '0')}:${String(mins).padStart(2, '0')}`);
-  }
-  return slots;
-}
+// Geriye dönük uyumluluk — admin edit'in info notları ve diğer
+// tüketiciler için sabit saat dakikaları. Yeni çalışmalar `buildSlotsForRange`
+// kullanmalı.
+export const STUDIO_PLAN_START_MINUTE = 7 * 60;    // 07:00
+export const STUDIO_PLAN_END_MINUTE   = 27 * 60;   // 03:00 ertesi gün
 
-const TIME_SLOTS = buildTimeSlots();
+const TIME_SLOTS = buildSlotsForRange(STUDIO_PLAN_DEFAULT_START, STUDIO_PLAN_DEFAULT_END, STUDIO_PLAN_SLOT_MINUTES);
 
 function mondayFor(date: Date): string {
   const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -139,6 +142,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   private readonly saveTrigger$ = new Subject<void>();
   private saveSub?: Subscription;
   private readonly studioPlanService = inject(StudioPlanService);
+  private readonly api = inject(ApiService);
   private readonly keycloak = inject(KeycloakService);
 
   /** Reactive userGroups signal — ngOnInit'te tokenParsed'dan set edilir.
@@ -156,7 +160,14 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   readonly studios = STUDIOS;
   readonly programs = signal<string[]>(DEFAULT_PROGRAMS);
   readonly colors = signal<StudioPlanColor[]>(DEFAULT_COLORS);
-  readonly timeSlots = TIME_SLOTS;
+  // 2026-05-25: hafta bazlı time range — admin edit sayfası persist eder,
+  // burada GET /studio-plans/:weekStart/settings ile yüklenir; grid bu
+  // signal'e göre dinamik üretilir.
+  readonly weekTimeRangeStart = signal(STUDIO_PLAN_DEFAULT_START);
+  readonly weekTimeRangeEnd   = signal(STUDIO_PLAN_DEFAULT_END);
+  readonly timeSlots = computed<string[]>(() => buildSlotsForRange(
+    this.weekTimeRangeStart(), this.weekTimeRangeEnd(), STUDIO_PLAN_SLOT_MINUTES,
+  ));
   readonly weekOptions = this.buildWeekOptions();
 
   readonly viewMode = signal<StudioPlanViewMode>('table');
@@ -193,8 +204,8 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     for (const day of this.days()) {
       for (const studio of this.studios) {
         let cursor = 0;
-        while (cursor < this.timeSlots.length) {
-          const time = this.timeSlots[cursor];
+        while (cursor < this.timeSlots().length) {
+          const time = this.timeSlots()[cursor];
           const assignment = this.cells()[this.cellKey(day.id, studio, time)];
           if (!assignment) {
             cursor++;
@@ -202,8 +213,8 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
           }
 
           let endIndex = cursor + 1;
-          while (endIndex < this.timeSlots.length) {
-            const nextTime = this.timeSlots[endIndex];
+          while (endIndex < this.timeSlots().length) {
+            const nextTime = this.timeSlots()[endIndex];
             const nextAssignment = this.cells()[this.cellKey(day.id, studio, nextTime)];
             if (!nextAssignment || nextAssignment.program !== assignment.program || nextAssignment.color !== assignment.color) break;
             endIndex++;
@@ -285,7 +296,26 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
       this.selectedDay = nextDays[0]?.id ?? monday;
     }
 
+    void this.loadWeekSettings(monday);
     this.loadPlan(monday);
+  }
+
+  /** 2026-05-25: hafta bazlı time range — admin edit sayfası persist eder;
+   *  ana grid bu signal'a göre dinamik üretilir. Kayıt yoksa default 07:00-03:00. */
+  private async loadWeekSettings(weekStart: string): Promise<void> {
+    try {
+      const dto = await firstValueFrom(
+        this.api.get<{ timeRangeStart: string; timeRangeEnd: string; persisted: boolean }>(
+          `/studio-plans/${weekStart}/settings`,
+        ),
+      );
+      this.weekTimeRangeStart.set(dto.timeRangeStart);
+      this.weekTimeRangeEnd.set(dto.timeRangeEnd);
+    } catch {
+      // Sessiz fallback — default range zaten signal'da
+      this.weekTimeRangeStart.set(STUDIO_PLAN_DEFAULT_START);
+      this.weekTimeRangeEnd.set(STUDIO_PLAN_DEFAULT_END);
+    }
   }
 
   assignProgram(day: string, studio: string, time: string): void {
@@ -457,7 +487,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
       const SUB_COLS_PER_DAY = 2 + exportStudios.length; // [saat][slot] + N stüdyo = 8
       const totalCols = days.length * SUB_COLS_PER_DAY;
 
-      const timeSlots = this.timeSlots;
+      const timeSlots = this.timeSlots();
       const SLOTS_PER_HOUR = 60 / STUDIO_PLAN_SLOT_MINUTES; // 4
       const hourCount = timeSlots.length / SLOTS_PER_HOUR;
 
@@ -1102,8 +1132,8 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   }
 
   private endTimeForSlotIndex(index: number): string {
-    if (index < this.timeSlots.length) return this.timeSlots[index];
-    return '02:00';
+    if (index < this.timeSlots().length) return this.timeSlots()[index];
+    return this.weekTimeRangeEnd();
   }
 
   private buildWeekDays(startValue: string): StudioPlanDay[] {

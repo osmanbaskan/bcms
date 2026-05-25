@@ -47,3 +47,19 @@ export interface SaveStudioPlanCatalogDto {
   programs: Array<Pick<StudioPlanProgramOption, 'name' | 'sortOrder' | 'active'>>;
   colors: Array<Pick<StudioPlanColorOption, 'label' | 'value' | 'sortOrder' | 'active'>>;
 }
+
+/** 2026-05-25: hafta bazlı time range ayarı.
+ *  Persisted=false ise default 07:00-02:00 döner ve plan satırı henüz yoktur. */
+export interface StudioPlanSettings {
+  weekStart:      string;          // YYYY-MM-DD
+  timeRangeStart: string;          // "HH:00"
+  timeRangeEnd:   string;          // "HH:00"
+  persisted:      boolean;
+  updatedBy?:     string | null;
+  updatedAt?:     string | null;
+}
+
+export interface SaveStudioPlanSettingsDto {
+  timeRangeStart: string;          // "HH:00"
+  timeRangeEnd:   string;          // "HH:00"
+}

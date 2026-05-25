@@ -163,6 +163,18 @@ export const routes: Routes = [
     data: { groups: [GROUP.SystemEng] },
   },
   {
+    /** 2026-05-25: Stüdyo Planı Edit — program + renk catalog yönetimi.
+     *  UI nav + route guard yalnız Admin + StudyoSefi (kullanıcı talebi).
+     *  Backend PERMISSIONS.studioPlans.write = ['StudyoSefi'] + Admin
+     *  auto-bypass ile bireybir uyumlu. PUT /api/v1/studio-plans/catalog
+     *  full-replace pattern. Plan slot kaydı YAPMAZ; sadece catalog. */
+    path: 'admin/studio-plan-edit',
+    loadComponent: () =>
+      import('./features/admin/studio-plan-edit/studio-plan-edit.component').then((m) => m.StudioPlanEditComponent),
+    canActivate: [AuthGuard],
+    data: { groups: [GROUP.Admin, GROUP.StudyoSefi] },
+  },
+  {
     /** Madde 5 M5-B10a (2026-05-07): yeni Live-Plan ekranı (paralel; mevcut
      *  /schedules dokunulmaz). Y1 lock. List + detail (segments-only iskelet);
      *  76 alan technical-details form M5-B10b'de. Page-level read = all-auth;

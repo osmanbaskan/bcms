@@ -7,6 +7,7 @@ import {
   type SaveStudioPlanCatalogDto,
   type StudioPlan,
   type StudioPlanCatalog,
+  type StudioPlanSettings,
   type StudioPlanSlot,
 } from '@bcms/shared';
 
@@ -51,6 +52,21 @@ const saveCatalogSchema = z.object({
   programs: z.array(catalogProgramSchema).max(200),
   colors: z.array(catalogColorSchema).max(100),
 });
+
+// 2026-05-25: hafta bazlı time range — saatlik, "HH:00".
+// Saat 00-23 aralığı; start === end → 24 saat geçerli; 24:00 reject.
+const hourlyTimeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):00$/, 'Saatlik HH:00 formatı bekleniyor (00:00-23:00)');
+
+const saveSettingsSchema = z.object({
+  timeRangeStart: hourlyTimeSchema,
+  timeRangeEnd:   hourlyTimeSchema,
+});
+
+const DEFAULT_TIME_RANGE_START = '07:00';
+// 2026-05-25 (rev): default end 02:00 → 03:00 (operasyon karar).
+const DEFAULT_TIME_RANGE_END   = '03:00';
 
 interface DbStudioPlanSlot {
   id: number;
@@ -298,6 +314,80 @@ export async function studioPlanRoutes(app: FastifyInstance) {
     });
 
     return getCatalog(app);
+  });
+
+  // 2026-05-25: Hafta bazlı time range settings.
+  // GET: plan satırı varsa kayıtlı değerleri döner; yoksa default 07:00-02:00
+  // ve persisted:false ile cevap verir (slot oluşturmaz).
+  app.get<{ Params: { weekStart: string } }>('/:weekStart/settings', {
+    preHandler: app.requireGroup(...PERMISSIONS.studioPlans.read),
+    schema: { tags: ['Studio Plans'], summary: 'Get week time range settings' },
+  }, async (request): Promise<StudioPlanSettings> => {
+    const weekStart = dateSchema.parse(request.params.weekStart);
+    assertMonday(weekStart);
+    const plan = await app.prisma.studioPlan.findUnique({
+      where: { weekStart: parseDate(weekStart) },
+      select: {
+        timeRangeStart: true, timeRangeEnd: true,
+        updatedBy: true, updatedAt: true,
+      },
+    });
+    if (!plan || (plan.timeRangeStart === null && plan.timeRangeEnd === null)) {
+      return {
+        weekStart,
+        timeRangeStart: DEFAULT_TIME_RANGE_START,
+        timeRangeEnd:   DEFAULT_TIME_RANGE_END,
+        persisted:      false,
+      };
+    }
+    return {
+      weekStart,
+      timeRangeStart: plan.timeRangeStart ?? DEFAULT_TIME_RANGE_START,
+      timeRangeEnd:   plan.timeRangeEnd   ?? DEFAULT_TIME_RANGE_END,
+      persisted:      true,
+      updatedBy:      plan.updatedBy,
+      updatedAt:      plan.updatedAt.toISOString(),
+    };
+  });
+
+  // PUT: hafta time range upsert. studio_plans satırı yoksa minimal upsert
+  // (slot oluşturmaz). Mevcut slot'lar dokunulmaz.
+  app.put<{ Params: { weekStart: string } }>('/:weekStart/settings', {
+    preHandler: app.requireGroup(...PERMISSIONS.studioPlans.write),
+    schema: { tags: ['Studio Plans'], summary: 'Save week time range settings (no slot write)' },
+  }, async (request): Promise<StudioPlanSettings> => {
+    const weekStart = dateSchema.parse(request.params.weekStart);
+    assertMonday(weekStart);
+    const dto = saveSettingsSchema.parse(request.body);
+    const user = (request.user as { preferred_username?: string })?.preferred_username ?? 'unknown';
+
+    const saved = await app.prisma.studioPlan.upsert({
+      where:  { weekStart: parseDate(weekStart) },
+      update: {
+        timeRangeStart: dto.timeRangeStart,
+        timeRangeEnd:   dto.timeRangeEnd,
+        updatedBy:      user,
+      },
+      create: {
+        weekStart:      parseDate(weekStart),
+        createdBy:      user,
+        updatedBy:      user,
+        timeRangeStart: dto.timeRangeStart,
+        timeRangeEnd:   dto.timeRangeEnd,
+      },
+      select: {
+        timeRangeStart: true, timeRangeEnd: true,
+        updatedBy: true, updatedAt: true,
+      },
+    });
+    return {
+      weekStart,
+      timeRangeStart: saved.timeRangeStart ?? DEFAULT_TIME_RANGE_START,
+      timeRangeEnd:   saved.timeRangeEnd   ?? DEFAULT_TIME_RANGE_END,
+      persisted:      true,
+      updatedBy:      saved.updatedBy,
+      updatedAt:      saved.updatedAt.toISOString(),
+    };
   });
 
   app.get<{ Params: { weekStart: string } }>('/:weekStart', {

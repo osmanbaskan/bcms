@@ -2,7 +2,7 @@
   <header class="page-header">
     <div>
       <h1>Stüdyo Planı</h1>
-      <p>{{ dateRangeLabel() }} · 06:00 - 02:00 · 15 dakikalık slotlar</p>
+      <p>{{ dateRangeLabel() }} · {{ weekTimeRangeStart() }} - {{ weekTimeRangeEnd() }} · 15 dakikalık slotlar</p>
     </div>
 
     <div class="page-actions">
@@ -67,9 +67,9 @@
         *ngIf="canEdit() && viewMode() !== 'list'"
         [days]="visibleDays()"
         [studios]="studios"
-        [timeSlots]="timeSlots"
+        [timeSlots]="timeSlots()"
         [cells]="cells()"
-        [style.--slot-count]="timeSlots.length"
+        [style.--slot-count]="timeSlots().length"
         (assignProgram)="onCellAssign($event)"
       ></app-studio-plan-table>
 

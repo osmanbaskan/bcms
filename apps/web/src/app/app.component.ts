@@ -594,6 +594,11 @@ export class AppComponent implements OnInit, OnDestroy {
         // Backend lookup read hâlâ auth-only (UI gizler, API erişimi açık);
         // master-data düzenleme zaten SystemEng + Admin auto-bypass.
         { label: 'Live-Plan Lookup',  icon: 'tune',                route: '/admin/live-plan-lookups', groups: [GROUP.Admin, GROUP.SystemEng] },
+        // 2026-05-25: Stüdyo Planı Edit — Studio Plan catalog (program+renk)
+        // yönetimi. Yalnız Admin + StudyoSefi görür. Backend
+        // PERMISSIONS.studioPlans.write = ['StudyoSefi'] + Admin auto-bypass
+        // ile UI ile eş. SystemEng burada yok (kullanıcı talebi).
+        { label: 'Stüdyo Planı Edit', icon: 'edit',                route: '/admin/studio-plan-edit',  groups: [GROUP.Admin, GROUP.StudyoSefi] },
         { label: 'OPTA Lig Görünürlüğü', icon: 'visibility',       route: '/admin/opta-competitions', groups: [GROUP.SystemEng] },
         // 2026-05-20: Manuel Lig Yönetimi sidebar entry — OPTA Lig
         // Görünürlüğü ile birebir aynı yetki (SystemEng + Admin auto-bypass).

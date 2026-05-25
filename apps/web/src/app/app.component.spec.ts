@@ -175,6 +175,34 @@ describe('AppComponent — nav visibility (2026-05-13 yeni "OPTA Lig Görünürl
     });
   });
 
+  describe('Stüdyo Planı Edit nav visibility (2026-05-25: Admin/StudyoSefi only)', () => {
+    function findEdit(cmp: AppComponent): NavItem | undefined {
+      const groups = cmp.visibleGroups() as NavGroup[];
+      for (const g of groups) for (const it of g.items) if (it.route === '/admin/studio-plan-edit') return it;
+      return undefined;
+    }
+    it('Admin: görünür', () => {
+      expect(findEdit(setup([GROUP.Admin]))).toBeDefined();
+    });
+    it('StudyoSefi: görünür', () => {
+      expect(findEdit(setup([GROUP.StudyoSefi]))).toBeDefined();
+    });
+    it('SystemEng: görünmez (kullanıcı talebi)', () => {
+      expect(findEdit(setup([GROUP.SystemEng]))).toBeUndefined();
+    });
+    it('Booking: görünmez', () => {
+      expect(findEdit(setup([GROUP.Booking]))).toBeUndefined();
+    });
+    it('MCR: görünmez', () => {
+      expect(findEdit(setup([GROUP.MCR]))).toBeUndefined();
+    });
+    it('ProvysViewer-only: YÖNETİM görmez', () => {
+      const groups = setup([GROUP.ProvysViewer]).visibleGroups() as NavGroup[];
+      const yonetim = groups.find((g) => g.label === 'YÖNETİM');
+      expect(yonetim).toBeUndefined();
+    });
+  });
+
   describe('Live-Plan Lookup nav visibility (2026-05-25: Admin/SystemEng only)', () => {
     function findLpLookup(cmp: AppComponent): NavItem | undefined {
       const groups = cmp.visibleGroups() as NavGroup[];

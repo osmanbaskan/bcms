@@ -438,15 +438,19 @@ model TimelineEvent {
 }
 
 model StudioPlan {
-  id         Int              @id @default(autoincrement())
-  weekStart  DateTime         @unique @map("week_start") @db.Date
-  version    Int              @default(1)
-  createdBy  String           @map("created_by") @db.VarChar(100)
-  updatedBy  String?          @map("updated_by") @db.VarChar(100)
-  createdAt  DateTime         @default(now()) @map("created_at")
-  updatedAt  DateTime         @updatedAt @map("updated_at")
-  deleted_at DateTime?
-  slots      StudioPlanSlot[]
+  id              Int              @id @default(autoincrement())
+  weekStart       DateTime         @unique @map("week_start") @db.Date
+  version         Int              @default(1)
+  // 2026-05-25: hafta bazlı time range ayarı (slot rendering / export'a opt-in).
+  // Saatlik "HH:00" string; null = varsayılan 07:00-02:00 (frontend fallback).
+  timeRangeStart  String?          @map("time_range_start") @db.VarChar(5)
+  timeRangeEnd    String?          @map("time_range_end")   @db.VarChar(5)
+  createdBy       String           @map("created_by") @db.VarChar(100)
+  updatedBy       String?          @map("updated_by") @db.VarChar(100)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  deleted_at      DateTime?
+  slots           StudioPlanSlot[]
 
   @@map("studio_plans")
 }

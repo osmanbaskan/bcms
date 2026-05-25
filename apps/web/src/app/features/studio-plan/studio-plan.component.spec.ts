@@ -186,26 +186,65 @@ describe('StudioPlanComponent', () => {
     tick(100);
   }));
 
-  // ── 2026-05-14: 15 dk slot grid (önce 30 dk) ──────────────────────────────
+  // ── 2026-05-14: 15 dk slot grid (önce 30 dk); 2026-05-25: default 07:00-03:00 ─
   it('timeSlots 80 adet üretir', () => {
-    expect((component as any).timeSlots.length).toBe(80);
+    expect((component as any).timeSlots().length).toBe(80);
   });
 
-  it('ilk slot 06:00, son slot 01:45', () => {
-    const ts = (component as any).timeSlots as string[];
-    expect(ts[0]).toBe('06:00');
-    expect(ts[ts.length - 1]).toBe('01:45');
+  it('ilk slot 07:00, son slot 02:45', () => {
+    const ts = (component as any).timeSlots() as string[];
+    expect(ts[0]).toBe('07:00');
+    expect(ts[ts.length - 1]).toBe('02:45');
+  });
+
+  // ── 2026-05-25: hafta bazlı time range ana grid'i belirler ────────────────
+  // Acceptance: edit'te 00:00-00:00 kaydedilen hafta açılınca grid 24 saat görünmeli.
+  it('weekTimeRange 00:00-00:00 ayarlandığında timeSlots 96 slot reactive üretir', () => {
+    const c = component as any;
+    c.weekTimeRangeStart.set('00:00');
+    c.weekTimeRangeEnd.set('00:00');
+    const ts = c.timeSlots() as string[];
+    expect(ts.length).toBe(96);
+    expect(ts[0]).toBe('00:00');
+    expect(ts[95]).toBe('23:45');
+  });
+
+  it('weekTimeRange 07:00-03:00 ayarlandığında timeSlots 80 slot üretir', () => {
+    const c = component as any;
+    c.weekTimeRangeStart.set('07:00');
+    c.weekTimeRangeEnd.set('03:00');
+    const ts = c.timeSlots() as string[];
+    expect(ts.length).toBe(80);
+    expect(ts[0]).toBe('07:00');
+    expect(ts[79]).toBe('02:45');
+  });
+
+  it('weekTimeRange değişirse template binding [timeSlots] yeniden render eder', () => {
+    const c = component as any;
+    c.weekTimeRangeStart.set('00:00');
+    c.weekTimeRangeEnd.set('00:00');
+    fixture.detectChanges();
+    const tableEl = fixture.nativeElement.querySelector('app-studio-plan-table');
+    expect(tableEl).toBeTruthy();
+    // Stub component @Input timeSlots — child binding signal değerini almış mı?
+    const childInstance: { timeSlots: string[] } =
+      (fixture.debugElement.query((d) => d.componentInstance instanceof StubStudioPlanTableComponent) as any)
+        ?.componentInstance ?? null;
+    expect(childInstance).withContext('stub table component should render').toBeTruthy();
+    expect(childInstance.timeSlots.length).toBe(96);
+    expect(childInstance.timeSlots[0]).toBe('00:00');
+    expect(childInstance.timeSlots[95]).toBe('23:45');
   });
 
   it('listEntries tek atama → 15 dk durationMinutes + endTime 15 dk sonrası', () => {
     const comp = component as any;
     const day = comp.days()[0];
     const studio = comp.studios[0];
-    const t = comp.timeSlots[0]; // 06:00
+    const t = comp.timeSlots()[0]; // 07:00
     comp.cells.set({ [comp.cellKey(day.id, studio, t)]: { program: 'P', color: '#000' } });
     const e = comp.listEntries()[0];
-    expect(e.startTime).toBe('06:00');
-    expect(e.endTime).toBe('06:15');
+    expect(e.startTime).toBe('07:00');
+    expect(e.endTime).toBe('07:15');
     expect(e.durationMinutes).toBe(15);
     expect(e.slotCount).toBe(1);
   });
@@ -216,13 +255,13 @@ describe('StudioPlanComponent', () => {
     const studio = comp.studios[0];
     const assignment = { program: 'X', color: '#111' };
     const cells: Record<string, unknown> = {};
-    for (let i = 0; i < 4; i++) cells[comp.cellKey(day.id, studio, comp.timeSlots[i])] = assignment;
+    for (let i = 0; i < 4; i++) cells[comp.cellKey(day.id, studio, comp.timeSlots()[i])] = assignment;
     comp.cells.set(cells);
     const e = comp.listEntries()[0];
     expect(e.slotCount).toBe(4);
     expect(e.durationMinutes).toBe(60);
-    expect(e.startTime).toBe('06:00');
-    expect(e.endTime).toBe('07:00');
+    expect(e.startTime).toBe('07:00');
+    expect(e.endTime).toBe('08:00');
   });
 
   // ── 2026-05-14: listEntries canonical kaynak — tablo ↔ liste tutarlılığı ──
@@ -236,14 +275,14 @@ describe('StudioPlanComponent', () => {
     const comp = component as unknown as {
       days: () => { id: string }[];
       studios: string[];
-      timeSlots: string[];
+      timeSlots: () => string[];
       cells: (next: Record<string, unknown>) => void;
       listEntries: () => unknown[];
       cellKey: (d: string, s: string, t: string) => string;
     };
     const day = comp.days()[0];
     const studio = comp.studios[0];
-    const time = comp.timeSlots[0];
+    const time = comp.timeSlots()[0];
     const key = comp.cellKey(day.id, studio, time);
     (component as any).cells.set({ [key]: { program: 'Test Program', color: '#FF0000' } });
     const entries = comp.listEntries();
@@ -260,13 +299,13 @@ describe('StudioPlanComponent', () => {
     const comp = component as unknown as {
       days: () => { id: string }[];
       studios: string[];
-      timeSlots: string[];
+      timeSlots: () => string[];
       cellKey: (d: string, s: string, t: string) => string;
     };
     const day = comp.days()[0];
     const studio = comp.studios[0];
-    const t1 = comp.timeSlots[0];
-    const t2 = comp.timeSlots[1];
+    const t1 = comp.timeSlots()[0];
+    const t2 = comp.timeSlots()[1];
     const k1 = comp.cellKey(day.id, studio, t1);
     const k2 = comp.cellKey(day.id, studio, t2);
     (component as any).cells.set({
@@ -282,12 +321,12 @@ describe('StudioPlanComponent', () => {
     const comp = component as unknown as {
       days: () => { id: string }[];
       studios: string[];
-      timeSlots: string[];
+      timeSlots: () => string[];
       cellKey: (d: string, s: string, t: string) => string;
     };
     const day = comp.days()[0];
     const studio = comp.studios[0];
-    const time = comp.timeSlots[0];
+    const time = comp.timeSlots()[0];
     const key = comp.cellKey(day.id, studio, time);
     (component as any).cells.set({ [key]: { program: 'X', color: '#111' } });
     expect((component as any).listEntries().length).toBe(1);
