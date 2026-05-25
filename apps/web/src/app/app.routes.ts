@@ -31,12 +31,15 @@ export const routes: Routes = [
     data: { groups: [] },
   },
   {
+    /** 2026-05-25: İş Takip UI nav ile eş — Admin+SystemEng. Backend
+     *  PERMISSIONS.bookings.* + service `BookingService.visibleGroups/canEditGroup`
+     *  grup-içi döngü mantığı korundu; bu kısıtlama yalnız route guard. */
     path: 'bookings',
     loadChildren: () =>
       import('./features/bookings/bookings.routes').then((m) => m.bookingsRoutes),
     canActivate: [AuthGuard],
     canActivateChild: [AuthGuard],
-    data: { groups: [] },
+    data: { groups: [GROUP.Admin, GROUP.SystemEng] },
   },
   {
     path: 'studio-plan',
@@ -46,11 +49,14 @@ export const routes: Routes = [
     data: { groups: [] },
   },
   {
+    /** 2026-05-25: Haftalık Vardiya UI nav ile eş — Admin+SystemEng. Backend
+     *  PERMISSIONS.weeklyShifts.* + service `canEditGroup` grup-içi döngü
+     *  korundu; bu kısıtlama yalnız route guard. */
     path: 'weekly-shift',
     loadComponent: () =>
       import('./features/weekly-shift/weekly-shift.component').then((m) => m.WeeklyShiftComponent),
     canActivate: [AuthGuard],
-    data: { groups: [] },
+    data: { groups: [GROUP.Admin, GROUP.SystemEng] },
   },
   {
     /** 2026-05-25: Provys tüm Keycloak gruplarına açıldı (PERMISSIONS.provys.read

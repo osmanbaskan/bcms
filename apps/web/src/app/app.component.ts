@@ -569,8 +569,13 @@ export class AppComponent implements OnInit, OnDestroy {
     {
       label: 'EKİP',
       items: [
-        { label: 'İş Takip',          icon: 'people_outline',      route: '/bookings',           groups: [] },
-        { label: 'Haftalık Shift',    icon: 'calendar_today',      route: '/weekly-shift',       groups: [] },
+        // 2026-05-25: İş Takip + Haftalık Vardiya geçici olarak Admin+SystemEng'e
+        // kısıtlandı. Backend permission (`bookings.*`, `weeklyShifts.*`) ve
+        // service-katmanı grup-içi döngü mantığı KORUNDU; sadece UI nav
+        // görünürlüğü ve route guard daraltıldı. İleride tekrar açılırsa ekipler
+        // kendi içinde döngüyle çalışmaya devam edebilmek için backend dokunulmadı.
+        { label: 'İş Takip',          icon: 'people_outline',      route: '/bookings',           groups: [GROUP.Admin, GROUP.SystemEng] },
+        { label: 'Haftalık Shift',    icon: 'calendar_today',      route: '/weekly-shift',       groups: [GROUP.Admin, GROUP.SystemEng] },
         // 2026-05-15: Dökümanlar nav grubu YÖNETİM → EKİP'e taşındı; route,
         // icon ve permission (SystemEng) korundu, sadece menü konumu değişti.
         { label: 'Dökümanlar',        icon: 'description',         route: '/documents',          groups: [GROUP.SystemEng] },

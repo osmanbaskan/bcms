@@ -136,6 +136,45 @@ describe('AppComponent — nav visibility (2026-05-13 yeni "OPTA Lig Görünürl
     });
   });
 
+  describe('EKİP nav visibility (2026-05-25: İş Takip + Haftalık Vardiya Admin/SystemEng only)', () => {
+    function findRoute(cmp: AppComponent, route: string): NavItem | undefined {
+      const groups = cmp.visibleGroups() as NavGroup[];
+      for (const g of groups) for (const it of g.items) if (it.route === route) return it;
+      return undefined;
+    }
+
+    it('Admin: İş Takip + Haftalık Vardiya görünür', () => {
+      const cmp = setup([GROUP.Admin]);
+      expect(findRoute(cmp, '/bookings')).toBeDefined();
+      expect(findRoute(cmp, '/weekly-shift')).toBeDefined();
+    });
+    it('SystemEng: İş Takip + Haftalık Vardiya görünür', () => {
+      const cmp = setup([GROUP.SystemEng]);
+      expect(findRoute(cmp, '/bookings')).toBeDefined();
+      expect(findRoute(cmp, '/weekly-shift')).toBeDefined();
+    });
+    it('Booking grubu: İş Takip artık görünmez (geçici kısıtlama)', () => {
+      const cmp = setup([GROUP.Booking]);
+      expect(findRoute(cmp, '/bookings')).toBeUndefined();
+      expect(findRoute(cmp, '/weekly-shift')).toBeUndefined();
+    });
+    it('Tekyon (normal grup): görünmez', () => {
+      const cmp = setup([GROUP.Tekyon]);
+      expect(findRoute(cmp, '/bookings')).toBeUndefined();
+      expect(findRoute(cmp, '/weekly-shift')).toBeUndefined();
+    });
+    it('MCR (normal grup): görünmez', () => {
+      const cmp = setup([GROUP.MCR]);
+      expect(findRoute(cmp, '/bookings')).toBeUndefined();
+      expect(findRoute(cmp, '/weekly-shift')).toBeUndefined();
+    });
+    it('ProvysViewer-only: EKİP grubu zaten görmez', () => {
+      const groups = setup([GROUP.ProvysViewer]).visibleGroups() as NavGroup[];
+      const ekip = groups.find((g) => g.label === 'EKİP');
+      expect(ekip).toBeUndefined();
+    });
+  });
+
   describe('Live-Plan Lookup nav visibility (2026-05-25: Admin/SystemEng only)', () => {
     function findLpLookup(cmp: AppComponent): NavItem | undefined {
       const groups = cmp.visibleGroups() as NavGroup[];
