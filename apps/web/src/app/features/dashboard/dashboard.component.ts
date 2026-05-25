@@ -1,8 +1,10 @@
 import { Component, OnInit, OnDestroy, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { KeycloakService } from 'keycloak-angular';
 import { interval, Subscription } from 'rxjs';
 
+import { GROUP } from '@bcms/shared';
 import { KpiComponent } from '../../core/ui/kpi.component';
 import { CardComponent } from '../../core/ui/card.component';
 import { StatusTagComponent } from '../../core/ui/status-tag.component';
@@ -12,6 +14,7 @@ import { PageHeaderComponent } from '../../core/ui/page-header.component';
 // SCHED-B5a (2026-05-08): legacy ScheduleService silindi; broadcast list
 // endpoint canonical (/schedules/broadcast) doğrudan ApiService ile çağrılır.
 import { ApiService } from '../../core/services/api.service';
+import { STUDIO_PLAN_SLOT_MINUTES } from '../studio-plan/studio-plan.component';
 
 interface ScheduleRow {
   id: number;
@@ -67,11 +70,14 @@ interface StudioSlot {
 
     <div class="dashboard">
       <!-- ─── KPI Rail ────────────────────────────────────────────────── -->
+      <!-- "Şu an canlı" KPI'sı ON_AIR enum'unun hard-delete'iyle (2026-05-11)
+           anlam yitirdi; sahte 0 yerine bugünkü toplam yayın sayısı + açık
+           Aşama 3 placeholder etiketi. -->
       <div class="kpi-rail">
         <bp-kpi [accent]="true"
-                label="Şu an canlı"
-                [value]="kpiLive()"
-                [sub]="kpiTodayTotal() + ' yayın bugün toplam'"></bp-kpi>
+                label="Bugün toplam yayın"
+                [value]="kpiTodayTotal()"
+                [sub]="'şu an canlı sayacı · placeholder · Aşama 3'"></bp-kpi>
         <bp-kpi label="Aktif port"
                 [value]="kpiActivePorts()"
                 [unit]="'/' + kpiTotalPorts()"
@@ -81,7 +87,7 @@ interface StudioSlot {
                 [sub]="'bugün'"></bp-kpi>
         <bp-kpi label="Ekip · vardiya"
                 [value]="kpiShiftCount()"
-                [sub]="'bu hafta'"></bp-kpi>
+                [sub]="'placeholder · Aşama 3'"></bp-kpi>
         <bp-kpi label="Aktif uyarı"
                 [value]="kpiAlerts()"
                 [sub]="'placeholder · Aşama 3'"></bp-kpi>
@@ -108,18 +114,23 @@ interface StudioSlot {
             </div>
           } @else {
             <div class="hero-empty">
-              <div class="hero-empty-title">Şu an yayında bir program yok</div>
-              <div class="hero-empty-sub">Bugünün yayın akışı aşağıda</div>
+              <div class="placeholder-eyebrow">PLACEHOLDER · Aşama 3</div>
+              <div class="hero-empty-title">Canlı yayın takibi henüz bağlı değil</div>
+              <div class="hero-empty-sub">Bugünün yayın akışı aşağıda · ON_AIR takip mekanizması Aşama 3</div>
             </div>
           }
         </div>
 
         <bp-card title="Vardiyam" [padded]="true">
-          <a card-action class="link-action" routerLink="/weekly-shift">Tümü →</a>
+          @if (canViewWeeklyShift()) {
+            <a card-action class="link-action" routerLink="/weekly-shift">Tümü →</a>
+          }
           <div class="shift-empty">
             <div class="placeholder-eyebrow">PLACEHOLDER · Aşama 3</div>
             <div class="placeholder-text">Vardiya kartı henüz bağlanmadı</div>
-            <a class="link-action" routerLink="/weekly-shift">Haftalık shift →</a>
+            @if (canViewWeeklyShift()) {
+              <a class="link-action" routerLink="/weekly-shift">Haftalık shift →</a>
+            }
           </div>
         </bp-card>
       </div>
@@ -128,19 +139,27 @@ interface StudioSlot {
       <div class="row broadcasts-row">
         <bp-card [title]="'Bugünün yayın akışı'"
                  [count]="todayBroadcasts().length + ' yayın'">
-          <a card-action class="link-action" routerLink="/yayin-planlama">Tümü →</a>
+          <!-- Veri kaynağı /api/v1/schedules/broadcast (Schedule canonical
+               domain); "Tümü →" aynı domain liste sayfasına gider. Live-plan
+               domain'i ayrı (yayın-planlama list /api/v1/live-plan kullanıyor)
+               — dashboard'dan oraya cross-domain link verilmez. -->
+          <a card-action class="link-action" routerLink="/schedules">Tümü →</a>
           <div class="broadcast-list">
             @if (loadingBroadcasts()) {
               <div class="empty">Yükleniyor…</div>
             } @else {
+              <!-- /schedules/:id detail route yok (schedulesRoutes sadece ''
+                   + 'reporting' tanımlıyor). Sahte tıklanabilirlik yerine
+                   read-only satır; kullanıcı "Tümü →" üzerinden liste
+                   sayfasına gidip oradan detay/edit yapabilir. -->
               @for (m of todayBroadcasts().slice(0, 14); track m.id) {
-                <a class="broadcast-row" [routerLink]="['/schedules', m.id]">
+                <div class="broadcast-row">
                   <div class="row-time">{{ m.startTime }}</div>
                   <div class="row-league">{{ m.league?.name ?? '—' }}</div>
                   <div class="row-title">{{ m.title }}</div>
                   <div class="row-channel">{{ m.channel?.name ?? '—' }}</div>
                   <div class="row-status"><bp-status-tag [state]="m.status"></bp-status-tag></div>
-                </a>
+                </div>
               } @empty {
                 <div class="empty">Bugün için yayın yok.</div>
               }
@@ -202,7 +221,9 @@ interface StudioSlot {
         </bp-card>
 
         <bp-card [title]="'Son uyarılar'" [count]="'placeholder'">
-          <a card-action class="link-action" routerLink="/audit-logs">Audit log →</a>
+          @if (canViewAuditLog()) {
+            <a card-action class="link-action" routerLink="/audit-logs">Audit log →</a>
+          }
           <div class="alerts-empty">
             <div class="placeholder-eyebrow">PLACEHOLDER · Aşama 3</div>
             <div class="placeholder-text">Alert sistemi henüz BCMS'te yok.</div>
@@ -467,6 +488,7 @@ interface StudioSlot {
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
+  private keycloak = inject(KeycloakService);
 
   todayDate = signal('');
   todayEyebrow = computed(() => {
@@ -483,6 +505,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
   todayStudios = signal<StudioSlot[]>([]);
   ports = signal<IngestPort[]>([]);
 
+  // ─── Group-aware link visibility ─────────────────────────────────────────
+  // /audit-logs route SystemEng grubuna açık, Admin AuthGuard üzerinden bypass.
+  // /weekly-shift route Admin + SystemEng. Diğer gruplardaki kullanıcı linke
+  // tıklarsa AuthGuard 403 + redirect üretir — dashboard'da daha baştan gösterme.
+  private readonly _userGroups = signal<string[]>([]);
+  private readonly isAdmin = computed(() => this._userGroups().includes(GROUP.Admin));
+  readonly canViewAuditLog = computed(() => this.isAdmin() || this._userGroups().includes(GROUP.SystemEng));
+  readonly canViewWeeklyShift = computed(() => this.isAdmin() || this._userGroups().includes(GROUP.SystemEng));
+
   // Hard delete (2026-05-11): ScheduleStatus.ON_AIR enum'dan çıkarıldı.
   // MCR/playout silindiği için ON_AIR'a geçiren mekanizma yok. Hero card
   // computed'i her zaman undefined döner → template empty state gösterir.
@@ -490,9 +521,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   heroBroadcast = computed<ScheduleRow | undefined>(() => undefined);
 
   // ─── KPIs ────────────────────────────────────────────────────────────────
+  // "Şu an canlı" KPI (kpiLive) ON_AIR hard-delete sonrası kaldırıldı; yerine
+  // template'te `kpiTodayTotal` + placeholder etiketi gösterilir.
   kpiTodayTotal = computed(() => this.todayBroadcasts().length);
-  // ON_AIR hard-deleted; "canlı yayın" sayacı her zaman 0 (sahte mapping yasak).
-  kpiLive = computed(() => 0);
   kpiActivePorts = computed(() => this.ports().filter((p) => p.active).length);
   kpiTotalPorts = computed(() => this.ports().length);
   kpiStudios = computed(() => this.todayStudios().length);
@@ -504,6 +535,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ngOnInit() {
     this.updateDate();
     this.clockSub = interval(60_000).subscribe(() => this.updateDate());
+
+    // Keycloak tokenParsed'dan grupları oku — group-aware link visibility için
+    // (audit-logs, weekly-shift). studio-plan.component.ts ile aynı pattern.
+    const parsed = this.keycloak.getKeycloakInstance()?.tokenParsed as { groups?: string[] } | undefined;
+    this._userGroups.set(parsed?.groups ?? []);
 
     this.loadTodayBroadcasts();
     this.loadStudios();
@@ -551,20 +587,52 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const today = this.isoToday();
     const weekStart = this.mondayOf(today);
     // Backend canonical: /api/v1/studio-plans/:weekStart (Monday-based weekly plan
-    // with embedded slots). Dashboard widget bugünkü slot'ları flatten + map eder.
-    this.api.get<{ slots?: Array<{ id: number; dayDate: string; studio: string; startMinute: number; program: string }> }>(
+    // with embedded slots). Slot süresi STUDIO_PLAN_SLOT_MINUTES (15 dk; commit
+    // 77d7ca9). Aynı program/stüdyo için ardışık slot'lar dashboard'da tek satır
+    // olarak gösterilir (1 saat = 1 satır, 4 satır yerine).
+    // API response shape: slot.day (YYYY-MM-DD), studio, startMinute, program, color, time.
+    // Önceki kod `s.dayDate` ile filtreliyordu — pre-existing bug; gerçek alan
+    // `day`. Bu yüzden studio liste her zaman boş geliyordu.
+    this.api.get<{ slots?: Array<{ id: number; day: string; studio: string; startMinute: number; program: string }> }>(
       `/studio-plans/${weekStart}`,
     ).subscribe({
       next: (plan) => {
-        const todaySlots: StudioSlot[] = (plan?.slots ?? [])
-          .filter((s) => s.dayDate === today)
-          .map((s) => ({
-            id: s.id,
-            studio: s.studio,
-            programName: s.program,
-            startTime: this.minuteToTime(s.startMinute),
-            endTime: this.minuteToTime(s.startMinute + 30),
-          }));
+        const rawToday = (plan?.slots ?? []).filter((s) => s.day === today);
+        // Stüdyo bazında grupla → her stüdyo içinde startMinute'a göre sırala →
+        // aynı programın ardışık 15 dk slot'larını birleştir.
+        const byStudio = new Map<string, typeof rawToday>();
+        for (const s of rawToday) {
+          if (!byStudio.has(s.studio)) byStudio.set(s.studio, []);
+          byStudio.get(s.studio)!.push(s);
+        }
+        const merged: Array<{ id: number; studio: string; program: string; startMinute: number; endMinute: number }> = [];
+        for (const [studio, slots] of byStudio) {
+          slots.sort((a, b) => a.startMinute - b.startMinute);
+          for (const s of slots) {
+            const last = merged[merged.length - 1];
+            if (last && last.studio === studio && last.program === s.program && last.endMinute === s.startMinute) {
+              last.endMinute = s.startMinute + STUDIO_PLAN_SLOT_MINUTES;
+            } else {
+              merged.push({
+                id: s.id,
+                studio,
+                program: s.program,
+                startMinute: s.startMinute,
+                endMinute: s.startMinute + STUDIO_PLAN_SLOT_MINUTES,
+              });
+            }
+          }
+        }
+        // Display sort: zaman önce, sonra stüdyo (aynı saatte birden fazla stüdyo
+        // varsa stable order).
+        merged.sort((a, b) => (a.startMinute - b.startMinute) || a.studio.localeCompare(b.studio));
+        const todaySlots: StudioSlot[] = merged.map((m) => ({
+          id: m.id,
+          studio: m.studio,
+          programName: m.program,
+          startTime: this.minuteToTime(m.startMinute),
+          endTime: this.minuteToTime(m.endMinute),
+        }));
         this.todayStudios.set(todaySlots);
         this.loadingStudios.set(false);
       },
