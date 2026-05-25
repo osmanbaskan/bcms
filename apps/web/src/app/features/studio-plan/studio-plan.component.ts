@@ -106,6 +106,22 @@ export const STUDIO_PLAN_START_MINUTE = 7 * 60;    // 07:00
 export const STUDIO_PLAN_END_MINUTE   = 27 * 60;   // 03:00 ertesi gün
 
 const TIME_SLOTS = buildSlotsForRange(STUDIO_PLAN_DEFAULT_START, STUDIO_PLAN_DEFAULT_END, STUDIO_PLAN_SLOT_MINUTES);
+const STUDIO_PLAN_DEFAULT_PROGRAM_COLUMN_WIDTH = 11;
+const STUDIO_PLAN_EXPORT_PROGRAM_COLUMN_WIDTH = 5;
+// 2026-05-25 (rev5): maxChars tablosu gerçek export render kanıtıyla
+// kalibre edildi. Önceki tablo width=5 stüdyo kolonu için Türkçe uppercase
+// karakter genişliğini yeterince konservatif tutmuyordu (G/E/A/M gibi harfler
+// digit-0 baseline'ından geniş). LibreOffice → PDF render: "ANA HABER" (9 char)
+// size 6 kolonda eski cap=9 ile sığmıyor, kelime sınırında ek wrap atıyordu.
+// Yeni değerler ≈80% eski değerler; "kelime sınırı bile olsa beklenmeyen
+// satır eklenmesi" riskini sıfırlar.
+const STUDIO_PLAN_EXPORT_PROGRAM_FONT_OPTIONS = [
+  { fontSize: 8, maxChars: 5 },
+  { fontSize: 7, maxChars: 6 },
+  { fontSize: 6, maxChars: 8 },
+  { fontSize: 5, maxChars: 10 },
+  { fontSize: 4, maxChars: 14 },
+] as const;
 
 function mondayFor(date: Date): string {
   const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -623,13 +639,29 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
               const cell = row.getCell(studio1Col + si);
               cell.border = BORDER;
               cell.font = { size: 8, name: 'Arial' };
+              // Default boş hücre alignment — wrapText true güvenli (boş metin
+              // wrap problemi yaratmaz). Program hücreleri aşağıda formatlanır.
               cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
               // OUTSIDE export-only sahte kolon — assignment'ları yok
               if (studio !== 'OUTSIDE') {
                 const key = this.cellKey(day.id, studio, time);
                 const assignment = this.cells()[key];
                 if (assignment) {
-                  cell.value = assignment.program;
+                  // İlk geçişte slotSpan=1 (tek slot hücresi). Merge sonrası
+                  // span gerçek değer ile re-format edilecek (aşağıdaki merge
+                  // pass'inde mergedCell.value+font+alignment override).
+                  const formatted = this.formatProgramForCell(
+                    assignment.program,
+                    1,
+                    STUDIO_PLAN_EXPORT_PROGRAM_COLUMN_WIDTH,
+                  );
+                  cell.value = formatted.text;
+                  cell.font = { size: formatted.fontSize, name: 'Arial' };
+                  cell.alignment = {
+                    horizontal: 'center', vertical: 'middle',
+                    wrapText: formatted.wrapText,
+                    shrinkToFit: formatted.shrinkToFit,
+                  };
                   const argb = this.hexToArgb(assignment.color);
                   if (argb !== 'FFFFFFFF') {
                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
@@ -681,7 +713,19 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
                 DATA_ROW_OFFSET + i - 1, studioCol,
               );
               const mergedCell = worksheet.getRow(DATA_ROW_OFFSET + mergeStart).getCell(studioCol);
-              mergedCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+              const slotSpan = i - mergeStart;
+              const formattedMerged = this.formatProgramForCell(
+                mergeProgram,
+                slotSpan,
+                STUDIO_PLAN_EXPORT_PROGRAM_COLUMN_WIDTH,
+              );
+              mergedCell.value = formattedMerged.text;
+              mergedCell.font = { size: formattedMerged.fontSize, name: 'Arial' };
+              mergedCell.alignment = {
+                horizontal: 'center', vertical: 'middle',
+                wrapText: formattedMerged.wrapText,
+                shrinkToFit: formattedMerged.shrinkToFit,
+              };
             }
             mergeStart = assignment ? i : -1;
             mergeProgram = assignment?.program ?? '';
@@ -699,7 +743,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
         worksheet.getColumn(colStart + 1).width = 8.5;
         // Stüdyolar (dikey textRotation 90; içerik program adı wrap)
         for (let si = 0; si < exportStudios.length; si++) {
-          worksheet.getColumn(colStart + 2 + si).width = 5;
+          worksheet.getColumn(colStart + 2 + si).width = STUDIO_PLAN_EXPORT_PROGRAM_COLUMN_WIDTH;
         }
       }
 
@@ -1193,5 +1237,156 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     const next = new Date(date);
     next.setDate(next.getDate() + days);
     return next;
+  }
+
+  /** 2026-05-25 (rev4): Excel program hücresi — slotSpan + width-aware.
+   *  Önceki yaklaşımlar başarısız oldu:
+   *   - `wrapText:true` alone → uzun TEK kelime karakter-ortasından kırılıyordu.
+   *   - boşluğu `\n`'e zorlamak → tek kelime hâlâ kırılıyordu.
+   *   - `wrapText:true + shrinkToFit:true` combo'su → LibreOffice'te
+   *     "HABER" gibi 5 char kelime bile `HABE / R` olarak bölünüyordu.
+   *   - helper width=11 varsayarken gerçek export stüdyo kolonu width=5 idi;
+   *     bu yüzden explicit LF sonrası kalan uzun satırlar tekrar character-wrap
+   *     ediliyordu.
+   *
+   *  Yeni strateji:
+   *   1. Tek satırda wrapText:false — Excel'in character-wrap'i kapalı.
+   *   2. slotSpan=1 (tek slot, 14px yükseklik) → metin TEK satır olarak yazılır,
+   *      shrinkToFit:true ile font sığacak şekilde küçülür.
+   *   3. Gerçek export width=5 iken slotSpan>=2 (merged blok) → kelimeler
+   *      kolon kapasitesini aşmayacak satırlara dağıtılır. wrapText:true SADECE
+   *      explicit LF'leri respect ettirmek için açılır; shrinkToFit kapalıdır.
+   *   4. Hiçbir width/font kombinasyonu sığmıyorsa tek satır shrink fallback
+   *      kullanılır; bu durumda kelime bölünmez, metin taşmaz.
+   *
+   *  Sonuç: kelime karakter-ortasından KESİNLİKLE bölünmez; metnin tamamı
+   *  hücreye sığar (gerekirse okunabilir minimum boyutta). */
+  formatProgramForCell(name: string, slotSpan = 1, columnWidth = STUDIO_PLAN_DEFAULT_PROGRAM_COLUMN_WIDTH): {
+    text: string;
+    fontSize: number;
+    wrapText: boolean;
+    shrinkToFit: boolean;
+    lineCount: number;
+  } {
+    const cleaned = name.trim().replace(/\s+/g, ' ');
+    if (!cleaned) {
+      return { text: '', fontSize: 8, wrapText: false, shrinkToFit: false, lineCount: 1 };
+    }
+
+    const words = cleaned.split(' ');
+    const maxLines = this.maxProgramLineCount(slotSpan, columnWidth);
+
+    // Tek kelime VEYA slotSpan tek satıra zorluyorsa → shrink-only tek satır.
+    if (words.length === 1 || maxLines === 1) {
+      return {
+        text: cleaned,
+        fontSize: this.pickProgramFontSize(cleaned.length, columnWidth),
+        wrapText: false,
+        shrinkToFit: true,
+        lineCount: 1,
+      };
+    }
+
+    if (columnWidth <= STUDIO_PLAN_EXPORT_PROGRAM_COLUMN_WIDTH) {
+      for (const option of STUDIO_PLAN_EXPORT_PROGRAM_FONT_OPTIONS) {
+        const lines = this.wrapProgramWords(words, maxLines, option.maxChars);
+        if (!lines) continue;
+        return {
+          text: lines.join('\n'),
+          fontSize: option.fontSize,
+          wrapText: lines.length > 1,
+          shrinkToFit: lines.length === 1,
+          lineCount: lines.length,
+        };
+      }
+
+      return {
+        text: cleaned,
+        fontSize: 4,
+        wrapText: false,
+        shrinkToFit: true,
+        lineCount: 1,
+      };
+    }
+
+    const lines = this.balanceLines(words, maxLines);
+    const longest = lines.reduce((m, l) => Math.max(m, l.length), 0);
+    return {
+      text: lines.join('\n'),
+      fontSize: this.pickProgramFontSize(longest, columnWidth),
+      wrapText: true,
+      shrinkToFit: true,
+      lineCount: lines.length,
+    };
+  }
+
+  private maxProgramLineCount(slotSpan: number, columnWidth = STUDIO_PLAN_DEFAULT_PROGRAM_COLUMN_WIDTH): number {
+    if (columnWidth <= STUDIO_PLAN_EXPORT_PROGRAM_COLUMN_WIDTH) {
+      return Math.max(1, Math.min(4, Math.floor(slotSpan)));
+    }
+    return slotSpan >= 4 ? 3 : slotSpan >= 2 ? 2 : 1;
+  }
+
+  /** Kelimeleri max satıra dengeli dağıtır (en uzun satırı minimize eden
+   *  greedy + target-length heuristic). Kelimeler ASLA bölünmez. */
+  private balanceLines(words: string[], maxLines: number): string[] {
+    const total = words.reduce((s, w) => s + w.length, 0) + (words.length - 1);
+    const target = Math.ceil(total / maxLines);
+    const lines: string[] = [];
+    let cur: string[] = [];
+    let curLen = 0;
+    for (const w of words) {
+      const next = curLen === 0 ? w.length : curLen + 1 + w.length;
+      if (curLen > 0 && next > target && lines.length < maxLines - 1) {
+        lines.push(cur.join(' '));
+        cur = [w];
+        curLen = w.length;
+      } else {
+        cur.push(w);
+        curLen = next;
+      }
+    }
+    if (cur.length > 0) lines.push(cur.join(' '));
+    return lines;
+  }
+
+  /** Kelimeleri verilen satır kapasitesine göre sırayı bozmadan paketler.
+   *  Bir kelime kapasiteye sığmıyorsa null döner; caller daha küçük font dener. */
+  private wrapProgramWords(words: string[], maxLines: number, maxChars: number): string[] | null {
+    const lines: string[] = [];
+    let current = '';
+
+    for (const w of words) {
+      if (w.length > maxChars) return null;
+
+      const next = current ? `${current} ${w}` : w;
+      if (next.length <= maxChars) {
+        current = next;
+        continue;
+      }
+
+      if (!current) return null;
+      lines.push(current);
+      if (lines.length >= maxLines) return null;
+      current = w;
+    }
+
+    if (current) lines.push(current);
+    return lines.length <= maxLines ? lines : null;
+  }
+
+  private pickProgramFontSize(longestCharCount: number, columnWidth = STUDIO_PLAN_DEFAULT_PROGRAM_COLUMN_WIDTH): number {
+    if (columnWidth <= STUDIO_PLAN_EXPORT_PROGRAM_COLUMN_WIDTH) {
+      for (const option of STUDIO_PLAN_EXPORT_PROGRAM_FONT_OPTIONS) {
+        if (longestCharCount <= option.maxChars) return option.fontSize;
+      }
+      return 4;
+    }
+
+    if (longestCharCount <= 10) return 8;
+    if (longestCharCount <= 12) return 7;
+    if (longestCharCount <= 16) return 6;
+    if (longestCharCount <= 20) return 5;
+    return 4;
   }
 }

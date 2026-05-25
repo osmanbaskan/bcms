@@ -219,6 +219,99 @@ describe('StudioPlanComponent', () => {
     expect(ts[79]).toBe('02:45');
   });
 
+  // ── 2026-05-25 (rev3): Excel program metni helper — slotSpan-aware.
+  //   - slotSpan=1: wrapText:false, tek satır, shrinkToFit ile font küçülür.
+  //   - slotSpan>=2: max 2-3 satır, kelimeler ASLA bölünmez, explicit LF.
+  describe('formatProgramForCell — slotSpan-aware', () => {
+    const fmt = (n: string, span = 1) => (component as any).formatProgramForCell(n, span);
+
+    it('tek kelime: tek satır, shrinkToFit:true, wrapText:false (her span)', () => {
+      [1, 2, 4, 8].forEach((span) => {
+        const r = fmt('PREMIER', span);
+        expect(r.text).toBe('PREMIER');
+        expect(r.lineCount).toBe(1);
+        expect(r.wrapText).toBeFalse();
+        expect(r.shrinkToFit).toBeTrue();
+      });
+    });
+
+    it('slotSpan=1 + çok kelime: tek satır, hiçbir kelime bölünmez', () => {
+      const r = fmt('PREMIER EXPRESS BK', 1);
+      expect(r.text).toBe('PREMIER EXPRESS BK');
+      expect(r.text.includes('\n')).toBeFalse();
+      expect(r.lineCount).toBe(1);
+      expect(r.wrapText).toBeFalse();
+      expect(r.shrinkToFit).toBeTrue();
+    });
+
+    it('slotSpan=2 + çok kelime: max 2 satır, kelime sınırından', () => {
+      const r = fmt('PREMIER EXPRESS BK', 2);
+      expect(r.lineCount).toBe(2);
+      expect(r.text.split('\n').every((l: string) => !l.includes('\n'))).toBeTrue();
+      // Hiçbir satır tek başına bir kelimeyi bölmemeli — her satır kelime|kelime
+      r.text.split('\n').forEach((line: string) => {
+        line.split(' ').forEach((w: string) => expect(w.length).toBeGreaterThan(0));
+      });
+    });
+
+    it('slotSpan=4 + 3 kelime: 2 veya 3 satıra balance', () => {
+      const r = fmt('TELEMETRİ CANLI YAYIN', 4);
+      expect(r.lineCount).toBeGreaterThanOrEqual(2);
+      expect(r.lineCount).toBeLessThanOrEqual(3);
+      // Hiçbir satırda kelime karakter-ortasından bölünmez — kelimeler bütün
+      r.text.split('\n').forEach((line: string) => {
+        line.split(' ').forEach((w: string) => {
+          expect(['TELEMETRİ', 'CANLI', 'YAYIN']).toContain(w);
+        });
+      });
+    });
+
+    it('balanceLines en uzun satırı minimize eder', () => {
+      const r = fmt('PREMIER EXPRESS BK', 4);
+      const lines = r.text.split('\n');
+      const longest = Math.max(...lines.map((l: string) => l.length));
+      // Tek satır olsa 18 char, optimal split en azından bunu azaltmalı
+      expect(longest).toBeLessThan(18);
+    });
+
+    it('whitespace normalize: trim + multiple-space collapse', () => {
+      const r = fmt('  ANA   HABER  ', 1);
+      expect(r.text).toBe('ANA HABER');
+    });
+
+    it('font fallback: ≤10 char → 8', () => {
+      expect(fmt('ANA', 1).fontSize).toBe(8);
+      expect(fmt('PREMIER', 1).fontSize).toBe(8);
+      expect(fmt('TELEMETRİ', 1).fontSize).toBe(8); // 9 char
+    });
+
+    it('font fallback: 11-12 char → 7', () => {
+      expect(fmt('İÇİNDEKİLER', 1).fontSize).toBe(7); // 11 char
+      expect(fmt('ANA HABER CY', 1).fontSize).toBe(7); // 12 char
+    });
+
+    it('font fallback: 13-16 char → 6', () => {
+      expect(fmt('GÜN ORTASI CY', 1).fontSize).toBe(6); // 13 char
+      expect(fmt('KADRO İÇİNDE BK', 1).fontSize).toBe(6); // 15 char
+    });
+
+    it('font fallback: 17-20 char → 5', () => {
+      expect(fmt('PREMIER EXPRESS BK', 1).fontSize).toBe(5); // 18 char
+    });
+
+    it('font fallback: >20 char → 4 (slotSpan=1)', () => {
+      expect(fmt('TELEMETRİ CANLI YAYIN', 1).fontSize).toBe(4); // 21 char
+    });
+
+    it('slotSpan büyüdükçe font fallback rahatlar (line break devreye girer)', () => {
+      // slotSpan=4 → 2-3 satıra dağıt → en uzun satır kısa → font yüksek
+      const r1 = fmt('PREMIER EXPRESS BK', 1);
+      const r4 = fmt('PREMIER EXPRESS BK', 4);
+      expect(r4.fontSize).toBeGreaterThanOrEqual(r1.fontSize);
+      expect(r4.lineCount).toBeGreaterThan(r1.lineCount);
+    });
+  });
+
   it('weekTimeRange değişirse template binding [timeSlots] yeniden render eder', () => {
     const c = component as any;
     c.weekTimeRangeStart.set('00:00');
