@@ -461,10 +461,15 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
       const SLOTS_PER_HOUR = 60 / STUDIO_PLAN_SLOT_MINUTES; // 4
       const hourCount = timeSlots.length / SLOTS_PER_HOUR;
 
-      const HEADER_BG = 'FF43206D';
+      // 2026-05-25 referans PDF rect örneklemesi:
+      //   - Saat col + header bg: #6F2F9F (parlak mor) — pdfplumber rect rgb
+      //     (0.439, 0.188, 0.627). Mevcut #43206D yerine düzeltildi.
+      //   - Saat 8 alternating bg: #D8E2BC (rgb 0.847, 0.894, 0.737). Mevcut
+      //     #E8F0D8 yerine düzeltildi.
+      const HEADER_BG = 'FF6F2F9F';
       const HEADER_FONT = { color: { argb: 'FFFFFFFF' }, bold: true };
       const SLOT_BG_EVEN = 'FFFFFFFF';      // beyaz (referans saat 7 satırları)
-      const SLOT_BG_ODD  = 'FFE8F0D8';      // açık yeşil (referans saat 8 satırları)
+      const SLOT_BG_ODD  = 'FFD8E2BC';      // açık sarı-yeşil (referans saat 8 satırları)
       const BORDER = {
         top:    { style: 'thin' as const, color: { argb: 'FF666666' } },
         left:   { style: 'thin' as const, color: { argb: 'FF666666' } },
@@ -572,10 +577,13 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
             hourCell.border = BORDER;
 
             // Slot kolonu: "00 - 15'" vs.
+            // 2026-05-25 düzeltme: referans PDF'te TIME alanı iki sub-col birlikte
+            // tek mor bant (saat rakamı + slot label aynı HEADER_BG, beyaz text).
+            // Alternating rowBg sadece stüdyo data hücrelerinde — slot col DAHİL DEĞİL.
             const slotCell = row.getCell(slotCol);
             slotCell.value = SLOT_LABELS[s];
-            slotCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE7F6' } }; // çok açık mor
-            slotCell.font = { color: { argb: 'FF1F1B2D' }, bold: true, size: 9, name: 'Arial' };
+            slotCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+            slotCell.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 9, name: 'Arial' };
             slotCell.alignment = { horizontal: 'center', vertical: 'middle' };
             slotCell.border = BORDER;
 
