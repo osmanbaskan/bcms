@@ -94,31 +94,17 @@ interface StudioSlot {
       </div>
 
       <!-- ─── Hero + Shift row ───────────────────────────────────────── -->
+      <!-- Hero ON_AIR (canlı yayın) takibi Aşama 3'e ait. ON_AIR enum
+           hard-delete'li olduğu için (2026-05-11) "şu an canlı yayın" detayını
+           tetikleyecek mekanizma yok — yanıltıcı "Detaya git" linki + dead
+           branch kaldırıldı; placeholder doğrudan render edilir. -->
       <div class="row hero-row">
         <div class="hero">
-          @if (heroBroadcast(); as h) {
-            <div class="hero-content">
-              <div>
-                <div class="hero-badge"><span class="hero-dot"></span>ŞU AN CANLI · {{ h.startTime }}</div>
-                <div class="hero-teams">
-                  <span>{{ h.title }}</span>
-                </div>
-                <div class="hero-meta">
-                  {{ h.league?.name ?? 'Lig bilgisi yok' }}@if (h.channel) { · {{ h.channel.name }} }
-                </div>
-                <div class="hero-actions">
-                  <a class="hero-btn" [routerLink]="['/yayin-planlama', h.id, 'edit']">Detaya git →</a>
-                  <button class="hero-btn-ghost" type="button">Sorun bildir</button>
-                </div>
-              </div>
-            </div>
-          } @else {
-            <div class="hero-empty">
-              <div class="placeholder-eyebrow">PLACEHOLDER · Aşama 3</div>
-              <div class="hero-empty-title">Canlı yayın takibi henüz bağlı değil</div>
-              <div class="hero-empty-sub">Bugünün yayın akışı aşağıda · ON_AIR takip mekanizması Aşama 3</div>
-            </div>
-          }
+          <div class="hero-empty">
+            <div class="placeholder-eyebrow">PLACEHOLDER · Aşama 3</div>
+            <div class="hero-empty-title">Canlı yayın takibi henüz bağlı değil</div>
+            <div class="hero-empty-sub">Bugünün yayın akışı aşağıda · ON_AIR takip mekanizması Aşama 3</div>
+          </div>
         </div>
 
         <bp-card title="Vardiyam" [padded]="true">
@@ -173,8 +159,13 @@ interface StudioSlot {
             @if (loadingStudios()) {
               <div class="empty">Yükleniyor…</div>
             } @else {
+              <!-- Drilldown: studio-plan ngOnInit day query-param'i okur; week
+                   normalize edip selectedDay'i ayarlar. studio/time bonus
+                   focus hint'i (şimdilik sadece accept, gelecekte highlight). -->
               @for (p of todayStudios().slice(0, 7); track p.id) {
-                <div class="studio-row">
+                <a class="studio-row"
+                   [routerLink]="['/studio-plan']"
+                   [queryParams]="{ day: isoToday(), studio: p.studio, time: p.startTime }">
                   <div class="studio-bar"></div>
                   <div class="studio-text">
                     <div class="studio-name">{{ p.programName || '(boş slot)' }}</div>
@@ -184,7 +175,7 @@ interface StudioSlot {
                     <div class="studio-start">{{ p.startTime }}</div>
                     <div class="studio-end">{{ p.endTime }}</div>
                   </div>
-                </div>
+                </a>
               } @empty {
                 <div class="empty">Bugün için stüdyo programı yok.</div>
               }
@@ -204,13 +195,18 @@ interface StudioSlot {
             } @else if (ports().length === 0) {
               <div class="empty">Tanımlı port yok.</div>
             } @else {
+              <!-- Drilldown: ingest-list port query-param'i okur, workspace
+                   tabını "Port Görünümü" (index 1) açar + highlightedPort
+                   sinyalini set eder. -->
               @for (p of ports(); track p.id) {
-                <div class="port-cell"
-                     [class.active]="p.active"
-                     [class.idle]="!p.active"
-                     [title]="p.name + (p.active ? ' · aktif' : ' · pasif')">
+                <a class="port-cell"
+                   [class.active]="p.active"
+                   [class.idle]="!p.active"
+                   [title]="p.name + (p.active ? ' · aktif' : ' · pasif')"
+                   [routerLink]="['/ingest']"
+                   [queryParams]="{ port: p.name }">
                   {{ portShortName(p.name) }}
-                </div>
+                </a>
               }
             }
           </div>
@@ -419,7 +415,12 @@ interface StudioSlot {
       padding: 11px 18px;
       align-items: center;
       border-bottom: 1px solid var(--bp-line-2);
+      /* Anchor variant (drilldown): visual eşit kalsın. */
+      text-decoration: none;
+      color: inherit;
+      transition: background var(--bp-dur-fast);
     }
+    .studio-row:hover { background: var(--bp-row-hover); }
     .studio-row:last-child { border-bottom: 0; }
     .studio-bar { width: 3px; height: 32px; border-radius: 2px; flex-shrink: 0; background: var(--bp-purple-400); }
     .studio-text { flex: 1; min-width: 0; }
@@ -450,7 +451,11 @@ interface StudioSlot {
       font-size: 9px;
       font-family: var(--bp-font-mono);
       color: #fff;
+      /* Anchor variant (drilldown): underline yok, hover'da hafif scale. */
+      text-decoration: none;
+      transition: transform var(--bp-dur-fast), filter var(--bp-dur-fast);
     }
+    .port-cell:hover { transform: scale(1.08); filter: brightness(1.18); }
     .port-cell.active { background: var(--bp-purple-500); }
     .port-cell.idle { background: var(--bp-bg-3); opacity: 0.4; }
     .ports-legend {
@@ -514,13 +519,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   readonly canViewAuditLog = computed(() => this.isAdmin() || this._userGroups().includes(GROUP.SystemEng));
   readonly canViewWeeklyShift = computed(() => this.isAdmin() || this._userGroups().includes(GROUP.SystemEng));
 
-  // Hard delete (2026-05-11): ScheduleStatus.ON_AIR enum'dan çıkarıldı.
-  // MCR/playout silindiği için ON_AIR'a geçiren mekanizma yok. Hero card
-  // computed'i her zaman undefined döner → template empty state gösterir.
-  // Sahte mapping (CONFIRMED'i canlı saymak) yasak.
-  heroBroadcast = computed<ScheduleRow | undefined>(() => undefined);
-
   // ─── KPIs ────────────────────────────────────────────────────────────────
+  // Hero ON_AIR (2026-05-11 hard-delete) yokken sahte mapping yasak → template
+  // doğrudan placeholder; eski `heroBroadcast = computed(() => undefined)` ölü
+  // route ile birlikte kaldırıldı (canlı takip Aşama 3'te bağlanacak).
   // "Şu an canlı" KPI (kpiLive) ON_AIR hard-delete sonrası kaldırıldı; yerine
   // template'te `kpiTodayTotal` + placeholder etiketi gösterilir.
   kpiTodayTotal = computed(() => this.todayBroadcasts().length);
@@ -557,7 +559,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.todayDate.set(`${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} · ${days[now.getDay()].toUpperCase()}`);
   }
 
-  private isoToday(): string {
+  // Template'den de okunuyor (studio satır drilldown queryParams.day).
+  isoToday(): string {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }

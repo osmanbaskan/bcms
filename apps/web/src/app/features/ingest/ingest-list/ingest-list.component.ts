@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { environment } from '../../../../environments/environment';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -171,7 +172,9 @@ class TrDateAdapter extends NativeDateAdapter {
         </div>
       </div>
 
-      <mat-tab-group class="workspace-tabs" (selectedIndexChange)="onWorkspaceTabChange($event)">
+      <mat-tab-group class="workspace-tabs"
+                     [selectedIndex]="selectedWorkspaceTab()"
+                     (selectedIndexChange)="onWorkspaceTabChange($event)">
         <mat-tab label="Ingest Planlama">
       <div class="planning-board">
         <div class="planning-board-header">
@@ -1095,13 +1098,36 @@ export class IngestListComponent implements OnInit, OnDestroy {
   private planPollSub?: Subscription;
   private portBoardPollSub?: Subscription;
 
-  constructor(private api: ApiService, private snack: MatSnackBar, private logger: LoggerService) {}
+  // 2026-05-25: Dashboard port hücresi drilldown'u — `?port=<name>` ile
+  // gelirse ngOnInit workspace tab'ını "Port Görünümü" (index 1) açar +
+  // highlightedPort sinyalini set eder (geriye dönük uyumlu: param yoksa
+  // davranış değişmez).
+  readonly selectedWorkspaceTab = signal(0);
+  readonly highlightedPort = signal<string | null>(null);
+
+  constructor(
+    private api: ApiService,
+    private snack: MatSnackBar,
+    private logger: LoggerService,
+    private route: ActivatedRoute,
+  ) {}
 
   ngOnInit() {
     // 2026-05-11: channel catalog (channel id → name resolve için).
     this.api.get<Channel[]>('/channels/catalog').subscribe({
       next: (res) => this.channels.set(Array.isArray(res) ? res : []),
     });
+
+    // Dashboard drilldown: `?port=<name>` → "Port Görünümü" tabını aç (index 1)
+    // + highlightedPort sinyalini set et (sonraki UI hook için).
+    const portParam = this.route.snapshot.queryParamMap.get('port');
+    if (portParam) {
+      this.highlightedPort.set(portParam);
+      this.selectedWorkspaceTab.set(1);
+      // Burst poll port board'u canlı tutar — onWorkspaceTabChange manuel
+      // tıklamada tetikleniyor; programatik geçişte de aynı davranış lazım.
+      this.startBurstPoll();
+    }
 
     this.loadLivePlanCandidates();
     this.loadRecordingPorts();
@@ -1182,6 +1208,7 @@ export class IngestListComponent implements OnInit, OnDestroy {
   }
 
   onWorkspaceTabChange(index: number) {
+    this.selectedWorkspaceTab.set(index);
     if (index === 1) this.startBurstPoll();
   }
 

@@ -3,6 +3,7 @@ import { Component, ElementRef, HostListener, OnInit, OnDestroy, ViewChild, comp
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { KeycloakService } from 'keycloak-angular';
+import { ActivatedRoute } from '@angular/router';
 import { Subject, Subscription, debounceTime, switchMap, finalize, tap } from 'rxjs';
 import ExcelJS from 'exceljs';
 import { ApiService } from '../../core/services/api.service';
@@ -160,6 +161,14 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   private readonly studioPlanService = inject(StudioPlanService);
   private readonly api = inject(ApiService);
   private readonly keycloak = inject(KeycloakService);
+  private readonly route = inject(ActivatedRoute);
+
+  // 2026-05-25: Dashboard drilldown'dan gelen focus hint sinyalleri.
+  // `day` query-param week navigation + selectedDay'i set eder; `studio`+
+  // `time` şimdilik sadece kayıt — gelecekte highlight için child component'e
+  // input olarak verilebilir. Query-param yokken davranış değişmez.
+  readonly focusStudio = signal<string | null>(null);
+  readonly focusTime = signal<string | null>(null);
 
   /** Reactive userGroups signal — ngOnInit'te tokenParsed'dan set edilir.
    *  Eski sürüm computed içinde non-reactive okuyorduk; signal pattern
@@ -267,6 +276,22 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
       this.viewMode.set('list');
     }
     this.loadCatalog();
+
+    // Dashboard drilldown: `?day=YYYY-MM-DD&studio=...&time=...`. Day varsa
+    // ilgili haftaya navigate eder + selectedDay'i set eder. studio/time
+    // focus hint olarak saklanır (geriye dönük uyumlu — params yoksa default
+    // davranış: this.weekStart üzerinden onWeekStartChange çalışır).
+    const qp = this.route.snapshot.queryParamMap;
+    const dayParam = qp.get('day');
+    const studioParam = qp.get('studio');
+    const timeParam = qp.get('time');
+    if (dayParam && /^\d{4}-\d{2}-\d{2}$/.test(dayParam)) {
+      this.weekStart = dayParam;
+      this.selectedDay = dayParam;
+    }
+    this.focusStudio.set(studioParam);
+    this.focusTime.set(timeParam);
+
     this.onWeekStartChange();
 
     this.saveSub = this.saveTrigger$
