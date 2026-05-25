@@ -421,133 +421,292 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
         }
       }
     } else {
-      const days = this.visibleDays();
-      const studios = this.studios;
+      // ──────────────────────────────────────────────────────────────────────
+      // 2026-05-25: Excel export layout referans Excel→PDF çıktısına uyacak
+      // şekilde yeniden tasarlandı. Referans:
+      //   `STÜDYO PLAN 25.05.2026 - 01.06.2026.pdf` (Microsoft Excel for M365)
+      //
+      // Yapı (referansla bire bir):
+      //   - 8 gün (Pazartesi → ertesi haftanın Pazartesi günü dahil)
+      //   - Her gün için 8 alt-kolon: [Saat] [Slot] [STD1] [STD2] [STD3] [STD4]
+      //     [BEIN GURME] [OUTSIDE] — toplam 64 kolon
+      //   - 3 satır header: tarih (dd.MM.yy), gün adı (İngilizce büyük),
+      //     "TIME" + dikey (textRotation 90) stüdyo başlıkları
+      //   - 4 × 15 dk slot per saat: saat kolonu 4 satır merged + slot kolonu
+      //     "00 - 15'", "15' - 30'", "30' - 45", "45' - 00'"
+      //   - Mor header (#43206D), beyaz bold yazı
+      //   - Page setup: A3 landscape, fitToPage 1×1, küçük margin
+      // PDF butonu (`exportPlan` → window.print) dokunulmadı; bu yalnız
+      // ExcelJS workbook table-branch refactoru. Liste view (`viewMode='list'`)
+      // de dokunulmadı.
+      // ──────────────────────────────────────────────────────────────────────
+      const baseDays = this.visibleDays();
+      // 8. gün — sonraki haftanın Pazartesi (referans pattern: Mon-Mon span)
+      const nextMonday = (() => {
+        const last = baseDays[baseDays.length - 1];
+        if (!last) return null;
+        const [y, m, d] = last.id.split('-').map(Number);
+        const dt = new Date(Date.UTC(y, m - 1, d + 1));
+        const iso = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+        return { id: iso, label: 'Pazartesi', date: iso.split('-').reverse().join('.') };
+      })();
+      const days = nextMonday ? [...baseDays, nextMonday] : baseDays;
+      // Export-only: studio listesine OUTSIDE eklenir (referansta var; domain'de
+      // gerçek stüdyo değil, sadece export grid'i için sahte kolon — boş kalır).
+      const exportStudios = [...this.studios, 'OUTSIDE'];
+      const SUB_COLS_PER_DAY = 2 + exportStudios.length; // [saat][slot] + N stüdyo = 8
+      const totalCols = days.length * SUB_COLS_PER_DAY;
+
       const timeSlots = this.timeSlots;
-      const totalCols = 1 + days.length * studios.length;
+      const SLOTS_PER_HOUR = 60 / STUDIO_PLAN_SLOT_MINUTES; // 4
+      const hourCount = timeSlots.length / SLOTS_PER_HOUR;
 
       const HEADER_BG = 'FF43206D';
       const HEADER_FONT = { color: { argb: 'FFFFFFFF' }, bold: true };
+      const SLOT_BG_EVEN = 'FFFFFFFF';      // beyaz (referans saat 7 satırları)
+      const SLOT_BG_ODD  = 'FFE8F0D8';      // açık yeşil (referans saat 8 satırları)
       const BORDER = {
-        top: { style: 'thin' as const, color: { argb: 'FF111827' } },
-        left: { style: 'thin' as const, color: { argb: 'FF111827' } },
-        bottom: { style: 'thin' as const, color: { argb: 'FF111827' } },
-        right: { style: 'thin' as const, color: { argb: 'FF111827' } },
+        top:    { style: 'thin' as const, color: { argb: 'FF666666' } },
+        left:   { style: 'thin' as const, color: { argb: 'FF666666' } },
+        bottom: { style: 'thin' as const, color: { argb: 'FF666666' } },
+        right:  { style: 'thin' as const, color: { argb: 'FF666666' } },
       };
 
-      // Row 1: corner + day headers (merged)
-      const headerRow1 = worksheet.addRow(new Array(totalCols).fill(''));
-      headerRow1.getCell(1).value = 'Saat';
-      let col = 2;
-      for (const day of days) {
-        const startCol = col;
-        const endCol = col + studios.length - 1;
-        headerRow1.getCell(startCol).value = `${day.label} · ${day.date}`;
-        worksheet.mergeCells(1, startCol, 1, endCol);
-        col = endCol + 1;
-      }
-      for (let i = 1; i <= totalCols; i++) {
-        const cell = headerRow1.getCell(i);
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
-        cell.font = HEADER_FONT;
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.border = BORDER;
-      }
+      // İngilizce gün adı (referansla aynı: MONDAY, TUESDAY, ...)
+      const enDay = (id: string): string => {
+        const [y, m, d] = id.split('-').map(Number);
+        const dt = new Date(Date.UTC(y, m - 1, d));
+        return ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][dt.getUTCDay()];
+      };
+      // dd.MM.yy formatı (referans: 25.05.26)
+      const shortDate = (id: string): string => {
+        const [y, m, d] = id.split('-');
+        return `${d}.${m}.${y.slice(2)}`;
+      };
 
-      // Row 2: empty + studio headers
-      const headerRow2 = worksheet.addRow(new Array(totalCols).fill(''));
-      headerRow2.getCell(1).value = '';
-      let sCol = 2;
-      for (const _day of days) {
-        for (const studio of studios) {
-          headerRow2.getCell(sCol).value = studio;
-          sCol++;
+      // ── Header Row 1: tarih (dd.MM.yy) — her gün için 6 stüdyo üstüne merged
+      const row1 = worksheet.addRow(new Array(totalCols).fill(''));
+      // ── Header Row 2: İngilizce gün adı — her gün için 6 stüdyo üstüne merged
+      const row2 = worksheet.addRow(new Array(totalCols).fill(''));
+      // ── Header Row 3: TIME (2 col merged) + dikey stüdyo başlıkları
+      const row3 = worksheet.addRow(new Array(totalCols).fill(''));
+
+      for (let di = 0; di < days.length; di++) {
+        const day = days[di];
+        const colStart = di * SUB_COLS_PER_DAY + 1;
+        const timeColStart = colStart;
+        const slotCol = colStart + 1;
+        const studio1Col = colStart + 2;
+        const dayBlockEnd = colStart + SUB_COLS_PER_DAY - 1;
+
+        // Row 1: tarih sadece stüdyo başlıklarının üstünde merged
+        row1.getCell(studio1Col).value = shortDate(day.id);
+        worksheet.mergeCells(1, studio1Col, 1, dayBlockEnd);
+
+        // Row 2: gün adı stüdyo başlıklarının üstünde merged
+        row2.getCell(studio1Col).value = enDay(day.id);
+        worksheet.mergeCells(2, studio1Col, 2, dayBlockEnd);
+
+        // Row 3: "TIME" merged 2-col (saat+slot kolonlarının üstü)
+        row3.getCell(timeColStart).value = 'TIME';
+        worksheet.mergeCells(3, timeColStart, 3, slotCol);
+
+        // Row 3: stüdyo başlıkları dikey
+        for (let si = 0; si < exportStudios.length; si++) {
+          const cell = row3.getCell(studio1Col + si);
+          const name = exportStudios[si];
+          // Referans pattern: "BEIN SPORTS / STUDIO 1" — domain Turkish naming'i
+          // operasyonel export label'ına dönüştürülür (sadece export, in-app
+          // state'i etkilemez).
+          cell.value = this.exportStudioLabel(name);
         }
       }
-      for (let i = 1; i <= totalCols; i++) {
-        const cell = headerRow2.getCell(i);
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
-        cell.font = HEADER_FONT;
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.border = BORDER;
+
+      // Tüm header satırlarına ortak stil (mor BG + beyaz bold)
+      for (const row of [row1, row2, row3]) {
+        for (let i = 1; i <= totalCols; i++) {
+          const cell = row.getCell(i);
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+          cell.font = { ...HEADER_FONT, size: row === row1 ? 14 : row === row2 ? 11 : 9, name: 'Arial' };
+          cell.alignment = row === row3
+            ? { horizontal: 'center', vertical: 'middle', textRotation: 90, wrapText: true }
+            : { horizontal: 'center', vertical: 'middle', wrapText: true };
+          cell.border = BORDER;
+        }
       }
+      // Row 3 "TIME" merged hücresi dikey değil, yatay olsun
+      row3.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      row1.height = 28;
+      row2.height = 22;
+      row3.height = 90; // dikey stüdyo başlıkları için
 
-      // Data rows
-      for (let i = 0; i < timeSlots.length; i++) {
-        const time = timeSlots[i];
-        const row = worksheet.addRow([time]);
-        const timeCell = row.getCell(1);
-        timeCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
-        timeCell.font = HEADER_FONT;
-        timeCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        timeCell.border = BORDER;
+      // ── Data rows: her saat için 4 slot
+      const SLOT_LABELS = ['00 - 15′', '15′ - 30′', '30′ - 45', '45′ - 00′'];
+      for (let hi = 0; hi < hourCount; hi++) {
+        const hourBase = timeSlots[hi * SLOTS_PER_HOUR];                  // "06:00", "07:00", ...
+        const hourNum = parseInt(hourBase.split(':')[0], 10);
+        const isEven = hi % 2 === 0;
+        const rowBg = isEven ? SLOT_BG_EVEN : SLOT_BG_ODD;
 
-        let c = 2;
-        for (const day of days) {
-          for (const studio of studios) {
-            const key = this.cellKey(day.id, studio, time);
-            const assignment = this.cells()[key];
-            const cell = row.getCell(c);
-            cell.border = BORDER;
-            if (assignment) {
-              cell.value = assignment.program;
-              const argb = this.hexToArgb(assignment.color);
-              if (argb !== 'FFFFFFFF') {
-                cell.fill = {
-                  type: 'pattern',
-                  pattern: 'solid',
-                  fgColor: { argb },
-                };
+        for (let s = 0; s < SLOTS_PER_HOUR; s++) {
+          const slotIdx = hi * SLOTS_PER_HOUR + s;
+          const time = timeSlots[slotIdx];
+          const row = worksheet.addRow(new Array(totalCols).fill(''));
+          row.height = 14;
+
+          for (let di = 0; di < days.length; di++) {
+            const day = days[di];
+            const colStart = di * SUB_COLS_PER_DAY + 1;
+            const hourCol = colStart;
+            const slotCol = colStart + 1;
+            const studio1Col = colStart + 2;
+
+            // Saat kolonu: ilk slot satırına büyük rakam, sonra merged 4 satır
+            const hourCell = row.getCell(hourCol);
+            if (s === 0) {
+              hourCell.value = hourNum;
+            }
+            hourCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+            hourCell.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 14, name: 'Arial' };
+            hourCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            hourCell.border = BORDER;
+
+            // Slot kolonu: "00 - 15'" vs.
+            const slotCell = row.getCell(slotCol);
+            slotCell.value = SLOT_LABELS[s];
+            slotCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE7F6' } }; // çok açık mor
+            slotCell.font = { color: { argb: 'FF1F1B2D' }, bold: true, size: 9, name: 'Arial' };
+            slotCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            slotCell.border = BORDER;
+
+            // Stüdyo hücreleri
+            for (let si = 0; si < exportStudios.length; si++) {
+              const studio = exportStudios[si];
+              const cell = row.getCell(studio1Col + si);
+              cell.border = BORDER;
+              cell.font = { size: 8, name: 'Arial' };
+              cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+              // OUTSIDE export-only sahte kolon — assignment'ları yok
+              if (studio !== 'OUTSIDE') {
+                const key = this.cellKey(day.id, studio, time);
+                const assignment = this.cells()[key];
+                if (assignment) {
+                  cell.value = assignment.program;
+                  const argb = this.hexToArgb(assignment.color);
+                  if (argb !== 'FFFFFFFF') {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
+                  } else {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+                  }
+                } else {
+                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+                }
+              } else {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
               }
             }
-            c++;
           }
+        }
+
+        // Aynı saat blokunda her gün için saat kolonunu merged (4 satır)
+        const blockStart = 4 + hi * SLOTS_PER_HOUR;
+        for (let di = 0; di < days.length; di++) {
+          const colStart = di * SUB_COLS_PER_DAY + 1;
+          const hourCol = colStart;
+          worksheet.mergeCells(blockStart, hourCol, blockStart + SLOTS_PER_HOUR - 1, hourCol);
         }
       }
 
-      // Slot merge: merge consecutive same-program slots per day+studio column
-      let mergeCol = 2;
-      for (const day of days) {
-        for (const studio of studios) {
+      // ── Aynı program merge — her gün × her stüdyo kolonu için ardışık aynı
+      // (program+renk) hücreleri merged. Saat/slot kolonları merged değil.
+      const DATA_ROW_OFFSET = 4; // header 3 satır + 1-based
+      for (let di = 0; di < days.length; di++) {
+        const day = days[di];
+        const colStart = di * SUB_COLS_PER_DAY + 1;
+        for (let si = 0; si < exportStudios.length; si++) {
+          const studio = exportStudios[si];
+          if (studio === 'OUTSIDE') continue;
+          const studioCol = colStart + 2 + si;
+
           let mergeStart = -1;
           let mergeProgram = '';
           let mergeColor = '';
-
-          for (let i = 0; i < timeSlots.length; i++) {
+          for (let i = 0; i <= timeSlots.length; i++) {
             const time = timeSlots[i];
-            const key = this.cellKey(day.id, studio, time);
-            const assignment = this.cells()[key];
-
-            if (assignment && assignment.program === mergeProgram && assignment.color === mergeColor) {
-              continue;
-            } else {
-              if (mergeStart !== -1 && i - mergeStart > 1) {
-                worksheet.mergeCells(3 + mergeStart, mergeCol, 3 + i - 1, mergeCol);
-                const mergedCell = worksheet.getRow(3 + mergeStart).getCell(mergeCol);
-                mergedCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-              }
-              mergeStart = assignment ? i : -1;
-              mergeProgram = assignment?.program ?? '';
-              mergeColor = assignment?.color ?? '';
+            const key = i < timeSlots.length ? this.cellKey(day.id, studio, time) : '';
+            const assignment = i < timeSlots.length ? this.cells()[key] : undefined;
+            const sameAsCurrent = assignment && assignment.program === mergeProgram && assignment.color === mergeColor;
+            if (sameAsCurrent) continue;
+            if (mergeStart !== -1 && i - mergeStart > 1) {
+              worksheet.mergeCells(
+                DATA_ROW_OFFSET + mergeStart, studioCol,
+                DATA_ROW_OFFSET + i - 1, studioCol,
+              );
+              const mergedCell = worksheet.getRow(DATA_ROW_OFFSET + mergeStart).getCell(studioCol);
+              mergedCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
             }
+            mergeStart = assignment ? i : -1;
+            mergeProgram = assignment?.program ?? '';
+            mergeColor = assignment?.color ?? '';
           }
-          if (mergeStart !== -1 && timeSlots.length - mergeStart > 1) {
-            worksheet.mergeCells(3 + mergeStart, mergeCol, 3 + timeSlots.length - 1, mergeCol);
-            const mergedCell = worksheet.getRow(3 + mergeStart).getCell(mergeCol);
-            mergedCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-          }
-          mergeCol++;
         }
       }
 
-      // Auto-width heuristic
-      worksheet.columns.forEach((colDef, idx) => {
-        if (idx === 0) {
-          colDef.width = 10;
-        } else {
-          colDef.width = 16;
+      // ── Column widths (referans pattern: saat kolonu dar, stüdyo orta)
+      for (let di = 0; di < days.length; di++) {
+        const colStart = di * SUB_COLS_PER_DAY + 1;
+        // Saat (sadece 1-2 hane rakam)
+        worksheet.getColumn(colStart).width = 4;
+        // Slot (örn. "00 - 15'" 8 karakter)
+        worksheet.getColumn(colStart + 1).width = 8.5;
+        // Stüdyolar (dikey textRotation 90; içerik program adı wrap)
+        for (let si = 0; si < exportStudios.length; si++) {
+          worksheet.getColumn(colStart + 2 + si).width = 5;
         }
-      });
+      }
+
+      // ── Footer: renk legend (referans pattern — alt kenarda renkli kutular)
+      const legendRowIdx = 3 + timeSlots.length + 1;  // 1 satır boşluk
+      const legend = this.colors();
+      if (legend.length > 0) {
+        const legendRow = worksheet.addRow(new Array(totalCols).fill(''));
+        legendRow.height = 18;
+        // 2 sub-col genişlikte renk kutu + 4 sub-col label
+        const PAIR = 6;
+        const PAIR_COLOR_WIDTH = 2;
+        for (let i = 0; i < legend.length; i++) {
+          const baseCol = 1 + i * PAIR;
+          if (baseCol + PAIR - 1 > totalCols) break;
+          // Renk kutusu
+          const colorCell = legendRow.getCell(baseCol);
+          colorCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: this.hexToArgb(legend[i].value) } };
+          colorCell.border = BORDER;
+          worksheet.mergeCells(legendRowIdx, baseCol, legendRowIdx, baseCol + PAIR_COLOR_WIDTH - 1);
+          // Label
+          const labelCell = legendRow.getCell(baseCol + PAIR_COLOR_WIDTH);
+          labelCell.value = legend[i].label;
+          labelCell.font = { size: 9, bold: true, name: 'Arial', color: { argb: 'FF1F1B2D' } };
+          labelCell.alignment = { horizontal: 'left', vertical: 'middle' };
+          worksheet.mergeCells(legendRowIdx, baseCol + PAIR_COLOR_WIDTH, legendRowIdx, baseCol + PAIR - 1);
+        }
+      }
+
+      // ── Page setup: A3 landscape, fitToPage 1×1, küçük margin
+      // A3 = ECMA-376 paperSize 8; ExcelJS enum'da explicit yok → numeric cast.
+      worksheet.pageSetup = {
+        paperSize: 8 as unknown as ExcelJS.Worksheet['pageSetup']['paperSize'],
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 1,
+        horizontalCentered: true,
+        verticalCentered: true,
+        margins: {
+          left: 0.2, right: 0.2, top: 0.3, bottom: 0.3,
+          header: 0.1, footer: 0.1,
+        },
+      };
+      worksheet.views = [{ showGridLines: false }];
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -555,9 +714,42 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Stüdyo-Planı-${this.weekStart}.xlsx`;
+    a.download = this.buildExportFileName();
     a.click();
     window.URL.revokeObjectURL(url);
+  }
+
+  /** Referans dosya adı pattern: "STÜDYO PLAN <start> - <end>.xlsx"
+   *  (referans PDF: "STÜDYO PLAN 25.05.2026 - 01.06.2026.pdf"). 8 günlük
+   *  Pazartesi→Pazartesi aralığı; list view tek tarih kullanır. */
+  private buildExportFileName(): string {
+    if (this.viewMode() === 'list') {
+      return `Stüdyo-Planı-${this.weekStart}.xlsx`;
+    }
+    const days = this.visibleDays();
+    if (days.length === 0) return `Stüdyo-Planı-${this.weekStart}.xlsx`;
+    const first = days[0];
+    const last = days[days.length - 1];
+    const [ly, lm, ld] = last.id.split('-').map(Number);
+    const nextMon = new Date(Date.UTC(ly, lm - 1, ld + 1));
+    const fmt = (id: string) => id.split('-').reverse().join('.');
+    const fmtDt = `${String(nextMon.getUTCDate()).padStart(2,'0')}.${String(nextMon.getUTCMonth()+1).padStart(2,'0')}.${nextMon.getUTCFullYear()}`;
+    return `STÜDYO PLAN ${fmt(first.id)} - ${fmtDt}.xlsx`;
+  }
+
+  /** Domain stüdyo adı → referans export label.
+   *  "Stüdyo 1"   → "BEIN SPORTS / STUDIO 1"
+   *  "beIN Gurme" → "BEIN GURME / STUDIO"
+   *  "OUTSIDE"    → "OUTSIDE"  (export-only sahte kolon)
+   */
+  private exportStudioLabel(name: string): string {
+    if (name === 'OUTSIDE') return 'OUTSIDE';
+    if (/^st[üu]dyo\s*(\d+)$/i.test(name)) {
+      const n = name.match(/(\d+)/)?.[1] ?? '';
+      return `BEIN SPORTS / STUDIO ${n}`;
+    }
+    if (/gurme/i.test(name)) return 'BEIN GURME / STUDIO';
+    return name.toUpperCase();
   }
 
   private hexToArgb(hex: string | undefined | null): string {
