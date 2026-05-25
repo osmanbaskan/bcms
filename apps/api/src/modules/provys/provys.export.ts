@@ -41,6 +41,11 @@ export interface ProvysExportRow {
    *  exportlarda "Tür" kolonu yerine "Not" olarak çıkar; rawKind exporttan
    *  kalktı, API DTO'sunda kalır. */
   userNote: string | null;
+  // 2026-05-26: BXF ham title kaynak alanları (Excel'e eklendi; PDF dokunmadı)
+  seriesName?: string | null;
+  episodeNumber?: number | null;
+  versionName?: string | null;
+  titleSource?: string | null;
 }
 
 export interface ProvysExportOptions {
@@ -107,18 +112,27 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
   const channelName = channelDisplayName(opts.channelSlug);
   const titleText = `Provys Akış — ${channelName} — ${opts.scheduleDate}`;
 
-  // 1: başlık (7 kolon merge — Kaynak kolonu Excel'de yok)
-  sheet.addRow([titleText, '', '', '', '', '', '']);
-  sheet.mergeCells('A1:G1');
+  // 2026-05-26: Yeni 4 kolon eklendi — Seri, Bölüm, VersionName, Kaynak.
+  // Toplam kolon sayısı 7 → 11. Backward-compat: eski not export'larıyla
+  // sütun sırası değişmedi (yeni kolonlar Kategori-Not arasına eklendi,
+  // Sıra/Başlangıç/Süre/DC/Başlık aynı pozisyonda).
+  // Kolon haritası:
+  //   A=Sıra B=Başlangıç C=Süre D=DC E=Başlık F=Seri G=Bölüm H=VersionName
+  //   I=Kategori J=Kaynak K=Not
+  const EMPTY11 = ['', '', '', '', '', '', '', '', '', '', ''];
+
+  // 1: başlık (tüm 11 kolon merge)
+  sheet.addRow([titleText, ...EMPTY11.slice(1)]);
+  sheet.mergeCells('A1:K1');
   // 2: meta (üretim zamanı)
-  sheet.addRow([`Üretim: ${generationStampIstanbul()} (Europe/Istanbul)`, '', '', '', '', '', '']);
-  sheet.mergeCells('A2:G2');
+  sheet.addRow([`Üretim: ${generationStampIstanbul()} (Europe/Istanbul)`, ...EMPTY11.slice(1)]);
+  sheet.mergeCells('A2:K2');
   // 3: sütun başlıkları
-  sheet.addRow(['Sıra', 'Başlangıç', 'Süre', 'DC Kod', 'Başlık', 'Kategori', 'Not']);
+  sheet.addRow(['Sıra', 'Başlangıç', 'Süre', 'DC Kod', 'Başlık', 'Seri', 'Bölüm', 'VersionName', 'Kategori', 'Kaynak', 'Not']);
 
   if (opts.rows.length === 0) {
-    sheet.addRow(['Seçili tarih için BXF akışı yok', '', '', '', '', '', '']);
-    sheet.mergeCells(`A4:G4`);
+    sheet.addRow(['Seçili tarih için BXF akışı yok', ...EMPTY11.slice(1)]);
+    sheet.mergeCells(`A4:K4`);
     sheet.getRow(4).font = { italic: true, color: { argb: 'FF6B7280' } };
     sheet.getRow(4).alignment = { horizontal: 'center' };
   } else {
@@ -130,7 +144,11 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
         sanitizeCell(r.durationTimecode ?? '—'),
         sanitizeCell(r.dcCode ?? '—'),
         sanitizeCell(r.title),
+        sanitizeCell(r.seriesName ?? '—'),
+        r.episodeNumber ?? '—',
+        sanitizeCell(r.versionName ?? '—'),
         sanitizeCell(categoryLabel(r.category)),
+        sanitizeCell(r.titleSource ?? '—'),
         sanitizeCell(r.userNote ?? ''),
       ]);
       // Kategori bazlı pastel fill — tüm satır.
@@ -140,19 +158,23 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
         pattern: 'solid',
         fgColor: { argb: palette.fillArgb },
       };
-      // Kategori hücresine kalın text + kategori metin rengi.
-      row.getCell(6).font = { bold: true, color: { argb: 'FF' + palette.textHex.slice(1) } };
+      // Kategori hücresine kalın text + kategori metin rengi. (Kategori col I = 9)
+      row.getCell(9).font = { bold: true, color: { argb: 'FF' + palette.textHex.slice(1) } };
     }
   }
 
   sheet.columns = [
-    { width:  6 },   // Sıra
-    { width: 14 },   // Başlangıç (HH:MM:SS:FF)
-    { width: 14 },   // Süre
-    { width: 14 },   // DC Kod
-    { width: 60 },   // Başlık
-    { width: 14 },   // Kategori
-    { width: 30 },   // Not — serbest metin için daha geniş
+    { width:  6 },   // A Sıra
+    { width: 14 },   // B Başlangıç (HH:MM:SS:FF)
+    { width: 14 },   // C Süre
+    { width: 14 },   // D DC Kod
+    { width: 50 },   // E Başlık
+    { width: 36 },   // F Seri
+    { width:  8 },   // G Bölüm
+    { width: 40 },   // H VersionName
+    { width: 14 },   // I Kategori
+    { width: 18 },   // J Kaynak (title_source)
+    { width: 26 },   // K Not
   ];
   // Timecode + DC sütunları text formatında — Excel saat/sayı autoconvert engellensin.
   for (const col of ['B', 'C', 'D']) {

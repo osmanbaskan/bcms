@@ -67,7 +67,22 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
                   </span>
                 </td>
                 <td class="col-dc mono" [class.muted]="!item.dcCode">{{ item.dcCode ?? '—' }}</td>
-                <td class="col-title">{{ item.title }}</td>
+                <!-- 2026-05-26: 2 seviyeli görünüm — series_name varsa üst
+                     bağlam (program ailesi/turnuva) + title alt başlık. Tanıtım/
+                     Kamu Spotu gibi NonProgramEvent kayıtlarında series_name
+                     null → eski tek seviyeli görünüm bozulmaz. episode_number
+                     varsa rozet olarak "B.<n>" gösterilir. -->
+                <td class="col-title">
+                  @if (item.seriesName) {
+                    <div class="title-series">
+                      {{ item.seriesName }}
+                      @if (item.episodeNumber != null) {
+                        <span class="title-episode" [title]="'Bölüm ' + item.episodeNumber">B.{{ item.episodeNumber }}</span>
+                      }
+                    </div>
+                  }
+                  <div class="title-text" [title]="item.title">{{ item.title }}</div>
+                </td>
                 <td class="col-note">
                   <!-- Serbest kullanıcı notu — blur'da PATCH. Optimistic UI;
                        hata olursa servis önceki değere döner ve aria-invalid set. -->
@@ -128,6 +143,30 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     /* Başlık: leftover'i alır (table-layout: fixed → explicit width yok).
        DC Kod sabit, Başlık esnek; dar viewport'ta ellipsis devreye girer. */
     .col-title { white-space: normal; color: var(--bp-fg-1); }
+    /* 2026-05-26: 2 seviyeli başlık görünümü. series_name varsa üst rozet,
+       title alt satır. NonProgramEvent (Tanıtım/Kamu Spotu) için series_name
+       null → sadece title render edilir. */
+    .title-series {
+      font-size: 10.5px;
+      color: var(--bp-fg-3);
+      letter-spacing: 0.04em;
+      margin-bottom: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .title-episode {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 0 5px;
+      border: 1px solid var(--bp-line);
+      border-radius: 3px;
+      font-size: 9.5px;
+      color: var(--bp-fg-2);
+      vertical-align: 1px;
+      font-family: var(--bp-font-mono);
+    }
+    .title-text { color: var(--bp-fg-1); }
     .col-note { width: 200px; }
     .note-input {
       width: 100%;

@@ -40,6 +40,10 @@ function makeItem(slug: string, scheduleDate: string, eventId = 'E1'): ProvysIte
     startAt: `${scheduleDate}T18:00:00Z`, durationMs: 30000,
     startTimecode: null, durationTimecode: null, frameRate: null, dcCode: null,
     title: 'T', rawKind: null, category: 'PROGRAM',
+    // 2026-05-26: yeni ham BXF title kaynak alanları — test fixture'da null
+    versionName: null, episodeName: null, eventTitle: null,
+    contentName: null, programName: null, adType: null, spotType: null,
+    titleSource: null, seriesName: null, episodeNumber: null,
     sourceFile: '/x.bxf', userNote: null, updatedAt: `${scheduleDate}T18:00:00Z`,
   };
 }

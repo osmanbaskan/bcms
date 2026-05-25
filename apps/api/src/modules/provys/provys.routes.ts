@@ -75,6 +75,17 @@ const itemDtoSchema = z.object({
   title: z.string(),
   rawKind: z.string().nullable(),
   category: z.enum(['REKLAM', 'KAMU_SPOTU', 'CANLI', 'PROGRAM', 'TANITIM', 'DIGER']),
+  // 2026-05-26: BXF ham title kaynak alanları + series metadata
+  versionName: z.string().nullable(),
+  episodeName: z.string().nullable(),
+  eventTitle: z.string().nullable(),
+  contentName: z.string().nullable(),
+  programName: z.string().nullable(),
+  adType: z.string().nullable(),
+  spotType: z.string().nullable(),
+  titleSource: z.enum(['VERSION_NAME','EPISODE_NAME','EVENT_TITLE','CONTENT_NAME','PROGRAM_NAME','AD_TYPE_SPOT_TYPE','UNKNOWN']).nullable(),
+  seriesName: z.string().nullable(),
+  episodeNumber: z.number().int().nullable(),
   sourceFile: z.string(),
   userNote: z.string().nullable(),
   updatedAt: z.string(),
@@ -106,6 +117,16 @@ function rowsToDto(rows: Array<{
   title: string;
   rawKind: string | null;
   category: string;
+  versionName: string | null;
+  episodeName: string | null;
+  eventTitle: string | null;
+  contentName: string | null;
+  programName: string | null;
+  adType: string | null;
+  spotType: string | null;
+  titleSource: string | null;
+  seriesName: string | null;
+  episodeNumber: number | null;
   sourceFile: string;
   userNote: string | null;
   updatedAt: Date;
@@ -125,6 +146,16 @@ function rowsToDto(rows: Array<{
     title: r.title,
     rawKind: r.rawKind,
     category: r.category as ProvysItemDto['category'],
+    versionName: r.versionName,
+    episodeName: r.episodeName,
+    eventTitle: r.eventTitle,
+    contentName: r.contentName,
+    programName: r.programName,
+    adType: r.adType,
+    spotType: r.spotType,
+    titleSource: r.titleSource as ProvysItemDto['titleSource'],
+    seriesName: r.seriesName,
+    episodeNumber: r.episodeNumber,
     sourceFile: r.sourceFile,
     userNote: r.userNote,
     updatedAt: r.updatedAt.toISOString(),
@@ -203,6 +234,9 @@ export async function provysRoutes(app: FastifyInstance) {
             sequence: true, startAt: true, durationMs: true,
             startTimecode: true, durationTimecode: true, frameRate: true,
             dcCode: true, title: true, rawKind: true, category: true,
+            versionName: true, episodeName: true, eventTitle: true,
+            contentName: true, programName: true, adType: true, spotType: true,
+            titleSource: true, seriesName: true, episodeNumber: true,
             sourceFile: true, userNote: true, updatedAt: true,
           },
         });
@@ -247,6 +281,10 @@ export async function provysRoutes(app: FastifyInstance) {
         rawKind: i.rawKind,
         sourceFile: i.sourceFile,
         userNote: i.userNote,
+        seriesName: i.seriesName,
+        episodeNumber: i.episodeNumber,
+        versionName: i.versionName,
+        titleSource: i.titleSource,
       }));
     const buf = await exportProvysToExcelBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows });
     const filename = exportFilename(parsed.channel, date, 'xlsx');
@@ -279,6 +317,10 @@ export async function provysRoutes(app: FastifyInstance) {
         rawKind: i.rawKind,
         sourceFile: i.sourceFile,
         userNote: i.userNote,
+        seriesName: i.seriesName,
+        episodeNumber: i.episodeNumber,
+        versionName: i.versionName,
+        titleSource: i.titleSource,
       }));
     const buf = await exportProvysToPdfBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows });
     const filename = exportFilename(parsed.channel, date, 'pdf');

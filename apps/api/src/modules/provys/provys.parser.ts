@@ -56,6 +56,17 @@ export class ProvysParseError extends Error {
   }
 }
 
+/** `title` derived display alan — fallback chain'in hangi kaynaktan
+ *  geldiğini gösterir. UI/reporting için ayrı saklanır. */
+export type ProvysTitleSource =
+  | 'VERSION_NAME'
+  | 'EPISODE_NAME'
+  | 'EVENT_TITLE'
+  | 'CONTENT_NAME'
+  | 'PROGRAM_NAME'
+  | 'AD_TYPE_SPOT_TYPE'
+  | 'UNKNOWN';
+
 export interface ParsedItem {
   eventId: string;
   /** Broadcast day `YYYY-MM-DD` (Europe/Istanbul naive). Dosya scope tarih. */
@@ -74,6 +85,19 @@ export interface ParsedItem {
   title: string;
   rawKind: string | null;
   category: ProvysCategory;
+  // 2026-05-26: Ham BXF title kaynakları — `title` derived display alan
+  // olarak kalır; bu alanlar UI üst başlık / alt başlık / metadata ayrımı
+  // yapabilmek için ayrı tutulur. Empty string → null normalize edilir.
+  versionName: string | null;
+  episodeName: string | null;
+  eventTitle: string | null;
+  contentName: string | null;
+  programName: string | null;
+  adType: string | null;
+  spotType: string | null;
+  titleSource: ProvysTitleSource;
+  seriesName: string | null;
+  episodeNumber: number | null;
 }
 
 const SMPTE_TIMECODE_RE = /^\d{1,3}:\d{1,2}:\d{1,2}:\d{1,3}$/;
@@ -92,6 +116,16 @@ const ParsedItemSchema = z.object({
   title: z.string().min(1).max(500),
   rawKind: z.string().max(100).nullable(),
   category: z.enum(PROVYS_CATEGORIES),
+  versionName: z.string().max(500).nullable(),
+  episodeName: z.string().max(500).nullable(),
+  eventTitle: z.string().max(500).nullable(),
+  contentName: z.string().max(500).nullable(),
+  programName: z.string().max(500).nullable(),
+  adType: z.string().max(100).nullable(),
+  spotType: z.string().max(100).nullable(),
+  titleSource: z.enum(['VERSION_NAME','EPISODE_NAME','EVENT_TITLE','CONTENT_NAME','PROGRAM_NAME','AD_TYPE_SPOT_TYPE','UNKNOWN']),
+  seriesName: z.string().max(300).nullable(),
+  episodeNumber: z.number().int().min(0).max(32767).nullable(),
 });
 
 export const ProvysParseOutputSchema = z.array(ParsedItemSchema);
@@ -458,48 +492,102 @@ function pickFirstString(...candidates: unknown[]): string | null {
  *   4. Content > Name                               — kısa içerik adı
  *   5. PrimaryEvent > ProgramEvent > ProgramName    — program adı
  *   6. NonProgramEvent > Details > AdType (+ SpotType) — promo/reklam etiketi
+ *
+ * 2026-05-26: Hangi kaynaktan seçildiği `source` field'ında işaretli
+ * (ParsedItem.titleSource → DB title_source kolonu). Ham kaynaklar da
+ * `raw` objesinde ayrı döner; caller hem display title hem ham field'ları
+ * tek pass'ta alır.
  */
 function deriveTitle(
   scheduledEvent: Record<string, unknown>,
   evd: Record<string, unknown>,
-): string {
+): {
+  text: string;
+  source: ProvysTitleSource;
+  raw: {
+    versionName: string | null;
+    episodeName: string | null;
+    eventTitle: string | null;
+    contentName: string | null;
+    programName: string | null;
+    adType: string | null;
+    spotType: string | null;
+  };
+} {
   const content = scheduledEvent['Content'] as Record<string, unknown> | undefined;
-
-  // 1. VersionName (en zengin)
-  const versionName = findDescriptionText(content, 'VersionName');
-  if (versionName) return versionName.slice(0, 500);
-
-  // 2. Series > EpisodeName
+  const primary = evd['PrimaryEvent'] as Record<string, unknown> | undefined;
+  const npeDetails = (primary?.['NonProgramEvent'] as Record<string, unknown> | undefined)?.['Details'] as Record<string, unknown> | undefined;
   const series = ((content?.['ContentDetail'] as Record<string, unknown> | undefined)
     ?.['ProgramContent'] as Record<string, unknown> | undefined)
     ?.['Series'] as Record<string, unknown> | undefined;
+
+  // Ham kaynakları topla — empty → null, max 500.
+  const versionName = findDescriptionText(content, 'VersionName');
   const episodeName = pickFirstString(series?.['EpisodeName']);
-  if (episodeName) return episodeName;
-
-  // 3. EventTitle (generic)
   const eventTitle = pickFirstString(evd['EventTitle']);
-  if (eventTitle) return eventTitle;
-
-  // 4. Content > Name
   const contentName = pickFirstString(content?.['Name']);
-  if (contentName) return contentName;
-
-  // 5. ProgramEvent > ProgramName
-  const primary = evd['PrimaryEvent'] as Record<string, unknown> | undefined;
   const programName = pickFirstString((primary?.['ProgramEvent'] as Record<string, unknown> | undefined)?.['ProgramName']);
-  if (programName) return programName;
+  const adTypeRaw = pickFirstString(npeDetails?.['AdType']);
+  const spotTypeRaw = pickFirstString(npeDetails?.['SpotType']);
+  // adType ayrı kolon için 100 char limit
+  const adType = adTypeRaw ? adTypeRaw.slice(0, 100) : null;
+  const spotType = spotTypeRaw ? spotTypeRaw.slice(0, 100) : null;
 
-  // 6. AdType (+ SpotType) — promo/reklam fallback
-  const details = (primary?.['NonProgramEvent'] as Record<string, unknown> | undefined)?.['Details'] as Record<string, unknown> | undefined;
-  const adType = details?.['AdType'];
-  const spotType = details?.['SpotType'];
-  if (typeof adType === 'string' && adType.trim()) {
-    return [adType, typeof spotType === 'string' ? spotType : '']
-      .filter(Boolean)
-      .join(' / ')
-      .slice(0, 500);
+  const raw = {
+    versionName: versionName ?? null,
+    episodeName: episodeName ?? null,
+    eventTitle: eventTitle ?? null,
+    contentName: contentName ?? null,
+    programName: programName ?? null,
+    adType,
+    spotType,
+  };
+
+  // Fallback chain — ilk dolu kazanır.
+  if (versionName) return { text: versionName.slice(0, 500), source: 'VERSION_NAME', raw };
+  if (episodeName) return { text: episodeName, source: 'EPISODE_NAME', raw };
+  if (eventTitle) return { text: eventTitle, source: 'EVENT_TITLE', raw };
+  if (contentName) return { text: contentName, source: 'CONTENT_NAME', raw };
+  if (programName) return { text: programName, source: 'PROGRAM_NAME', raw };
+  if (adType) {
+    return {
+      text: [adType, spotType ?? ''].filter(Boolean).join(' / ').slice(0, 500),
+      source: 'AD_TYPE_SPOT_TYPE',
+      raw,
+    };
   }
-  return '';
+  return { text: '', source: 'UNKNOWN', raw };
+}
+
+/** Series/SeriesName + Series/EpisodeNumber çıkar. Sadece ProgramEvent
+ *  (ContentDetail/ProgramContent altında) dolu; NonProgramEvent'te null. */
+function extractSeriesFields(
+  scheduledEvent: Record<string, unknown>,
+): { seriesName: string | null; episodeNumber: number | null } {
+  const content = scheduledEvent['Content'] as Record<string, unknown> | undefined;
+  const series = ((content?.['ContentDetail'] as Record<string, unknown> | undefined)
+    ?.['ProgramContent'] as Record<string, unknown> | undefined)
+    ?.['Series'] as Record<string, unknown> | undefined;
+  if (!series) return { seriesName: null, episodeNumber: null };
+
+  const seriesNameRaw = pickFirstString(series['SeriesName']);
+  const seriesName = seriesNameRaw ? seriesNameRaw.slice(0, 300) : null;
+
+  // EpisodeNumber: ya direkt string ya `{#text}`. Numeric değilse veya
+  // smallint sınırını (32767) aşıyorsa null.
+  const epRaw = series['EpisodeNumber'];
+  let episodeNumber: number | null = null;
+  let epStr: string | null = null;
+  if (typeof epRaw === 'string') epStr = epRaw.trim();
+  else if (epRaw && typeof epRaw === 'object') {
+    const text = (epRaw as Record<string, unknown>)['#text'];
+    if (typeof text === 'string') epStr = text.trim();
+  }
+  if (epStr && /^\d+$/.test(epStr)) {
+    const n = Number(epStr);
+    if (Number.isFinite(n) && n >= 0 && n <= 32767) episodeNumber = n;
+  }
+  return { seriesName, episodeNumber };
 }
 
 /**
@@ -559,13 +647,14 @@ export function parseBxf(content: string): ParsedItem[] {
     const scheduleDate = startFields.broadcastDate ?? fileLevelFallback;
     if (!scheduleDate) continue;  // ne event ne dosya tarihi varsa skip
 
-    const title = deriveTitle(sev as Record<string, unknown>, evd);
-    if (!title) continue;
+    const titleResult = deriveTitle(sev as Record<string, unknown>, evd);
+    if (!titleResult.text) continue;
 
     const rawKind = deriveRawKind(sev as Record<string, unknown>, evd);
     const durationFields = parseDuration(evd['LengthOption']);
     const dcCode = extractDcCode(sev as Record<string, unknown>);
     const frameRate = startFields.frameRate ?? durationFields.frameRate ?? null;
+    const seriesFields = extractSeriesFields(sev as Record<string, unknown>);
 
     items.push({
       eventId,
@@ -577,9 +666,20 @@ export function parseBxf(content: string): ParsedItem[] {
       durationTimecode: durationFields.timecode,
       frameRate,
       dcCode,
-      title,
+      title: titleResult.text,
       rawKind,
       category: classifyCategory(rawKind),
+      // Ham title kaynakları + derived source
+      versionName: titleResult.raw.versionName,
+      episodeName: titleResult.raw.episodeName,
+      eventTitle: titleResult.raw.eventTitle,
+      contentName: titleResult.raw.contentName,
+      programName: titleResult.raw.programName,
+      adType: titleResult.raw.adType,
+      spotType: titleResult.raw.spotType,
+      titleSource: titleResult.source,
+      seriesName: seriesFields.seriesName,
+      episodeNumber: seriesFields.episodeNumber,
     });
   }
 

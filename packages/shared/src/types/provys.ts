@@ -70,6 +70,18 @@ export type ProvysStreamEvent =
   | { type: 'update';    channel: ProvysChannelSlug; scheduleDate: string; items: ProvysItemDto[] }
   | { type: 'heartbeat'; ts: number };
 
+/** `title` derived display alan — fallback chain'in hangi kaynaktan
+ *  geldiğini gösterir. UI/reporting için ayrı saklanır.
+ *  Migration öncesi yazılan kayıtlarda null. */
+export type ProvysTitleSource =
+  | 'VERSION_NAME'
+  | 'EPISODE_NAME'
+  | 'EVENT_TITLE'
+  | 'CONTENT_NAME'
+  | 'PROGRAM_NAME'
+  | 'AD_TYPE_SPOT_TYPE'
+  | 'UNKNOWN';
+
 export interface ProvysItemDto {
   id: number;
   channelSlug: ProvysChannelSlug;
@@ -87,9 +99,24 @@ export interface ProvysItemDto {
   frameRate: number | null;
   /** Content > ContentId > HouseNumber (örn. "DC00041439"). */
   dcCode: string | null;
+  /** Derived display title — fallback chain'in seçtiği metin. */
   title: string;
   rawKind: string | null;
   category: ProvysCategory;
+  // 2026-05-26: BXF ham title kaynak alanları — `title` derived display alan
+  // olarak kalır. Bu alanlar migration öncesi kayıtlarda null; watcher yeni
+  // çalıştığında BXF reparse ile dolar. UI iki seviyeli görünüm (üst başlık
+  // + alt başlık + metadata) ayrımı için kullanır.
+  versionName: string | null;
+  episodeName: string | null;
+  eventTitle: string | null;
+  contentName: string | null;
+  programName: string | null;
+  adType: string | null;
+  spotType: string | null;
+  titleSource: ProvysTitleSource | null;
+  seriesName: string | null;
+  episodeNumber: number | null;
   sourceFile: string;
   /** Kullanıcı serbest notu (BCMS UI tarafından PATCH ile yazılır). BXF
    *  parser/watcher bu alana dokunmaz; composed snapshot sync sırasında

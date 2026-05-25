@@ -335,6 +335,19 @@ export function parseAsrunBxf(content: string, opts: ParseAsrunOptions = {}): Pa
       title,
       rawKind,
       category,
+      // 2026-05-26: Provys ParsedItem'a eklenen ham title source alanları —
+      // asrun parser bunları üretmiyor (asrun XML'inde Series/VersionName yok);
+      // type uyumluluğu için null. asrun_items tablosuna yazılmaz.
+      versionName: null,
+      episodeName: null,
+      eventTitle: null,
+      contentName: null,
+      programName: null,
+      adType: null,
+      spotType: null,
+      titleSource: 'UNKNOWN' as const,
+      seriesName: null,
+      episodeNumber: null,
     });
     sequence += 1;
   }

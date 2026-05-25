@@ -759,3 +759,215 @@ describe('provys.parser › parseBxf (SMPTE 2021)', () => {
     });
   });
 });
+
+// ── 2026-05-26: BXF ham title kaynak alanları + title_source (4 materyal tipi) ─
+const wrapEvent = (eventXml: string, broadcastDate = '2026-05-26') => `<?xml version="1.0" encoding="UTF-8"?>
+<BxfMessage xmlns="http://smpte-ra.org/schemas/2021/2017/BXF" xmlns:pmcp="http://www.atsc.org/XMLSchemas/pmcp/2007/3.1" messageType="Information">
+  <BxfData action="add">
+    <Schedule type="Primary" ScheduleStart="${broadcastDate}T00:00:00:00" ScheduleEnd="${broadcastDate}T23:59:59:00">
+      <Channel ShortName="LT4"/>
+      ${eventXml}
+    </Schedule>
+  </BxfData>
+</BxfMessage>`;
+
+const MATCH_EVENT = `<ScheduledEvent>
+  <EventData eventType="Primary">
+    <EventId><EventId>urn:uuid:MATCH-001</EventId></EventId>
+    <EventTitle>McDonald's Ligue 1 Season 2025/2026 Canli Maclar</EventTitle>
+    <PrimaryEvent>
+      <ProgramEvent>
+        <SegmentNumber>1</SegmentNumber>
+        <ProgramName>McDonald's Ligue 1 Season 2025/2026 Canli Maclar</ProgramName>
+      </ProgramEvent>
+    </PrimaryEvent>
+    <StartDateTime><SmpteDateTime frameRate="25" broadcastDate="2026-05-26"><SmpteTimeCode>21:45:00:14</SmpteTimeCode></SmpteDateTime></StartDateTime>
+    <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>02:00:07:00</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+    <StartMode>Manual</StartMode><EndMode>Manual</EndMode>
+  </EventData>
+  <Content>
+    <ContentId><HouseNumber>DC00055598</HouseNumber></ContentId>
+    <Name>McDonald's Ligue 1 Season 2025/2026 Canli Maclar</Name>
+    <Description type="VersionName">McDonald's Ligue 1 Season 2025/2026 Play - Out 1.Mac Saint Etienne - Nice Maci Canli</Description>
+    <Media><MediaLocation><Location><RouterSource><Name>Live</Name></RouterSource></Location></MediaLocation></Media>
+    <ContentDetail><ProgramContent>
+      <Series>
+        <SeriesName>McDonald's Ligue 1 Season 2025/2026 Canli Maclar</SeriesName>
+        <EpisodeName>McDonald's Ligue 1 Season 2025/2026 Play - Out 1.Mac Saint Etienne - Nice Maci Canli</EpisodeName>
+        <EpisodeNumber>307</EpisodeNumber>
+      </Series>
+    </ProgramContent></ContentDetail>
+  </Content>
+  <ContentType>Main Programme</ContentType>
+</ScheduledEvent>`;
+
+const PROGRAM_EVENT = `<ScheduledEvent>
+  <EventData eventType="Primary">
+    <EventId><EventId>urn:uuid:PROG-001</EventId></EventId>
+    <EventTitle>Premier League Stories</EventTitle>
+    <PrimaryEvent>
+      <ProgramEvent>
+        <SegmentNumber>1</SegmentNumber>
+        <ProgramName>Premier League Stories</ProgramName>
+      </ProgramEvent>
+    </PrimaryEvent>
+    <StartDateTime><SmpteDateTime frameRate="25" broadcastDate="2026-05-26"><SmpteTimeCode>23:30:00:20</SmpteTimeCode></SmpteDateTime></StartDateTime>
+    <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:25:37:16</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+    <StartMode>Follow</StartMode><EndMode>Duration</EndMode>
+  </EventData>
+  <Content>
+    <ContentId><HouseNumber>DC00052002</HouseNumber></ContentId>
+    <Name>Premier League Stories</Name>
+    <Description type="VersionName">EPL Stories - Yakubu</Description>
+    <ContentDetail><ProgramContent>
+      <Series>
+        <SeriesName>Premier League Stories</SeriesName>
+        <EpisodeName>EPL Stories - Yakubu</EpisodeName>
+        <EpisodeNumber>54</EpisodeNumber>
+      </Series>
+    </ProgramContent></ContentDetail>
+  </Content>
+  <ContentType>Main Programme</ContentType>
+</ScheduledEvent>`;
+
+const PROMO_EVENT = `<ScheduledEvent>
+  <EventData eventType="Primary">
+    <EventId><EventId>urn:uuid:PROMO-001</EventId></EventId>
+    <EventTitle>ID 1 MOTOR SPORLARI - BOKS - VOLEYBOL</EventTitle>
+    <PrimaryEvent>
+      <NonProgramEvent>
+        <Details>
+          <AdType>Promo</AdType>
+          <SpotType>Standard</SpotType>
+        </Details>
+      </NonProgramEvent>
+    </PrimaryEvent>
+    <StartDateTime><SmpteDateTime frameRate="25" broadcastDate="2026-05-26"><SmpteTimeCode>19:44:32:11</SmpteTimeCode></SmpteDateTime></StartDateTime>
+    <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:00:29:20</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+    <StartMode>Follow</StartMode><EndMode>Duration</EndMode>
+  </EventData>
+  <Content>
+    <ContentId><HouseNumber>DC00040861</HouseNumber></ContentId>
+    <Name>ID 1 MOTOR SPORLARI - BOKS - VOLEYBOL</Name>
+    <Description type="VersionName">ID 1 MOTOR SPORLARI - BOKS - VOLEYBOL</Description>
+  </Content>
+  <ContentType>Promo</ContentType>
+</ScheduledEvent>`;
+
+const PSA_EVENT = `<ScheduledEvent>
+  <EventData eventType="Primary">
+    <EventId><EventId>urn:uuid:PSA-001</EventId></EventId>
+    <EventTitle>KAMU (KS) RAHIM AGIZI KANSERI</EventTitle>
+    <PrimaryEvent>
+      <NonProgramEvent>
+        <Details>
+          <AdType>Promo</AdType>
+          <SpotType>Standard</SpotType>
+        </Details>
+      </NonProgramEvent>
+    </PrimaryEvent>
+    <StartDateTime><SmpteDateTime frameRate="25" broadcastDate="2026-05-26"><SmpteTimeCode>23:59:38:24</SmpteTimeCode></SmpteDateTime></StartDateTime>
+    <LengthOption><Duration><SmpteDuration frameRate="25"><SmpteTimeCode>00:00:21:06</SmpteTimeCode></SmpteDuration></Duration></LengthOption>
+    <StartMode>Follow</StartMode><EndMode>Duration</EndMode>
+  </EventData>
+  <Content>
+    <ContentId><HouseNumber>DC00044972</HouseNumber></ContentId>
+    <Name>KAMU (KS) RAHIM AGIZI KANSERI</Name>
+    <Description type="VersionName">KAMU (KS) RAHIM AGIZI KANSERI</Description>
+  </Content>
+  <ContentType>Promo</ContentType>
+</ScheduledEvent>`;
+
+describe('provys.parser › BXF raw title source fields (2026-05-26)', () => {
+  it('Maç (CANLI): VersionName kazanır, Series alanları + episodeNumber 307', () => {
+    const [item] = parseBxf(wrapEvent(MATCH_EVENT));
+    expect(item.dcCode).toBe('DC00055598');
+    expect(item.category).toBe('CANLI');
+    expect(item.rawKind).toBe('Live');
+    expect(item.title).toContain('Saint Etienne - Nice');
+    expect(item.titleSource).toBe('VERSION_NAME');
+    expect(item.versionName).toContain('Saint Etienne - Nice');
+    expect(item.episodeName).toContain('Saint Etienne - Nice');
+    expect(item.eventTitle).toContain('Canli Maclar');
+    expect(item.contentName).toContain('Canli Maclar');
+    expect(item.programName).toContain('Canli Maclar');
+    expect(item.seriesName).toContain('Canli Maclar');
+    expect(item.episodeNumber).toBe(307);
+    expect(item.adType).toBeNull();
+    expect(item.spotType).toBeNull();
+  });
+
+  it('Program: VersionName kazanır, seriesName=Premier League Stories, episodeNumber 54', () => {
+    const [item] = parseBxf(wrapEvent(PROGRAM_EVENT));
+    expect(item.dcCode).toBe('DC00052002');
+    expect(item.category).toBe('PROGRAM');
+    expect(item.rawKind).toBe('Program');
+    expect(item.title).toBe('EPL Stories - Yakubu');
+    expect(item.titleSource).toBe('VERSION_NAME');
+    expect(item.versionName).toBe('EPL Stories - Yakubu');
+    expect(item.episodeName).toBe('EPL Stories - Yakubu');
+    expect(item.eventTitle).toBe('Premier League Stories');
+    expect(item.seriesName).toBe('Premier League Stories');
+    expect(item.episodeNumber).toBe(54);
+    expect(item.adType).toBeNull();
+  });
+
+  it('Tanıtım (Promo): VersionName kazanır, Series alanları null, adType/spotType dolu', () => {
+    const [item] = parseBxf(wrapEvent(PROMO_EVENT));
+    expect(item.dcCode).toBe('DC00040861');
+    expect(item.category).toBe('TANITIM');
+    expect(item.rawKind).toBe('Promo');
+    expect(item.title).toContain('MOTOR SPORLARI');
+    expect(item.titleSource).toBe('VERSION_NAME');
+    expect(item.versionName).toContain('MOTOR SPORLARI');
+    expect(item.eventTitle).toContain('MOTOR SPORLARI');
+    expect(item.contentName).toContain('MOTOR SPORLARI');
+    // ProgramEvent yok → Series alanları null
+    expect(item.episodeName).toBeNull();
+    expect(item.programName).toBeNull();
+    expect(item.seriesName).toBeNull();
+    expect(item.episodeNumber).toBeNull();
+    // NonProgramEvent → AdType + SpotType dolu
+    expect(item.adType).toBe('Promo');
+    expect(item.spotType).toBe('Standard');
+  });
+
+  it('Kamu Spotu (PSA): KAMU prefix → category KAMU_SPOTU, Series null, adType=Promo', () => {
+    const [item] = parseBxf(wrapEvent(PSA_EVENT));
+    expect(item.dcCode).toBe('DC00044972');
+    expect(item.category).toBe('KAMU_SPOTU');
+    expect(item.rawKind).toBe('PSA');
+    expect(item.title).toContain('KAMU');
+    expect(item.titleSource).toBe('VERSION_NAME');
+    expect(item.versionName).toContain('KAMU');
+    expect(item.seriesName).toBeNull();
+    expect(item.episodeNumber).toBeNull();
+    // AdType=Promo BXF'te var ama category PSA → adType ayrı kolon yine yazılır
+    expect(item.adType).toBe('Promo');
+    expect(item.spotType).toBe('Standard');
+  });
+
+  it('titleSource fallback: VersionName yokken EVENT_TITLE kazanır', () => {
+    const xml = MATCH_EVENT
+      .replace(/<Description type="VersionName">[^<]*<\/Description>\s*/g, '')
+      .replace(/<EpisodeName>[^<]*<\/EpisodeName>\s*/g, '');
+    const [item] = parseBxf(wrapEvent(xml));
+    expect(item.titleSource).toBe('EVENT_TITLE');
+    expect(item.title).toContain('Canli Maclar');
+    expect(item.versionName).toBeNull();
+    expect(item.episodeName).toBeNull();
+  });
+
+  it('Empty string normalize → null', () => {
+    const xml = PROMO_EVENT.replace('<EventTitle>ID 1 MOTOR SPORLARI - BOKS - VOLEYBOL</EventTitle>', '<EventTitle></EventTitle>');
+    const [item] = parseBxf(wrapEvent(xml));
+    // Empty EventTitle → null; title chain VersionName'e düşer (zaten dolu)
+    expect(item.eventTitle).toBeNull();
+  });
+
+  it('EpisodeNumber numeric değilse null', () => {
+    const xml = PROGRAM_EVENT.replace('<EpisodeNumber>54</EpisodeNumber>', '<EpisodeNumber>abc</EpisodeNumber>');
+    const [item] = parseBxf(wrapEvent(xml));
+    expect(item.episodeNumber).toBeNull();
+  });
+});

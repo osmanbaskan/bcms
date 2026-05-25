@@ -49,8 +49,23 @@ function computeHash(
     | 'frameRate'
     | 'dcCode'
     | 'scheduleDate'
+    | 'versionName'
+    | 'episodeName'
+    | 'eventTitle'
+    | 'contentName'
+    | 'programName'
+    | 'adType'
+    | 'spotType'
+    | 'titleSource'
+    | 'seriesName'
+    | 'episodeNumber'
   >,
 ): string {
+  // 2026-05-26: Ham title kaynak alanları hash'e dahil — bu alanlar değişirse
+  // payloadHash mismatch tetiklenir → update path çalışır, watcher değişimi
+  // ignore etmez. Sıra korunmalı (eski + yeni alanlar; rebuild sırasında
+  // existing rows için hash mismatch beklenir → 1x update tetiklenir, sonra
+  // stabilize olur).
   const canonical = [
     item.eventId,
     item.scheduleDate,
@@ -64,6 +79,16 @@ function computeHash(
     item.rawKind ?? '',
     item.category,
     item.sequence,
+    item.versionName ?? '',
+    item.episodeName ?? '',
+    item.eventTitle ?? '',
+    item.contentName ?? '',
+    item.programName ?? '',
+    item.adType ?? '',
+    item.spotType ?? '',
+    item.titleSource,
+    item.seriesName ?? '',
+    item.episodeNumber ?? '',
   ].join('|');
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }
@@ -116,6 +141,16 @@ export function buildDiff(
         title: p.title,
         rawKind: p.rawKind,
         category: p.category,
+        versionName: p.versionName,
+        episodeName: p.episodeName,
+        eventTitle: p.eventTitle,
+        contentName: p.contentName,
+        programName: p.programName,
+        adType: p.adType,
+        spotType: p.spotType,
+        titleSource: p.titleSource,
+        seriesName: p.seriesName,
+        episodeNumber: p.episodeNumber,
         sourceFile,
         sourceMtime,
         payloadHash: hash,
@@ -134,6 +169,16 @@ export function buildDiff(
           title: p.title,
           rawKind: p.rawKind,
           category: p.category,
+          versionName: p.versionName,
+          episodeName: p.episodeName,
+          eventTitle: p.eventTitle,
+          contentName: p.contentName,
+          programName: p.programName,
+          adType: p.adType,
+          spotType: p.spotType,
+          titleSource: p.titleSource,
+          seriesName: p.seriesName,
+          episodeNumber: p.episodeNumber,
           sourceFile,
           sourceMtime,
           payloadHash: hash,

@@ -1331,9 +1331,33 @@ model ProvysItem {
   frameRate        Int?      @map("frame_rate")
   /// Content > ContentId > HouseNumber (Provys "DC..." house code).
   dcCode           String?   @map("dc_code") @db.VarChar(40)
+  /// Derived display title — fallback chain (öncelikli ilk dolu kazanır):
+  /// VersionName → EpisodeName → EventTitle → Content.Name → ProgramName →
+  /// AdType/SpotType. Hangi kaynaktan geldiği `titleSource` kolonunda işaretli.
   title            String    @db.VarChar(500)
   rawKind          String?   @map("raw_kind") @db.VarChar(100)
   category         String    @db.VarChar(20)
+  /// 2026-05-25: BXF ham title kaynakları — `title` derived display alan
+  /// olarak kalır; bu alanlar UI'da "üst başlık / alt başlık / metadata"
+  /// ayrımı yapabilmek için ayrı saklanır. Hepsi nullable; backfill yok.
+  versionName      String?   @map("version_name")   @db.VarChar(500)
+  episodeName      String?   @map("episode_name")   @db.VarChar(500)
+  eventTitle       String?   @map("event_title")    @db.VarChar(500)
+  contentName      String?   @map("content_name")   @db.VarChar(500)
+  programName      String?   @map("program_name")   @db.VarChar(500)
+  /// NonProgramEvent/Details/AdType (Promo / Paid Program / Commercial).
+  /// `raw_kind` derivation'da kullanılır; ayrıca reporting için saklı.
+  adType           String?   @map("ad_type")        @db.VarChar(100)
+  spotType         String?   @map("spot_type")      @db.VarChar(100)
+  /// `title` hangi kaynaktan seçildi — parser'ın kararı. Değerler:
+  /// VERSION_NAME, EPISODE_NAME, EVENT_TITLE, CONTENT_NAME, PROGRAM_NAME,
+  /// AD_TYPE_SPOT_TYPE, UNKNOWN.
+  titleSource      String?   @map("title_source")   @db.VarChar(40)
+  /// Series/SeriesName — program ailesi/turnuva adı (sadece ProgramEvent).
+  /// UI'da `title` üst bağlamı olarak gösterilebilir.
+  seriesName       String?   @map("series_name")    @db.VarChar(300)
+  /// Series/EpisodeNumber — sayısal bölüm/sıra no.
+  episodeNumber    Int?      @map("episode_number") @db.SmallInt
   sourceFile       String    @map("source_file") @db.VarChar(500)
   sourceMtime      DateTime  @map("source_mtime") @db.Timestamptz(6)
   payloadHash      String    @map("payload_hash") @db.VarChar(64)
