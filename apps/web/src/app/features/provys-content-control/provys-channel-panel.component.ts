@@ -7,6 +7,11 @@ import {
   type ProvysChannelSlug,
   type ProvysItemDto,
 } from './provys.types';
+import {
+  MATERIAL_BADGE,
+  buildMaterialTooltip,
+  type MaterialBadgeStyle,
+} from './provys-material-badge';
 
 /** Kategori → CSS class fragment (template'te `cat-chip--<frag>` / `row--<frag>`). */
 const CATEGORY_CLASS: Record<ProvysCategory, string> = {
@@ -40,6 +45,7 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
               <th class="col-dur">Süre</th>
               <th class="col-cat">Kategori</th>
               <th class="col-dc">DC Kod</th>
+              <th class="col-mat">Materyal</th>
               <th class="col-title">Başlık</th>
               <th class="col-note">Not</th>
             </tr>
@@ -67,6 +73,16 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
                   </span>
                 </td>
                 <td class="col-dc mono" [class.muted]="!item.dcCode">{{ item.dcCode ?? '—' }}</td>
+                <!-- 2026-05-27 (C9): Materyal status badge — SSDB cache + Provys
+                     row response-time computed. Provys duration ezilmez;
+                     SSDB süresi sadece tooltip'te. CANLI satır nötr/gri. -->
+                <td class="col-mat">
+                  <span
+                    class="mat-badge"
+                    [class]="'mat-badge mat-badge--' + materialBadgeFor(item).tone"
+                    [title]="materialTooltipFor(item)"
+                  >{{ materialBadgeFor(item).compact }}</span>
+                </td>
                 <!-- 2026-05-26: 2 seviyeli görünüm — series_name varsa üst
                      bağlam (program ailesi/turnuva) + title alt başlık. Tanıtım/
                      Kamu Spotu gibi NonProgramEvent kayıtlarında series_name
@@ -140,6 +156,28 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     .col-dur  { color: var(--bp-fg-2); }
     .col-cat { width: 130px; }
     .col-dc { width: 110px; color: var(--bp-fg-2); }
+    /* "Materyal" kolonu — dar + tek satır + ellipsis. Badge tek satır;
+       kompakt etiketler (Canlı/Var/Eksik/...) sığsın. */
+    .col-mat { width: 120px; }
+    .mat-badge {
+      display: inline-block;
+      max-width: 100%;
+      padding: 1px 7px;
+      border-radius: var(--bp-r-pill, 999px);
+      font-size: 10.5px;
+      font-weight: var(--bp-fw-semibold, 600);
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border: 1px solid transparent;
+    }
+    /* Tone palet — dark default; light override aşağıda */
+    .mat-badge--neutral { background: rgba(156, 163, 175, 0.16); color: #d1d5db; border-color: rgba(156, 163, 175, 0.35); }
+    .mat-badge--muted   { background: rgba(107, 114, 128, 0.14); color: #9ca3af; border-color: rgba(107, 114, 128, 0.30); font-style: italic; }
+    .mat-badge--warning { background: rgba(245, 158, 11, 0.18); color: #fcd34d; border-color: rgba(245, 158, 11, 0.45); }
+    .mat-badge--success { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.45); }
+    .mat-badge--danger  { background: rgba(239, 68, 68, 0.22);  color: #fca5a5; border-color: rgba(239, 68, 68, 0.50); }
     /* Başlık: leftover'i alır (table-layout: fixed → explicit width yok).
        DC Kod sabit, Başlık esnek; dar viewport'ta ellipsis devreye girer. */
     .col-title { white-space: normal; color: var(--bp-fg-1); }
@@ -239,6 +277,23 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     :host-context(html[data-theme="light"]) .cat-chip--diger {
       background: rgba(75, 85, 99, 0.16); color: #1f2937; border-color: #4b5563;
     }
+    /* Materyal badge — light mode kontrast güçlendirmesi (WCAG AA) */
+    :host-context(html[data-theme="light"]) .mat-badge { font-weight: 700; }
+    :host-context(html[data-theme="light"]) .mat-badge--neutral {
+      background: rgba(75, 85, 99, 0.14); color: #1f2937; border-color: #4b5563;
+    }
+    :host-context(html[data-theme="light"]) .mat-badge--muted {
+      background: rgba(107, 114, 128, 0.10); color: #374151; border-color: #6b7280;
+    }
+    :host-context(html[data-theme="light"]) .mat-badge--warning {
+      background: rgba(245, 158, 11, 0.22); color: #92400e; border-color: #d97706;
+    }
+    :host-context(html[data-theme="light"]) .mat-badge--success {
+      background: rgba(16, 185, 129, 0.20); color: #065f46; border-color: #059669;
+    }
+    :host-context(html[data-theme="light"]) .mat-badge--danger {
+      background: rgba(239, 68, 68, 0.20); color: #991b1b; border-color: #dc2626;
+    }
     .row { transition: background var(--bp-dur-fast, 100ms) linear; }
     .row:hover { background: var(--bp-bg-3); }
     /* Sol-bar accent — dark zeminde okunabilir kalsın; CANLI için ek soft tint */
@@ -282,6 +337,16 @@ export class ProvysChannelPanelComponent {
 
   styleFor(category: ProvysCategory) {
     return PROVYS_CATEGORY_STYLES[category];
+  }
+
+  /** Materyal status -> badge compact label + tone CSS class. */
+  materialBadgeFor(item: ProvysItemDto): MaterialBadgeStyle {
+    return MATERIAL_BADGE[item.ssdb.materialStatus];
+  }
+
+  /** Materyal status -> multi-line tooltip (`title` attribute). */
+  materialTooltipFor(item: ProvysItemDto): string {
+    return buildMaterialTooltip(item);
   }
 
   /** Kategori → CSS class fragment (chip + row için ortak). */

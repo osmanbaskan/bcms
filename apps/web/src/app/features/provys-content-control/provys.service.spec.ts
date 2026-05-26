@@ -45,6 +45,14 @@ function makeItem(slug: string, scheduleDate: string, eventId = 'E1'): ProvysIte
     contentName: null, programName: null, adType: null, spotType: null,
     titleSource: null, seriesName: null, episodeNumber: null,
     sourceFile: '/x.bxf', userNote: null, updatedAt: `${scheduleDate}T18:00:00Z`,
+    // C7 (2026-05-27): SSDB merge default — unchecked.
+    ssdb: {
+      lookupStatus: null, materialStatus: 'unchecked', statusLabel: 'Kontrol bekliyor',
+      mediaGuid: null, matchMethod: null,
+      ssdbDurationFrames: null, ssdbDurationTimecode: null,
+      provysDurationFrames: null, frameRate: null,
+      lastCheckedAt: null, lastError: null,
+    },
   };
 }
 
@@ -251,5 +259,51 @@ describe('ProvysService (per-day snapshot)', () => {
     // 3) Hiçbir kategori seçili değil — 0 satır
     service.setSelectedCategories(new Set());
     expect(service.filteredItemsFor('beinhaber' as any)().length).toBe(0);
+  });
+
+  // C9 (2026-05-27): "Sadece eksik materyaller" filtresi.
+  it('onlyMissingMaterial default false; setOnlyMissingMaterial set eder', () => {
+    expect(service.onlyMissingMaterial()).toBe(false);
+    service.setOnlyMissingMaterial(true);
+    expect(service.onlyMissingMaterial()).toBe(true);
+    service.setOnlyMissingMaterial(false);
+    expect(service.onlyMissingMaterial()).toBe(false);
+  });
+
+  it('filteredItemsFor: onlyMissingMaterial açıkken eksik status\'leri gösterir, diğerleri gizler', async () => {
+    type Status = ProvysItemDto['ssdb']['materialStatus'];
+    function withStatus(eventId: string, status: Status, over: Partial<ProvysItemDto> = {}): ProvysItemDto {
+      const base = makeItem('beinhaber', service.activeDate(), eventId);
+      return {
+        ...base, ...over,
+        ssdb: { ...base.ssdb, materialStatus: status, statusLabel: status },
+      };
+    }
+    const items: ProvysItemDto[] = [
+      withStatus('A', 'dc_not_applicable'),         // GİZLENİR (SSDB kapsamı dışı)
+      withStatus('B', 'missing_material'),
+      withStatus('C', 'found_duration_mismatch'),
+      withStatus('D', 'found_duration_unknown'),
+      withStatus('E', 'ssdb_error'),
+      withStatus('F', 'found_match'),               // GİZLENİR (alarm değil)
+      withStatus('G', 'unchecked'),                 // GİZLENİR (henüz bilinmeyen)
+      withStatus('H', 'live_not_applicable', { category: 'CANLI' }), // GİZLENİR (CANLI)
+    ];
+    const promise = service.loadInitial();
+    for (const ch of PROVYS_CHANNELS) {
+      const req = http.expectOne(`${environment.apiUrl}/provys/items?channel=${ch.slug}&date=${service.activeDate()}`);
+      req.flush(ch.slug === 'beinhaber' ? items : []);
+    }
+    await promise;
+
+    // Toggle kapalı: 8 satır görünür
+    expect(service.filteredItemsFor('beinhaber' as any)().length).toBe(8);
+
+    // Toggle açık: 4 eksik satır görünür, 4 gizli (dc_not_applicable, found_match,
+    // unchecked, live_not_applicable). "not_applicable" semantikli iki status
+    // SSDB kapsamı dışı; eksik filtreye dahil DEĞİL.
+    service.setOnlyMissingMaterial(true);
+    const visible = service.filteredItemsFor('beinhaber' as any)().map((i) => i.eventId).sort();
+    expect(visible).toEqual(['B', 'C', 'D', 'E']);
   });
 });

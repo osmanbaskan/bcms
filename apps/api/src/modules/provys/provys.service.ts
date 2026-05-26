@@ -196,7 +196,12 @@ export function buildDiff(
   return { toCreate, toUpdate, toDeleteIds };
 }
 
-async function emitNotify(
+// 2026-05-26: SSDB resolver worker (`apps/api/src/modules/ssdb/ssdb-resolver.worker.ts`)
+// cache update sonrasi etkilenen (channel, date) ciftleri icin `provys_changed`
+// kanalini reuse eder; mevcut SSE listener UI'yi otomatik refresh eder.
+// Bu fonksiyon Provys-tarafi pg_notify icin canonical primitive — duplicate
+// implementation yerine ortak kullanim icin export.
+export async function emitNotify(
   prisma: PrismaClient,
   logger: FastifyBaseLogger,
   channelSlug: string,

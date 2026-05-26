@@ -45,6 +45,8 @@ import { startAuditPartitionJob } from './modules/audit/audit-partition.job.js';
 import { startOutboxPoller } from './modules/outbox/outbox.poller.js';
 import { startProvysWatcher } from './modules/provys/provys.watcher.js';
 import { startAsrunWatcher } from './modules/asrun/asrun.watcher.js';
+import { startSsdbResolverWorker } from './modules/ssdb/ssdb-resolver.worker.js';
+import { ssdbRoutes } from './modules/ssdb/ssdb.routes.js';
 
 const BACKGROUND_SERVICES = [
   'notifications',
@@ -56,6 +58,7 @@ const BACKGROUND_SERVICES = [
   'outbox-poller',
   'provys-watcher',
   'asrun-watcher',
+  'ssdb-resolver',
 ] as const;
 
 type BackgroundService = (typeof BACKGROUND_SERVICES)[number];
@@ -141,6 +144,10 @@ async function startBackgroundServices(app: FastifyInstance): Promise<void> {
   await run('outbox-poller',   () => startOutboxPoller(app));
   await run('provys-watcher',  () => startProvysWatcher(app));
   await run('asrun-watcher',   () => startAsrunWatcher(app));
+  // Iki guard: (a) BCMS_BACKGROUND_SERVICES listede olmasi, (b) feature flag
+  // PROVYS_SSDB_RESOLVER=on. Feature flag iceride `startSsdbResolverWorker`
+  // tarafindan kontrol edilir; flag off iken timer kurulmaz.
+  await run('ssdb-resolver',   () => { startSsdbResolverWorker(app); });
 }
 
 function errorResponse(error: Error & { statusCode?: number; code?: string }) {
@@ -387,6 +394,7 @@ export async function buildApp() {
   await app.register(weeklyShiftRoutes,    { prefix: '/api/v1/weekly-shifts' });
   await app.register(provysRoutes,         { prefix: '/api/v1/provys' });
   await app.register(asrunRoutes,          { prefix: '/api/v1/asrun' });
+  await app.register(ssdbRoutes,           { prefix: '/api/v1/ssdb' });
 
   return app;
 }

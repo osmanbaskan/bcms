@@ -130,6 +130,15 @@ function dateFromIso(iso: string): Date {
         >
           Program başlıkları
         </mat-slide-toggle>
+        <mat-slide-toggle
+          class="header-toggle"
+          [checked]="onlyMissingMaterial()"
+          (change)="onOnlyMissingMaterialToggle($event)"
+          aria-label="Sadece eksik materyaller"
+          matTooltip="missing_material, found_duration_mismatch, found_duration_unknown, ssdb_error"
+        >
+          Sadece eksik materyaller
+        </mat-slide-toggle>
         <span class="count-label" aria-live="polite">
           {{ visibleCount() }} / {{ totalCount() }} kayıt
         </span>
@@ -363,6 +372,12 @@ export class ProvysContentControlComponent implements OnInit, OnDestroy {
 
   onShowProgramHeadersToggle(ev: MatSlideToggleChange): void {
     this.service.setShowProgramHeaders(ev.checked);
+  }
+
+  readonly onlyMissingMaterial = computed<boolean>(() => this.service.onlyMissingMaterial());
+
+  onOnlyMissingMaterialToggle(ev: MatSlideToggleChange): void {
+    this.service.setOnlyMissingMaterial(ev.checked);
   }
 
   ngOnInit(): void {

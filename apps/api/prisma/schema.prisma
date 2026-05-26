@@ -1407,3 +1407,33 @@ model AsrunItem {
   @@index([channelSlug, scheduleDate, startAt], name: "asrun_items_channel_date_start_idx")
   @@map("asrun_items")
 }
+
+/// SSDB MAM materyal lookup cache (DC-bazlı; kanal/gün-bağımsız).
+/// Sadece SSDB tarafından okunan ham gerçekleri tutar; Provys row × cache
+/// karşılaştırması sonucu (`found_match`, `mismatch` vb.) BURAYA YAZILMAZ
+/// — response-time hesaplanır (drift riski). lookupStatus enum'u 4 değer:
+/// 'found' | 'missing_material' | 'duration_unknown' | 'ssdb_error'.
+/// SSDB enrichment Provys watcher hash/diff mantığını bozmasın diye tamamen
+/// ayrı tablo; ProvysItem tablosuna dokunulmaz.
+model SsdbMaterialCache {
+  dcCode               String    @id @map("dc_code") @db.VarChar(40)
+  lookupStatus         String    @map("lookup_status") @db.VarChar(32)
+  mediaGuid            String?   @map("media_guid") @db.VarChar(36)
+  mediaName            String?   @map("media_name") @db.VarChar(500)
+  mediaAlias           String?   @map("media_alias") @db.VarChar(500)
+  originalFilename     String?   @map("original_filename") @db.VarChar(500)
+  matchMethod          String?   @map("match_method") @db.VarChar(40)
+  tcSom                Int?      @map("tc_som")
+  tcEom                Int?      @map("tc_eom")
+  ssdbDurationFrames   Int?      @map("ssdb_duration_frames")
+  ssdbDurationTimecode String?   @map("ssdb_duration_timecode") @db.VarChar(20)
+  frameRate            Int?      @map("frame_rate")
+  lastCheckedAt        DateTime  @map("last_checked_at") @db.Timestamptz(6)
+  lastFoundAt          DateTime? @map("last_found_at") @db.Timestamptz(6)
+  lastError            String?   @map("last_error") @db.VarChar(500)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt       @map("updated_at") @db.Timestamptz(6)
+
+  @@index([lookupStatus, lastCheckedAt], name: "ssdb_cache_lookup_checked_idx")
+  @@map("ssdb_material_cache")
+}

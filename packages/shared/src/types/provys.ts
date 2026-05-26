@@ -123,6 +123,64 @@ export interface ProvysItemDto {
    *  korunur. Export "Not" kolonu olarak bu değer kullanılır. */
   userNote: string | null;
   updatedAt: string;
+  /** 2026-05-27: SSDB MAM materyal kontrol bilgisi (response-time computed).
+   *  Her zaman dolu — `materialStatus` 8 değerli enum:
+   *    `live_not_applicable` (CANLI), `missing_dc_code`, `unchecked`,
+   *    `missing_material`, `found_match`, `found_duration_mismatch`,
+   *    `found_duration_unknown`, `ssdb_error`.
+   *  Cache okunmadıysa veya flag off ise `unchecked`/derived default döner. */
+  ssdb: ProvysItemSsdbInfo;
+}
+
+/** DB cache `ssdb_material_cache.lookup_status` — raw SSDB lookup outcome. */
+export type SsdbLookupStatus =
+  | 'found'
+  | 'missing_material'
+  | 'duration_unknown'
+  | 'ssdb_error';
+
+/** UI material status — response-time computed; DB'ye yazılmaz.
+ *  `dc_not_applicable` ve `live_not_applicable` SSDB kapsamı dışı kabul edilir
+ *  (alarm üretmez; eksik filtreye dahil değildir). */
+export type ProvysMaterialStatus =
+  | 'live_not_applicable'
+  | 'dc_not_applicable'
+  | 'unchecked'
+  | 'missing_material'
+  | 'found_match'
+  | 'found_duration_mismatch'
+  | 'found_duration_unknown'
+  | 'ssdb_error';
+
+/** Resolver hangi yolla MEDIA satırını buldu (cache `match_method`). */
+export type SsdbMatchMethod =
+  | 'alias'
+  | 'original_filename'
+  | 'name_like';
+
+/**
+ * Provys row × SSDB cache karşılaştırması sonucu UI render bilgisi.
+ * `materialStatus` 8 değerli enum; `statusLabel` backend-derived Türkçe metin.
+ * CANLI satırlar için cache okunmaz ve cache alanları null döner.
+ */
+export interface ProvysItemSsdbInfo {
+  /** Cache lookup_status; cache yok veya CANLI iken null. */
+  lookupStatus: SsdbLookupStatus | null;
+  /** Response-time hesaplanan UI status — render bunun üzerinden. */
+  materialStatus: ProvysMaterialStatus;
+  /** Türkçe label; UI direkt render eder. */
+  statusLabel: string;
+  mediaGuid: string | null;
+  matchMethod: SsdbMatchMethod | null;
+  ssdbDurationFrames: number | null;
+  ssdbDurationTimecode: string | null;
+  /** Backend response-time hesabı; mismatch tooltip için. */
+  provysDurationFrames: number | null;
+  /** Cache/row'dan gelen fps; UI render için. */
+  frameRate: number | null;
+  /** ISO-8601 instant; cache `last_checked_at`. */
+  lastCheckedAt: string | null;
+  lastError: string | null;
 }
 
 // PERMISSIONS.provys.read — Admin auto-bypass davranışı korunur,

@@ -9,5 +9,9 @@ export {
   type ProvysCategory,
   type ProvysCategoryStyle,
   type ProvysItemDto,
+  type ProvysItemSsdbInfo,
+  type ProvysMaterialStatus,
+  type SsdbLookupStatus,
+  type SsdbMatchMethod,
   type ProvysStreamEvent,
 } from '@bcms/shared';

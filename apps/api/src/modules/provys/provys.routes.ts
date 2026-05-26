@@ -15,6 +15,12 @@ import {
   exportProvysToPdfBuffer,
   type ProvysExportRow,
 } from './provys.export.js';
+import {
+  buildSsdbInfoForRow,
+  fetchSsdbCacheMap,
+  isSsdbResolverEnabled,
+  type ProvysRowForMerge,
+} from './provys.ssdb-merge.js';
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -60,6 +66,23 @@ function shouldIncludeProgramHeaders(value: string | undefined): boolean {
   return value === 'true';
 }
 
+const ssdbInfoSchema = z.object({
+  lookupStatus: z.enum(['found','missing_material','duration_unknown','ssdb_error']).nullable(),
+  materialStatus: z.enum([
+    'live_not_applicable','dc_not_applicable','unchecked','missing_material',
+    'found_match','found_duration_mismatch','found_duration_unknown','ssdb_error',
+  ]),
+  statusLabel: z.string(),
+  mediaGuid: z.string().nullable(),
+  matchMethod: z.enum(['alias','original_filename','name_like']).nullable(),
+  ssdbDurationFrames: z.number().int().nonnegative().nullable(),
+  ssdbDurationTimecode: z.string().nullable(),
+  provysDurationFrames: z.number().int().nonnegative().nullable(),
+  frameRate: z.number().int().positive().nullable(),
+  lastCheckedAt: z.string().nullable(),
+  lastError: z.string().nullable(),
+});
+
 const itemDtoSchema = z.object({
   id: z.number().int(),
   channelSlug: z.enum(PROVYS_CHANNEL_SLUGS as [string, ...string[]]),
@@ -89,6 +112,7 @@ const itemDtoSchema = z.object({
   sourceFile: z.string(),
   userNote: z.string().nullable(),
   updatedAt: z.string(),
+  ssdb: ssdbInfoSchema,
 });
 const itemsResponseSchema = z.array(itemDtoSchema);
 
@@ -159,6 +183,14 @@ function rowsToDto(rows: Array<{
     sourceFile: r.sourceFile,
     userNote: r.userNote,
     updatedAt: r.updatedAt.toISOString(),
+    // Cache miss default. fetchChannelDateSnapshot tarafi cache hit'i
+    // mergeSsdbCache ile uzerine yazar. PATCH /note path'inde cache okumaz;
+    // bir sonraki SSE update'inde worker `provys_changed` ile dogru deger gelir.
+    ssdb: buildSsdbInfoForRow(
+      { category: r.category, dcCode: r.dcCode, durationMs: r.durationMs,
+        durationTimecode: r.durationTimecode, frameRate: r.frameRate },
+      null,
+    ),
   }));
 }
 
@@ -181,7 +213,29 @@ async function fetchChannelDateSnapshot(
       { sequence: 'asc' },
     ],
   });
-  return rowsToDto(rows);
+
+  // Cache merge: flag off iken Prisma'ya hic dokunmaz; CANLI + dcCode null
+  // satirlar zaten eligible degil. Cache hit'leri buildSsdbInfoForRow ile
+  // her DTO uzerine yazilir.
+  const flagEnabled = isSsdbResolverEnabled();
+  const provysForMerge: ProvysRowForMerge[] = rows.map((r) => ({
+    category: r.category, dcCode: r.dcCode, durationMs: r.durationMs,
+    durationTimecode: r.durationTimecode, frameRate: r.frameRate,
+  }));
+  const cacheMap = await fetchSsdbCacheMap(app.prisma, provysForMerge, flagEnabled);
+
+  const dtos = rowsToDto(rows);
+  // dtos `ssdb` zaten cache-miss default'u ile dolu; cache hit varsa override.
+  for (let i = 0; i < dtos.length; i++) {
+    const row = provysForMerge[i];
+    const dc = row.dcCode?.trim();
+    if (!dc) continue;
+    const cacheRow = cacheMap.get(dc);
+    if (cacheRow) {
+      dtos[i].ssdb = buildSsdbInfoForRow(row, cacheRow);
+    }
+  }
+  return dtos;
 }
 
 export async function provysRoutes(app: FastifyInstance) {

@@ -2,7 +2,12 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { ProvysChannelPanelComponent } from './provys-channel-panel.component';
 import { ProvysService } from './provys.service';
-import { PROVYS_CATEGORY_STYLES, type ProvysItemDto } from './provys.types';
+import {
+  PROVYS_CATEGORY_STYLES,
+  type ProvysItemDto,
+  type ProvysItemSsdbInfo,
+  type ProvysMaterialStatus,
+} from './provys.types';
 
 function makeItem(over: Partial<ProvysItemDto>): ProvysItemDto {
   return {
@@ -33,6 +38,22 @@ function makeItem(over: Partial<ProvysItemDto>): ProvysItemDto {
     sourceFile: '/f.bxf',
     userNote: null,
     updatedAt: '2026-05-22T18:00:00Z',
+    // C7 (2026-05-27): SSDB merge default — testler ssdb merge davranışını
+    // kendi spec'lerinde (provys.ssdb-merge.unit.spec.ts) doğrular; bu
+    // component fixture sadece DTO compile compliance için unchecked default.
+    ssdb: {
+      lookupStatus: null,
+      materialStatus: 'unchecked',
+      statusLabel: 'Kontrol bekliyor',
+      mediaGuid: null,
+      matchMethod: null,
+      ssdbDurationFrames: null,
+      ssdbDurationTimecode: null,
+      provysDurationFrames: null,
+      frameRate: null,
+      lastCheckedAt: null,
+      lastError: null,
+    },
     ...over,
   };
 }
@@ -237,6 +258,192 @@ describe('ProvysChannelPanelComponent', () => {
       await fixture.whenStable();
       fixture.detectChanges();
       expect(input.getAttribute('aria-invalid')).toBe('true');
+    });
+  });
+
+  // C9 (2026-05-27): Materyal kolonu — SSDB response-time computed status.
+  describe('Materyal kolonu — status badge + tooltip', () => {
+    function buildSsdb(over: Partial<ProvysItemSsdbInfo>): ProvysItemSsdbInfo {
+      return {
+        lookupStatus: null,
+        materialStatus: 'unchecked',
+        statusLabel: 'Kontrol bekliyor',
+        mediaGuid: null,
+        matchMethod: null,
+        ssdbDurationFrames: null,
+        ssdbDurationTimecode: null,
+        provysDurationFrames: null,
+        frameRate: null,
+        lastCheckedAt: null,
+        lastError: null,
+        ...over,
+      };
+    }
+
+    function setRowsWithSsdb(rows: Array<{ id: number; ssdb: Partial<ProvysItemSsdbInfo>; over?: Partial<ProvysItemDto> }>): void {
+      const items = rows.map((r, i) => makeItem({
+        id: r.id,
+        sequence: i,
+        ssdb: buildSsdb(r.ssdb),
+        ...(r.over ?? {}),
+      }));
+      fake.setItems(items);
+      fixture.detectChanges();
+    }
+
+    function badgeText(idx = 0): string {
+      const cell = (fixture.nativeElement as HTMLElement)
+        .querySelectorAll('tbody tr.row td.col-mat .mat-badge')[idx] as HTMLElement;
+      return cell?.textContent?.trim() ?? '';
+    }
+
+    function badgeClasses(idx = 0): string {
+      const cell = (fixture.nativeElement as HTMLElement)
+        .querySelectorAll('tbody tr.row td.col-mat .mat-badge')[idx] as HTMLElement;
+      return cell?.className ?? '';
+    }
+
+    function badgeTitle(idx = 0): string {
+      const cell = (fixture.nativeElement as HTMLElement)
+        .querySelectorAll('tbody tr.row td.col-mat .mat-badge')[idx] as HTMLElement;
+      return cell?.getAttribute('title') ?? '';
+    }
+
+    it('renders "Materyal" header column between DC Kod and Başlık', () => {
+      setRowsWithSsdb([{ id: 1, ssdb: {} }]);
+      const headers = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll('thead th'),
+      ).map((th) => th.textContent?.trim());
+      expect(headers).toContain('Materyal');
+      const dcIdx = headers.indexOf('DC Kod');
+      const matIdx = headers.indexOf('Materyal');
+      const titleIdx = headers.indexOf('Başlık');
+      expect(matIdx).toBe(dcIdx + 1);
+      expect(titleIdx).toBe(matIdx + 1);
+    });
+
+    it('8 status compact label correctly rendered', () => {
+      const cases: Array<{ status: ProvysMaterialStatus; expectedLabel: string }> = [
+        { status: 'live_not_applicable',     expectedLabel: 'Canlı' },
+        { status: 'dc_not_applicable',       expectedLabel: '—' },
+        { status: 'unchecked',               expectedLabel: 'Bekliyor' },
+        { status: 'missing_material',        expectedLabel: 'Eksik' },
+        { status: 'found_match',             expectedLabel: 'Var' },
+        { status: 'found_duration_mismatch', expectedLabel: 'Süre uymuyor' },
+        { status: 'found_duration_unknown',  expectedLabel: 'Süre yok' },
+        { status: 'ssdb_error',              expectedLabel: 'SSDB hata' },
+      ];
+      setRowsWithSsdb(cases.map((c, i) => ({
+        id: i + 1,
+        ssdb: { materialStatus: c.status },
+      })));
+      for (let i = 0; i < cases.length; i++) {
+        expect(badgeText(i)).toBe(cases[i].expectedLabel);
+      }
+    });
+
+    it('live_not_applicable → neutral tone class (no warning/danger)', () => {
+      setRowsWithSsdb([{ id: 1, ssdb: { materialStatus: 'live_not_applicable' } }]);
+      const classes = badgeClasses(0);
+      expect(classes).toContain('mat-badge--neutral');
+      expect(classes).not.toContain('mat-badge--warning');
+      expect(classes).not.toContain('mat-badge--danger');
+    });
+
+    it('found_match → success tone, found_duration_mismatch → danger, missing_material → warning', () => {
+      setRowsWithSsdb([
+        { id: 1, ssdb: { materialStatus: 'found_match' } },
+        { id: 2, ssdb: { materialStatus: 'found_duration_mismatch' } },
+        { id: 3, ssdb: { materialStatus: 'missing_material' } },
+        { id: 4, ssdb: { materialStatus: 'unchecked' } },
+      ]);
+      expect(badgeClasses(0)).toContain('mat-badge--success');
+      expect(badgeClasses(1)).toContain('mat-badge--danger');
+      expect(badgeClasses(2)).toContain('mat-badge--warning');
+      expect(badgeClasses(3)).toContain('mat-badge--muted');
+    });
+
+    it('found_duration_mismatch tooltip includes Provys/SSDB frames + diff', () => {
+      setRowsWithSsdb([{
+        id: 1,
+        ssdb: {
+          materialStatus: 'found_duration_mismatch',
+          provysDurationFrames: 4464,
+          ssdbDurationFrames: 4465,
+          ssdbDurationTimecode: '00:02:58:15',
+          matchMethod: 'alias',
+          mediaGuid: 'GUID-1',
+          frameRate: 25,
+          lastCheckedAt: '2026-05-27T08:00:00.000Z',
+        },
+      }]);
+      const tip = badgeTitle(0);
+      expect(tip).toContain('Materyal var, duration uymuyor');
+      expect(tip).toContain('Provys');
+      expect(tip).toContain('SSDB');
+      expect(tip).toContain('4464');
+      expect(tip).toContain('4465');
+      expect(tip).toContain('Fark: 1 frame');
+      expect(tip).toContain('alias');
+      expect(tip).toContain('GUID-1');
+    });
+
+    it('live_not_applicable tooltip: neutral info text', () => {
+      setRowsWithSsdb([{ id: 1, ssdb: { materialStatus: 'live_not_applicable' } }]);
+      expect(badgeTitle(0)).toBe('Canlı yayın; SSDB MAM materyal kontrolü yapılmaz');
+    });
+
+    it('missing_material tooltip: DC + son kontrol', () => {
+      setRowsWithSsdb([{
+        id: 1,
+        over: { dcCode: 'DC00012345' },
+        ssdb: {
+          materialStatus: 'missing_material',
+          lastCheckedAt: '2026-05-27T07:55:00.000Z',
+        },
+      }]);
+      const tip = badgeTitle(0);
+      expect(tip).toContain('Materyal eksik');
+      expect(tip).toContain('DC: DC00012345');
+      expect(tip).toContain('Son kontrol');
+    });
+
+    it('ssdb_error tooltip lastError shown (truncated up to 160)', () => {
+      const longErr = 'x'.repeat(300);
+      setRowsWithSsdb([{
+        id: 1,
+        ssdb: {
+          materialStatus: 'ssdb_error',
+          lastError: longErr,
+          lastCheckedAt: '2026-05-27T08:00:00.000Z',
+        },
+      }]);
+      const tip = badgeTitle(0);
+      expect(tip).toContain('SSDB hata');
+      expect(tip).toContain('Hata:');
+      // 160 + 3 ('...') civarı — full length asla 300 olmamalı
+      const errLine = tip.split('\n').find((l) => l.startsWith('Hata:')) ?? '';
+      expect(errLine.length).toBeLessThan(180);
+    });
+
+    it('Provys "Süre" hücresi DEĞIŞMEDI (durationTimecode tercihi korunur)', () => {
+      // C9 invariant: SSDB duration "Süre" hücresini EZMEZ.
+      setRowsWithSsdb([{
+        id: 1,
+        over: {
+          durationTimecode: '00:02:58:14',  // BXF plan
+          durationMs: null,
+        },
+        ssdb: {
+          materialStatus: 'found_duration_mismatch',
+          ssdbDurationTimecode: '00:02:58:15',  // farklı MAM süresi
+          ssdbDurationFrames: 4465,
+          provysDurationFrames: 4464,
+        },
+      }]);
+      const durCell = (fixture.nativeElement as HTMLElement)
+        .querySelector('tbody tr.row td.col-dur')?.textContent?.trim();
+      expect(durCell).toBe('00:02:58:14');  // BXF değeri, MAM değil
     });
   });
 });

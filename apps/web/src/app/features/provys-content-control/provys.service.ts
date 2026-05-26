@@ -10,6 +10,7 @@ import {
   type ProvysItemDto,
   type ProvysStreamEvent,
 } from './provys.types';
+import { isMaterialMissing } from './provys-material-badge';
 
 /** Europe/Istanbul bugünün `YYYY-MM-DD` tarihini döner. */
 function istanbulTodayDate(): string {
@@ -58,6 +59,14 @@ export class ProvysService {
    * timecode'da çakışan duplicate görünüm önlenir.
    */
   readonly showProgramHeaders = signal<boolean>(false);
+
+  /**
+   * "Sadece eksik materyaller" filtresi. Açık iken `missing_material`,
+   * `found_duration_mismatch`, `found_duration_unknown`, `ssdb_error`
+   * status'lar görünür. `live_not_applicable`, `dc_not_applicable` (her ikisi
+   * de SSDB kapsamı dışı), `unchecked`, `found_match` gizlenir.
+   */
+  readonly onlyMissingMaterial = signal<boolean>(false);
   /** O kanal için DB'de mevcut günler (`/provys/dates?channel=` döner). */
   private readonly availableDatesStore = new Map<ProvysChannelSlug, ReturnType<typeof signal<string[]>>>();
 
@@ -86,11 +95,14 @@ export class ProvysService {
       const items = this.itemsFor(channel)();
       const allowed = this.selectedCategories();
       const showHeaders = this.showProgramHeaders();
+      const onlyMissing = this.onlyMissingMaterial();
       const allCategoriesActive = allowed.size === PROVYS_CATEGORIES.length;
-      if (allCategoriesActive && showHeaders) return items;
+      // Short-circuit: hiçbir filter aktif değilse list aynen döner.
+      if (allCategoriesActive && showHeaders && !onlyMissing) return items;
       return items.filter((i) => {
         if (!allCategoriesActive && !allowed.has(i.category)) return false;
         if (!showHeaders && i.rawKind === 'ProgramHeader') return false;
+        if (onlyMissing && !isMaterialMissing(i)) return false;
         return true;
       });
     });
@@ -110,6 +122,10 @@ export class ProvysService {
 
   setShowProgramHeaders(show: boolean): void {
     this.showProgramHeaders.set(show);
+  }
+
+  setOnlyMissingMaterial(show: boolean): void {
+    this.onlyMissingMaterial.set(show);
   }
 
   availableDatesFor(channel: ProvysChannelSlug) {

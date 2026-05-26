@@ -179,4 +179,12 @@ export const PERMISSIONS = {
   asrun: {
     read: [GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] as BcmsGroup[],
   },
+  /** SSDB MAM resolver ops endpoint'leri (2026-05-27): /ssdb/health,
+   *  /ssdb/cache/refresh. SystemEng allowlist + Admin auto-bypass. UI'a
+   *  yansiyan materyal status response-time hesaplanir; bu endpoint'ler
+   *  sadece operasyonel kontrol icin. */
+  ssdb: {
+    read:  [GROUP.SystemEng] as BcmsGroup[],
+    admin: [GROUP.SystemEng] as BcmsGroup[],
+  },
 } as const;
