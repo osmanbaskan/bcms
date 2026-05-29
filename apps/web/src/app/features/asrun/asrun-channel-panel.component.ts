@@ -36,10 +36,10 @@ const CATEGORY_CLASS: Record<AsrunCategory, string> = {
             <tr>
               <th class="col-seq">#</th>
               <th class="col-time">Başlangıç</th>
-              <th class="col-dur">Süre</th>
               <th class="col-cat">Kategori</th>
               <th class="col-dc">DC Kod</th>
               <th class="col-title">Başlık</th>
+              <th class="col-dur">Süre</th>
             </tr>
           </thead>
           <tbody>
@@ -55,7 +55,6 @@ const CATEGORY_CLASS: Record<AsrunCategory, string> = {
               >
                 <td class="col-seq">{{ i + 1 }}</td>
                 <td class="col-time mono">{{ formatStart(item) }}</td>
-                <td class="col-dur mono">{{ formatDur(item) }}</td>
                 <td class="col-cat">
                   <span class="cat-chip" [class]="'cat-chip cat-chip--' + categoryClass(item.category)">
                     {{ styleFor(item.category).label }}
@@ -63,6 +62,7 @@ const CATEGORY_CLASS: Record<AsrunCategory, string> = {
                 </td>
                 <td class="col-dc mono" [class.muted]="!item.dcCode">{{ item.dcCode ?? '—' }}</td>
                 <td class="col-title">{{ item.title }}</td>
+                <td class="col-dur mono">{{ formatDur(item) }}</td>
               </tr>
             }
           </tbody>
