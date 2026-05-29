@@ -4,7 +4,9 @@ import {
   PERMISSIONS,
   PROVYS_CHANNELS,
   PROVYS_CHANNEL_SLUGS,
+  type ProvysChannelSlug,
   type ProvysItemDto,
+  type ProvysLiveTodayDto,
   type ProvysStreamEvent,
 } from '@bcms/shared';
 import { istanbulTodayDate } from '../../core/tz.js';
@@ -41,6 +43,15 @@ const restoreMissingCache = new ResponseCache<RestoreMissingResponse>({
   ttlMs: 5_000,
   maxEntries: 16,
   onResult: (result) => responseCacheTotal.inc({ key: 'restore-missing', result }),
+});
+
+// Dashboard hero — bugünün tüm kanallar CANLI listesi. Landing page'i 250 user
+// yükler; CANLI günlük BXF ile seyrek değişir → TTL=30sn yeterli, key cardinality
+// ~1 (today:<date>). dog-pile prevention paralel dashboard açılışlarını korur.
+const liveTodayCache = new ResponseCache<ProvysLiveTodayDto[]>({
+  ttlMs: 30_000,
+  maxEntries: 4,
+  onResult: (result) => responseCacheTotal.inc({ key: 'live-today', result }),
 });
 
 const channelQuerySchema = z.object({
@@ -364,6 +375,42 @@ export async function provysRoutes(app: FastifyInstance) {
     const date = parsed.date ?? istanbulTodayDate();
     const items = await fetchChannelDateSnapshot(app, parsed.channel, date);
     return itemsResponseSchema.parse(items);
+  });
+
+  // GET /api/v1/provys/live-today
+  // Dashboard hero + "Bugün canlı yayın" KPI: bugünün TÜM kanallardaki CANLI
+  // kategorili event'leri, başlangıç saatine göre sıralı tek liste. `dcCode`
+  // KASITLI dönmez (UI'da DC kod gösterilmez). SSDB merge yok.
+  // KANAL-AGNOSTİK: channelSlug filtresi/loop YOK — Provys'e yeni kanal
+  // eklendiğinde CANLI verisi otomatik dahil olur (kataloğa eklenmese bile
+  // channelName slug'a düşer). Bu endpoint'e tekrar dokunmaya gerek yok.
+  app.get('/live-today', {
+    preHandler: app.requireGroup(...PERMISSIONS.provys.read),
+    schema: { tags: ['Provys'], summary: 'Bugün — tüm kanallar CANLI event listesi (dashboard hero)' },
+  }, async () => {
+    const today = istanbulTodayDate();
+    return liveTodayCache.getOrCompute(`today:${today}`, async () => {
+      const dt = new Date(`${today}T00:00:00Z`);
+      const displayName = new Map(PROVYS_CHANNELS.map((c) => [c.slug, c.displayName]));
+      const rows = await app.prisma.provysItem.findMany({
+        where: { scheduleDate: dt, category: 'CANLI' },
+        select: {
+          id: true, channelSlug: true, startTimecode: true,
+          startAt: true, durationTimecode: true, title: true,
+        },
+        // startAt birinci kriter (kanallar arası kronolojik birleşik liste);
+        // startTimecode aynı saniyedeki frame'i ayırt eder.
+        orderBy: [{ startAt: 'asc' }, { startTimecode: 'asc' }],
+      });
+      return rows.map((r): ProvysLiveTodayDto => ({
+        id: r.id,
+        channelSlug: r.channelSlug as ProvysChannelSlug,
+        channelName: displayName.get(r.channelSlug) ?? r.channelSlug,
+        startTimecode: r.startTimecode,
+        durationTimecode: r.durationTimecode,
+        title: r.title,
+      }));
+    });
   });
 
   // PATCH /api/v1/provys/items/:id/note — kullanıcı serbest not güncellemesi.

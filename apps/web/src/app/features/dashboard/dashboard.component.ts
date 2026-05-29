@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router';
 import { KeycloakService } from 'keycloak-angular';
 import { interval, Subscription } from 'rxjs';
 
-import { GROUP } from '@bcms/shared';
+import { GROUP, type ProvysLiveTodayDto } from '@bcms/shared';
 import { KpiComponent } from '../../core/ui/kpi.component';
 import { CardComponent } from '../../core/ui/card.component';
 import { StatusTagComponent } from '../../core/ui/status-tag.component';
@@ -70,14 +70,14 @@ interface StudioSlot {
 
     <div class="dashboard">
       <!-- ─── KPI Rail ────────────────────────────────────────────────── -->
-      <!-- "Şu an canlı" KPI'sı ON_AIR enum'unun hard-delete'iyle (2026-05-11)
-           anlam yitirdi; sahte 0 yerine bugünkü toplam yayın sayısı + açık
-           Aşama 3 placeholder etiketi. -->
+      <!-- "Bugün canlı yayın": Provys'in bugünkü CANLI event'leri (tüm kanallar
+           birleşik). liveToday().length — /provys/live-today kanal filtresiz
+           olduğundan Provys'e yeni kanal eklenince otomatik sayıya dahil olur;
+           bu KPI'ya tekrar dokunmaya gerek yok. -->
       <div class="kpi-rail">
         <bp-kpi [accent]="true"
-                label="Bugün toplam yayın"
-                [value]="kpiTodayTotal()"
-                [sub]="'şu an canlı sayacı · placeholder · Aşama 3'"></bp-kpi>
+                label="Bugün canlı yayın"
+                [value]="kpiLiveTotal()"></bp-kpi>
         <bp-kpi label="Aktif port"
                 [value]="kpiActivePorts()"
                 [unit]="'/' + kpiTotalPorts()"
@@ -94,16 +94,31 @@ interface StudioSlot {
       </div>
 
       <!-- ─── Hero + Shift row ───────────────────────────────────────── -->
-      <!-- Hero ON_AIR (canlı yayın) takibi Aşama 3'e ait. ON_AIR enum
-           hard-delete'li olduğu için (2026-05-11) "şu an canlı yayın" detayını
-           tetikleyecek mekanizma yok — yanıltıcı "Detaya git" linki + dead
-           branch kaldırıldı; placeholder doğrudan render edilir. -->
+      <!-- Hero canlı yayın: Provys'in bugünkü CANLI kategorili event'leri (tüm
+           kanallar birleşik, başlangıç saatine göre). /provys/live-today; dcCode
+           gösterilmez, başlık (derived isim) yansır. (2026-05-29) -->
       <div class="row hero-row">
         <div class="hero">
-          <div class="hero-empty">
-            <div class="placeholder-eyebrow">PLACEHOLDER · Aşama 3</div>
-            <div class="hero-empty-title">Canlı yayın takibi henüz bağlı değil</div>
-            <div class="hero-empty-sub">Bugünün yayın akışı aşağıda · ON_AIR takip mekanizması Aşama 3</div>
+          <div class="hero-live">
+            <div class="hero-live-head">
+              <span class="hero-badge"><span class="hero-dot"></span> CANLI</span>
+              <span class="hero-live-count">Bugün · {{ liveToday().length }} yayın</span>
+            </div>
+            @if (loadingLive()) {
+              <div class="hero-live-state">Yükleniyor…</div>
+            } @else if (liveToday().length === 0) {
+              <div class="hero-live-state">Bugün canlı kategorili yayın yok</div>
+            } @else {
+              <div class="hero-live-list">
+                @for (ev of liveToday(); track ev.id) {
+                  <div class="hero-live-row">
+                    <span class="hl-time">{{ hhmm(ev.startTimecode) }}</span>
+                    <span class="hl-channel">{{ ev.channelName }}</span>
+                    <span class="hl-title" [title]="ev.title">{{ ev.title }}</span>
+                  </div>
+                }
+              </div>
+            }
           </div>
         </div>
 
@@ -326,15 +341,38 @@ interface StudioSlot {
       cursor: pointer;
       font-family: inherit;
     }
-    .hero-empty {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      color: rgba(255, 255, 255, 0.85);
+    /* ─── Hero canlı (CANLI) liste ─────────────────────────────────── */
+    .hero-live { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .hero-live-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .hero-live-count {
+      font-size: 12.5px; color: rgba(255, 255, 255, 0.65);
+      font-family: var(--bp-font-mono); letter-spacing: 0.03em;
     }
-    .hero-empty-title { font-size: 20px; font-weight: var(--bp-fw-semibold); font-family: var(--bp-font-display); }
-    .hero-empty-sub { font-size: 13px; color: rgba(255, 255, 255, 0.65); margin-top: 6px; }
+    .hero-live-state { color: rgba(255, 255, 255, 0.7); font-size: 13px; padding: 10px 0; }
+    .hero-live-list {
+      display: flex; flex-direction: column;
+      overflow-y: auto; max-height: 188px;
+    }
+    .hero-live-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 6px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+    .hero-live-row:last-child { border-bottom: 0; }
+    .hl-time {
+      font-family: var(--bp-font-mono); font-size: 13px; font-weight: var(--bp-fw-medium);
+      color: #fca5a5; width: 46px; flex: 0 0 46px;
+    }
+    .hl-channel {
+      font-size: 11px; color: rgba(255, 255, 255, 0.62);
+      width: 96px; flex: 0 0 96px;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .hl-title {
+      flex: 1; min-width: 0; font-size: 13px; color: rgba(255, 255, 255, 0.92);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
 
     /* ─── Card slot link action ───────────────────────────────────── */
     .link-action {
@@ -502,10 +540,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   });
 
   // ─── State ───────────────────────────────────────────────────────────────
+  loadingLive = signal(true);
   loadingBroadcasts = signal(true);
   loadingStudios = signal(true);
   loadingPorts = signal(true);
 
+  liveToday = signal<ProvysLiveTodayDto[]>([]);
   todayBroadcasts = signal<ScheduleRow[]>([]);
   todayStudios = signal<StudioSlot[]>([]);
   ports = signal<IngestPort[]>([]);
@@ -520,12 +560,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
   readonly canViewWeeklyShift = computed(() => this.isAdmin() || this._userGroups().includes(GROUP.SystemEng));
 
   // ─── KPIs ────────────────────────────────────────────────────────────────
-  // Hero ON_AIR (2026-05-11 hard-delete) yokken sahte mapping yasak → template
-  // doğrudan placeholder; eski `heroBroadcast = computed(() => undefined)` ölü
-  // route ile birlikte kaldırıldı (canlı takip Aşama 3'te bağlanacak).
-  // "Şu an canlı" KPI (kpiLive) ON_AIR hard-delete sonrası kaldırıldı; yerine
-  // template'te `kpiTodayTotal` + placeholder etiketi gösterilir.
-  kpiTodayTotal = computed(() => this.todayBroadcasts().length);
+  // Hero canlı yayın: 2026-05-29 itibarıyla Provys'in bugünkü CANLI kategorili
+  // event'lerine bağlandı (/provys/live-today, tüm kanallar birleşik, saate göre).
+  // ON_AIR enum (2026-05-11 hard-delete) kaynağı DEĞİL — operasyonel "canlı"
+  // kaynağı olarak Provys CANLI kategorisi seçildi (kullanıcı kararı). dcCode
+  // gösterilmez; başlık (derived isim) yansır.
+  // "Şu an canlı" KPI (kpiLive) hâlâ placeholder; istenirse liveToday().length'e bağlanır.
+  // Bugünkü toplam CANLI yayın (tüm kanallar). liveToday() /provys/live-today'den
+  // gelir; endpoint kanal filtresiz olduğundan yeni Provys kanalı otomatik dahil.
+  kpiLiveTotal = computed(() => this.liveToday().length);
   kpiActivePorts = computed(() => this.ports().filter((p) => p.active).length);
   kpiTotalPorts = computed(() => this.ports().length);
   kpiStudios = computed(() => this.todayStudios().length);
@@ -543,6 +586,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const parsed = this.keycloak.getKeycloakInstance()?.tokenParsed as { groups?: string[] } | undefined;
     this._userGroups.set(parsed?.groups ?? []);
 
+    this.loadLiveToday();
     this.loadTodayBroadcasts();
     this.loadStudios();
     this.loadPorts();
@@ -563,6 +607,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
   isoToday(): string {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  private loadLiveToday() {
+    this.loadingLive.set(true);
+    // Provys'in bugünkü CANLI kategorili event'leri (tüm kanallar birleşik).
+    // Endpoint dcCode dönmez; UI yalnız saat · kanal · başlık gösterir.
+    this.api.get<ProvysLiveTodayDto[]>('/provys/live-today').subscribe({
+      next: (res) => {
+        this.liveToday.set(res ?? []);
+        this.loadingLive.set(false);
+      },
+      error: () => {
+        this.liveToday.set([]);
+        this.loadingLive.set(false);
+      },
+    });
+  }
+
+  /** Provys startTimecode "HH:MM:SS:FF" → "HH:MM" (saniye/frame atılır). */
+  hhmm(tc: string | null): string {
+    return tc && tc.length >= 5 ? tc.slice(0, 5) : '—';
   }
 
   private loadTodayBroadcasts() {

@@ -71,6 +71,21 @@ export const PROVYS_CATEGORY_STYLES: Record<ProvysCategory, ProvysCategoryStyle>
 };
 
 /**
+ * Dashboard hero "bugünün canlı yayınları" — lean satır (2026-05-29).
+ * Tüm kanalların CANLI kategorili event'leri tek listede, başlangıç saatine
+ * göre sıralı. `dcCode` KASITLI yok — UI'da DC kod gösterilmez. `title` =
+ * derived display isim ("başlıkta bulunan isim"). `channelName` = displayName.
+ */
+export interface ProvysLiveTodayDto {
+  readonly id: number;
+  readonly channelSlug: ProvysChannelSlug;
+  readonly channelName: string;
+  readonly startTimecode: string | null;
+  readonly durationTimecode: string | null;
+  readonly title: string;
+}
+
+/**
  * SSE event tipleri. Worker → API LISTEN → client stream.
  *
  * Per-day snapshot semantiği (2026-05-22): event her zaman bir kanal+gün
