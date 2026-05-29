@@ -44,9 +44,9 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
               <th class="col-seq">#</th>
               <th class="col-time">Başlangıç</th>
               <th class="col-cat">Kategori</th>
-              <th class="col-mat">NEXIO</th>
               <th class="col-dc">DC Kod</th>
               <th class="col-title">Başlık</th>
+              <th class="col-mat">NEXIO</th>
               <th class="col-dur">Süre</th>
               <th class="col-note">Not</th>
             </tr>
@@ -72,17 +72,6 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
                     {{ styleFor(item.category).label }}
                   </span>
                 </td>
-<!-- 2026-05-27 (C9): Materyal status badge — SSDB cache + Provys
-                     row response-time computed. Provys duration ezilmez;
-                     SSDB süresi sadece tooltip'te. CANLI satır nötr/gri.
-                     2026-05-29: NEXIO ↔ DC Kod kolon sırası kullanıcı tercihiyle değişti. -->
-                <td class="col-mat">
-                  <span
-                    class="mat-badge"
-                    [class]="'mat-badge mat-badge--' + materialBadgeFor(item).tone"
-                    [title]="materialTooltipFor(item)"
-                  >{{ materialBadgeFor(item).compact }}</span>
-                </td>
                 <td class="col-dc mono" [class.muted]="!item.dcCode">{{ item.dcCode ?? '—' }}</td>
                 <!-- 2026-05-26: 2 seviyeli görünüm — series_name varsa üst
                      bağlam (program ailesi/turnuva) + title alt başlık. Tanıtım/
@@ -100,9 +89,16 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
                   }
                   <div class="title-text" [title]="item.title">{{ item.title }}</div>
                 </td>
-                <!-- 2026-05-27 (night): "Not" kolonu kaldırıldı; "Süre" Not'un
-                     eski son-pozisyonuna taşındı. userNote model alanı + PATCH
-                     endpoint backend'de korunur (gelecekte tekrar eklenebilir). -->
+                <!-- NEXIO materyal status badge (SSDB cache). 2026-05-30: kolon
+                     Başlık ile Süre arasına taşındı (kullanıcı tercihi). var=#00a6d6,
+                     eksik=kırmızı, süre uymuyor=sarı. -->
+                <td class="col-mat">
+                  <span
+                    class="mat-badge"
+                    [class]="'mat-badge mat-badge--' + materialBadgeFor(item).tone"
+                    [title]="materialTooltipFor(item)"
+                  >{{ materialBadgeFor(item).compact }}</span>
+                </td>
                 <td class="col-dur mono">{{ formatDur(item) }}</td>
                 <!-- 2026-05-27: Kullanıcı transient not alanı.
                      ngModel local; service.notesByEventId signal'ında tutulur.
@@ -214,6 +210,8 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     .mat-badge--warning { background: rgba(245, 158, 11, 0.18); color: #fcd34d; border-color: rgba(245, 158, 11, 0.45); }
     .mat-badge--success { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.45); }
     .mat-badge--danger  { background: rgba(239, 68, 68, 0.22);  color: #fca5a5; border-color: rgba(239, 68, 68, 0.50); }
+    /* 2026-05-30: "Var" → #00a6d6 cyan (yeşilden ayrı tutuldu; kullanıcı tercihi). */
+    .mat-badge--found   { background: rgba(0, 166, 214, 0.18);  color: #5fd0ec; border-color: #00a6d6; }
     /* Başlık: leftover'i alır (table-layout: fixed → explicit width yok).
        DC Kod sabit, Başlık esnek; dar viewport'ta ellipsis devreye girer. */
     .col-title { white-space: normal; color: var(--bp-fg-1); }
@@ -318,6 +316,9 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     }
     :host-context(html[data-theme="light"]) .mat-badge--danger {
       background: rgba(239, 68, 68, 0.20); color: #991b1b; border-color: #dc2626;
+    }
+    :host-context(html[data-theme="light"]) .mat-badge--found {
+      background: rgba(0, 166, 214, 0.16); color: #075985; border-color: #00a6d6;
     }
     .row { transition: background var(--bp-dur-fast, 100ms) linear; }
     .row:hover { background: var(--bp-bg-3); }

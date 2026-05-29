@@ -328,16 +328,17 @@ describe('ProvysChannelPanelComponent', () => {
       expect(classes).not.toContain('mat-badge--danger');
     });
 
-    it('found_match → success tone, found_duration_mismatch → danger, missing_material → warning', () => {
+    it('found_match → found tone, found_duration_mismatch → warning, missing_material → danger', () => {
       setRowsWithSsdb([
         { id: 1, ssdb: { materialStatus: 'found_match' } },
         { id: 2, ssdb: { materialStatus: 'found_duration_mismatch' } },
         { id: 3, ssdb: { materialStatus: 'missing_material' } },
         { id: 4, ssdb: { materialStatus: 'unchecked' } },
       ]);
-      expect(badgeClasses(0)).toContain('mat-badge--success');
-      expect(badgeClasses(1)).toContain('mat-badge--danger');
-      expect(badgeClasses(2)).toContain('mat-badge--warning');
+      // 2026-05-30 kullanıcı tercihi: var=#00a6d6 (found), süre uymuyor=sarı (warning), eksik=kırmızı (danger).
+      expect(badgeClasses(0)).toContain('mat-badge--found');
+      expect(badgeClasses(1)).toContain('mat-badge--warning');
+      expect(badgeClasses(2)).toContain('mat-badge--danger');
       expect(badgeClasses(3)).toContain('mat-badge--muted');
     });
 
