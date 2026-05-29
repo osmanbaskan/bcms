@@ -5,15 +5,18 @@ import { z } from 'zod';
 import { BCMS_GROUPS, PERMISSIONS, type BcmsGroup, type JwtPayload } from '@bcms/shared';
 import { kcFetch } from '../../core/keycloak-admin.client.js';
 
+// timeless=true → tam gün izin/tatil (giriş-çıkış YOK); false → saatli vardiya/görev.
 const SHIFT_TYPES = [
-  { code: 'OFF_DAY', label: 'Haftalık İzin' },
-  { code: 'HOME', label: 'Evden' },
-  { code: 'OUTSIDE', label: 'Dış Görev' },
-  { code: 'NIGHT', label: 'Gece' },
-  { code: 'SIC_CER', label: 'Rapor' },
-  { code: 'HOLIDAY', label: 'Resmi Tatil' },
-  { code: 'ANNUAL', label: 'Yıllık İzin' },
+  { code: 'OFF_DAY', label: 'Haftalık İzin', timeless: true },
+  { code: 'HOME',    label: 'Evden',         timeless: false },
+  { code: 'OUTSIDE', label: 'Dış Görev',     timeless: false },
+  { code: 'NIGHT',   label: 'Gece',          timeless: false },
+  { code: 'SIC_CER', label: 'Rapor',         timeless: true },
+  { code: 'HOLIDAY', label: 'Resmi Tatil',   timeless: true },
+  { code: 'ANNUAL',  label: 'Yıllık İzin',   timeless: true },
 ];
+/** Saatsiz (tam gün) tip kodları — bu tiplerde startTime/endTime null'lanır. */
+const TIMELESS_CODES = new Set(SHIFT_TYPES.filter((t) => t.timeless).map((t) => t.code));
 
 type UserType = 'staff' | 'supervisor';
 
@@ -252,17 +255,18 @@ function shiftTypeColor(code: string): { font: string; bg: string } {
 function shiftCellExcel(cell: { startTime?: string | null; endTime?: string | null; type?: string }): { value: string; style: Partial<ExcelJS.Style> } {
   const type = cell.type ?? "";
   const base: Partial<ExcelJS.Style> = { alignment: { vertical: "middle", horizontal: "center" }, font: { size: 10, color: { argb: "FF94A3B8" } } };
+  const start = cell.startTime ?? "";
+  const end = cell.endTime ?? "";
+  const timeStr = start && end ? `${start} – ${end}` : (start || end || "");
   if (!type || type === "WORK") {
-    const start = cell.startTime ?? "";
-    const end = cell.endTime ?? "";
-    if (start && end) return { value: `${start} – ${end}`, style: { ...base, font: { bold: true, size: 10, color: { argb: "FF22C55E" } } } };
-    if (start || end) return { value: start || end, style: { ...base, font: { bold: true, size: 10, color: { argb: "FF22C55E" } } } };
+    if (timeStr) return { value: timeStr, style: { ...base, font: { bold: true, size: 10, color: { argb: "FF22C55E" } } } };
     return { value: "—", style: base };
   }
   const colors = shiftTypeColor(type);
   const label = shiftTypeLabel(type);
-  return { value: label, style: { ...base, font: { bold: true, size: 10, color: { argb: colors.font } }, fill: { type: "pattern", pattern: "solid", fgColor: { argb: colors.bg } } } };
-
+  // Timed tip (saatli): label + saat aynı hücrede; timeless: sadece label.
+  const value = !TIMELESS_CODES.has(type) && timeStr ? `${label}  ${timeStr}` : label;
+  return { value, style: { ...base, font: { bold: true, size: 10, color: { argb: colors.font } }, fill: { type: "pattern", pattern: "solid", fgColor: { argb: colors.bg } } } };
 }
 
 // HIGH-API-017 fix (2026-05-05): isim aslında Buffer dönüyor; rename + buffer çıktı.
@@ -458,8 +462,10 @@ export async function weeklyShiftRoutes(app: FastifyInstance) {
         userGroup: group,
         weekStart: body.weekStart,
         dayIndex: item.dayIndex,
-        startTime: item.type ? null : item.startTime || null,
-        endTime: item.type ? null : item.endTime || null,
+        // Timeless tip (izin/tatil) → saat null; timed tip (gece/evden/dış görev)
+        // + tipsiz mesai → giriş-çıkış korunur.
+        startTime: TIMELESS_CODES.has(item.type) ? null : (item.startTime || null),
+        endTime:   TIMELESS_CODES.has(item.type) ? null : (item.endTime || null),
         type: item.type || '',
       }));
 

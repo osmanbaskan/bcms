@@ -20,6 +20,8 @@ interface ShiftDay {
 interface ShiftType {
   code: string;
   label: string;
+  /** true → tam gün izin/tatil (giriş-çıkış yok); backend SHIFT_TYPES'tan gelir. */
+  timeless?: boolean;
 }
 
 interface ShiftCell {
@@ -148,52 +150,80 @@ const END_TIMES = ['06:15', '13:15', '15:00', '16:45', '20:00', '22:00', '23:45'
                         </td>
                         @for (day of plan()!.days; track day.index) {
                           <td>
-                            <div class="cell-editor" [class.leave-mode]="hasLeave(cell(user, day.index))" [class.time-mode]="hasTime(cell(user, day.index))">
-                              @if (hasSelection(cell(user, day.index)) && group.canEdit) {
-                                <button class="clear-cell" mat-icon-button type="button" aria-label="Hücreyi temizle"
-                                        (click)="clearCell(user, day.index)">
-                                  <mat-icon>close</mat-icon>
-                                </button>
-                              }
-                              @if (!hasLeave(cell(user, day.index))) {
-                              <div class="time-row">
-                                <mat-form-field appearance="outline">
-                                  <mat-label>Giriş</mat-label>
-                                  <mat-select [disabled]="!group.canEdit"
-                                              [ngModel]="cell(user, day.index).startTime"
-                                              (ngModelChange)="setCell(user, day.index, 'startTime', $event)">
-                                    <mat-option value="">Boş</mat-option>
-                                    @for (time of startTimes; track time) {
-                                      <mat-option [value]="time">{{ time }}</mat-option>
-                                    }
-                                  </mat-select>
-                                </mat-form-field>
-                                <mat-form-field appearance="outline">
-                                  <mat-label>Çıkış</mat-label>
-                                  <mat-select [disabled]="!group.canEdit"
-                                              [ngModel]="cell(user, day.index).endTime"
-                                              (ngModelChange)="setCell(user, day.index, 'endTime', $event)">
-                                    <mat-option value="">Boş</mat-option>
-                                    @for (time of endTimes; track time) {
-                                      <mat-option [value]="time">{{ time }}</mat-option>
-                                    }
-                                  </mat-select>
-                                </mat-form-field>
-                              </div>
-                              }
-                              @if (!hasTime(cell(user, day.index))) {
-                              <mat-form-field appearance="outline" class="shift-type-field">
-                                <mat-label>İzin</mat-label>
-                                <mat-select [disabled]="!group.canEdit"
-                                            [ngModel]="cell(user, day.index).type"
-                                            (ngModelChange)="setCell(user, day.index, 'type', $event)">
-                                  @for (type of plan()!.shiftTypes; track type.code) {
-                                    <mat-option [value]="type.code">{{ type.label }}</mat-option>
+                            @let c = cell(user, day.index);
+                            @if (isEditing(user, day.index)) {
+                              <!-- Inline editör: tip seç → timeless değilse giriş-çıkış açılır -->
+                              <div class="cell-edit">
+                                <select class="ce-select ce-type" [disabled]="!group.canEdit"
+                                        [ngModel]="c.type"
+                                        (ngModelChange)="setCell(user, day.index, 'type', $event)">
+                                  <option value="">Mesai</option>
+                                  @for (t of plan()!.shiftTypes; track t.code) {
+                                    <option [value]="t.code">{{ t.label }}</option>
                                   }
-                                </mat-select>
-                              </mat-form-field>
-                              }
-                            </div>
+                                </select>
+                                @if (!isTimelessType(c.type)) {
+                                  <div class="ce-times">
+                                    <!-- Giriş: liste ya da "Elle gir…" → type=time (HH:MM zorunlu) -->
+                                    @if (manualStart()) {
+                                      <div class="ce-manual">
+                                        <input class="ce-input" type="time" [disabled]="!group.canEdit"
+                                               aria-label="Giriş saati (ss:dd)"
+                                               [ngModel]="c.startTime"
+                                               (ngModelChange)="setCell(user, day.index, 'startTime', $event)">
+                                        <button type="button" class="ce-mini" title="Listeden seç"
+                                                (click)="backToList(user, day.index, 'startTime')">⌄</button>
+                                      </div>
+                                    } @else {
+                                      <select class="ce-select" [disabled]="!group.canEdit"
+                                              [ngModel]="c.startTime"
+                                              (ngModelChange)="onTimeSelect(user, day.index, 'startTime', $event)">
+                                        <option [ngValue]="null">Giriş</option>
+                                        @for (time of startTimes; track time) { <option [value]="time">{{ time }}</option> }
+                                        <option value="__manual__">Elle gir…</option>
+                                      </select>
+                                    }
+                                    <!-- Çıkış: liste ya da "Elle gir…" → type=time (HH:MM zorunlu) -->
+                                    @if (manualEnd()) {
+                                      <div class="ce-manual">
+                                        <input class="ce-input" type="time" [disabled]="!group.canEdit"
+                                               aria-label="Çıkış saati (ss:dd)"
+                                               [ngModel]="c.endTime"
+                                               (ngModelChange)="setCell(user, day.index, 'endTime', $event)">
+                                        <button type="button" class="ce-mini" title="Listeden seç"
+                                                (click)="backToList(user, day.index, 'endTime')">⌄</button>
+                                      </div>
+                                    } @else {
+                                      <select class="ce-select" [disabled]="!group.canEdit"
+                                              [ngModel]="c.endTime"
+                                              (ngModelChange)="onTimeSelect(user, day.index, 'endTime', $event)">
+                                        <option [ngValue]="null">Çıkış</option>
+                                        @for (time of endTimes; track time) { <option [value]="time">{{ time }}</option> }
+                                        <option value="__manual__">Elle gir…</option>
+                                      </select>
+                                    }
+                                  </div>
+                                }
+                                <div class="ce-actions">
+                                  <button type="button" class="ce-btn ce-clear" (click)="clearCell(user, day.index)">Sil</button>
+                                  <button type="button" class="ce-btn ce-done" (click)="closeEditor()">Tamam</button>
+                                </div>
+                              </div>
+                            } @else {
+                              <!-- Kompakt çip: izin = renkli rozet, saatli = "GG–GG" -->
+                              <button type="button" class="chip"
+                                      [class.chip--empty]="cellEmpty(c)"
+                                      [style.--chip-color]="chipColor(c)"
+                                      [disabled]="!group.canEdit && cellEmpty(c)"
+                                      (click)="group.canEdit && openEditor(user, day.index)">
+                                @if (cellEmpty(c)) {
+                                  <span class="chip-add">{{ group.canEdit ? '+' : '—' }}</span>
+                                } @else {
+                                  @if (chipLabel(c)) { <span class="chip-label">{{ chipLabel(c) }}</span> }
+                                  @if (chipTime(c)) { <span class="chip-time">{{ chipTime(c) }}</span> }
+                                }
+                              </button>
+                            }
                           </td>
                         }
                       </tr>
@@ -334,47 +364,55 @@ const END_TIMES = ['06:15', '13:15', '15:00', '16:45', '20:00', '22:00', '23:45'
       margin-top: 2px;
       font-family: var(--bp-font-mono);
     }
-    .cell-editor { position:relative; display:flex; flex-direction:column; gap:3px; min-width:0; }
-    .cell-editor mat-form-field { width:100%; }
-    .time-row { display:grid; grid-template-columns:1fr 1fr; gap:3px; }
-    .shift-type-field { margin-top:1px; }
-    .cell-editor.leave-mode .shift-type-field,
-    .cell-editor.time-mode .time-row { min-height:72px; display:flex; align-items:stretch; }
-    .cell-editor.leave-mode .shift-type-field ::ng-deep .mat-mdc-text-field-wrapper,
-    .cell-editor.time-mode .time-row mat-form-field ::ng-deep .mat-mdc-text-field-wrapper { min-height:64px; align-items:center; }
-    .clear-cell {
-      position:absolute; top:2px; right:2px; z-index:3;
-      width:20px; height:20px; padding:0; color:#cbd5e1; background:rgba(15,23,42,.84);
+    /* ─── Kompakt çip (varsayılan görünüm) ─── */
+    .chip {
+      width:100%; box-sizing:border-box;
+      display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+      min-height:34px; padding:4px 6px;
+      border:1px solid var(--chip-color, var(--bp-line-2));
+      background:var(--bp-bg-3);
+      border-radius:var(--bp-r-md);
+      color:var(--bp-fg-1); font-family:inherit; line-height:1.15;
+      cursor:pointer; transition:background var(--bp-dur-fast);
     }
-    .clear-cell mat-icon { font-size:15px; width:15px; height:15px; line-height:15px; }
-    .cell-editor ::ng-deep .mat-mdc-form-field-infix {
-      min-height:68px;
-      padding-top:12px;
-      padding-bottom:12px;
-      display:flex;
-      align-items:center;
+    .chip:hover:not(:disabled) { background:var(--bp-row-hover); }
+    .chip:disabled { cursor:default; }
+    .chip--empty {
+      border:1px dashed var(--bp-line-2); background:transparent; color:var(--bp-fg-4); min-height:30px;
     }
-    .cell-editor ::ng-deep .mat-mdc-text-field-wrapper {
-      padding-left:4px;
-      padding-right:4px;
+    .chip-label { font-size:11px; font-weight:var(--bp-fw-bold); color:var(--chip-color); letter-spacing:0.02em; text-align:center; }
+    .chip-time { font-size:12px; font-family:var(--bp-font-mono); font-weight:var(--bp-fw-medium); color:var(--bp-fg-1); }
+    .chip-add { font-size:16px; color:var(--bp-fg-4); line-height:1; }
+
+    /* ─── Inline editör (tıklanan hücre) ─── */
+    .cell-edit { display:flex; flex-direction:column; gap:4px; padding:1px; }
+    .ce-select {
+      width:100%; box-sizing:border-box;
+      background:var(--bp-bg-1); color:var(--bp-fg-1);
+      border:1px solid var(--bp-line); border-radius:var(--bp-r-sm);
+      padding:4px 6px; font-size:12px; font-family:inherit; color-scheme:dark;
     }
-    /* Material varsayılan mat-mdc-form-field min-width:180px zorlaması iptal —
-       table-layout:fixed bu sayede kolonları viewport'a sığdırabilir.
-       Font ve yükseklik bilinçli olarak dokunulmadı. */
-    .cell-editor ::ng-deep .mat-mdc-form-field {
-      width:100%; min-width:0;
+    .ce-type { font-weight:var(--bp-fw-semibold); }
+    .ce-times { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+    .ce-manual { display:flex; align-items:center; gap:2px; min-width:0; }
+    .ce-input {
+      flex:1; min-width:0; box-sizing:border-box;
+      background:var(--bp-bg-1); color:var(--bp-fg-1);
+      border:1px solid var(--bp-purple-300); border-radius:var(--bp-r-sm);
+      padding:3px 5px; font-size:12px; font-family:var(--bp-font-mono); color-scheme:dark;
     }
-    .cell-editor ::ng-deep .mat-mdc-select-value,
-    .cell-editor ::ng-deep .mat-mdc-floating-label {
-      font-size:22px;
-      text-align:center;
-      font-weight:700;
+    .ce-mini {
+      flex:0 0 auto; width:18px; height:24px; padding:0; line-height:1;
+      border:1px solid var(--bp-line); background:var(--bp-bg-3); color:var(--bp-fg-3);
+      border-radius:var(--bp-r-sm); cursor:pointer; font-size:12px;
     }
-    .cell-editor ::ng-deep .mat-mdc-select-value-text {
-      display:flex;
-      justify-content:center;
-      font-weight:700;
+    .ce-actions { display:flex; gap:4px; justify-content:flex-end; }
+    .ce-btn {
+      border:1px solid var(--bp-line); background:var(--bp-bg-3); color:var(--bp-fg-2);
+      border-radius:var(--bp-r-sm); padding:3px 9px; font-size:11px; cursor:pointer; font-family:inherit;
     }
+    .ce-btn.ce-done { background:var(--bp-purple-700); color:#fff; border-color:transparent; font-weight:var(--bp-fw-semibold); }
+    .ce-btn.ce-clear { color:var(--bp-fg-3); }
   `],
 })
 export class WeeklyShiftComponent implements OnInit {
@@ -386,6 +424,11 @@ export class WeeklyShiftComponent implements OnInit {
   weekStart = signal(this.currentMonday());
   savingGroup = signal('');
   exporting = signal(false);
+  /** Düzenlenen hücre anahtarı `${userId}:${dayIndex}`; null = hepsi çip modunda. */
+  editing = signal<string | null>(null);
+  /** Düzenlenen hücrede Giriş / Çıkış "Elle gir…" (manuel HH:MM) modunda mı. */
+  manualStart = signal(false);
+  manualEnd = signal(false);
   startTimes = START_TIMES;
   endTimes = END_TIMES;
 
@@ -424,21 +467,21 @@ export class WeeklyShiftComponent implements OnInit {
     return user.assignments[key] ?? { startTime: null, endTime: null, type: '' };
   }
 
-  setCell(user: ShiftUser, dayIndex: number, field: keyof ShiftCell, value: string) {
+  setCell(user: ShiftUser, dayIndex: number, field: keyof ShiftCell, value: string | null) {
     const key = String(dayIndex);
     const existing = user.assignments[key] ?? { startTime: null, endTime: null, type: '' };
     const updated: ShiftCell = { ...existing, [field]: value || null };
 
     if (field === 'type') {
       updated.type = value || '';
-      if (updated.type) {
+      // Timeless tip (izin/tatil) → giriş-çıkış temizlenir. Timed tip
+      // (Gece/Evden/Dış Görev) + tipsiz mesai → mevcut saatler korunur.
+      if (this.isTimelessType(updated.type)) {
         updated.startTime = null;
         updated.endTime = null;
       }
     }
-    if ((field === 'startTime' || field === 'endTime') && value) {
-      updated.type = '';
-    }
+    // Saat girişi tipi temizlemez — timed tipler saatle birlikte yaşar.
 
     this.updateUserAssignment(user, key, updated);
   }
@@ -462,16 +505,66 @@ export class WeeklyShiftComponent implements OnInit {
     });
   }
 
-  hasTime(cell: ShiftCell): boolean {
-    return Boolean(cell.startTime || cell.endTime);
+  // ─── Çip + inline editör ──────────────────────────────────────────────
+  private editKey(user: ShiftUser, dayIndex: number): string {
+    return `${user.id}:${dayIndex}`;
+  }
+  isEditing(user: ShiftUser, dayIndex: number): boolean {
+    return this.editing() === this.editKey(user, dayIndex);
+  }
+  openEditor(user: ShiftUser, dayIndex: number): void {
+    // Mevcut değer önceden tanımlı listede yoksa (elle girilmiş) manuel modda aç.
+    const c = this.cell(user, dayIndex);
+    const s = c.startTime;
+    const e = c.endTime;
+    this.manualStart.set(s != null && s !== '' && !START_TIMES.includes(s));
+    this.manualEnd.set(e != null && e !== '' && !END_TIMES.includes(e));
+    this.editing.set(this.editKey(user, dayIndex));
+  }
+  closeEditor(): void {
+    this.editing.set(null);
+    this.manualStart.set(false);
+    this.manualEnd.set(false);
   }
 
-  hasLeave(cell: ShiftCell): boolean {
-    return Boolean(cell.type);
+  /** Saat dropdown seçimi — "Elle gir…" sentinel'i manuel (type=time) moda geçirir. */
+  onTimeSelect(user: ShiftUser, dayIndex: number, field: 'startTime' | 'endTime', value: string | null): void {
+    if (value === '__manual__') {
+      if (field === 'startTime') this.manualStart.set(true); else this.manualEnd.set(true);
+      return; // sentinel hücreye yazılmaz; input HH:MM'i zorlayacak
+    }
+    this.setCell(user, dayIndex, field, value);
   }
 
-  hasSelection(cell: ShiftCell): boolean {
-    return this.hasTime(cell) || this.hasLeave(cell);
+  /** Manuel moddan listeye dön — değeri temizle, dropdown placeholder'a düşsün. */
+  backToList(user: ShiftUser, dayIndex: number, field: 'startTime' | 'endTime'): void {
+    if (field === 'startTime') this.manualStart.set(false); else this.manualEnd.set(false);
+    this.setCell(user, dayIndex, field, null);
+  }
+
+  /** Tip kodu tam-gün (izin/tatil) mı — backend shiftTypes.timeless'tan okunur. */
+  isTimelessType(code: string): boolean {
+    if (!code) return false;
+    return this.plan()?.shiftTypes.find((t) => t.code === code)?.timeless === true;
+  }
+
+  cellEmpty(cell: ShiftCell): boolean {
+    return !cell.type && !cell.startTime && !cell.endTime;
+  }
+  chipColor(cell: ShiftCell): string {
+    if (cell.type) return this.shiftTypeBadgeColor(cell.type);
+    if (cell.startTime || cell.endTime) return '#22c55e'; // tipsiz mesai
+    return '#64748b';
+  }
+  chipLabel(cell: ShiftCell): string {
+    return cell.type ? this.shiftTypeLabel(cell.type) : '';
+  }
+  chipTime(cell: ShiftCell): string {
+    if (this.isTimelessType(cell.type)) return '';
+    const s = cell.startTime ?? '';
+    const e = cell.endTime ?? '';
+    if (s && e) return `${s}–${e}`;
+    return s || e || '';
   }
 
   saveGroup(group: ShiftGroup) {
@@ -571,17 +664,19 @@ export class WeeklyShiftComponent implements OnInit {
 
   private shiftCellPdf(cell: ShiftCell): string {
     const type = cell.type ?? '';
+    const start = cell.startTime ?? '';
+    const end = cell.endTime ?? '';
+    const timeStr = start && end ? `${start} – ${end}` : (start || end || '');
     if (!type || type === 'WORK') {
-      const start = cell.startTime ?? '';
-      const end = cell.endTime ?? '';
-      if (start && end) return `<span style="font-weight:700;color:#22c55e;">${start} – ${end}</span>`;
-      if (start) return `<span style="font-weight:700;color:#22c55e;">${start}</span>`;
-      if (end) return `<span style="font-weight:700;color:#22c55e;">${end}</span>`;
+      if (timeStr) return `<span style="font-weight:700;color:#22c55e;">${this.escapeHtml(timeStr)}</span>`;
       return '<span style="color:#475569;">—</span>';
     }
     const label = this.shiftTypeLabel(type);
     const color = this.shiftTypeBadgeColor(type);
-    return `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:${color}22;color:${color};font-weight:700;font-size:9px;border:1px solid ${color}44;">${this.escapeHtml(label)}</span>`;
+    // Timed tip (saatli): rozet + saat; timeless: sadece rozet.
+    const timePart = !this.isTimelessType(type) && timeStr
+      ? `<span style="margin-left:5px;color:#cbd5e1;font-weight:600;">${this.escapeHtml(timeStr)}</span>` : '';
+    return `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:${color}22;color:${color};font-weight:700;font-size:9px;border:1px solid ${color}44;">${this.escapeHtml(label)}</span>${timePart}`;
   }
 
   private printableHtml(data: ShiftResponse): string {
