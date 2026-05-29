@@ -17,12 +17,31 @@ import {
 } from './provys.export.js';
 import {
   buildSsdbInfoForRow,
+  computeGroupSumFramesByDc,
   fetchSsdbCacheMap,
   isSsdbResolverEnabled,
   type ProvysRowForMerge,
 } from './provys.ssdb-merge.js';
+import { ResponseCache } from '../../lib/response-cache.js';
+import { responseCacheTotal } from '../../plugins/metrics.js';
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// YP0.2 (2026-05-29, 250 user scale): /restore-missing response cache.
+// 250 user × 5sn polling = 50 req/sn × 12 DB query (6 kanal × 2) = 600 query/sn.
+// TTL=5sn + in-flight dedup → ~12 query/sn (50× düşüş). TTL polling süresiyle
+// eşleşir; kullanıcı görüş açısından gecikme fark edilmez.
+// Key cardinality düşük: today-future:<today> + date:<YYYY-MM-DD>; LRU 16 yeterli.
+type RestoreMissingResponse = {
+  date: string;
+  scope: 'single-date' | 'today-future';
+  rows: Array<Record<string, unknown>>;
+};
+const restoreMissingCache = new ResponseCache<RestoreMissingResponse>({
+  ttlMs: 5_000,
+  maxEntries: 16,
+  onResult: (result) => responseCacheTotal.inc({ key: 'restore-missing', result }),
+});
 
 const channelQuerySchema = z.object({
   channel: z.enum(PROVYS_CHANNEL_SLUGS as [string, ...string[]]),
@@ -53,6 +72,23 @@ const exportQuerySchema = z.object({
    * aynı timecode'da Content satırıyla collision yapar).
    */
   includeProgramHeaders: z.enum(['true', 'false']).optional(),
+});
+
+/**
+ * POST body schema — query alanlarına ek `notes` Map'i alır. UI'da kullanıcı
+ * her satıra opsiyonel transient bir not yazabiliyor; export'ta o satırın
+ * `userNote` alanı bu Map'ten override edilir. Map key = `provysItem.eventId`,
+ * value = boş veya ≤500 karakterlik not. DB'ye yazılmaz; yalnız export request.
+ */
+const exportBodySchema = z.object({
+  channel: z.enum(PROVYS_CHANNEL_SLUGS as [string, ...string[]]),
+  date: z.string().regex(ISO_DATE_RE).optional(),
+  categories: z.string().optional().refine((s) => {
+    if (s === undefined || s === '') return true;
+    return s.split(',').every((c) => (CATEGORY_ENUM as readonly string[]).includes(c.trim()));
+  }, { message: 'Invalid category in categories parameter' }),
+  includeProgramHeaders: z.enum(['true', 'false']).optional(),
+  notes: z.record(z.string().min(1), z.string().max(500)).optional(),
 });
 
 function parseCategoriesFilter(value: string | undefined): ReadonlySet<string> | null {
@@ -224,6 +260,12 @@ async function fetchChannelDateSnapshot(
   }));
   const cacheMap = await fetchSsdbCacheMap(app.prisma, provysForMerge, flagEnabled);
 
+  // 2026-05-27: Split material kontrolü için (channel, scheduleDate) sınırında
+  // dcCode bazlı toplam frame süresi. Aynı dcCode birden fazla satıra
+  // bölünmüşse (örn. araya REKLAM giren program), her satırın duration mismatch
+  // alarmı toplam süre uyumlu olduğunda kaldırılır.
+  const groupSumByDc = computeGroupSumFramesByDc(provysForMerge);
+
   const dtos = rowsToDto(rows);
   // dtos `ssdb` zaten cache-miss default'u ile dolu; cache hit varsa override.
   for (let i = 0; i < dtos.length; i++) {
@@ -232,7 +274,68 @@ async function fetchChannelDateSnapshot(
     if (!dc) continue;
     const cacheRow = cacheMap.get(dc);
     if (cacheRow) {
-      dtos[i].ssdb = buildSsdbInfoForRow(row, cacheRow);
+      const groupSum = groupSumByDc.get(dc) ?? null;
+      dtos[i].ssdb = buildSsdbInfoForRow(row, cacheRow, groupSum);
+    }
+  }
+  return dtos;
+}
+
+/**
+ * Bugün + gelecek (today-future) snapshot — Restore sekmesi için planlanmış
+ * yayın günlerini tek seferde döner. fromIstanbulDate (default istanbulTodayDate())
+ * dahil sonraki günler `provys_items` satırları çekilir; SSDB cache merge + duration
+ * group-sum hesabı `fetchChannelDateSnapshot` ile aynı politika.
+ *
+ * P1.6 (2026-05-29, 250 user scale): upper bound `PROVYS_RESTORE_FUTURE_DAYS`
+ * (default 14, max 60). BXF importer 7-14 gün öncesinden yayın günleri yazar;
+ * 14 gün operasyon penceresi için yeterli. Payload tipik 1 MB → ~200 KB
+ * (5× düşüş); 6 kanal × 250 user'da network bandwidth ciddi kazanç.
+ */
+const RESTORE_FUTURE_DAYS = (() => {
+  const raw = Number(process.env.PROVYS_RESTORE_FUTURE_DAYS);
+  if (!Number.isFinite(raw) || raw <= 0) return 14;
+  return Math.min(Math.floor(raw), 60);
+})();
+
+async function fetchChannelTodayFutureSnapshot(
+  app: FastifyInstance,
+  channelSlug: string,
+  fromIstanbulDate: string,
+): Promise<ProvysItemDto[]> {
+  const fromUtc = new Date(`${fromIstanbulDate}T00:00:00Z`);
+  // P1.6 cap: from + N gün (exclusive). Date aritmetiği UTC üzerinde — fromUtc
+  // zaten 00:00:00Z; +N gün ekleme DST'den bağımsız (Europe/Istanbul DST yok
+  // 2016 sonrası; yine de UTC aritmetik defansif).
+  const toUtc = new Date(fromUtc.getTime() + RESTORE_FUTURE_DAYS * 24 * 60 * 60 * 1000);
+  const rows = await app.prisma.provysItem.findMany({
+    where: { channelSlug, scheduleDate: { gte: fromUtc, lt: toUtc } },
+    orderBy: [
+      { scheduleDate: 'asc' },
+      { startAt: 'asc' },
+      { startTimecode: 'asc' },
+      { sourceFile: 'asc' },
+      { sequence: 'asc' },
+    ],
+  });
+
+  const flagEnabled = isSsdbResolverEnabled();
+  const provysForMerge: ProvysRowForMerge[] = rows.map((r) => ({
+    category: r.category, dcCode: r.dcCode, durationMs: r.durationMs,
+    durationTimecode: r.durationTimecode, frameRate: r.frameRate,
+  }));
+  const cacheMap = await fetchSsdbCacheMap(app.prisma, provysForMerge, flagEnabled);
+  const groupSumByDc = computeGroupSumFramesByDc(provysForMerge);
+
+  const dtos = rowsToDto(rows);
+  for (let i = 0; i < dtos.length; i++) {
+    const row = provysForMerge[i];
+    const dc = row.dcCode?.trim();
+    if (!dc) continue;
+    const cacheRow = cacheMap.get(dc);
+    if (cacheRow) {
+      const groupSum = groupSumByDc.get(dc) ?? null;
+      dtos[i].ssdb = buildSsdbInfoForRow(row, cacheRow, groupSum);
     }
   }
   return dtos;
@@ -382,6 +485,191 @@ export async function provysRoutes(app: FastifyInstance) {
       .header('Content-Type', 'application/pdf')
       .header('Content-Disposition', `attachment; filename="${filename}"`)
       .send(buf);
+  });
+
+  // POST /api/v1/provys/export/excel  (notes body destekli)
+  // Aynı semantik GET endpoint + body'de `notes: Record<eventId, string>` ile
+  // UI'da kullanıcının yazdığı transient notlar export'a override edilir.
+  app.post('/export/excel', {
+    preHandler: app.requireGroup(...PERMISSIONS.provys.read),
+    schema: { tags: ['Provys'], summary: 'Excel export (POST, transient notes desteği)' },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const parsed = exportBodySchema.parse(request.body);
+    const date = parsed.date ?? istanbulTodayDate();
+    const allow = parseCategoriesFilter(parsed.categories);
+    const includeHeaders = shouldIncludeProgramHeaders(parsed.includeProgramHeaders);
+    const items = await fetchChannelDateSnapshot(app, parsed.channel, date);
+    const notes = parsed.notes ?? {};
+    const rows: ProvysExportRow[] = items
+      .filter((i) => !allow || allow.has(i.category))
+      .filter((i) => includeHeaders || i.rawKind !== 'ProgramHeader')
+      .map((i) => ({
+        sequence: i.sequence,
+        startTimecode: i.startTimecode,
+        durationTimecode: i.durationTimecode,
+        dcCode: i.dcCode,
+        title: i.title,
+        category: i.category,
+        rawKind: i.rawKind,
+        sourceFile: i.sourceFile,
+        userNote: notes[i.eventId] ?? i.userNote,
+        seriesName: i.seriesName,
+        episodeNumber: i.episodeNumber,
+        versionName: i.versionName,
+        titleSource: i.titleSource,
+      }));
+    const buf = await exportProvysToExcelBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows });
+    const filename = exportFilename(parsed.channel, date, 'xlsx');
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(buf);
+  });
+
+  // POST /api/v1/provys/export/pdf  (notes body destekli)
+  app.post('/export/pdf', {
+    preHandler: app.requireGroup(...PERMISSIONS.provys.read),
+    schema: { tags: ['Provys'], summary: 'PDF export (POST, transient notes desteği)' },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const parsed = exportBodySchema.parse(request.body);
+    const date = parsed.date ?? istanbulTodayDate();
+    const allow = parseCategoriesFilter(parsed.categories);
+    const includeHeaders = shouldIncludeProgramHeaders(parsed.includeProgramHeaders);
+    const items = await fetchChannelDateSnapshot(app, parsed.channel, date);
+    const notes = parsed.notes ?? {};
+    const rows: ProvysExportRow[] = items
+      .filter((i) => !allow || allow.has(i.category))
+      .filter((i) => includeHeaders || i.rawKind !== 'ProgramHeader')
+      .map((i) => ({
+        sequence: i.sequence,
+        startTimecode: i.startTimecode,
+        durationTimecode: i.durationTimecode,
+        dcCode: i.dcCode,
+        title: i.title,
+        category: i.category,
+        rawKind: i.rawKind,
+        sourceFile: i.sourceFile,
+        userNote: notes[i.eventId] ?? i.userNote,
+        seriesName: i.seriesName,
+        episodeNumber: i.episodeNumber,
+        versionName: i.versionName,
+        titleSource: i.titleSource,
+      }));
+    const buf = await exportProvysToPdfBuffer({ channelSlug: parsed.channel, scheduleDate: date, rows });
+    const filename = exportFilename(parsed.channel, date, 'pdf');
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(buf);
+  });
+
+  // GET /api/v1/provys/restore-missing[?date=YYYY-MM-DD]
+  // 2026-05-28 revize: `date` parametresi OPSIYONEL.
+  //   - date verilirse → o günün (legacy single-date scope) eksik materyalleri.
+  //   - date yoksa     → bugün + gelecek tüm günlerin eksik materyalleri
+  //                      (today-future scope). Restore sekmesi varsayılan akış.
+  //
+  // Filtreler (her satır için hepsi):
+  //  - dcCode null/empty/whitespace ise hariç
+  //  - category === 'CANLI' hariç
+  //  - rawKind === 'ProgramHeader' hariç
+  //  - SSDB materialStatus === 'missing_material' (cache "yok" cevabı)
+  //
+  // Sıralama (today-future): scheduleDate asc → startAt asc → channelOrder asc → startTimecode asc.
+  app.get('/restore-missing', {
+    preHandler: app.requireGroup(...PERMISSIONS.provys.read),
+    schema: { tags: ['Provys'], summary: '6 kanal birleşik — eksik materyal (today-future veya tek gün)' },
+  }, async (request: FastifyRequest) => {
+    const parsed = z.object({
+      date: z.string().regex(ISO_DATE_RE).optional(),
+    }).parse(request.query);
+    const today = istanbulTodayDate();
+    const singleDate = parsed.date ?? null;
+
+    // YP0.2: cache key (singleDate || today-future:<today>). 250 paralel istek
+    // aynı key için tek compute() Promise paylaşır; TTL içinde DB query yok.
+    const cacheKey = singleDate ? `date:${singleDate}` : `today-future:${today}`;
+
+    return restoreMissingCache.getOrCompute(cacheKey, async () => {
+      const channelOrder = new Map(PROVYS_CHANNELS.map((c, i) => [c.slug, i]));
+      const channelDisplay = new Map(PROVYS_CHANNELS.map((c) => [c.slug, c.displayName]));
+
+      const perChannel = await Promise.all(
+        PROVYS_CHANNELS.map(async (c) => {
+          try {
+            return singleDate
+              ? await fetchChannelDateSnapshot(app, c.slug, singleDate)
+              : await fetchChannelTodayFutureSnapshot(app, c.slug, today);
+          } catch (err) {
+            app.log.warn({ err, channelSlug: c.slug, scope: singleDate ?? 'today-future' }, 'restore-missing: kanal snapshot fail');
+            return [] as ProvysItemDto[];
+          }
+        }),
+      );
+
+      type RestoreRow = {
+        channelSlug: string;
+        channelDisplayName: string;
+        scheduleDate: string;
+        startTimecode: string | null;
+        startAt: string;
+        dcCode: string;
+        title: string;
+        seriesName: string | null;
+        durationTimecode: string | null;
+        category: string;
+        rawKind: string | null;
+        eventId: string;
+        ssdbStatus: string;
+        ssdbLabel: string;
+        /** SSDB cache satirinin son kontrol zamani (ISO). UI "Son kontrol: X dk once"
+         *  badge'i icin; null ise hic kontrol edilmemis (cache miss). */
+        lastCheckedAt: string | null;
+      };
+      const rows: RestoreRow[] = [];
+      for (let ci = 0; ci < perChannel.length; ci++) {
+        const channelSlug = PROVYS_CHANNELS[ci].slug;
+        for (const it of perChannel[ci]) {
+          if (it.rawKind === 'ProgramHeader') continue;
+          if (it.category === 'CANLI') continue;
+          const dc = (it.dcCode ?? '').trim();
+          if (dc.length === 0) continue;
+          if (it.ssdb?.materialStatus !== 'missing_material') continue;
+          rows.push({
+            channelSlug,
+            channelDisplayName: channelDisplay.get(channelSlug) ?? channelSlug,
+            scheduleDate: it.scheduleDate,
+            startTimecode: it.startTimecode,
+            startAt: it.startAt,
+            dcCode: dc,
+            title: it.title,
+            seriesName: it.seriesName,
+            durationTimecode: it.durationTimecode,
+            category: it.category,
+            rawKind: it.rawKind,
+            eventId: it.eventId,
+            ssdbStatus: it.ssdb.materialStatus,
+            ssdbLabel: it.ssdb.statusLabel,
+            lastCheckedAt: it.ssdb.lastCheckedAt,
+          });
+        }
+      }
+
+      // Sıralama: today-future scope'da scheduleDate primary; tek gün scope'da
+      // tüm satırlar aynı tarih olduğundan startAt primary olur (eski davranış).
+      rows.sort((a, b) => {
+        if (a.scheduleDate !== b.scheduleDate) return a.scheduleDate.localeCompare(b.scheduleDate);
+        const ta = Date.parse(a.startAt);
+        const tb = Date.parse(b.startAt);
+        if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+        const ca = channelOrder.get(a.channelSlug) ?? 99;
+        const cb = channelOrder.get(b.channelSlug) ?? 99;
+        if (ca !== cb) return ca - cb;
+        return (a.startTimecode ?? '').localeCompare(b.startTimecode ?? '');
+      });
+
+      return { date: singleDate ?? today, scope: singleDate ? 'single-date' : 'today-future', rows };
+    });
   });
 
   // GET /api/v1/provys/dates?channel=<slug>

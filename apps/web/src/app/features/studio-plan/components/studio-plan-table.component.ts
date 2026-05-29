@@ -53,6 +53,25 @@ export class StudioPlanTableComponent {
     return length;
   }
 
+  /**
+   * 2026-05-27: Boş/doldurulabilir slot-cell'in gün grubuna göre arka plan
+   * sınıfı. Operatör görsel ipucu — haftanın iki ayrı renk grubu:
+   *   group-a: Pazartesi (1) · Çarşamba (3) · Cuma (5) · Pazar (0)
+   *   group-b: Salı (2) · Perşembe (4) · Cumartesi (6)
+   * Sadece BOŞ hücreler (filled=false) için template'te uygulanır;
+   * filled hücreler kategori/program renk override'ını alır.
+   *
+   * dayId YYYY-MM-DD Türkiye business date. local Date constructor
+   * timezone-agnostic gün hesabı verir (yıl/ay/gün'den).
+   */
+  dayFillGroup(day: string): 'a' | 'b' {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+    if (!m) return 'a';
+    const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const wd = dt.getDay(); // 0=Pazar..6=Cumartesi
+    return (wd === 0 || wd === 1 || wd === 3 || wd === 5) ? 'a' : 'b';
+  }
+
   programFontSize(day: string, studio: string, time: string): number {
     const program = this.programAt(day, studio, time);
     if (!program || this.isContinuation(day, studio, time)) return 11;

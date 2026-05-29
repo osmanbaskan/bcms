@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import type { FastifyInstance } from 'fastify';
 import { QUEUES } from '../../plugins/rabbitmq.js';
+import { startHeartbeatTicker } from '../../lib/service-heartbeat.js';
 
 export interface EmailPayload {
   to: string;
@@ -36,6 +37,7 @@ interface EmailPayloadWithMeta extends EmailPayload {
 }
 
 export async function startNotificationConsumer(app: FastifyInstance): Promise<void> {
+  startHeartbeatTicker('notifications', app);
   const transport = buildTransport();
   const from = process.env.SMTP_FROM ?? 'noreply@bcms.local';
 

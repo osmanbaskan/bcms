@@ -71,8 +71,20 @@ const CATEGORY_CLASS: Record<AsrunCategory, string> = {
     </div>
   `,
   styles: [`
-    :host { display: block; color: var(--bp-fg-1); }
-    .panel { background: var(--bp-bg-2); }
+    /* 2026-05-28: Panel kendi içinde flex container; tablo gövdesi scroll
+       context. Parent (mat-tab-body-content) flex-column ve panel'i fill
+       eder. .panel { overflow: auto } sticky thead için scroll context
+       sağlar; sayfa scroll'u büyütmez. */
+    :host {
+      display: flex; flex-direction: column;
+      min-height: 0; flex: 1 1 auto;
+      color: var(--bp-fg-1);
+    }
+    .panel {
+      flex: 1 1 auto; min-height: 0;
+      overflow: auto;
+      background: var(--bp-bg-2);
+    }
     .state { padding: 32px; text-align: center; color: var(--bp-fg-3); font-size: 13px; }
     .state.empty { color: var(--bp-fg-4); }
     table.asrun-list {

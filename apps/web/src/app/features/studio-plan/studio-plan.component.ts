@@ -5,10 +5,15 @@ import { MatIconModule } from '@angular/material/icon';
 import { KeycloakService } from 'keycloak-angular';
 import { ActivatedRoute } from '@angular/router';
 import { Subject, Subscription, debounceTime, switchMap, finalize, tap } from 'rxjs';
-import ExcelJS from 'exceljs';
+// P1.3 (2026-05-29): ExcelJS type-only top-level import (compile-time tip
+// kullanımı için); runtime modülü `exportToExcel()` içinde dynamic import ile
+// yüklenir. ExcelJS ~900 KB minified; bu refactor ile initial bundle'dan
+// ayrı chunk'a düşer → 250 user'da Excel kullanmayan tüm sekmeler bu yükü
+// taşımaz.
+import type ExcelJSType from 'exceljs';
 import { ApiService } from '../../core/services/api.service';
 import { StudioPlanService } from '../../core/services/studio-plan.service';
-import { formatIstanbulTime } from '../../core/time/tz.helpers';
+import { formatIstanbulTime, istanbulTodayDate } from '../../core/time/tz.helpers';
 import { firstValueFrom } from 'rxjs';
 import { GROUP } from '@bcms/shared';
 import type { StudioPlan, StudioPlanSlot } from '@bcms/shared';
@@ -23,6 +28,7 @@ import {
   type StudioPlanListEntry,
   type StudioPlanViewMode,
   type StudioPlanWeekOption,
+  buildStudioPlanWeekOptions,
 } from './studio-plan.types';
 
 const DAY_LABELS = [
@@ -202,12 +208,22 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   readonly saving = signal(false);
   readonly saveError = signal('');
   readonly lastSavedAt = signal('');
+  // 2026-05-27: Excel export aşamasında plan fetch (multi-week range) fail
+  // olursa yarım dosya indirilmemesi için error state. UI page-actions'ta
+  // chip olarak gösterilir; bir sonraki başarılı export sonrası temizlenir.
+  readonly exportError = signal('');
   readonly fullscreenActive = signal(false);
 
   weekStart = DEFAULT_START_DATE;
   selectedDay = DEFAULT_START_DATE;
   selectedProgram = DEFAULT_PROGRAMS[0];
   selectedColor = DEFAULT_COLORS[0].value;
+
+  // 2026-05-27: Excel export tarih aralığı (1-14 gün). Default = seçili
+  // hafta Pzt-Pazar. Kullanıcı UI'dan override edebilir; weekStart değişimi
+  // bu değerleri default'a reset eder. Validation: start <= end, 1-14 gün.
+  exportRangeStart: string = DEFAULT_START_DATE;
+  exportRangeEnd:   string = '';   // ngOnInit'te weekStart+6 olarak set edilir
 
   readonly dateRangeLabel = computed(() => {
     const days = this.days();
@@ -223,10 +239,14 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     const entries: StudioPlanListEntry[] = [];
 
     // 2026-05-14: Liste tablo ile aynı `cells()` canonical signal'ından üretilir.
-    // Daha önce burada `if (day.id < today) continue;` ile geçmiş günler
-    // dışlanıyordu — tabloda gözüken Pazartesi/Salı programları listede
-    // görünmüyordu. Tablo + liste aynı haftanın tamamını göstermeli.
+    // 2026-05-27: Kullanıcı isteğiyle YALNIZCA UI list view için geçmiş gün
+    // filtresi geri eklendi (tablo görünümünde tüm gün korunur — visibleDays
+    // ile yönetilir). Türkiye iş günü baz alınır. Export (Excel/PDF) tarafı
+    // `buildListEntriesForRange` üzerinden parametrik days ile çalışır; bu
+    // filtre yalnızca canonical hafta listesi için geçerli, export etkilenmez.
+    const todayIst = istanbulTodayDate();
     for (const day of this.days()) {
+      if (day.id < todayIst) continue;
       for (const studio of this.studios) {
         let cursor = 0;
         while (cursor < this.timeSlots().length) {
@@ -337,8 +357,45 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
       this.selectedDay = nextDays[0]?.id ?? monday;
     }
 
+    // Excel export tarih aralığını seçili haftaya senkronla (Pzt-Pazar).
+    // Kullanıcı override etmişse de hafta değişiminde reset uygulanır;
+    // operatör export öncesi manuel ayarlayabilir (1-14 gün).
+    this.exportRangeStart = monday;
+    const parsed = this.parseDateInput(monday);
+    if (parsed) {
+      const end = this.addDays(parsed, 6);
+      this.exportRangeEnd = this.toDateInputValue(end);
+    }
+
     void this.loadWeekSettings(monday);
     this.loadPlan(monday);
+  }
+
+  /** Excel range validation — 1-14 gün, start ≤ end, geçerli format.
+   *  UI'da export butonu disabled state için ve hata mesajı için kullanılır. */
+  exportRangeDayCount(): number {
+    const start = this.parseDateInput(this.exportRangeStart);
+    const end = this.parseDateInput(this.exportRangeEnd);
+    if (!start || !end) return 0;
+    const diffMs = end.getTime() - start.getTime();
+    if (diffMs < 0) return 0;
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+  }
+
+  exportRangeValid(): boolean {
+    const n = this.exportRangeDayCount();
+    return n >= 1 && n <= 14;
+  }
+
+  exportRangeError(): string {
+    const start = this.parseDateInput(this.exportRangeStart);
+    const end = this.parseDateInput(this.exportRangeEnd);
+    if (!start || !end) return 'Geçerli tarih girin.';
+    if (end.getTime() < start.getTime()) return 'Bitiş tarihi başlangıçtan önce olamaz.';
+    const n = this.exportRangeDayCount();
+    if (n < 1) return 'En az 1 günlük aralık seçin.';
+    if (n > 14) return `Aralık en fazla 14 gün olabilir (${n} gün seçildi).`;
+    return '';
   }
 
   /** 2026-05-25: hafta bazlı time range — admin edit sayfası persist eder;
@@ -435,6 +492,107 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     this.saveCurrentWeek();
   }
 
+  /**
+   * Yalnızca toolbar'da seçili olan `selectedProgram` slotlarını mevcut
+   * hafta günlerinden gelecek haftanın aynı gün-of-week / stüdyo / saat
+   * pozisyonlarına kopyalar. Hedef haftadaki **diğer programlar korunur**
+   * (veri kaybı riskine karşı önce hedef hafta plan'ı backend'den fetch
+   * edilip merge yapılır). Hedef slot aynı pozisyonda zaten doluysa
+   * `selectedProgram` üzerine yazılır (overwrite, full-week copy ile parite).
+   *
+   * Akış:
+   *  1. Guard: program seçili mi + kaynak haftada slot var mı.
+   *  2. Hedef hafta plan'ı `getPlan(targetStart)` ile fetch.
+   *     Fetch fail → state mutasyonu YOK, `saveError` set + erken çık.
+   *  3. Fetched target slots → targetCells map (hedef hafta canonical state).
+   *  4. Kaynak haftadaki `selectedProgram` slotları +7 gün ile targetCells
+   *     içine yazılır; mevcut hedef slot dolu ise overwrite (sayım).
+   *  5. `cells.set(targetCells)` — yalnızca hedef hafta state'i; kaynak
+   *     hafta DB'de zaten korunur (PUT yalnızca target weekStart'a).
+   *  6. weekStart/days/selectedDay/viewMode hedef haftaya kaydırılır.
+   *  7. `saveCurrentWeek()` → `slotsForWeek(target)` PUT → tam snapshot.
+   */
+  async copySelectedProgramToNextWeek(): Promise<void> {
+    const program = this.selectedProgram;
+    if (!program) return;
+
+    const sourceStart = this.weekStart;
+    const sourceDays = this.buildWeekDays(sourceStart);
+    const sourceDayIds = new Set(sourceDays.map((d) => d.id));
+    const targetBySourceDay = new Map(
+      sourceDays.map((day) => [
+        day.id,
+        this.toDateInputValue(this.addDays(this.parseDateInput(day.id) ?? new Date(), 7)),
+      ]),
+    );
+
+    const currentCells = this.cells();
+    const matchingSourceKeys: string[] = [];
+    for (const [key, value] of Object.entries(currentCells)) {
+      const [day] = key.split('::');
+      if (!sourceDayIds.has(day)) continue;
+      if (value.program !== program) continue;
+      matchingSourceKeys.push(key);
+    }
+
+    if (matchingSourceKeys.length === 0) {
+      window.alert(`Mevcut haftada "${program}" için kopyalanacak slot yok.`);
+      return;
+    }
+
+    const targetStart = this.toDateInputValue(this.addDays(this.parseDateInput(sourceStart) ?? new Date(), 7));
+
+    // Hedef haftanın mevcut snapshot'ını çek; fetch fail olursa hiçbir
+    // state değiştirme — yarım kopyalama / save YOK (veri kaybı guard'ı).
+    this.loading.set(true);
+    this.saveError.set('');
+    let targetPlan: StudioPlan;
+    try {
+      targetPlan = await firstValueFrom(this.studioPlanService.getPlan(targetStart));
+    } catch (err) {
+      this.loading.set(false);
+      const msg = err instanceof Error && err.message ? err.message : 'bilinmeyen hata';
+      this.saveError.set(
+        `Hedef hafta planı yüklenemedi (${msg}). Kopyalama iptal edildi; mevcut haftada değişiklik yapılmadı.`,
+      );
+      return;
+    }
+    this.loading.set(false);
+
+    // Hedef cells: önce hedef haftanın canonical snapshot'ı, sonra
+    // selectedProgram kaynak slotları +7 gün ile üzerine yazılır.
+    const targetCells: Record<string, StudioPlanAssignment> = {};
+    for (const slot of targetPlan.slots) {
+      targetCells[this.cellKey(slot.day, slot.studio, slot.time)] = {
+        program: slot.program,
+        color: slot.color,
+      };
+    }
+
+    let copied = 0;
+    let overwritten = 0;
+    for (const key of matchingSourceKeys) {
+      const [day, studio, time] = key.split('::');
+      const targetDay = targetBySourceDay.get(day);
+      if (!targetDay) continue;
+      const targetKey = this.cellKey(targetDay, studio, time);
+      if (targetCells[targetKey]) overwritten += 1;
+      targetCells[targetKey] = currentCells[key];
+      copied += 1;
+    }
+
+    this.cells.set(targetCells);
+    this.weekStart = targetStart;
+    const nextDays = this.buildWeekDays(targetStart);
+    this.days.set(nextDays);
+    this.selectedDay = nextDays[0]?.id ?? targetStart;
+    this.viewMode.set('table');
+    this.saveCurrentWeek();
+
+    const overwriteSuffix = overwritten > 0 ? `, ${overwritten} mevcut slot üzerine yazıldı` : '';
+    window.alert(`"${program}" gelecek haftaya kopyalandı: ${copied} slot${overwriteSuffix}.`);
+  }
+
   exportPlan(): void {
     const exportNode = document.getElementById('studio-plan-export');
     if (!exportNode) return;
@@ -461,6 +619,31 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   }
 
   async exportToExcel(): Promise<void> {
+    // 2026-05-27: Excel export tarih aralığı (1-14 gün). Default = seçili
+    // hafta. Range geçersizse erken çık. Aralık birden fazla haftayı kapsar
+    // ise aggregateCellsForRange ile her hafta için ek `getPlan` fetch;
+    // fetch fail olursa abort + UI error (yarım dosya inmez).
+    if (!this.exportRangeValid()) return;
+    this.exportError.set('');
+    const rangeDays = this.buildDayListForRange(this.exportRangeStart, this.exportRangeEnd);
+    if (rangeDays.length === 0) return;
+
+    let cellsMap: Record<string, StudioPlanAssignment>;
+    try {
+      cellsMap = await this.aggregateCellsForRange(rangeDays);
+    } catch (err) {
+      // Hafta fetch fail — dosya üretme. Kullanıcıya net hata göster.
+      const msg = err instanceof Error && err.message ? err.message : 'bilinmeyen hata';
+      this.exportError.set(
+        `Excel export için plan verisi alınamadı (${msg}). Lütfen tekrar deneyin.`,
+      );
+      // eslint-disable-next-line no-console
+      console.error('[studio-plan] Excel export aborted — plan fetch failed:', err);
+      return;
+    }
+
+    // P1.3: ExcelJS runtime dynamic import — Excel chunk lazy yüklenir.
+    const { default: ExcelJS } = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Stüdyo Planı');
 
@@ -480,7 +663,12 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
         { header: 'Süre (dk)', key: 'durationMinutes', width: 12 },
       ];
 
-      for (const entry of this.listEntries()) {
+      // 2026-05-27: range-aware list export — seçilen rangeDays + aggregated
+      // cellsMap üzerinden entries üretilir. `listEntries()` mevcut hafta
+      // canonical signal'i; UI list view'da değişmez. Export sadece bu
+      // helper'ı kullanır → aralık dışı veri sızmaz.
+      const rangeListEntries = this.buildListEntriesForRange(rangeDays, cellsMap);
+      for (const entry of rangeListEntries) {
         const row = worksheet.addRow({ ...entry });
         const argb = this.hexToArgb(entry.color);
         if (argb !== 'FFFFFFFF') {
@@ -511,17 +699,13 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
       // ExcelJS workbook table-branch refactoru. Liste view (`viewMode='list'`)
       // de dokunulmadı.
       // ──────────────────────────────────────────────────────────────────────
-      const baseDays = this.visibleDays();
-      // 8. gün — sonraki haftanın Pazartesi (referans pattern: Mon-Mon span)
-      const nextMonday = (() => {
-        const last = baseDays[baseDays.length - 1];
-        if (!last) return null;
-        const [y, m, d] = last.id.split('-').map(Number);
-        const dt = new Date(Date.UTC(y, m - 1, d + 1));
-        const iso = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
-        return { id: iso, label: 'Pazartesi', date: iso.split('-').reverse().join('.') };
-      })();
-      const days = nextMonday ? [...baseDays, nextMonday] : baseDays;
+      // 2026-05-27: range mode'da `nextMonday` ekstra gün EKLENMEZ. Eski
+      // hafta-bazlı export referans pattern'i (Mon-Mon span = 8 gün) kaldırıldı
+      // çünkü artık kullanıcı 1-14 gün arası serbest aralık seçiyor. Eğer
+      // 8 günlük Pzt-Pzt span isterse `Excel başlangıç` ve `Excel bitiş`
+      // arasını 8 gün seçer. Bu sayede 14 günlük export ASLA 15 güne taşmaz.
+      const baseDays = rangeDays;
+      const days = baseDays;
       // Export-only: studio listesine OUTSIDE eklenir (referansta var; domain'de
       // gerçek stüdyo değil, sadece export grid'i için sahte kolon — boş kalır).
       const exportStudios = [...this.studios, 'OUTSIDE'];
@@ -670,7 +854,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
               // OUTSIDE export-only sahte kolon — assignment'ları yok
               if (studio !== 'OUTSIDE') {
                 const key = this.cellKey(day.id, studio, time);
-                const assignment = this.cells()[key];
+                const assignment = cellsMap[key];
                 if (assignment) {
                   // İlk geçişte slotSpan=1 (tek slot hücresi). Merge sonrası
                   // span gerçek değer ile re-format edilecek (aşağıdaki merge
@@ -729,7 +913,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
           for (let i = 0; i <= timeSlots.length; i++) {
             const time = timeSlots[i];
             const key = i < timeSlots.length ? this.cellKey(day.id, studio, time) : '';
-            const assignment = i < timeSlots.length ? this.cells()[key] : undefined;
+            const assignment = i < timeSlots.length ? cellsMap[key] : undefined;
             const sameAsCurrent = assignment && assignment.program === mergeProgram && assignment.color === mergeColor;
             if (sameAsCurrent) continue;
             if (mergeStart !== -1 && i - mergeStart > 1) {
@@ -801,7 +985,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
       // ── Page setup: A3 landscape, fitToPage 1×1, küçük margin
       // A3 = ECMA-376 paperSize 8; ExcelJS enum'da explicit yok → numeric cast.
       worksheet.pageSetup = {
-        paperSize: 8 as unknown as ExcelJS.Worksheet['pageSetup']['paperSize'],
+        paperSize: 8 as unknown as ExcelJSType.Worksheet['pageSetup']['paperSize'],
         orientation: 'landscape',
         fitToPage: true,
         fitToWidth: 1,
@@ -1225,6 +1409,109 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     return days;
   }
 
+  /** YYYY-MM-DD start/end aralığı için (1-14 gün) day listesi. */
+  private buildDayListForRange(startStr: string, endStr: string): StudioPlanDay[] {
+    const start = this.parseDateInput(startStr);
+    const end = this.parseDateInput(endStr);
+    if (!start || !end || end.getTime() < start.getTime()) return [];
+    const days: StudioPlanDay[] = [];
+    const cursor = new Date(start);
+    while (cursor.getTime() <= end.getTime()) {
+      days.push({
+        id: this.toDateInputValue(cursor),
+        label: DAY_LABELS[cursor.getDay()],
+        date: this.formatDisplayDate(cursor),
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return days;
+  }
+
+  /**
+   * Excel export tarih aralığı için cells map'i topla. Aralık birden fazla
+   * haftayı kapsayabilir (max 14 gün = 2 hafta). Mevcut yüklü hafta varsa
+   * `this.cells()` reuse edilir; başka haftalar için `getPlan` async fetch
+   * yapılıp slot'lar birleşik map'e eklenir.
+   *
+   * Fetch fail durumunda hata YUKARIDAKI caller'a fırlatılır (silent yutma
+   * YOK). Caller `exportToExcel` exception'ı yakalayıp `exportError`
+   * signal'ine yazar ve dosya üretimini abort eder — yarım Excel inmesin.
+   */
+  private async aggregateCellsForRange(
+    days: StudioPlanDay[],
+  ): Promise<Record<string, StudioPlanAssignment>> {
+    const uniqueWeeks = new Set<string>();
+    for (const day of days) uniqueWeeks.add(this.normalizeToMonday(day.id));
+    const merged: Record<string, StudioPlanAssignment> = {};
+    for (const week of uniqueWeeks) {
+      if (week === this.weekStart) {
+        // Mevcut görünür hafta — zaten yüklü cells
+        Object.assign(merged, this.cells());
+      } else {
+        // getPlan fail olursa exception caller'a propagate edilir; sessiz
+        // yutma YOK. Yarım dosya üretimine izin vermez.
+        const plan = await firstValueFrom(this.studioPlanService.getPlan(week));
+        for (const slot of plan?.slots ?? []) {
+          merged[this.cellKey(slot.day, slot.studio, slot.time)] = {
+            program: slot.program,
+            color: slot.color,
+          };
+        }
+      }
+    }
+    return merged;
+  }
+
+  /**
+   * Range-aware list entries — `listEntries()` computed'un parametrize
+   * versiyonu. Mevcut hafta yerine seçilen `days` + cellsMap üzerinde
+   * çalışır. Aynı algoritma (slot run-length aggregation).
+   */
+  private buildListEntriesForRange(
+    days: StudioPlanDay[],
+    cellsMap: Record<string, StudioPlanAssignment>,
+  ): StudioPlanListEntry[] {
+    const entries: StudioPlanListEntry[] = [];
+    const timeSlots = this.timeSlots();
+    for (const day of days) {
+      for (const studio of this.studios) {
+        let cursor = 0;
+        while (cursor < timeSlots.length) {
+          const time = timeSlots[cursor];
+          const assignment = cellsMap[this.cellKey(day.id, studio, time)];
+          if (!assignment) { cursor++; continue; }
+
+          let endIndex = cursor + 1;
+          while (endIndex < timeSlots.length) {
+            const nextTime = timeSlots[endIndex];
+            const nextAssignment = cellsMap[this.cellKey(day.id, studio, nextTime)];
+            if (!nextAssignment
+                || nextAssignment.program !== assignment.program
+                || nextAssignment.color !== assignment.color) break;
+            endIndex++;
+          }
+
+          const slotCount = endIndex - cursor;
+          entries.push({
+            id: `${day.id}-${studio}-${time}`,
+            dayLabel: day.label,
+            dayDate: day.date,
+            studio,
+            startTime: time,
+            endTime: this.endTimeForSlotIndex(endIndex),
+            program: assignment.program,
+            color: assignment.color,
+            colorLabel: this.colorLabel(assignment.color),
+            slotCount,
+            durationMinutes: slotCount * STUDIO_PLAN_SLOT_MINUTES,
+          });
+          cursor = endIndex;
+        }
+      }
+    }
+    return entries;
+  }
+
   private normalizeToMonday(value: string): string {
     const date = this.parseDateInput(value);
     if (!date) return DEFAULT_START_DATE;
@@ -1249,13 +1536,8 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
     return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()}`;
   }
 
-  private buildWeekOptions(): { label: string; value: string }[] {
-    const currentMonday = this.parseDateInput(DEFAULT_START_DATE) ?? new Date();
-    return [
-      { label: `Geçen hafta · ${this.formatDisplayDate(this.addDays(currentMonday, -7))}`, value: this.toDateInputValue(this.addDays(currentMonday, -7)) },
-      { label: `Bu hafta · ${this.formatDisplayDate(currentMonday)}`, value: this.toDateInputValue(currentMonday) },
-      { label: `Gelecek hafta · ${this.formatDisplayDate(this.addDays(currentMonday, 7))}`, value: this.toDateInputValue(this.addDays(currentMonday, 7)) },
-    ];
+  private buildWeekOptions(): StudioPlanWeekOption[] {
+    return buildStudioPlanWeekOptions(DEFAULT_START_DATE);
   }
 
   private addDays(date: Date, days: number): Date {

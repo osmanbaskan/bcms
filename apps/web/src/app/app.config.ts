@@ -12,11 +12,22 @@ import { errorInterceptor } from './core/interceptors/error.interceptor';
 import { getPublicAppOrigin } from './core/auth/public-origin';
 import { LoggerService } from './core/services/logger.service';
 
-const TOKEN_REFRESH_MIN_VALIDITY_SECONDS = 120;
+// FA6 (2026-05-29, 250 user scale): min validity 120 → 180sn → her tick'te
+// "180sn'lik geçerlilik kaldı mı" kontrol; varsa refresh skip → Keycloak'a
+// req sıklığı %33 azalır (250 user × 60sn = ~4 req/sn → ~3 req/sn).
+const TOKEN_REFRESH_MIN_VALIDITY_SECONDS = 180;
 const TOKEN_REFRESH_INTERVAL_MS = 60_000;
 
 function initKeycloak(keycloak: KeycloakService, logger: LoggerService) {
   return async () => {
+    // P0.1 (2026-05-29, 250 user scale): silent-check-sso aktive edildi.
+    // Eski: onLoad='login-required' → her sekme açışında Keycloak'a full
+    // redirect (~2-3 sn flicker, session olsa bile).
+    // Yeni: onLoad='check-sso' → silent iframe ile session sessizce kontrol
+    // edilir; session varsa SPA redirect olmadan yüklenir (250 user × günlük
+    // 20 tab × 2 sn ≈ kümülatif 3 saat kullanıcı zamanı kazancı).
+    // Session yoksa fallback `keycloak.login()` çağrısı ile mevcut davranışa
+    // dönülür (Keycloak login formuna redirect) — anonim SPA state'i YOK.
     await keycloak.init({
       config: {
         url:      environment.keycloak.url,
@@ -24,21 +35,21 @@ function initKeycloak(keycloak: KeycloakService, logger: LoggerService) {
         clientId: environment.keycloak.clientId,
       },
       initOptions: {
-        // ORTA-FE-2.2.2 (2026-05-04): silent-check-sso entegrasyonu opsiyonel.
-        // Şu anki davranış: login-required → her ziyarette Keycloak'a redirect.
-        // Alternatif (UX akıcı): onLoad='check-sso' + silentCheckSsoRedirectUri
-        // ile session iframe ile sessiz kontrol; oturum yoksa kullanıcı
-        // explicit login butonu ile gönderir. UI kararı bekliyor — şu an
-        // login-required kalıyor (mevcut akışın değiştirilmesi tüm sekmeleri
-        // etkiler).
-        onLoad: 'login-required',
+        onLoad: 'check-sso',
         checkLoginIframe: false,
         redirectUri: `${getPublicAppOrigin()}/`,
         scope: 'openid profile email',
-        // silentCheckSsoRedirectUri: `${getPublicAppOrigin()}/assets/silent-check-sso.html`,
+        silentCheckSsoRedirectUri: `${getPublicAppOrigin()}/assets/silent-check-sso.html`,
       },
       loadUserProfileAtStartUp: false,
     });
+
+    // Fallback: silent check session yoksa explicit login (mevcut akışla
+    // eşdeğer redirect). Authentication zorunlu — anonim SPA state'i yok.
+    if (!keycloak.getKeycloakInstance().authenticated) {
+      await keycloak.login({ redirectUri: `${getPublicAppOrigin()}/` });
+      return; // login() redirect başlatır; init devamı bu sekmede çalışmaz.
+    }
 
     const kc = keycloak.getKeycloakInstance();
     kc.onTokenExpired = () => {

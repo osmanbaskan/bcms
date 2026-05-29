@@ -10,6 +10,7 @@ import {
 } from './provys.channel-mapping.js';
 import { listBxfFiles, extractScheduleDate } from './provys.file-resolver.js';
 import { composeFinalSnapshot, type SnapshotRow, type SnapshotSource } from './provys.snapshot.js';
+import { requestSsdbResolverTick } from '../ssdb/ssdb-resolver.worker.js';
 import type { ProvysChannelSlug } from '@bcms/shared';
 
 /** Worker bağlamında audit ext'in entityType olarak gördüğü model adı. */
@@ -228,14 +229,16 @@ export async function emitNotify(
  */
 function selectCandidateFiles(
   files: ReadonlyArray<{ path: string; fileCode: string; scheduleDate: string; mtime: Date }>,
-  fileCode: string,
+  fileCodeOrCodes: string | ReadonlyArray<string>,
   targetDate: string,
 ): Array<{ path: string; mtime: Date }> {
-  const normalized = fileCode.trim().toLowerCase();
+  const rawCodes = Array.isArray(fileCodeOrCodes) ? fileCodeOrCodes : [fileCodeOrCodes as string];
+  const acceptedCodes = new Set(rawCodes.map((c) => c.trim().toLowerCase()).filter((c) => c.length > 0));
+  if (acceptedCodes.size === 0) return [];
   const prev = previousIsoDate(targetDate);
-  const accepted = new Set([targetDate, prev]);
+  const acceptedDates = new Set([targetDate, prev]);
   return files
-    .filter((f) => f.fileCode === normalized && accepted.has(f.scheduleDate))
+    .filter((f) => acceptedCodes.has(f.fileCode) && acceptedDates.has(f.scheduleDate))
     .map((f) => ({ path: f.path, mtime: f.mtime }));
 }
 
@@ -265,14 +268,14 @@ export async function syncChannelDate(
   watchDir: string,
   logger: FastifyBaseLogger,
 ): Promise<ProvysSyncResult> {
-  const fileCode = await fileCodeForSlug(channelSlug);
-  if (!fileCode) {
+  const fileCodes = await fileCodesForSlug(channelSlug);
+  if (fileCodes.length === 0) {
     logger.warn({ channelSlug }, 'Provys: slug için fileCode çözülemedi');
     return { channelSlug, reason: 'unknown-channel', inserted: 0, updated: 0, deleted: 0, affectedDates: [] };
   }
   const allFiles = await listBxfFiles(watchDir);
 
-  const candidates = selectCandidateFiles(allFiles, fileCode, scheduleDate);
+  const candidates = selectCandidateFiles(allFiles, fileCodes, scheduleDate);
   const sources: SnapshotSource[] = [];
   for (const c of candidates) {
     let content: string;
@@ -351,6 +354,12 @@ export async function syncChannelDate(
     'Provys: kanal/gün senkronize edildi (composed)',
   );
 
+  // 2026-05-27: BXF sync başarılı (`applied`) — SSDB resolver tick'i tetikle.
+  // Worker tarafında debounce/coalesce; aynı anda gelen birden fazla sync
+  // tek tick'e indirgenir. API container'da background services disabled
+  // olduğu için `requestSsdbResolverTick` no-op (sessizce döner).
+  requestSsdbResolverTick(`provys-sync:${channelSlug}:${scheduleDate}`);
+
   return {
     channelSlug,
     reason: 'applied',
@@ -362,14 +371,18 @@ export async function syncChannelDate(
 }
 
 /**
- * Slug → fileCode dynamic lookup (shared `PROVYS_CHANNELS` katalogu).
- * Tek bir import path üzerinden tutarlı; channel-mapping.ts dosyada zaten
- * `resolveChannel(fileCode)` veriyor.
+ * Slug → kabul edilen `fileCode` set'i (canonical + aliases).
+ *
+ * Exporter aynı kanal için birden çok fileCode üretebiliyor (örn. Beinhaber
+ * canonical `xsnw` + alias `snw`; beinsports kanallarında geçmiş `x*`
+ * varyantları). Aday dosya filtresi tüm bu kodları kabul etmeli, yoksa alias
+ * dosyaları sessizce filtre dışında kalır.
  */
-async function fileCodeForSlug(slug: ProvysChannelSlug): Promise<string | null> {
+async function fileCodesForSlug(slug: ProvysChannelSlug): Promise<string[]> {
   const { PROVYS_CHANNELS } = await import('@bcms/shared');
   const c = PROVYS_CHANNELS.find((x) => x.slug === slug);
-  return c?.fileCode ?? null;
+  if (!c) return [];
+  return [c.fileCode, ...(c.fileCodeAliases ?? [])];
 }
 
 /**

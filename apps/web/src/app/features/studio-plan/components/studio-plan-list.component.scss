@@ -47,16 +47,35 @@
   transition: background var(--bp-dur-fast);
 }
 
-.list-row:nth-child(odd) {
-  background: var(--bp-bg-2);
-}
-
-.list-row:nth-child(even) {
-  background: var(--bp-bg-3);
-}
+// 2026-05-28 (rev 5): 2 tone zebra (gün-içi A/B) + gün geçiş şeridi.
+// Her gün kendi içinde rowIdx % 2 ile A/B zebra; gün değişince A'dan başlar.
+// Sonraki günün ilk satırında `.day-boundary` class'ı kalın yatay üst şerit
+// gösterir (ilk gün ilk satırında şerit yok).
+//
+// Dark mode: siyah-gri palet (default `--bp-fg-1` beyaz text okunabilir).
+// Light mode: beyaz-açık gri palet (default light token koyu text okunabilir).
+// Mor/purple/slate tonları KULLANILMAZ; program marker (kategori rengi inline)
+// ve kategori chip'leri etkilenmez.
+.list-row.list-tone-a { background: #1a1a1a; }
+.list-row.list-tone-b { background: #262626; }
 
 .list-row:hover {
-  background: rgba(124, 58, 237, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+// Gün geçiş şeridi — sonraki günün ilk satırı.
+.list-row.day-boundary {
+  border-top: 4px solid #6b7280;
+}
+
+// Light theme override — beyaz/açık gri.
+:host-context(html[data-theme="light"]) .list-row.list-tone-a { background: #ffffff; }
+:host-context(html[data-theme="light"]) .list-row.list-tone-b { background: #f5f5f5; }
+:host-context(html[data-theme="light"]) .list-row:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+:host-context(html[data-theme="light"]) .list-row.day-boundary {
+  border-top-color: #9ca3af;
 }
 
 .list-row:last-child {
@@ -82,7 +101,13 @@
   font-size: 11px;
 }
 
+// 2026-05-27: Saatler iki ayrı `<span>`'de alt alta; eski `start - end`
+// inline metnindeki `-` ayracı kaldırıldı. Mevcut font/mono/renk korunur.
 .time-range {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   font-weight: var(--bp-fw-bold);
   font-family: var(--bp-font-mono);
   font-variant-numeric: tabular-nums;
@@ -102,6 +127,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--bp-fg-1);
+}
+
+// 2026-05-27: Süre hücresi program ismi ile birebir aynı renk + ağırlık.
+// Token `--bp-fg-1` theme switch ile otomatik geçişli (dark: açık,
+// light: koyu mor base). Light override defansif olarak ayrıca verilir.
+.duration-cell strong {
+  color: var(--bp-fg-1);
+  font-weight: var(--bp-fw-bold);
+}
+
+:host-context(html[data-theme="light"]) .duration-cell strong {
+  color: #3b0764;
 }
 
 .empty-list {

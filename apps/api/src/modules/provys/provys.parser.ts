@@ -687,5 +687,224 @@ export function parseBxf(content: string): ParsedItem[] {
   if (!validation.success) {
     throw new ProvysParseError('Parser çıktısı şemaya uymuyor', validation.error);
   }
-  return validation.data;
+
+  // 2026-05-27: Dosya başı "pre-rollover" bloğu filtresi.
+  // Bazı Provys exporter çıktıları (gözlemlenen: LTV) XML order'a hedef gün
+  // gövdesinden önce gün-sonu → gün-başı taşan kısa bir pre-roll bloğu
+  // koyuyor. Güvenli guard'lar altında bu blok kırpılır (bkz. helper jsdoc).
+  // Hiçbir guard sağlanmazsa items aynen döner — `currentStart < previousStart`
+  // tek başına asla kırpma sebebi değildir.
+  const { items: filtered } = dropLeadingPreRolloverBlock(validation.data);
+  return filtered;
+}
+
+// ── Pre-rollover guard helper ────────────────────────────────────────────────
+
+const TIMECODE_TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(?::(\d{2}))?$/;
+
+/**
+ * "HH:MM:SS[:FF]" → time-of-day saniye (0..86399). Frame bileşeni guard
+ * eşikleri (saatlik) için anlamsız olduğundan ihmal edilir. Malformed input
+ * veya alan dışı saatlerde `null`. Pure.
+ */
+export function timecodeToTimeOfDaySeconds(tc: string | null | undefined): number | null {
+  if (!tc) return null;
+  const m = tc.match(TIMECODE_TIME_RE);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mn = Number(m[2]);
+  const s = Number(m[3]);
+  if (!Number.isFinite(h) || !Number.isFinite(mn) || !Number.isFinite(s)) return null;
+  if (h < 0 || h > 23 || mn < 0 || mn > 59 || s < 0 || s > 59) return null;
+  return h * 3600 + mn * 60 + s;
+}
+
+const PRE_ROLL_PREV_END_THRESHOLD_S = 22 * 3600;  // 22:00:00
+const PRE_ROLL_CURR_START_THRESHOLD_S = 2 * 3600; // 02:00:00
+
+export interface PreRollFilterInfo {
+  /** Drop uygulandı mı (true → items dizisi kırpıldı). */
+  applied: boolean;
+  droppedCount: number;
+  keptCount: number;
+  /** Drop uygulandıysa hangi segment tutuldu: 'after' = pre-roll baş düştü,
+   *  'before' = next-day tail son düştü. Drop yapılmadıysa null. */
+  segmentChoice: 'before' | 'after' | 'middle' | null;
+  /** Seçilen safe rollover'ın XML order index'i (yalnız tek safe rollover
+   *  varsa doldurulur). Aksi halde null. */
+  rolloverIndex: number | null;
+  previousTimecode: string | null;
+  currentTimecode: string | null;
+  reason:
+    | 'leading-pre-roll'                  // applied=true, segment=after; pre-roll baş düştü
+    | 'trailing-next-day-tail'            // applied=true, segment=before; next-day tail düştü
+    | 'middle-segment-kept'               // applied=true, segment=middle; head ve next-day tail düştü
+    | 'no-rollover'                       // hiç currentStart<previousStart yok
+    | 'unsafe-rollover-skipped'           // rollover var ama 22:00 / 02:00 guard'larını geçmedi
+    | 'multiple-safe-rollovers-skipped'   // 3+ safe rollover var; karmaşık, drop yok
+    | 'empty-result-skipped'              // segment seçimi boş liste üretecekti
+    | 'first-item-unparseable'            // ilk item startTimecode parse edilemedi
+    | 'too-few-items';                    // 0 veya 1 item
+}
+
+/**
+ * Pure: XML order'da gelen items dizisinden "doğru gün segmenti"ni seçer.
+ *
+ * Bazı Provys exporter çıktıları XML order'a hedef gün gövdesinden önce
+ * bir gün-sonu pre-roll bloğu (örn. 22:59→23:59→00:00→…) veya sonra bir
+ * next-day tail bloğu (örn. 01:00→…→23:59→00:30) ekliyor. Bu helper safe
+ * rollover noktası tespit edip hedef gün segmentini tutar, diğerini düşürür.
+ *
+ * Algoritma:
+ *  1. XML order'da `currentStart < previousStart` olan tüm "rollover"
+ *     noktalarını topla.
+ *  2. Her rollover için **safe** mı kontrol et:
+ *       previousStart >= 22:00:00  AND  currentStart <= 02:00:00
+ *  3. Sadece **tek** safe rollover varsa segment seçimi uygulanır:
+ *       - İlk item start >= 22:00 → 'after' segmenti tutulur
+ *         (örn. 22:59→23:59→00:00→23:59 → kalan 00:00→23:59)
+ *       - İlk item start <  22:00 → 'before' segmenti tutulur
+ *         (örn. 01:00→…→23:59→00:30 → kalan 01:00→23:59)
+ *  4. Birden fazla safe rollover varsa → drop YAPMA (karmaşık, raporla).
+ *  5. Hiç safe rollover yoksa veya yalnız unsafe rollover varsa → liste aynen.
+ *  6. Segment seçimi boş liste üretecekse → drop YAPMA.
+ *
+ * **Critical safety**: tek başına `currentStart < previousStart` drop sebebi
+ * DEĞİL. 17:00→23:59 monoton partial-day, 00:00→23:59 tam gün, 05:00→23:59
+ * geç başlangıç, 01:00→00:30 unsafe senaryosunda hiçbir item düşmez.
+ */
+export function dropLeadingPreRolloverBlock(
+  items: readonly ParsedItem[],
+): { items: ParsedItem[]; info: PreRollFilterInfo } {
+  const passthrough = (reason: PreRollFilterInfo['reason'], extra: Partial<PreRollFilterInfo> = {}): { items: ParsedItem[]; info: PreRollFilterInfo } => ({
+    items: [...items],
+    info: {
+      applied: false, droppedCount: 0, keptCount: items.length,
+      segmentChoice: null, rolloverIndex: null,
+      previousTimecode: null, currentTimecode: null,
+      reason, ...extra,
+    },
+  });
+
+  if (items.length < 2) return passthrough('too-few-items');
+
+  // 1) Tüm safe rollover'ları topla. Parse edilemeyen timecode'lar
+  //    karşılaştırmayı sessizce atlatır.
+  type Roll = { idx: number; prevTc: string | null; currTc: string | null; prevSec: number; currSec: number };
+  const safeRollovers: Roll[] = [];
+  let anyRolloverSeen: Roll | null = null;
+  for (let i = 1; i < items.length; i++) {
+    const prevSec = timecodeToTimeOfDaySeconds(items[i - 1].startTimecode);
+    const currSec = timecodeToTimeOfDaySeconds(items[i].startTimecode);
+    if (prevSec == null || currSec == null) continue;
+    if (currSec >= prevSec) continue;
+    const roll: Roll = {
+      idx: i,
+      prevTc: items[i - 1].startTimecode,
+      currTc: items[i].startTimecode,
+      prevSec, currSec,
+    };
+    if (anyRolloverSeen == null) anyRolloverSeen = roll;
+    if (prevSec >= PRE_ROLL_PREV_END_THRESHOLD_S && currSec <= PRE_ROLL_CURR_START_THRESHOLD_S) {
+      safeRollovers.push(roll);
+    }
+  }
+
+  // 2) Hiç rollover yok.
+  if (anyRolloverSeen == null) return passthrough('no-rollover');
+
+  // 3) Rollover var ama hiçbiri safe değil.
+  if (safeRollovers.length === 0) {
+    return passthrough('unsafe-rollover-skipped', {
+      rolloverIndex: anyRolloverSeen.idx,
+      previousTimecode: anyRolloverSeen.prevTc,
+      currentTimecode: anyRolloverSeen.currTc,
+    });
+  }
+
+  // 4) Tam 2 safe rollover → "head + body+tail + next-day suffix" paterni.
+  //    Provys exporter bazı LTV dosyalarında dosyanın başında pre-roll head
+  //    (gün-sonu artıkları, AYRI Provys planning kaydı, bizim akışa girmemeli)
+  //    + ortada body+tail (asıl gün içeriği, 23:00 civarı gerçek programlar
+  //    dahil) + sonda next-day suffix (00:00 civarı tek-iki promo) gönderir.
+  //    Doğru çıktı: middle segment (R1..R2) — head düşer, next-day suffix
+  //    düşer; orta segment (gün gövdesi + akşam tail) korunur.
+  //
+  //    Örnek: LTV 2026-05-28 dosyasında DC00041191 (head'deki yanlış 5. hafta
+  //    pre-roll) düşer; DC00041192 (orta segmentteki gerçek 6. hafta tail)
+  //    korunur; sondaki 00:00:07 next-day promo düşer.
+  if (safeRollovers.length === 2) {
+    const [r1, r2] = safeRollovers;
+    const kept = items.slice(r1.idx, r2.idx);
+    const droppedCount = items.length - kept.length;
+    if (kept.length === 0 || droppedCount === 0) {
+      return passthrough('empty-result-skipped', {
+        rolloverIndex: r1.idx,
+        previousTimecode: r1.prevTc,
+        currentTimecode: r1.currTc,
+      });
+    }
+    return {
+      items: [...kept],
+      info: {
+        applied: true,
+        droppedCount,
+        keptCount: kept.length,
+        segmentChoice: 'middle',
+        rolloverIndex: r1.idx,
+        previousTimecode: r1.prevTc,
+        currentTimecode: r1.currTc,
+        reason: 'middle-segment-kept',
+      },
+    };
+  }
+
+  // 5) 3+ safe rollover → karmaşık senaryo, otomatik düzeltme yok.
+  if (safeRollovers.length > 2) {
+    return passthrough('multiple-safe-rollovers-skipped', {
+      rolloverIndex: safeRollovers[0].idx,
+      previousTimecode: safeRollovers[0].prevTc,
+      currentTimecode: safeRollovers[0].currTc,
+    });
+  }
+
+  // 5) Tek safe rollover → segment seçimi.
+  const roll = safeRollovers[0];
+  const firstSec = timecodeToTimeOfDaySeconds(items[0].startTimecode);
+  if (firstSec == null) {
+    return passthrough('first-item-unparseable', {
+      rolloverIndex: roll.idx,
+      previousTimecode: roll.prevTc,
+      currentTimecode: roll.currTc,
+    });
+  }
+
+  // İlk item gün sonu penceresinde (>= 22:00) → dosya pre-roll ile başlamış,
+  // hedef gün rollover SONRASI segment. Aksi halde dosya normal/erken gün
+  // ile başlamış, hedef gün rollover ÖNCESİ segment.
+  const keepAfter = firstSec >= PRE_ROLL_PREV_END_THRESHOLD_S;
+  const kept = keepAfter ? items.slice(roll.idx) : items.slice(0, roll.idx);
+  const droppedCount = items.length - kept.length;
+
+  if (kept.length === 0 || droppedCount === 0) {
+    return passthrough('empty-result-skipped', {
+      rolloverIndex: roll.idx,
+      previousTimecode: roll.prevTc,
+      currentTimecode: roll.currTc,
+    });
+  }
+
+  return {
+    items: [...kept],
+    info: {
+      applied: true,
+      droppedCount,
+      keptCount: kept.length,
+      segmentChoice: keepAfter ? 'after' : 'before',
+      rolloverIndex: roll.idx,
+      previousTimecode: roll.prevTc,
+      currentTimecode: roll.currTc,
+      reason: keepAfter ? 'leading-pre-roll' : 'trailing-next-day-tail',
+    },
+  };
 }

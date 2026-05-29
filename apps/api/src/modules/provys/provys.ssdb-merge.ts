@@ -111,12 +111,43 @@ export async function fetchSsdbCacheMap(
 }
 
 /**
+ * Aynı (channel + scheduleDate) sınırında dcCode bazlı toplam frame süresi.
+ * Caller route handler tek bir (channel, date) snapshot için çağırır;
+ * bu yüzden grouping key sadece `dcCode`. CANLI ve dcCode-blank satırlar
+ * hariç. Frames hesaplanamayan satırlar atlanır.
+ *
+ * Split material kontrolünde decideMaterialStatus'a forward edilir.
+ */
+export function computeGroupSumFramesByDc(rows: readonly ProvysRowForMerge[]): Map<string, number> {
+  const sum = new Map<string, number>();
+  for (const row of rows) {
+    if (isProvysLiveCategory({ category: row.category })) continue;
+    const dc = row.dcCode?.trim();
+    if (!dc) continue;
+    const frames = provysDurationToFrames({
+      durationTimecode: row.durationTimecode,
+      durationMs: row.durationMs,
+      frameRate: row.frameRate,
+    });
+    if (frames == null || !Number.isFinite(frames)) continue;
+    sum.set(dc, (sum.get(dc) ?? 0) + frames);
+  }
+  return sum;
+}
+
+/**
  * Tek Provys row icin DTO `ssdb` blogunu kur. Cache miss / CANLI / no-dc
  * durumlarinda default doldurur; cache hit'te decideMaterialStatus karari.
+ *
+ * `groupSumFrames` opsiyonel — caller `computeGroupSumFramesByDc` ile
+ * hazırlayıp dc başına toplam frames'i geçer (split material kontrolü için).
+ * Tek satır veya hesaplanamayan grup durumunda null/undefined geçilir;
+ * davranış geriye dönük uyumlu kalır.
  */
 export function buildSsdbInfoForRow(
   row: ProvysRowForMerge,
   cacheRow: SsdbCacheRowForMerge | null,
+  groupSumFrames: number | null = null,
 ): ProvysItemSsdbInfo {
   const provysFrames = provysDurationToFrames({
     durationTimecode: row.durationTimecode,
@@ -130,6 +161,7 @@ export function buildSsdbInfoForRow(
     lookupStatus: (cacheRow?.lookupStatus as SsdbLookupStatus | null) ?? null,
     ssdbDurationFrames: cacheRow?.ssdbDurationFrames ?? null,
     provysDurationFrames: provysFrames,
+    groupSumFrames,
   });
 
   // CANLI short-circuit — cache alanlari ASLA DTO'ya tasinmaz.

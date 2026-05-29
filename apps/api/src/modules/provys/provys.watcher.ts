@@ -6,6 +6,7 @@ import { als } from '../../plugins/audit.js';
 import { syncChannelDate } from './provys.service.js';
 import { extractFileCode, resolveChannel } from './provys.channel-mapping.js';
 import { extractScheduleDate } from './provys.file-resolver.js';
+import { startHeartbeatTicker } from '../../lib/service-heartbeat.js';
 import { ConcurrencyLimiter } from './provys.concurrency.js';
 
 const WATCH_FOLDER = process.env.PROVYS_WATCH_FOLDER ?? './tmp/provys';
@@ -52,6 +53,7 @@ const POLL_INTERVAL_MS = parsePollIntervalMs(process.env.PROVYS_WATCHER_POLL_INT
  * ve izleyici başlatılmaz.
  */
 export function startProvysWatcher(app: FastifyInstance): void {
+  startHeartbeatTicker('provys-watcher', app);
   if (!fs.existsSync(WATCH_FOLDER)) {
     app.log.warn(
       { folder: WATCH_FOLDER },

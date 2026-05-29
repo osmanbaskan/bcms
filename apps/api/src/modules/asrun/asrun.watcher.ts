@@ -7,6 +7,7 @@ import { ingestAsrunFile } from './asrun.service.js';
 import { parseAsrunFilename } from './asrun.filename.js';
 import { ConcurrencyLimiter } from '../provys/provys.concurrency.js';
 import { parseBoolEnv, parsePollIntervalMs } from '../provys/provys.watcher.js';
+import { startHeartbeatTicker } from '../../lib/service-heartbeat.js';
 
 const WATCH_FOLDER     = process.env.ASRUN_WATCH_FOLDER ?? './tmp/asrun';
 const DEBOUNCE_MS      = Number(process.env.ASRUN_WATCHER_DEBOUNCE_MS ?? '1500');
@@ -29,6 +30,7 @@ const POLL_INTERVAL_MS = parsePollIntervalMs(process.env.ASRUN_WATCHER_POLL_INTE
  * Mount yoksa watcher kontrollü warn ile başlatılmaz; container crash'lemez.
  */
 export function startAsrunWatcher(app: FastifyInstance): void {
+  startHeartbeatTicker('asrun-watcher', app);
   if (!fs.existsSync(WATCH_FOLDER)) {
     app.log.warn(
       { folder: WATCH_FOLDER },

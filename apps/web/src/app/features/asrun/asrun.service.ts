@@ -18,6 +18,21 @@ function istanbulTodayDate(): string {
 }
 
 /**
+ * Europe/Istanbul "dün" tarihini `YYYY-MM-DD` döner. ASRUN default açılışı
+ * için: gün tamamlanmadan bugünün ASRUN listesi eksik olduğundan default
+ * tarih dün olarak verilir. UTC string aritmetiği ile TZ-safe.
+ */
+function istanbulYesterdayDate(): string {
+  const today = istanbulTodayDate();
+  const [y, m, d] = today.split('-').map(Number);
+  const prev = new Date(Date.UTC(y, m - 1, d - 1));
+  const yy = prev.getUTCFullYear();
+  const mm = String(prev.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(prev.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+/**
  * Asrun per-day store. Provys'ten ayrı, ayrı endpoint çağırır
  * (`/api/v1/asrun/items`). SSE V1 kapsamında değil; REST polling/refresh
  * ile yenilenir.
@@ -30,7 +45,10 @@ export class AsrunService {
   private readonly filteredStores = new Map<AsrunChannelSlug, Signal<AsrunItemDto[]>>();
   private readonly receivedFor = signal<Set<AsrunChannelSlug>>(new Set());
 
-  readonly activeDate = signal<string>(istanbulTodayDate());
+  // 2026-05-27: ASRUN gün-sonu kaynağı; gün tamamlanmadan bugünün listesi
+  // eksik olur. Default açılış dünün tarihiyle gelir. Kullanıcı tarih
+  // picker'dan bugünü veya başka bir günü manuel seçebilir (setActiveDate).
+  readonly activeDate = signal<string>(istanbulYesterdayDate());
 
   /** Aktif kategori filtresi — default tüm 6 kategori seçili. */
   readonly selectedCategories = signal<ReadonlySet<AsrunCategory>>(new Set(ASRUN_CATEGORIES));

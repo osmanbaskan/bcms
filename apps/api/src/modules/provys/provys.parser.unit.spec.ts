@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { parseBxf, ProvysParseError, isRekCommercialTitle } from './provys.parser.js';
+import {
+  parseBxf,
+  ProvysParseError,
+  isRekCommercialTitle,
+  dropLeadingPreRolloverBlock,
+  timecodeToTimeOfDaySeconds,
+} from './provys.parser.js';
+import type { ParsedItem } from './provys.parser.js';
 
 /**
  * SMPTE 2021 BXF fixture — gerçek Provys exporter çıktısının küçültülmüş
@@ -969,5 +976,236 @@ describe('provys.parser › BXF raw title source fields (2026-05-26)', () => {
     const xml = PROGRAM_EVENT.replace('<EpisodeNumber>54</EpisodeNumber>', '<EpisodeNumber>abc</EpisodeNumber>');
     const [item] = parseBxf(wrapEvent(xml));
     expect(item.episodeNumber).toBeNull();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Pre-rollover guard helper testleri
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('provys.parser › timecodeToTimeOfDaySeconds', () => {
+  it('HH:MM:SS:FF → saniye (frame ignore)', () => {
+    expect(timecodeToTimeOfDaySeconds('00:00:00:00')).toBe(0);
+    expect(timecodeToTimeOfDaySeconds('22:00:00:00')).toBe(22 * 3600);
+    expect(timecodeToTimeOfDaySeconds('23:59:59:24')).toBe(23 * 3600 + 59 * 60 + 59);
+    expect(timecodeToTimeOfDaySeconds('02:00:00:00')).toBe(2 * 3600);
+  });
+  it('HH:MM:SS (frame yok) da geçerli', () => {
+    expect(timecodeToTimeOfDaySeconds('10:30:45')).toBe(10 * 3600 + 30 * 60 + 45);
+  });
+  it('null/undefined/boş/malformed → null', () => {
+    expect(timecodeToTimeOfDaySeconds(null)).toBeNull();
+    expect(timecodeToTimeOfDaySeconds(undefined)).toBeNull();
+    expect(timecodeToTimeOfDaySeconds('')).toBeNull();
+    expect(timecodeToTimeOfDaySeconds('25:00:00:00')).toBeNull(); // h out of range
+    expect(timecodeToTimeOfDaySeconds('22:60:00:00')).toBeNull(); // m out of range
+    expect(timecodeToTimeOfDaySeconds('22:00:60:00')).toBeNull(); // s out of range
+    expect(timecodeToTimeOfDaySeconds('xx:yy:zz')).toBeNull();
+  });
+});
+
+// Helper for compact fixture construction.
+function fixture(tcs: ReadonlyArray<string>): ParsedItem[] {
+  return tcs.map((tc, i): ParsedItem => ({
+    eventId: `urn:uuid:test-${i}`,
+    scheduleDate: '2026-05-27',
+    sequence: i,
+    startAt: new Date(0),
+    durationMs: 60_000,
+    startTimecode: tc,
+    durationTimecode: '00:01:00:00',
+    frameRate: 25,
+    dcCode: `DC${String(i).padStart(8, '0')}`,
+    title: `item-${i}`,
+    rawKind: 'Program',
+    category: 'PROGRAM',
+    versionName: null, episodeName: null, eventTitle: null,
+    contentName: null, programName: null, adType: null, spotType: null,
+    titleSource: 'UNKNOWN',
+    seriesName: null, episodeNumber: null,
+  }));
+}
+
+describe('provys.parser › dropLeadingPreRolloverBlock (segment seçimi)', () => {
+  it('1. Leading pre-roll: 22:59 / 23:59 / 00:00 / 00:10 → after segmenti tutulur', () => {
+    // İlk item start=22:59 (>=22:00) → 'after' segmenti tutulur.
+    const items = fixture(['22:59:00:00', '23:59:00:00', '00:00:00:00', '00:10:00:00']);
+    const { items: out, info } = dropLeadingPreRolloverBlock(items);
+    expect(info.applied).toBe(true);
+    expect(info.reason).toBe('leading-pre-roll');
+    expect(info.segmentChoice).toBe('after');
+    expect(info.rolloverIndex).toBe(2);
+    expect(info.droppedCount).toBe(2);
+    expect(info.keptCount).toBe(2);
+    expect(out.map((it) => it.startTimecode)).toEqual(['00:00:00:00', '00:10:00:00']);
+  });
+
+  it('2. Trailing next-day tail: 01:00 / 12:00 / 23:59 / 00:30 → before segmenti tutulur', () => {
+    // İlk item start=01:00 (<22:00) → 'before' segmenti tutulur, sondaki 00:30 düşer.
+    const items = fixture(['01:00:00:00', '12:00:00:00', '23:59:00:00', '00:30:00:00']);
+    const { items: out, info } = dropLeadingPreRolloverBlock(items);
+    expect(info.applied).toBe(true);
+    expect(info.reason).toBe('trailing-next-day-tail');
+    expect(info.segmentChoice).toBe('before');
+    expect(info.rolloverIndex).toBe(3);
+    expect(info.droppedCount).toBe(1);
+    expect(info.keptCount).toBe(3);
+    expect(out.map((it) => it.startTimecode)).toEqual(['01:00:00:00', '12:00:00:00', '23:59:00:00']);
+  });
+
+  it('3. Partial-day monoton 17:00 / 18:00 / 23:59 → hepsi kalır', () => {
+    const items = fixture(['17:00:00:00', '18:00:00:00', '23:59:00:00']);
+    const { items: out, info } = dropLeadingPreRolloverBlock(items);
+    expect(info.applied).toBe(false);
+    expect(info.reason).toBe('no-rollover');
+    expect(out).toHaveLength(3);
+  });
+
+  it('4. Tam gün monoton 00:00 / 12:00 / 23:59 → hepsi kalır', () => {
+    const items = fixture(['00:00:00:00', '12:00:00:00', '23:59:00:00']);
+    const { items: out, info } = dropLeadingPreRolloverBlock(items);
+    expect(info.applied).toBe(false);
+    expect(info.reason).toBe('no-rollover');
+    expect(out).toHaveLength(3);
+  });
+
+  it('5. Unsafe rollover 01:00 → 00:30 tek başına: hepsi kalır (prev<22:00 → unsafe)', () => {
+    // currentStart<previousStart var ama prev=01:00 (<22:00) → safe değil.
+    const items = fixture(['01:00:00:00', '00:30:00:00']);
+    const { items: out, info } = dropLeadingPreRolloverBlock(items);
+    expect(info.applied).toBe(false);
+    expect(info.reason).toBe('unsafe-rollover-skipped');
+    expect(info.rolloverIndex).toBe(1);
+    expect(out).toHaveLength(2);
+  });
+
+  it('5b. Unsafe rollover 23:30 → 03:30 (curr>02:00) → hepsi kalır', () => {
+    // prev>=22:00 ✓ ama curr=03:30 (>02:00) → safe değil.
+    const items = fixture(['23:30:00:00', '03:30:00:00']);
+    const { items: out, info } = dropLeadingPreRolloverBlock(items);
+    expect(info.applied).toBe(false);
+    expect(info.reason).toBe('unsafe-rollover-skipped');
+    expect(info.rolloverIndex).toBe(1);
+    expect(out).toHaveLength(2);
+  });
+
+  it('6. LTV-örnek pattern: rollover öncesi DC00041190 düşer, sonrası DC00041191 kalır', () => {
+    // 7 item pre-roll (22:59..23:59) + 211 item gün gövdesi (00:00..23:59).
+    // İlk item start=22:59:59 → segment=after.
+    const items: ParsedItem[] = [];
+    const preTcs = ['22:59:59:21','23:00:01:00','23:52:35:04','23:53:25:04','23:55:01:04','23:55:46:20','23:59:38:03'];
+    preTcs.forEach((tc, i) => {
+      const it = fixture([tc])[0];
+      if (i === 0) (it as Record<string, unknown>)['dcCode'] = 'DC00041190';
+      items.push(it);
+    });
+    for (let i = 0; i < 211; i++) {
+      const total = Math.floor((i * 86399) / 211);
+      const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+      const it = fixture([`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:00`])[0];
+      if (i === 210) (it as Record<string, unknown>)['dcCode'] = 'DC00041191';
+      items.push(it);
+    }
+    expect(items.length).toBe(218);
+    const { items: out, info } = dropLeadingPreRolloverBlock(items);
+    expect(info.applied).toBe(true);
+    expect(info.segmentChoice).toBe('after');
+    expect(info.rolloverIndex).toBe(7);
+    expect(info.droppedCount).toBe(7);
+    expect(info.keptCount).toBe(211);
+    expect(out.find((it) => it.dcCode === 'DC00041190')).toBeUndefined();
+    expect(out.find((it) => it.dcCode === 'DC00041191')).toBeDefined();
+  });
+
+  it('7a. Tam 2 safe rollover → middle segment tutulur (head + next-day suffix düşer)', () => {
+    // Synthetic LTV 28 May paterni:
+    //   head (3 item, 23:xx pre-roll) → R1 (23:xx→00:00) → body (4 item) →
+    //   tail item 23:00 (DC00041192 yerine) → R2 (23:xx→00:00) → next-day suffix (1 item).
+    const items = fixture([
+      // head pre-roll (R1 öncesi 4 item, 0..3)
+      '23:00:00:00','23:00:00:00','23:30:00:00','23:59:00:00',
+      // R1 = 4: 23:59 → 00:00
+      // body + tail (4..8)
+      '00:00:00:00','01:00:00:00','12:00:00:00','22:00:00:00','23:00:00:00',
+      // R2 = 9: 23:00 → 00:10
+      // next-day suffix (9..)
+      '00:10:00:00',
+    ]);
+    // DC ile head/middle/tail ayrımı: index 1 head'de, index 8 middle'da
+    (items[1] as Record<string, unknown>)['dcCode'] = 'DC-HEAD';
+    (items[8] as Record<string, unknown>)['dcCode'] = 'DC-TAIL-IN-MIDDLE';
+    (items[9] as Record<string, unknown>)['dcCode'] = 'DC-NEXT-DAY';
+
+    const { items: out, info } = dropLeadingPreRolloverBlock(items);
+    expect(info.applied).toBe(true);
+    expect(info.reason).toBe('middle-segment-kept');
+    expect(info.segmentChoice).toBe('middle');
+    expect(info.rolloverIndex).toBe(4);   // R1
+    expect(info.droppedCount).toBe(5);    // 4 head + 1 next-day suffix
+    expect(info.keptCount).toBe(5);       // body + tail (R1..R2)
+    // DC-HEAD düştü, DC-TAIL-IN-MIDDLE kaldı, DC-NEXT-DAY düştü
+    expect(out.find((it) => it.dcCode === 'DC-HEAD')).toBeUndefined();
+    expect(out.find((it) => it.dcCode === 'DC-TAIL-IN-MIDDLE')).toBeDefined();
+    expect(out.find((it) => it.dcCode === 'DC-NEXT-DAY')).toBeUndefined();
+  });
+
+  it('7b. 3+ safe rollover varsa drop YAPMA, raporla', () => {
+    // Üç safe rollover: 22:59→00:00, 23:30→00:00, 23:30→00:30
+    const items = fixture([
+      '22:59:00:00','00:00:00:00','12:00:00:00','23:30:00:00','00:00:00:00','12:00:00:00','23:30:00:00','00:30:00:00',
+    ]);
+    const { items: out, info } = dropLeadingPreRolloverBlock(items);
+    expect(info.applied).toBe(false);
+    expect(info.reason).toBe('multiple-safe-rollovers-skipped');
+    expect(out).toHaveLength(8);
+  });
+
+  it('8. ProgramHeader + Program çiftleri rollover öncesinde birlikte düşer', () => {
+    // İlk item 22:59 → segment=after; pre-roll'daki 2 header+2 program (4 item) birlikte düşer.
+    const items: ParsedItem[] = [];
+    ['22:59:59:00','22:59:59:00','23:30:00:00','23:30:00:00'].forEach((tc, i) => {
+      const it = fixture([tc])[0];
+      (it as Record<string, unknown>)['rawKind'] = i % 2 === 0 ? 'ProgramHeader' : 'Program';
+      items.push(it);
+    });
+    // Gün gövdesi 6 item monoton 00:00..22:00
+    for (let i = 0; i < 6; i++) {
+      const h = i * 4;
+      items.push(fixture([`${String(h).padStart(2,'0')}:00:00:00`])[0]);
+    }
+    const { items: out, info } = dropLeadingPreRolloverBlock(items);
+    expect(info.applied).toBe(true);
+    expect(info.segmentChoice).toBe('after');
+    expect(info.droppedCount).toBe(4);
+    expect(info.keptCount).toBe(6);
+    // Düşen pre-roll'da hem ProgramHeader hem Program vardı:
+    expect(items.slice(0, 4).filter((it) => it.rawKind === 'ProgramHeader').length).toBe(2);
+    expect(items.slice(0, 4).filter((it) => it.rawKind === 'Program').length).toBe(2);
+    // Tutulan segment yalnızca gün gövdesi 00:00..22:00 monoton item'ları.
+    expect(out[0].startTimecode).toBe('00:00:00:00');
+    expect(out[out.length - 1].startTimecode).toBe('20:00:00:00');
+  });
+
+  it('9. Regression — 50 item tam gün monoton: hepsi kalır', () => {
+    const tcs: string[] = [];
+    for (let i = 0; i < 50; i++) {
+      const total = Math.floor((i * 86399) / 50);
+      const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+      tcs.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:00`);
+    }
+    const items = fixture(tcs);
+    const { items: out, info } = dropLeadingPreRolloverBlock(items);
+    expect(info.applied).toBe(false);
+    expect(info.reason).toBe('no-rollover');
+    expect(out).toHaveLength(50);
+  });
+
+  it('Empty / single item → too-few-items', () => {
+    const empty = dropLeadingPreRolloverBlock([]);
+    expect(empty.info.reason).toBe('too-few-items');
+    expect(empty.items).toEqual([]);
+    const single = dropLeadingPreRolloverBlock(fixture(['12:00:00:00']));
+    expect(single.info.reason).toBe('too-few-items');
+    expect(single.items).toHaveLength(1);
   });
 });

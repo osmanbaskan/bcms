@@ -1,0 +1,58 @@
+# BCMS AlertManager config — K15 (2026-05-29)
+#
+# Bu dosya STATİK (env substitution YOK). Production'da operatör değerleri
+# elle düzenler veya `ops/scripts/alertmanager-render-config.sh` çalıştırır.
+#
+# Dev varsayılanları:
+#   SMTP: mailhog:1025 (BCMS docker network içi)
+#   Slack: placeholder URL → 404 alır + warn log + crash YOK (email yine çalışır)
+#
+# Production deployment:
+#   1. ops/scripts/alertmanager-render-config.sh çalıştır (.env'den okur)
+#   2. veya manuel: smtp_smarthost + slack api_url'i değiştir
+#   3. docker compose restart alertmanager
+
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: 'mailhog:1025'
+  smtp_from: 'noreply@bcms.local'
+  smtp_require_tls: false
+
+route:
+  receiver: 'all-channels'
+  group_by: ['alertname', 'area', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity =~ "critical|fatal"
+      group_wait: 10s
+      repeat_interval: 1h
+
+receivers:
+  - name: 'all-channels'
+    email_configs:
+      - to: 'ops@bcms.local'
+        send_resolved: true
+        headers:
+          Subject: '[BCMS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/PLACEHOLDER-SET-SLACK_WEBHOOK_URL'
+        send_resolved: true
+        channel: '#bcms-alerts'
+        title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.area }})'
+        text: |
+          {{ range .Alerts }}
+          *Severity*: {{ .Labels.severity }}
+          *Summary*: {{ .Annotations.summary }}
+          *Description*: {{ .Annotations.description }}
+          {{ if .Annotations.runbook }}*Runbook*: {{ .Annotations.runbook }}{{ end }}
+          {{ end }}
+
+inhibit_rules:
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ['alertname', 'area']

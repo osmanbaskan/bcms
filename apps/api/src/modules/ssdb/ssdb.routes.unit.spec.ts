@@ -15,6 +15,8 @@ interface PrismaMockOpts {
   cacheStats?: { lookupStatus: string; _count: { _all: number } }[];
   latestRow?: { lastCheckedAt: Date } | null;
   prevCacheRow?: unknown;
+  /** Bulk endpoint icin — `findMany IN [...]` cevabi. */
+  prevCacheRows?: unknown[];
   affectedRows?: { channelSlug: string; scheduleDate: Date }[];
   cacheTableError?: Error;
 }
@@ -24,6 +26,7 @@ function buildPrismaMock(opts: PrismaMockOpts = {}) {
     cacheGroupBy: [] as unknown[],
     cacheFindFirst: [] as unknown[],
     cacheFindUnique: [] as unknown[],
+    cacheFindMany: [] as unknown[],
     cacheUpsert: [] as unknown[],
     provysFindMany: [] as unknown[],
     executeRaw: [] as unknown[],
@@ -43,6 +46,10 @@ function buildPrismaMock(opts: PrismaMockOpts = {}) {
       async findUnique(args: unknown) {
         calls.cacheFindUnique.push(args);
         return opts.prevCacheRow ?? null;
+      },
+      async findMany(args: unknown) {
+        calls.cacheFindMany.push(args);
+        return opts.prevCacheRows ?? [];
       },
       async upsert(args: unknown) {
         calls.cacheUpsert.push(args);
@@ -437,6 +444,124 @@ describe('POST /ssdb/cache/refresh — happy path + notify', () => {
     expect(emitSpy).toHaveBeenCalledTimes(2);
     expect(emitSpy).toHaveBeenCalledWith(prisma, expect.anything(), 'beinsports1', '2026-05-27');
     expect(emitSpy).toHaveBeenCalledWith(prisma, expect.anything(), 'beinhaber',   '2026-05-28');
+    await app.close();
+  });
+});
+
+describe('POST /ssdb/cache/refresh/bulk', () => {
+  it('body dcCodes bos array -> 400 (Zod min(1))', async () => {
+    const prisma = buildPrismaMock();
+    const { app, resolverSpy } = await buildApp({ prisma });
+    const r = await app.inject({
+      method: 'POST', url: '/api/v1/ssdb/cache/refresh/bulk',
+      payload: { dcCodes: [] },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(resolverSpy).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('body dcCodes 101 eleman -> 400 (Zod max(100))', async () => {
+    const prisma = buildPrismaMock();
+    const { app, resolverSpy } = await buildApp({ prisma });
+    const codes = Array.from({ length: 101 }, (_, i) => `DC${i}`);
+    const r = await app.inject({
+      method: 'POST', url: '/api/v1/ssdb/cache/refresh/bulk',
+      payload: { dcCodes: codes },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(resolverSpy).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('SSDB disabled -> 503, resolver ASLA cagrilmaz', async () => {
+    delete process.env.PROVYS_SSDB_RESOLVER;
+    const prisma = buildPrismaMock();
+    const { app, resolverSpy } = await buildApp({ prisma });
+    const r = await app.inject({
+      method: 'POST', url: '/api/v1/ssdb/cache/refresh/bulk',
+      payload: { dcCodes: ['DC1', 'DC2'] },
+    });
+    expect(r.statusCode).toBe(503);
+    expect(resolverSpy).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('duplicate dcCode dedup edilir + input sirasi korunur', async () => {
+    process.env.PROVYS_SSDB_RESOLVER = 'on';
+    process.env.SSDB_HOST = '1.2.3.4';
+    process.env.SSDB_PORT = '60813';
+    process.env.SSDB_DATABASE = 'X';
+    process.env.SSDB_USER = 'u';
+    process.env.SSDB_PASSWORD = 'p';
+    const prisma = buildPrismaMock({ prevCacheRows: [] });
+    const resolverOutcomes = new Map<string, SsdbMaterialLookupOutcome>([
+      ['DC1', outcome({ dcCode: 'DC1' })],
+      ['DC2', outcome({ dcCode: 'DC2' })],
+    ]);
+    const { app, resolverSpy } = await buildApp({ prisma, resolverOutcomes });
+    const r = await app.inject({
+      method: 'POST', url: '/api/v1/ssdb/cache/refresh/bulk',
+      payload: { dcCodes: ['DC1', 'DC2', 'DC1', 'DC2'] }, // 2 dedup
+    });
+    expect(r.statusCode).toBe(200);
+    // Resolver sadece dedup edilmis array ile cagrilir
+    expect(resolverSpy).toHaveBeenCalledTimes(1);
+    expect(resolverSpy.mock.calls[0][0]).toEqual(['DC1', 'DC2']);
+    const body = r.json() as { results: { dcCode: string }[] };
+    expect(body.results.map((x) => x.dcCode)).toEqual(['DC1', 'DC2']);
+    await app.close();
+  });
+
+  it('multi DC + karisik changed -> notify SADECE changed icin tek call', async () => {
+    process.env.PROVYS_SSDB_RESOLVER = 'on';
+    process.env.SSDB_HOST = '1.2.3.4';
+    process.env.SSDB_PORT = '60813';
+    process.env.SSDB_DATABASE = 'X';
+    process.env.SSDB_USER = 'u';
+    process.env.SSDB_PASSWORD = 'p';
+    // DC1 prev: missing_material -> outcome found = CHANGED
+    // DC2 prev: found GUID-2 -> outcome found GUID-2 = SAME (changed=false)
+    const prevRows = [
+      { dcCode: 'DC1', lookupStatus: 'missing_material', mediaGuid: null,
+        matchMethod: null, tcSom: null, tcEom: null, ssdbDurationFrames: null,
+        lastCheckedAt: new Date(FROZEN_NOW.getTime() - 60_000), lastError: null },
+      { dcCode: 'DC2', lookupStatus: 'found', mediaGuid: 'GUID-2',
+        matchMethod: 'alias', tcSom: 0, tcEom: 100, ssdbDurationFrames: 101,
+        lastCheckedAt: new Date(FROZEN_NOW.getTime() - 60_000), lastError: null },
+    ];
+    const prisma = buildPrismaMock({
+      prevCacheRows: prevRows,
+      affectedRows: [{ channelSlug: 'beinsports1', scheduleDate: new Date('2026-05-27T00:00:00Z') }],
+    });
+    const resolverOutcomes = new Map<string, SsdbMaterialLookupOutcome>([
+      ['DC1', outcome({ dcCode: 'DC1', lookupStatus: 'found',
+        mediaGuid: 'GUID-1', matchMethod: 'alias', tcSom: 0, tcEom: 100, ssdbDurationFrames: 101 })],
+      ['DC2', outcome({ dcCode: 'DC2', lookupStatus: 'found',
+        mediaGuid: 'GUID-2', matchMethod: 'alias', tcSom: 0, tcEom: 100, ssdbDurationFrames: 101 })],
+    ]);
+    const emitSpy = vi.fn().mockResolvedValue(undefined);
+    const { app } = await buildApp({ prisma, resolverOutcomes, emitFn: emitSpy });
+    const r = await app.inject({
+      method: 'POST', url: '/api/v1/ssdb/cache/refresh/bulk',
+      payload: { dcCodes: ['DC1', 'DC2'] },
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as {
+      results: { dcCode: string; changed: boolean }[];
+      notified: number;
+    };
+    // DC1 changed (missing -> found), DC2 unchanged (found -> found ayni alanlar)
+    const dc1 = body.results.find((x) => x.dcCode === 'DC1')!;
+    const dc2 = body.results.find((x) => x.dcCode === 'DC2')!;
+    expect(dc1.changed).toBe(true);
+    expect(dc2.changed).toBe(false);
+    // Notify yalniz DC1 icin tek pair (affected query bir kere)
+    expect(prisma.calls.provysFindMany).toHaveLength(1);
+    expect(emitSpy).toHaveBeenCalledTimes(1);
+    expect(body.notified).toBe(1);
+    // Upsert iki kez (her DC icin)
+    expect(prisma.calls.cacheUpsert).toHaveLength(2);
     await app.close();
   });
 });

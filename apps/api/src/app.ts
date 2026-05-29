@@ -47,6 +47,13 @@ import { startProvysWatcher } from './modules/provys/provys.watcher.js';
 import { startAsrunWatcher } from './modules/asrun/asrun.watcher.js';
 import { startSsdbResolverWorker } from './modules/ssdb/ssdb-resolver.worker.js';
 import { ssdbRoutes } from './modules/ssdb/ssdb.routes.js';
+import { searchRoutes } from './modules/search/search.routes.js';
+import { startSearchWorker } from './modules/search/search.worker.js';
+import { restoreRoutes } from './modules/restore/restore.routes.js';
+import { startRestoreWorker } from './modules/restore/restore.worker.js';
+import { transferRoutes } from './modules/transfer/transfer.routes.js';
+import { startTransferWorker } from './modules/transfer/transfer.worker.js';
+import { getServiceHealthStatuses } from './lib/service-heartbeat.js';
 
 const BACKGROUND_SERVICES = [
   'notifications',
@@ -59,6 +66,9 @@ const BACKGROUND_SERVICES = [
   'provys-watcher',
   'asrun-watcher',
   'ssdb-resolver',
+  'search-worker',
+  'restore-worker',
+  'transfer-worker',
 ] as const;
 
 type BackgroundService = (typeof BACKGROUND_SERVICES)[number];
@@ -148,6 +158,12 @@ async function startBackgroundServices(app: FastifyInstance): Promise<void> {
   // PROVYS_SSDB_RESOLVER=on. Feature flag iceride `startSsdbResolverWorker`
   // tarafindan kontrol edilir; flag off iken timer kurulmaz.
   await run('ssdb-resolver',   () => { startSsdbResolverWorker(app); });
+  // Restore + Transfer V2 (2026-05-28): Avid Interplay iki kademeli iş akışı.
+  // İki ayrı worker; her biri kendi tablosunu izler. Transfer DONE branch'i
+  // `requestSsdbResolverTick(...)` çağırır — SSDB cache yenilenir.
+  await run('search-worker',   () => { startSearchWorker(app); });
+  await run('restore-worker',  () => { startRestoreWorker(app); });
+  await run('transfer-worker', () => { startTransferWorker(app); });
 }
 
 function errorResponse(error: Error & { statusCode?: number; code?: string }) {
@@ -355,6 +371,31 @@ export async function buildApp() {
       .send({ status: degraded ? 'degraded' : 'ok', checks, timestamp: new Date().toISOString() });
   });
 
+  // Y15 (2026-05-29): Background service liveness — worker container icin.
+  // /health (yukari) DB+RabbitMQ ping yapar, deadlock olan background
+  // service'i fark etmez. /health/live per-service heartbeat'e bakar.
+  // API container (BCMS_BACKGROUND_SERVICES=none) icin: enabled set bos,
+  // endpoint 200 + status='not-applicable' doner (her zaman healthy).
+  app.get('/health/live', { schema: { hide: true }, config: { rateLimit: false } }, async (_req, reply) => {
+    const enabled = [...enabledBackgroundServices()];
+    if (enabled.length === 0) {
+      return reply.status(200).send({
+        status: 'not-applicable',
+        message: 'BCMS_BACKGROUND_SERVICES=none; liveness check skipped',
+        timestamp: new Date().toISOString(),
+      });
+    }
+    const statuses = getServiceHealthStatuses(enabled);
+    const dead = statuses.filter((s) => !s.alive);
+    const isHealthy = dead.length === 0;
+    return reply.status(isHealthy ? 200 : 503).send({
+      status: isHealthy ? 'alive' : 'dead',
+      services: statuses,
+      deadCount: dead.length,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   // ── Consumers & watchers ──────────────────────────────────────────────────────
   await startBackgroundServices(app);
 
@@ -395,6 +436,9 @@ export async function buildApp() {
   await app.register(provysRoutes,         { prefix: '/api/v1/provys' });
   await app.register(asrunRoutes,          { prefix: '/api/v1/asrun' });
   await app.register(ssdbRoutes,           { prefix: '/api/v1/ssdb' });
+  await app.register(searchRoutes,         { prefix: '/api/v1/search' });
+  await app.register(restoreRoutes,        { prefix: '/api/v1/restore' });
+  await app.register(transferRoutes,       { prefix: '/api/v1/transfer' });
 
   return app;
 }

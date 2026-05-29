@@ -11,3 +11,6 @@ export * from './types/monitoring.js';
 export * from './types/studio-plan.js';
 export * from './types/provys.js';
 export * from './types/asrun.js';
+export * from './types/search.js';
+export * from './types/restore.js';
+export * from './types/transfer.js';

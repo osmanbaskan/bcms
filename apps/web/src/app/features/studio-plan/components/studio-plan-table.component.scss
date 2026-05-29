@@ -86,6 +86,9 @@
 .slot-cell {
   min-height: 34px;
   padding: 2px 3px;
+  // 2026-05-27: Boş hücre arka planı artık gün grubuna göre class ile set
+  // ediliyor (.day-fill-group-a / .day-fill-group-b). Default fallback
+  // korunur — class atanmamış edge case'lerde mevcut sarı görünür.
   background: #ffd226;
   color: #111827;
   border-top: 0;
@@ -97,11 +100,23 @@
   position: relative;
 }
 
+// Group A: Pazartesi / Çarşamba / Cuma / Pazar — amber/sarı ton
+.slot-cell.day-fill-group-a {
+  background: #fde68a;
+}
+
+// Group B: Salı / Perşembe / Cumartesi — yeşil ton (kontrast + okunabilir)
+.slot-cell.day-fill-group-b {
+  background: #bbf7d0;
+}
+
 .slot-cell:hover {
   outline: 2px solid #1d4ed8;
   outline-offset: -2px;
 }
 
+// Dolu hücreler: inline `[style.background]="colorAt(...)"` zaten override
+// eder, ama defansif olarak filled class'i da turuncu/sarı default.
 .slot-cell.filled {
   background: #f4b400;
 }

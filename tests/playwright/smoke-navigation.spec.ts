@@ -41,6 +41,8 @@ const ROUTES: RouteSpec[] = [
   { navLabel: /Ayarlar/,             routePattern: /\/settings/,         marker: /Ayarlar|Sistem|OPTA SMB/i },
   { navLabel: /Live-Plan Lookup/,    routePattern: /\/admin\/live-plan-lookups/, marker: /Lookup|Live-Plan|Tablo/i },
   { navLabel: /OPTA Lig Görünürlüğü/, routePattern: /\/admin\/opta-competitions/, marker: /OPTA Lig|Görünür|Lig/i },
+  // 2026-05-20: Yeni sidebar entry — Settings kartına ek olarak doğrudan ulaşım.
+  { navLabel: /Manuel Lig Yönetimi/, routePattern: /\/admin\/manual-leagues/,    marker: /Manuel Lig|seçilebilir|Lig/i },
 ];
 
 interface CollectedErrors {

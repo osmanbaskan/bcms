@@ -12,18 +12,21 @@
     Bu hafta için kayıtlı stüdyo planı yok.
   </div>
 
-  <div class="list-row" *ngFor="let entry of entries">
+  <div class="list-row" *ngFor="let entry of entries" [ngClass]="toneClass(entry)">
     <div class="day-cell">
       <strong>{{ entry.dayLabel }}</strong>
       <span>{{ entry.dayDate }}</span>
     </div>
     <div>{{ entry.studio }}</div>
-    <div class="time-range">{{ entry.startTime }} - {{ entry.endTime }}</div>
+    <div class="time-range">
+      <span>{{ entry.startTime }}</span>
+      <span>{{ entry.endTime }}</span>
+    </div>
     <div class="program-cell">
       <span class="program-marker" [style.background]="entry.color"></span>
       <strong>{{ entry.program }}</strong>
     </div>
     <div>{{ entry.colorLabel }}</div>
-    <div>{{ entry.durationMinutes }} dk</div>
+    <div class="duration-cell"><strong>{{ entry.durationMinutes }} dk</strong></div>
   </div>
 </div>

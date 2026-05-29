@@ -1,4 +1,4 @@
-import { buildSlotsForRange } from './studio-plan.types';
+import { buildSlotsForRange, buildStudioPlanWeekOptions } from './studio-plan.types';
 
 describe('studio-plan.types — buildSlotsForRange', () => {
   it('07:00-03:00 default → 80 slot (20 saat × 4)', () => {
@@ -44,5 +44,27 @@ describe('studio-plan.types — buildSlotsForRange', () => {
   it('invalid format → boş array', () => {
     expect(buildSlotsForRange('abc', '03:00', 15)).toEqual([]);
     expect(buildSlotsForRange('07:00', 'xyz', 15)).toEqual([]);
+  });
+});
+
+describe('studio-plan.types — buildStudioPlanWeekOptions', () => {
+  it('2026-05-25 (Pazartesi) → geçen=2026-05-18, bu=2026-05-25, gelecek=2026-06-01', () => {
+    const opts = buildStudioPlanWeekOptions('2026-05-25');
+    expect(opts.length).toBe(3);
+    expect(opts[0].value).toBe('2026-05-18');
+    expect(opts[1].value).toBe('2026-05-25');
+    expect(opts[2].value).toBe('2026-06-01');
+    expect(opts[0].label).toContain('Geçen hafta');
+    expect(opts[0].label).toContain('18.05.2026');
+    expect(opts[1].label).toContain('Bu hafta');
+    expect(opts[1].label).toContain('25.05.2026');
+    expect(opts[2].label).toContain('Gelecek hafta');
+    expect(opts[2].label).toContain('01.06.2026');
+  });
+
+  it('Ay sınırını aşma (Pazartesi 2026-06-01) → geçen=2026-05-25, gelecek=2026-06-08', () => {
+    const opts = buildStudioPlanWeekOptions('2026-06-01');
+    expect(opts[0].value).toBe('2026-05-25');
+    expect(opts[2].value).toBe('2026-06-08');
   });
 });

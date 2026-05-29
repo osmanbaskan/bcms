@@ -41,11 +41,21 @@ export function extractFileCode(filePath: string): string | null {
 /**
  * `fileCode` → `ProvysChannel`. Bilinmeyen kod `null` döner (worker
  * tarafında "kontrollü log + import yok" davranışı).
+ *
+ * Lookup hem canonical `fileCode` hem de `fileCodeAliases` üzerinden çalışır;
+ * alias görüldüğünde aynı canonical channel objesi döner. UI/DB downstream
+ * `channel.slug` üzerinden ayrıştığı için alias farkı görünmez.
  */
 export function resolveChannel(fileCode: string | null | undefined): ProvysChannel | null {
   if (!fileCode) return null;
   const normalized = fileCode.trim().toLowerCase();
-  return PROVYS_CHANNELS.find((c) => c.fileCode === normalized) ?? null;
+  return (
+    PROVYS_CHANNELS.find(
+      (c) =>
+        c.fileCode === normalized ||
+        c.fileCodeAliases?.includes(normalized) === true,
+    ) ?? null
+  );
 }
 
 /**

@@ -196,14 +196,9 @@ describe('ProvysService (per-day snapshot)', () => {
     await promise;
   });
 
-  it('exportExcel sends includeProgramHeaders=true when toggle is on', async () => {
-    service.setShowProgramHeaders(true);
-    const promise = service.exportExcel('beinhaber' as any, '2026-05-22');
-    const req = http.expectOne((r) => r.url === `${environment.apiUrl}/provys/export/excel`);
-    expect(req.request.params.get('includeProgramHeaders')).toBe('true');
-    req.flush(new Blob(['excel-bytes']));
-    await promise;
-  });
+  // 2026-05-27 (night): "Program başlıkları" toggle UI'dan kaldırıldı;
+  // service `includeProgramHeaders=false` sabit gönderir. Eski toggle-ON
+  // testi kapsam dışı.
 
   it('selectedCategories defaults to all categories; toggleCategory flips membership', () => {
     expect(service.selectedCategories().size).toBe(6);
@@ -214,7 +209,7 @@ describe('ProvysService (per-day snapshot)', () => {
     expect(service.selectedCategories().has('REKLAM')).toBe(true);
   });
 
-  it('filteredItemsFor default hides ProgramHeader rows; toggle ON keeps them', async () => {
+  it('filteredItemsFor always hides ProgramHeader rows (toggle removed 2026-05-27)', async () => {
     const today = service.activeDate();
     const items: ProvysItemDto[] = [
       { ...makeItem('beinhaber', today, 'HDR'), rawKind: 'ProgramHeader', category: 'PROGRAM', dcCode: null },
@@ -227,11 +222,8 @@ describe('ProvysService (per-day snapshot)', () => {
     }
     await promise;
 
-    // Default: showProgramHeaders=false → HDR satırı gizli
+    // ProgramHeader satır her zaman gizli; setShowProgramHeaders API kaldırıldı.
     expect(service.filteredItemsFor('beinhaber' as any)().map((i) => i.eventId)).toEqual(['CONTENT']);
-
-    service.setShowProgramHeaders(true);
-    expect(service.filteredItemsFor('beinhaber' as any)().map((i) => i.eventId).sort()).toEqual(['CONTENT', 'HDR']);
   });
 
   it('filteredItemsFor returns the raw list when all categories are selected, filtered otherwise', async () => {

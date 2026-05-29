@@ -4,10 +4,12 @@ import type { FastifyInstance } from 'fastify';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { isOutboxPollerAuthoritative, writeShadowEvent } from '../outbox/outbox.helpers.js';
 import { validateIngestSourcePath, VIDEO_EXTENSIONS } from './ingest.paths.js';
+import { startHeartbeatTicker } from '../../lib/service-heartbeat.js';
 
 const WATCH_FOLDER    = process.env.WATCH_FOLDER ?? './tmp/watch';
 
 export function startIngestWatcher(app: FastifyInstance): void {
+  startHeartbeatTicker('ingest-watcher', app);
   const watcher = chokidar.watch(WATCH_FOLDER, {
     persistent:     true,
     ignoreInitial:  false,   // process files already present on startup

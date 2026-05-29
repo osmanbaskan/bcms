@@ -204,60 +204,37 @@ describe('ProvysChannelPanelComponent', () => {
     expect(cells[1].classList.contains('muted')).toBe(true);
   });
 
-  describe('Not (userNote) editable kolonu', () => {
-    it('header artık "Tür" değil "Not"', () => {
-      fake.setItems([makeItem({ id: 1, dcCode: 'DC00041439' })]);
+  // 2026-05-27 (night): "Not" kolonu kaldırıldı — UI'da userNote input artık
+  // yok. Backend `userNote` model alanı ve PATCH /provys/items/:id/note
+  // endpoint'i korunur (gelecekte tekrar eklenebilir). Eski Not editör
+  // testleri kapsam dışına alındı.
+  describe('Kolon sırası — Süre + Not (2026-05-27 revize)', () => {
+    it('header sırası: # Başlangıç Kategori DC Kod NEXIO Başlık Süre Not', () => {
+      fake.setItems([makeItem({ id: 1, dcCode: 'DC1' })]);
       fixture.detectChanges();
       const headers = Array.from(
         (fixture.nativeElement as HTMLElement).querySelectorAll('thead th'),
       ).map((th) => th.textContent?.trim());
-      expect(headers).toContain('Not');
-      expect(headers).not.toContain('Tür');
+      expect(headers).toEqual(['#', 'Başlangıç', 'Kategori', 'DC Kod', 'NEXIO', 'Başlık', 'Süre', 'Not']);
+      expect(headers).not.toContain('Materyal');
     });
 
-    it('mevcut userNote input value\'sunda görünür', () => {
-      fake.setItems([makeItem({ id: 1, userNote: 'kontrol' })]);
+    it('Süre hücresi sondan bir önceki kolonda render edilir', () => {
+      fake.setItems([makeItem({ id: 1, durationTimecode: '00:02:58:14' })]);
       fixture.detectChanges();
-      const input = (fixture.nativeElement as HTMLElement)
-        .querySelector('tbody tr.row td.col-note input.note-input') as HTMLInputElement;
-      expect(input).toBeTruthy();
-      expect(input.value).toBe('kontrol');
+      const row = (fixture.nativeElement as HTMLElement).querySelector('tbody tr.row') as HTMLElement;
+      const cells = Array.from(row.querySelectorAll('td'));
+      const dur = cells[cells.length - 2];
+      expect(dur.classList.contains('col-dur')).toBe(true);
+      expect(dur.textContent?.trim()).toBe('00:02:58:14');
     });
 
-    it('input blur servisi PATCH ile çağırır (değer değiştiyse)', async () => {
-      fake.setItems([makeItem({ id: 7, userNote: '' })]);
+    it('"Not" input son kolonda DOM\'da render edilir', () => {
+      fake.setItems([makeItem({ id: 1 })]);
       fixture.detectChanges();
-      const input = (fixture.nativeElement as HTMLElement)
-        .querySelector('tbody tr.row td.col-note input.note-input') as HTMLInputElement;
-      input.value = 'yeni not';
-      input.dispatchEvent(new Event('blur'));
-      await fixture.whenStable();
-      expect(fake.updateNoteCalls.length).toBe(1);
-      expect(fake.updateNoteCalls[0]).toEqual(jasmine.objectContaining({ id: 7, note: 'yeni not' }));
-    });
-
-    it('input blur değer aynıysa PATCH yapmaz', async () => {
-      fake.setItems([makeItem({ id: 9, userNote: 'aynı' })]);
-      fixture.detectChanges();
-      const input = (fixture.nativeElement as HTMLElement)
-        .querySelector('tbody tr.row td.col-note input.note-input') as HTMLInputElement;
-      input.value = 'aynı';
-      input.dispatchEvent(new Event('blur'));
-      await fixture.whenStable();
-      expect(fake.updateNoteCalls.length).toBe(0);
-    });
-
-    it('PATCH hatası aria-invalid set eder', async () => {
-      fake.updateNoteShouldThrow = true;
-      fake.setItems([makeItem({ id: 3, userNote: null })]);
-      fixture.detectChanges();
-      const input = (fixture.nativeElement as HTMLElement)
-        .querySelector('tbody tr.row td.col-note input.note-input') as HTMLInputElement;
-      input.value = 'deneme';
-      input.dispatchEvent(new Event('blur'));
-      await fixture.whenStable();
-      fixture.detectChanges();
-      expect(input.getAttribute('aria-invalid')).toBe('true');
+      const input = (fixture.nativeElement as HTMLElement).querySelector('.col-note .note-input');
+      expect(input).not.toBeNull();
+      expect((input as HTMLInputElement).tagName).toBe('INPUT');
     });
   });
 
@@ -309,17 +286,18 @@ describe('ProvysChannelPanelComponent', () => {
       return cell?.getAttribute('title') ?? '';
     }
 
-    it('renders "Materyal" header column between DC Kod and Başlık', () => {
+    it('renders "NEXIO" header column between DC Kod and Başlık', () => {
       setRowsWithSsdb([{ id: 1, ssdb: {} }]);
       const headers = Array.from(
         (fixture.nativeElement as HTMLElement).querySelectorAll('thead th'),
       ).map((th) => th.textContent?.trim());
-      expect(headers).toContain('Materyal');
+      expect(headers).toContain('NEXIO');
+      expect(headers).not.toContain('Materyal');
       const dcIdx = headers.indexOf('DC Kod');
-      const matIdx = headers.indexOf('Materyal');
+      const nexioIdx = headers.indexOf('NEXIO');
       const titleIdx = headers.indexOf('Başlık');
-      expect(matIdx).toBe(dcIdx + 1);
-      expect(titleIdx).toBe(matIdx + 1);
+      expect(nexioIdx).toBe(dcIdx + 1);
+      expect(titleIdx).toBe(nexioIdx + 1);
     });
 
     it('8 status compact label correctly rendered', () => {

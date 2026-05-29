@@ -38,6 +38,36 @@ export interface StudioPlanWeekOption {
   value: string;
 }
 
+/** 2026-05-25: Stüdyo Planı hafta seçimi için 3-girişli option listesi
+ *  (geçen / bu / gelecek hafta). Ana Stüdyo Planı toolbar select'i ile
+ *  Yönetim > Stüdyo Planı Edit ekranı aynı helper'ı kullanır → label/value
+ *  hesabı tek yerde. `referenceMonday` yyyy-MM-dd formatında "bu haftanın
+ *  Pazartesi"sini bekler; arayan normalize etmiş olarak verir. */
+export function buildStudioPlanWeekOptions(referenceMonday: string): StudioPlanWeekOption[] {
+  const parsed = parseDateInputValue(referenceMonday);
+  const base = parsed ?? new Date();
+  const shift = (days: number): Date => {
+    const d = new Date(base);
+    d.setDate(d.getDate() + days);
+    return d;
+  };
+  const toValue = (d: Date): string =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const toDisplay = (d: Date): string =>
+    `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  return [
+    { label: `Geçen hafta · ${toDisplay(shift(-7))}`, value: toValue(shift(-7)) },
+    { label: `Bu hafta · ${toDisplay(base)}`,         value: toValue(base) },
+    { label: `Gelecek hafta · ${toDisplay(shift(7))}`, value: toValue(shift(7)) },
+  ];
+}
+
+function parseDateInputValue(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
 /** 2026-05-25: hafta bazlı time range → 15 dk slot string array.
  *  Kurallar:
  *   - startStr === endStr  → 24 saat (96 slot)

@@ -13,6 +13,10 @@ import { ApiService } from '../../../core/services/api.service';
 import { LoggerService } from '../../../core/services/logger.service';
 import { STUDIO_PLAN_SLOT_MINUTES } from '../../studio-plan/studio-plan.component';
 import {
+  buildStudioPlanWeekOptions,
+  type StudioPlanWeekOption,
+} from '../../studio-plan/studio-plan.types';
+import {
   type CatalogDto, type ColorRow, type ProgramRow, type SettingsDto,
   buildHourlyTimeOptions, durationMinutes, validateColors, validatePrograms,
   validateTimeRange, HEX_RE, mondayOf,
@@ -36,6 +40,10 @@ export class StudioPlanEditComponent implements OnInit {
 
   readonly slotMinutes = STUDIO_PLAN_SLOT_MINUTES;
   readonly timeOptions = buildHourlyTimeOptions();
+  /** 2026-05-25: Hafta seçim listesi — ana Stüdyo Planı toolbar ile aynı
+   *  helper (geçen / bu / gelecek hafta). Manuel date input kaldırıldı,
+   *  mat-select kullanılır. Default current week Monday. */
+  readonly weekOptions: StudioPlanWeekOption[] = buildStudioPlanWeekOptions(mondayOf(new Date()));
 
   // Catalog state
   readonly loading      = signal(true);

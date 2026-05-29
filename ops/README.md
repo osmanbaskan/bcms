@@ -86,14 +86,17 @@ curl -fsS http://127.0.0.1:3000/health
 
 ## Adresler
 
-- Web: `http://172.28.204.133:4200`
+- Web: `https://beinport` (nginx reverse proxy; LAN/host fallback `http://172.28.204.133:4200`)
 - API: `http://127.0.0.1:3000` (host-local; LAN istemcileri web nginx `/api` proxy kullanır)
-- Swagger: `http://172.28.204.133:4200/docs`
-- Keycloak: `http://172.28.204.133:8080`
-- RabbitMQ UI: `http://localhost:15673`
-- Grafana: `http://localhost:3001`
-- Prometheus: `http://localhost:9090`
-- Mailhog UI: `http://localhost:8025`
+- Swagger: `https://beinport/docs` (veya `http://172.28.204.133:4200/docs`)
+- **Keycloak**: `https://beinport/realms/bcms` (nginx proxy üzerinden; direkt port 8080 binding YOK — audit CRIT-001 fix 2026-05-04)
+  - Admin console: `https://beinport/admin/`
+  - Internal (docker network): `http://keycloak:8080/realms/bcms` (container-içi)
+- RabbitMQ UI: `http://127.0.0.1:15673`
+- Grafana: `http://127.0.0.1:3001`
+- Prometheus: `http://127.0.0.1:9090` (basic-auth)
+- **AlertManager** (2026-05-29 K15 yeni): `http://127.0.0.1:9093`
+- Mailhog UI: `http://127.0.0.1:8025`
 
 ## Grup Tabanlı Erişim Özeti
 
@@ -140,7 +143,7 @@ curl -fsS http://127.0.0.1:3000/health
 - Kullanıcı hâlâ eski görünümü görüyorsa tarayıcıda `Ctrl+Shift+R` hard refresh yapılmalıdır.
 - Stüdyo Planı `Export PDF`, ana uygulama layout'unu yazdırmaz; `#studio-plan-export` alanını ayrı print penceresine klonlar. Print ölçüsü A3 landscape, `margin: 0`.
 - Canlı Yayın Planı tablo gövdesinde başlıklar hariç veri hücreleri büyük ve kalın yazı kullanır; aksiyon ikonları büyütme dışında tutulur.
-- Siteye LAN'dan ulaşılamıyorsa önce `docker compose ps web keycloak` çıktısında `0.0.0.0:4200->80` ve `0.0.0.0:8080->8080` port binding'lerini doğrula.
+- Siteye LAN'dan ulaşılamıyorsa önce `docker compose ps web` çıktısında nginx port binding'ini (`0.0.0.0:443->443`, `0.0.0.0:80->80`) doğrula. Keycloak'ın direkt port binding'i YOK (audit CRIT-001 fix 2026-05-04); sadece nginx reverse proxy üzerinden erişilir.
 
 ## Ekip İş Takip (Booking / Work Tracking) — 2026-04-29
 

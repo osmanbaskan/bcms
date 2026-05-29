@@ -29,8 +29,14 @@ import sql from 'mssql';
 import { querySsdb, type SsdbQueryParam } from './ssdb.client.js';
 import { durationFramesInclusive, framesToSmpte } from './ssdb-duration.js';
 import type { SsdbLookupStatus, SsdbMatchMethod } from './ssdb-status.js';
+import { ConcurrencyLimiter } from '../../core/concurrency.js';
 
 const DEFAULT_BATCH_SIZE = 50;
+/** Es zamanli SSDB lookup uzeri mutlak ust limit — emrin "max 10" kuralinin
+ *  kod tarafindaki yansimasi. config'de daha yuksek girilse bile clamp. */
+export const SSDB_LOOKUP_CONCURRENCY_MAX = 10;
+/** Default concurrency — caller (worker) gecmezse bu kullanilir. */
+export const DEFAULT_SSDB_LOOKUP_CONCURRENCY = 10;
 
 export interface SsdbMaterialResolverOptions {
   /** Resolver SMPTE timecode olusturmak icin kullanir; SSDB MEDIA_LINK fps
@@ -40,6 +46,18 @@ export interface SsdbMaterialResolverOptions {
   batchSize?: number;
   /** SSDB SQL query dispatcher; test'te fake icin override. */
   query?: typeof querySsdb;
+  /** Es zamanli SSDB query ust siniri. Default 10; clamp [1,10].
+   *  Tier 1/2/3 batch'leri ve MEDIA_LINK lookup'lari bu limiter altinda
+   *  Promise.all ile paralel calistirilir; hicbir aciklikta in-flight 10'u asmaz. */
+  lookupConcurrency?: number;
+}
+
+/** Concurrency input'u guvenli sekilde [1, MAX] araligina sik. */
+function clampLookupConcurrency(raw: number | undefined): number {
+  if (raw == null || !Number.isFinite(raw) || !Number.isInteger(raw) || raw < 1) {
+    return DEFAULT_SSDB_LOOKUP_CONCURRENCY;
+  }
+  return raw > SSDB_LOOKUP_CONCURRENCY_MAX ? SSDB_LOOKUP_CONCURRENCY_MAX : raw;
 }
 
 export interface SsdbMaterialLookupOutcome {
@@ -172,14 +190,20 @@ export async function resolveSsdbMaterialsByDcCodes(
 
   const batchSize =
     options.batchSize && options.batchSize > 0 ? options.batchSize : DEFAULT_BATCH_SIZE;
-  const query = options.query ?? querySsdb;
+  const baseQuery = options.query ?? querySsdb;
   const fps = options.defaultFrameRate;
+
+  // SSDB query fan-out limiter — Tier 1/2/3 + MEDIA_LINK paralel batch'ler
+  // bu limiter altinda calisir. clamp [1, 10] zorlanir; default 10.
+  const limiter = new ConcurrencyLimiter(clampLookupConcurrency(options.lookupConcurrency));
+  const query = <T>(text: string, params?: SsdbQueryParam[]): Promise<T[]> =>
+    limiter.run(() => baseQuery<T>(text, params));
 
   /** dcCode -> tier hit entry. Tek tier'da bulunan kazanir (ileri tier denenmez). */
   const found = new Map<string, FoundEntry>();
 
-  // ─────────────────────────────── Tier 1: MEDIA.alias IN (batch)
-  for (const batch of chunk(codes, batchSize)) {
+  // ─────────────────────────────── Tier 1: MEDIA.alias IN (batch, paralel + limited)
+  await Promise.all(chunk(codes, batchSize).map(async (batch) => {
     try {
       const params = buildCodeParams(batch);
       const placeholders = buildPlaceholders('code', batch.length);
@@ -206,20 +230,20 @@ export async function resolveSsdbMaterialsByDcCodes(
     } catch (err) {
       const errMsg = sanitizeError(err);
       // Bu batch'teki Tier 1 cevabi kayboldu -> code'lari ssdb_error
-      // (digger batch'ler / Tier 1 hit'leri etkilenmez).
+      // (diger batch'ler / Tier 1 hit'leri etkilenmez).
       for (const c of batch) {
         if (!found.has(c) && !out.has(c)) {
           out.set(c, buildEmptyOutcome(c, 'ssdb_error', errMsg));
         }
       }
     }
-  }
+  }));
 
   // Tier 2/3 sadece henuz cozulmemis ve error olmamis olanlar uzerinde
   const tier2Candidates = codes.filter((c) => !found.has(c) && !out.has(c));
 
-  // ─────────────────────────────── Tier 2: MEDIA_DETAIL.originalFilename
-  for (const batch of chunk(tier2Candidates, batchSize)) {
+  // ─────────────────────────────── Tier 2: MEDIA_DETAIL.originalFilename (paralel + limited)
+  await Promise.all(chunk(tier2Candidates, batchSize).map(async (batch) => {
     try {
       const params = buildCodeParams(batch);
       const placeholders = buildPlaceholders('code', batch.length);
@@ -251,13 +275,13 @@ export async function resolveSsdbMaterialsByDcCodes(
         }
       }
     }
-  }
+  }));
 
   // Tier 3 sadece hala unresolved & error olmayanlar (son care, per-DC LIKE)
   const tier3Candidates = codes.filter((c) => !found.has(c) && !out.has(c));
 
-  // ─────────────────────────────── Tier 3: MEDIA.name LIKE (per-DC)
-  for (const dc of tier3Candidates) {
+  // ─────────────────────────────── Tier 3: MEDIA.name LIKE (per-DC, paralel + limited)
+  await Promise.all(tier3Candidates.map(async (dc) => {
     try {
       const rows = await query<MediaRow>(
         `SELECT TOP 1 m.id, m.name, m.alias, md.originalFilename
@@ -280,16 +304,24 @@ export async function resolveSsdbMaterialsByDcCodes(
     } catch (err) {
       out.set(dc, buildEmptyOutcome(dc, 'ssdb_error', sanitizeError(err)));
     }
-  }
+  }));
 
-  // ─────────────────────────────── MEDIA_LINK batch icin tum found GUID'leri
+  // ─────────────────────────────── MEDIA_LINK batch icin tum found GUID'leri (paralel + limited)
   const foundEntries = [...found.values()];
   const guidToLink = new Map<string, MediaLinkRow>();
-  let mediaLinkError: string | null = null;
+  // Per-GUID failure map: hangi GUID'lerin MEDIA_LINK batch'i fail oldu +
+  // hata mesaji. Outcome shaping link-yok durumda bu map'e bakar; sadece
+  // gercekten fail batch'te olan GUID'lere lastError yansir. Unrelated
+  // (link satiri olmayan) GUID'lerin lastError'i null kalir.
+  const failedMediaLinkGuids = new Map<string, string>();
 
   if (foundEntries.length > 0) {
     const guids = foundEntries.map((e) => e.mediaGuid);
-    for (const guidBatch of chunk(guids, batchSize)) {
+    const guidBatches = chunk(guids, batchSize);
+    // Promise.all + try/catch per-batch. Bir batch fail olursa o batch'in
+    // tum GUID'leri `failedMediaLinkGuids` map'ine hata mesajiyla eklenir;
+    // diger batch'ler etkilenmez (kismi basari korunur).
+    await Promise.all(guidBatches.map(async (guidBatch) => {
       try {
         const params: SsdbQueryParam[] = guidBatch.map((g, i) => ({
           name: `mid${i}`,
@@ -312,12 +344,12 @@ export async function resolveSsdbMaterialsByDcCodes(
           }
         }
       } catch (err) {
-        mediaLinkError = sanitizeError(err);
-        // MEDIA_LINK fail: bulunan tum DC'ler icin duration_unknown
-        // (MEDIA bulundu fact'i korunur; transient duration loss).
-        break;
+        const errMsg = sanitizeError(err);
+        for (const g of guidBatch) {
+          failedMediaLinkGuids.set(g, errMsg);
+        }
       }
-    }
+    }));
   }
 
   // ─────────────────────────────── Outcome shaping
@@ -330,21 +362,13 @@ export async function resolveSsdbMaterialsByDcCodes(
       continue;
     }
 
-    // MEDIA_LINK batch hata: tum found duration_unknown
-    if (mediaLinkError != null) {
-      out.set(code, {
-        ...mediaOutcomeBase(entry),
-        lookupStatus: 'duration_unknown',
-        tcSom: null,
-        tcEom: null,
-        ssdbDurationFrames: null,
-        ssdbDurationTimecode: null,
-        frameRate: null,
-        lastError: mediaLinkError,
-      });
-      continue;
-    }
-
+    // Partial failure korumasi: per-GUID `failedMediaLinkGuids` map'ine bakilir.
+    // - Link bulundu (basarili batch + row var) -> normal `found` outcome.
+    // - Link bulunmadi:
+    //     a) fail batch'e denk gelen GUID -> duration_unknown + lastError set
+    //     b) success batch ama row yok -> duration_unknown + lastError NULL
+    //   Bu sekilde unrelated link-missing GUID'lere yanlislikla fail batch'in
+    //   hatasi yazilmaz (yoneticinin tespiti).
     const link = guidToLink.get(entry.mediaGuid);
     if (!link) {
       out.set(code, {
@@ -355,7 +379,7 @@ export async function resolveSsdbMaterialsByDcCodes(
         ssdbDurationFrames: null,
         ssdbDurationTimecode: null,
         frameRate: null,
-        lastError: null,
+        lastError: failedMediaLinkGuids.get(entry.mediaGuid) ?? null,
       });
       continue;
     }

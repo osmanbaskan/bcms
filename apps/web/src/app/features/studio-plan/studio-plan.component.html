@@ -14,10 +14,45 @@
         <mat-icon>picture_as_pdf</mat-icon>
         Export PDF
       </button>
-      <button mat-flat-button color="primary" type="button" (click)="exportToExcel()">
+      <!-- 2026-05-27: Excel export tarih aralığı (1-14 gün). Default = seçili
+           hafta Pzt-Pazar. weekStart değişiminde reset. -->
+      <div class="excel-range" [class.invalid]="!exportRangeValid()">
+        <label class="excel-range-field">
+          <span>Excel başlangıç</span>
+          <input
+            type="date"
+            [value]="exportRangeStart"
+            (change)="exportRangeStart = $any($event.target).value"
+          />
+        </label>
+        <label class="excel-range-field">
+          <span>Excel bitiş</span>
+          <input
+            type="date"
+            [value]="exportRangeEnd"
+            (change)="exportRangeEnd = $any($event.target).value"
+          />
+        </label>
+        <span class="excel-range-info" *ngIf="exportRangeValid()">
+          {{ exportRangeDayCount() }} gün
+        </span>
+        <span class="excel-range-error" *ngIf="!exportRangeValid()">
+          {{ exportRangeError() }}
+        </span>
+      </div>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        [disabled]="!exportRangeValid()"
+        (click)="exportToExcel()"
+      >
         <mat-icon>table</mat-icon>
         Export Excel
       </button>
+      <!-- 2026-05-27: multi-week plan fetch fail durumunda yarım dosya
+           indirilmesin diye export abort + visible error chip. -->
+      <span class="excel-export-error" *ngIf="exportError()">{{ exportError() }}</span>
     </div>
   </header>
 
@@ -46,6 +81,7 @@
       (selectedColorChange)="selectedColor = $event"
       (clearSelection)="clearSelection()"
       (moveCurrentWeekToNextWeek)="moveCurrentWeekToNextWeek()"
+      (copySelectedProgramToNextWeek)="copySelectedProgramToNextWeek()"
       (eraserModeChange)="eraserMode.set($event)"
     ></app-studio-plan-toolbar>
 

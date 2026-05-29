@@ -23,6 +23,8 @@
         [class.filled]="programAt(day.id, studio, time)"
         [class.continuation]="isContinuation(day.id, studio, time)"
         [class.continues]="continuesProgram(day.id, studio, time)"
+        [class.day-fill-group-a]="!programAt(day.id, studio, time) && dayFillGroup(day.id) === 'a'"
+        [class.day-fill-group-b]="!programAt(day.id, studio, time) && dayFillGroup(day.id) === 'b'"
         [style.background]="colorAt(day.id, studio, time)"
         [style.borderBottomColor]="continuesProgram(day.id, studio, time) ? colorAt(day.id, studio, time) : null"
         [style.--run-slots]="runLength(day.id, studio, time)"

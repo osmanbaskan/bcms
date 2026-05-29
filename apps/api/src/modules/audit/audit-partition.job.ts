@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { isTablePartitioned } from './audit-retention.helpers.js';
+import { recordHeartbeat, startHeartbeatTicker } from '../../lib/service-heartbeat.js';
 import {
   ensureMonthlyPartition,
   monthsAhead,
@@ -33,8 +34,10 @@ function isDryRun(): boolean {
 
 export async function startAuditPartitionJob(app: FastifyInstance): Promise<void> {
   app.log.info({ aheadMonths: AHEAD_MONTH_COUNT, parent: PARENT_TABLE }, 'Audit partition pre-create job configured');
+  startHeartbeatTicker('audit-partition', app, 60_000);
 
   const runOnce = async (): Promise<void> => {
+    recordHeartbeat('audit-partition');
     const dryRun = isDryRun();
     let partitioned = false;
     try {

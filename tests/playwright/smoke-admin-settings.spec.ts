@@ -20,9 +20,12 @@ test.describe('Settings + Admin smoke', () => {
   test('Settings sayfasında 2 admin kartı listelenir', async ({ page }) => {
     await goToSettingsViaNav(page);
     await expect(page.getByRole('heading', { name: 'Sistem Ayarları' })).toBeVisible();
-    await expect(page.getByText('OPTA Lig / Turnuva Görünürlüğü')).toBeVisible();
-    await expect(page.getByText('Manuel Lig Yönetimi')).toBeVisible();
-    await expect(page.getByText('Manuel girişte seçilebilir ligleri yönetin')).toBeVisible();
+    // Card içine scope — 2026-05-20: "Manuel Lig Yönetimi" hem sidebar entry
+    // hem kart başlığı olarak görünüyor; strict mode için kart-bazlı locator.
+    const main = page.locator('mat-dialog-content, .page-container, main').first();
+    await expect(main.getByText('OPTA Lig / Turnuva Görünürlüğü')).toBeVisible();
+    await expect(main.locator('mat-card:has-text("Manuel Lig Yönetimi")')).toBeVisible();
+    await expect(main.getByText('Manuel girişte seçilebilir ligleri yönetin')).toBeVisible();
   });
 
   test('Manuel Lig Yönetimi kartından admin sayfası açılır + TBL listelenir', async ({ page }) => {

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { resolveOutboxQueue } from './outbox.routing.js';
+import { recordHeartbeat } from '../../lib/service-heartbeat.js';
 
 /**
  * Madde 2+7 PR-C1 (audit doc): Outbox poller — Phase 3 prereq bring-up.
@@ -35,6 +36,24 @@ const MAX_ATTEMPTS = 5;
 const BACKOFF_BASE_MS = 5_000;
 const BACKOFF_CAP_MS = 30 * 60_000;
 const TX_TIMEOUT_MS = 60_000;
+// O1 (2026-05-29): Per-event publish timeout. RabbitMQ channel hang olursa
+// poller tüm batch'i bekler (POLL_INTERVAL_MS = 2sn'lik tick'ler birikir).
+// 5sn'de publish dönmezse retry path'ine düşür; transient hata olarak işle.
+const PUBLISH_TIMEOUT_MS = 5_000;
+
+/** Promise'i ms süre içinde resolve olmazsa reject ile sarmalayan helper.
+ *  Timeout sonrası altta yatan promise hâlâ pending kalabilir (RabbitMQ
+ *  publish'in cancel API'si yok); kritik olan poller'ı bloke etmemesi. */
+function withPublishTimeout<T>(p: Promise<T>, ms: number, eventId: string): Promise<T> {
+  let t: NodeJS.Timeout | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    t = setTimeout(() => reject(new Error(`publish timeout (${ms}ms) eventId=${eventId}`)), ms);
+    t.unref();
+  });
+  return Promise.race([p, timeout]).finally(() => {
+    if (t) clearTimeout(t);
+  });
+}
 
 export interface OutboxRow {
   id:             number;
@@ -121,7 +140,11 @@ export async function pollOnce(app: FastifyInstance): Promise<PollOnceResult> {
 
     try {
       const queue = resolveOutboxQueue(event.event_type);
-      await app.rabbitmq.publish(queue, event.payload);
+      await withPublishTimeout(
+        app.rabbitmq.publish(queue, event.payload),
+        PUBLISH_TIMEOUT_MS,
+        event.event_id,
+      );
       await app.prisma.outboxEvent.update({
         where: { id: event.id },
         data:  { status: 'published', publishedAt: new Date() },
@@ -189,6 +212,7 @@ export async function startOutboxPoller(app: FastifyInstance): Promise<void> {
 
   let running = false;
   const tick = async (): Promise<void> => {
+    recordHeartbeat('outbox-poller');
     if (running) return; // overlap guard — uzun bir tick sonraki interval'i ezmesin
     running = true;
     try {

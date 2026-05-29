@@ -45,6 +45,7 @@ class StubStudioPlanToolbarComponent {
   @Output() selectedColorChange = new EventEmitter<string>();
   @Output() clearSelection = new EventEmitter<void>();
   @Output() moveCurrentWeekToNextWeek = new EventEmitter<void>();
+  @Output() copySelectedProgramToNextWeek = new EventEmitter<void>();
   @Output() eraserModeChange = new EventEmitter<boolean>();
 }
 

@@ -17,7 +17,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { interval, Subscription, timer } from 'rxjs';
-import { switchMap, take } from 'rxjs/operators';
+import { filter, switchMap, take } from 'rxjs/operators';
 
 import { ApiService } from '../../../core/services/api.service';
 import { formatIstanbulDateTr, formatIstanbulTime, istanbulDayRangeUtc } from '../../../core/time/tz.helpers';
@@ -1134,15 +1134,20 @@ export class IngestListComponent implements OnInit, OnDestroy {
     this.load();
     // Poll every 5 s when there are active jobs; when no active jobs the computed signal
     // will show false and we skip the update silently (still fires but has no side-effect).
+    // FA5 (2026-05-29, 250 user scale): visibility guard — tab arka planda
+    // iken polling skip; 250 idle tab × 200 KB/10sn = 5 MB/sn backend trafik
+    // azalır. Restore component aynı pattern (line 768).
+    const visibleOnly = filter(() => typeof document === 'undefined' || document.visibilityState === 'visible');
+
     this.pollSub = interval(5000)
-      .pipe(switchMap(() => this.api.get<PaginatedResponse<IngestJob>>('/ingest?pageSize=200')))
+      .pipe(visibleOnly, switchMap(() => this.api.get<PaginatedResponse<IngestJob>>('/ingest?pageSize=200')))
       .subscribe((res) => {
         this.jobs.set(res.data);
         this.total.set(res.total);
       });
 
     this.planPollSub = interval(10000)
-      .pipe(switchMap(() => this.api.get<IngestPlanItem[]>('/ingest/plan', { date: this.livePlanDate })))
+      .pipe(visibleOnly, switchMap(() => this.api.get<IngestPlanItem[]>('/ingest/plan', { date: this.livePlanDate })))
       .subscribe({
         next: (items) => {
           const next = Array.isArray(items) ? items : [];

@@ -94,8 +94,29 @@ export async function disconnectPrisma(): Promise<void> {
 /**
  * afterEach cleanup — transactional tabloları truncate eder.
  * Seed tabloları (channels, leagues, vb.) korunur.
+ *
+ * KRITIK GUARD (K1, 2026-05-29 — TRUNCATE incident sonrasi):
+ * Bu helper canli production DB'ye karsi calistirilirsa felaket. Iki katmanli
+ * koruma + URL pattern check. NODE_ENV=test setup.ts tarafindan set edilir;
+ * yanlislikla integration spec direkt `npx vitest run` ile cagrilirsa
+ * (vitest.integration.config.ts dis i), bu guard hard-fail ile durdurur.
  */
 export async function cleanupTransactional(): Promise<void> {
+  const nodeEnv = process.env.NODE_ENV;
+  if (nodeEnv !== 'test') {
+    throw new Error(
+      `cleanupTransactional() refused: NODE_ENV="${nodeEnv ?? 'undefined'}", expected "test". ` +
+      `Did you run integration spec without vitest.integration.config.ts? See K1 (2026-05-29).`,
+    );
+  }
+  const dbUrl = process.env.DATABASE_URL ?? '';
+  // Canli bcms_postgres host'u veya prod-like indicator → reddet.
+  if (/@(bcms_postgres|prod-)/i.test(dbUrl)) {
+    throw new Error(
+      `cleanupTransactional() refused: DATABASE_URL points to production-like host ` +
+      `("${dbUrl.replace(/:\/\/[^@]+@/, '://***@')}"). Refusing TRUNCATE.`,
+    );
+  }
   const prisma = getRawPrisma();
   await prisma.$executeRawUnsafe(
     `TRUNCATE TABLE ${TRANSACTIONAL_TABLES.map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`,

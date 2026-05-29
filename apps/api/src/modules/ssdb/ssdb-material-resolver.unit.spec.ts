@@ -388,3 +388,163 @@ describe('ssdb-material-resolver > batch behavior', () => {
     expect(aliasCalls[2].params.length).toBe(1);
   });
 });
+
+describe('ssdb-material-resolver > MEDIA_LINK partial failure', () => {
+  it('3 GUID, 1 fail / 1 success+row / 1 success+empty -> per-GUID lastError isolation', async () => {
+    // batchSize=1 -> 3 ayri MEDIA_LINK batch:
+    //   GUID-1 batch: error          -> duration_unknown + lastError (fail batch)
+    //   GUID-2 batch: rows dolu       -> found
+    //   GUID-3 batch: rows boş        -> duration_unknown + lastError NULL (unrelated)
+    const { fn } = buildDispatcher({
+      alias: [
+        { rows: [{ id: 'GUID-1', name: 'A', alias: 'DC1', originalFilename: 'DC1' }] },
+        { rows: [{ id: 'GUID-2', name: 'B', alias: 'DC2', originalFilename: 'DC2' }] },
+        { rows: [{ id: 'GUID-3', name: 'C', alias: 'DC3', originalFilename: 'DC3' }] },
+      ],
+      media_link: [
+        { error: new Error('partial fail GUID-1 batch') },                       // ilk batch fail
+        { rows: [{ idMedia: 'GUID-2', tcSOM: 0, tcEOM: 100, videoFormat: 1 }] }, // ikinci success+row
+        { rows: [] },                                                            // ucuncu success+empty
+      ],
+    });
+    const out = await resolveSsdbMaterialsByDcCodes(['DC1', 'DC2', 'DC3'], {
+      ...DEFAULTS,
+      batchSize: 1,
+      query: fn,
+    });
+
+    // GUID-2: tek başarılı satır -> normal found
+    const dc2 = out.get('DC2');
+    expect(dc2!.lookupStatus).toBe('found');
+    expect(dc2!.mediaGuid).toBe('GUID-2');
+    expect(dc2!.ssdbDurationFrames).toBe(101);
+
+    // GUID-1: fail batch -> duration_unknown + lastError SET
+    const dc1 = out.get('DC1');
+    expect(dc1!.lookupStatus).toBe('duration_unknown');
+    expect(dc1!.mediaGuid).toBe('GUID-1');
+    expect(dc1!.lastError).toMatch(/partial fail/);
+
+    // GUID-3: success batch ama row yok -> duration_unknown + lastError NULL
+    // (unrelated link-missing — fail batch'in error mesajı bu GUID'e SIZMAZ)
+    const dc3 = out.get('DC3');
+    expect(dc3!.lookupStatus).toBe('duration_unknown');
+    expect(dc3!.mediaGuid).toBe('GUID-3');
+    expect(dc3!.lastError).toBeNull();
+  });
+
+  it('paralel MEDIA_LINK batch\'lerden biri fail, digeri success -> partial başarı korunur', async () => {
+    // 2 DC + 2 found media (Tier 1 alias). batchSize=1 -> 2 ayri MEDIA_LINK
+    // batch query'si. Birincisi error, ikincisi success.
+    const { fn, calls } = buildDispatcher({
+      // batchSize=1 -> 2 ayri alias batch (her biri tek DC), her batch icin
+      // ayri response queue'da tutulur.
+      alias: [
+        { rows: [{ id: 'GUID-1', name: 'A', alias: 'DC1', originalFilename: 'DC1' }] },
+        { rows: [{ id: 'GUID-2', name: 'B', alias: 'DC2', originalFilename: 'DC2' }] },
+      ],
+      media_link: [
+        { error: new Error('partial fail GUID-1 batch') }, // ilk batch fail
+        { rows: [{ idMedia: 'GUID-2', tcSOM: 0, tcEOM: 100, videoFormat: 1 }] }, // ikinci batch success
+      ],
+    });
+    const out = await resolveSsdbMaterialsByDcCodes(['DC1', 'DC2'], {
+      ...DEFAULTS,
+      batchSize: 1,
+      query: fn,
+    });
+    // 2 ayri MEDIA_LINK çağrısı yapıldı (paralel)
+    const mlCalls = calls.filter((c) => c.tier === 'media_link');
+    expect(mlCalls).toHaveLength(2);
+
+    // DC2: MEDIA_LINK basarili -> found, normal outcome
+    const dc2 = out.get('DC2');
+    expect(dc2!.lookupStatus).toBe('found');
+    expect(dc2!.mediaGuid).toBe('GUID-2');
+    expect(dc2!.ssdbDurationFrames).toBe(101);
+    expect(dc2!.ssdbDurationTimecode).toBe('00:00:04:01');
+
+    // DC1: MEDIA_LINK batch fail -> duration_unknown (sadece bu DC etkilenir)
+    const dc1 = out.get('DC1');
+    expect(dc1!.lookupStatus).toBe('duration_unknown');
+    expect(dc1!.mediaGuid).toBe('GUID-1');           // MEDIA bulundu fact korunur
+    expect(dc1!.matchMethod).toBe('alias');           // tier hit korunur
+    expect(dc1!.ssdbDurationFrames).toBeNull();       // link yok
+    expect(dc1!.lastError).toMatch(/partial fail/);   // global mediaLinkError info
+  });
+});
+
+describe('ssdb-material-resolver > SSDB_LOOKUP_CONCURRENCY enforcement', () => {
+  /** Mock query that tracks peak in-flight count + per-call delay. */
+  function buildConcurrencyTracker(opts: { perCallDelayMs: number }) {
+    let inFlight = 0;
+    let peak = 0;
+    let totalCalls = 0;
+    const fn = async <T>(_sql: string, _params: SsdbQueryParam[] = []): Promise<T[]> => {
+      totalCalls++;
+      inFlight++;
+      if (inFlight > peak) peak = inFlight;
+      try {
+        await new Promise((r) => setTimeout(r, opts.perCallDelayMs));
+        return [] as T[];
+      } finally {
+        inFlight--;
+      }
+    };
+    return { fn: fn as unknown as SsdbMaterialResolverOptions['query'], snapshot: () => ({ peak, totalCalls }) };
+  }
+
+  it('lookupConcurrency=4: 30 DC + batchSize=1 -> peak SSDB query in-flight 4\'u asmaz', async () => {
+    // 30 batch (her birinde 1 DC) + 30 tier-3 LIKE çağrısı potansiyel; concurrency limiter
+    // hepsini 4'e clamp eder.
+    const { fn, snapshot } = buildConcurrencyTracker({ perCallDelayMs: 15 });
+    const codes = Array.from({ length: 30 }, (_, i) => `DC${i}`);
+    await resolveSsdbMaterialsByDcCodes(codes, {
+      defaultFrameRate: 25,
+      batchSize: 1,
+      lookupConcurrency: 4,
+      query: fn,
+    });
+    const snap = snapshot();
+    expect(snap.peak).toBeLessThanOrEqual(4);
+    expect(snap.peak).toBeGreaterThan(1); // gerçekten paralel
+    expect(snap.totalCalls).toBeGreaterThan(0);
+  });
+
+  it('lookupConcurrency=50 clamp -> peak SSDB query 10\'u asmaz', async () => {
+    // Caller env\'den 50 verse bile resolver clamp [1,10] uygular.
+    const { fn, snapshot } = buildConcurrencyTracker({ perCallDelayMs: 10 });
+    const codes = Array.from({ length: 50 }, (_, i) => `DC${i}`);
+    await resolveSsdbMaterialsByDcCodes(codes, {
+      defaultFrameRate: 25,
+      batchSize: 1,
+      lookupConcurrency: 50,
+      query: fn,
+    });
+    expect(snapshot().peak).toBeLessThanOrEqual(10);
+  });
+
+  it('lookupConcurrency invalid (0 / NaN / undefined) -> default 10 ile clamp', async () => {
+    const { fn, snapshot } = buildConcurrencyTracker({ perCallDelayMs: 10 });
+    const codes = Array.from({ length: 30 }, (_, i) => `DC${i}`);
+    await resolveSsdbMaterialsByDcCodes(codes, {
+      defaultFrameRate: 25,
+      batchSize: 1,
+      lookupConcurrency: undefined as unknown as number,
+      query: fn,
+    });
+    expect(snapshot().peak).toBeLessThanOrEqual(10);
+  });
+
+  it('lookupConcurrency=1 -> tüm SSDB query\'leri sıralı (peak == 1)', async () => {
+    const { fn, snapshot } = buildConcurrencyTracker({ perCallDelayMs: 5 });
+    const codes = ['DC1', 'DC2', 'DC3'];
+    await resolveSsdbMaterialsByDcCodes(codes, {
+      defaultFrameRate: 25,
+      batchSize: 1,
+      lookupConcurrency: 1,
+      query: fn,
+    });
+    expect(snapshot().peak).toBe(1);
+  });
+});

@@ -4,23 +4,36 @@ import { GROUP, type BcmsGroup } from './rbac.js';
  * Provys İçerik Kontrol — kanal kataloğu.
  *
  * `fileCode` Provys SMB dizinine düşen `.bxf` dosya adından çıkarılan
- * kod (örn. `ltv-2026-05-22.bxf` → `ltv`). `slug` UI/route/DB
+ * canonical koddur (örn. `ltv-2026-05-22.bxf` → `ltv`). `slug` UI/route/DB
  * kayıtlarında canonical kanal kimliğidir. Tek kaynak — backend
  * (kanal eşleştirme) ve frontend (tab başlığı/route) ortak kullanır.
+ *
+ * `fileCodeAliases` opsiyonel ek kodlardır. Provys exporter aynı kanal için
+ * farklı kısa/uzun ad varyantları üretebiliyor (örn. Beinhaber'in `xsnw`
+ * yanında `snw` kullanımı). Alias görüldüğünde aynı canonical channel'a
+ * (aynı `slug`) normalize edilir; downstream `slug` üzerinden gittiği için
+ * UI/DB ayrıştırması alias farkından etkilenmez.
  */
 export interface ProvysChannel {
   readonly fileCode: string;
+  readonly fileCodeAliases?: readonly string[];
   readonly slug: string;
   readonly displayName: string;
 }
 
 export const PROVYS_CHANNELS: readonly ProvysChannel[] = [
-  { fileCode: 'ltv',  slug: 'beinsports1', displayName: 'beIN Sports 1' },
-  { fileCode: 'lt2',  slug: 'beinsports2', displayName: 'beIN Sports 2' },
-  { fileCode: 'lt3',  slug: 'beinsports3', displayName: 'beIN Sports 3' },
-  { fileCode: 'lt4',  slug: 'beinsports4', displayName: 'beIN Sports 4' },
-  { fileCode: 'lt5',  slug: 'beinsports5', displayName: 'beIN Sports 5' },
-  { fileCode: 'xsnw', slug: 'beinhaber',   displayName: 'beIN Haber'    },
+  // beIN Sports kanalları: exporter dönem dönem `x` prefix'li varyant
+  // üretiyor (gözlemlenen: `xltv`, `xlt3`, `xlt4`, `xlt5`). `xlt2` izinde
+  // hiçbir dosya/log görülmediği için lt2'ye alias eklenmedi; gözlemlenince
+  // eklenebilir.
+  { fileCode: 'ltv', fileCodeAliases: ['xltv'], slug: 'beinsports1', displayName: 'beIN Sports 1' },
+  { fileCode: 'lt2', slug: 'beinsports2', displayName: 'beIN Sports 2' },
+  { fileCode: 'lt3', fileCodeAliases: ['xlt3'], slug: 'beinsports3', displayName: 'beIN Sports 3' },
+  { fileCode: 'lt4', fileCodeAliases: ['xlt4'], slug: 'beinsports4', displayName: 'beIN Sports 4' },
+  { fileCode: 'lt5', fileCodeAliases: ['xlt5'], slug: 'beinsports5', displayName: 'beIN Sports 5' },
+  // Beinhaber: exporter hem `xsnw` (x-prefix uzun form) hem `snw` (kısa
+  // form) üretebiliyor — ikisi de aynı kanala normalize edilir.
+  { fileCode: 'xsnw', fileCodeAliases: ['snw'], slug: 'beinhaber', displayName: 'beIN Haber' },
 ] as const;
 
 export const PROVYS_CHANNEL_SLUGS = PROVYS_CHANNELS.map((c) => c.slug);
@@ -45,11 +58,14 @@ export interface ProvysCategoryStyle {
   readonly text: string;
 }
 
+// 2026-05-27 (correction): REKLAM=yeşil, PROGRAM=sarı renk paletinde swap edildi
+// (kullanıcı operasyonel tercih). Label/category enum değerleri sabit; sadece
+// background/border/text swap. Aynı mapping Excel/PDF export'ta da uygulanır.
 export const PROVYS_CATEGORY_STYLES: Record<ProvysCategory, ProvysCategoryStyle> = {
-  REKLAM:     { label: 'Reklam',      background: '#fff4e5', border: '#f59e0b', text: '#7c2d12' },
+  REKLAM:     { label: 'Reklam',      background: '#ecfdf5', border: '#10b981', text: '#064e3b' },
   KAMU_SPOTU: { label: 'Kamu Spotu',  background: '#eef2ff', border: '#6366f1', text: '#312e81' },
   CANLI:      { label: 'Canlı',       background: '#fee2e2', border: '#dc2626', text: '#7f1d1d' },
-  PROGRAM:    { label: 'Program',     background: '#ecfdf5', border: '#10b981', text: '#064e3b' },
+  PROGRAM:    { label: 'Program',     background: '#fff4e5', border: '#f59e0b', text: '#7c2d12' },
   TANITIM:    { label: 'Tanıtım',     background: '#f3e8ff', border: '#a855f7', text: '#581c87' },
   DIGER:      { label: 'Diğer',       background: '#f3f4f6', border: '#9ca3af', text: '#374151' },
 };

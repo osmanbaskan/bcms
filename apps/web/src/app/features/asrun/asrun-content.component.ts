@@ -16,6 +16,15 @@ import {
   type AsrunChannelSlug,
 } from './asrun.types';
 
+// 2026-05-29: Date nav arrows helper — YYYY-MM-DD ± gün, UTC aritmetik
+// (DST'den bağımsız; Türkiye TZ DST yok 2016 sonrası).
+function addDaysIso(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map((s) => Number(s));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
 /**
  * Asrun İçerik Kaydı sayfası — Provys "İçerik Kontrol" sayfası ile aynı
  * UX: kanal tabları + kategori filtre toggle + Excel/PDF export.
@@ -43,14 +52,36 @@ import {
           <p class="subtitle">Playout sonrası gerçekleşen yayın kaydı — Outbox/Ok BXF kaynağı.</p>
         </div>
         <div class="controls">
-          <label class="date-control">
-            <span class="date-label">Yayın günü</span>
-            <input
-              type="date"
-              [value]="service.activeDate()"
-              (change)="onDateChange($any($event.target).value)"
-            />
-          </label>
+          <div class="date-nav">
+            <button
+              type="button"
+              mat-icon-button
+              class="date-nav-btn"
+              matTooltip="Önceki gün"
+              aria-label="Önceki gün"
+              (click)="shiftDate(-1)"
+            >
+              <mat-icon>chevron_left</mat-icon>
+            </button>
+            <label class="date-control">
+              <span class="date-label">Yayın günü</span>
+              <input
+                type="date"
+                [value]="service.activeDate()"
+                (change)="onDateChange($any($event.target).value)"
+              />
+            </label>
+            <button
+              type="button"
+              mat-icon-button
+              class="date-nav-btn"
+              matTooltip="Sonraki gün"
+              aria-label="Sonraki gün"
+              (click)="shiftDate(1)"
+            >
+              <mat-icon>chevron_right</mat-icon>
+            </button>
+          </div>
           <button
             type="button"
             mat-stroked-button
@@ -113,15 +144,35 @@ import {
     </div>
   `,
   styles: [`
-    :host { display: block; }
-    .page { padding: 16px; }
+    /* 2026-05-28: ASRUN sayfası viewport'a sabit; içerideki akış/tablo kendi
+       içinde scroll yapar. Üstteki başlık/tarih/export/filtre/kanal tabları
+       sayfa scroll'unda kaybolmaz. Sayfa genelinin genişliği/yüksekliği
+       değişmez. App shell top bar yaklaşık 60px. 100dvh modern fallback'le
+       100vh. Provys content-control ile aynı flex zinciri. */
+    :host {
+      display: flex; flex-direction: column;
+      height: calc(100vh - 64px);
+      height: calc(100dvh - 64px);
+      overflow: hidden;
+    }
+    .page {
+      display: flex; flex-direction: column;
+      height: 100%; min-height: 0;
+      overflow: hidden;
+      padding: 16px;
+      box-sizing: border-box;
+    }
     .top {
+      flex: 0 0 auto;
       display: flex; align-items: flex-end; justify-content: space-between;
       gap: 16px; margin-bottom: 16px;
     }
     .title-block .page-title { font-size: 22px; font-weight: 600; color: var(--bp-fg-1); }
     .title-block .subtitle { font-size: 12.5px; color: var(--bp-fg-3); margin-top: 2px; }
     .controls { display: flex; align-items: center; gap: 10px; }
+    /* 2026-05-29: Date nav arrows — chevron sol/sağ, date-control ile inline. */
+    .date-nav { display: inline-flex; align-items: center; gap: 4px; }
+    .date-nav-btn { flex: 0 0 auto; }
     .date-control { display: inline-flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--bp-fg-3); }
     .date-control input {
       padding: 6px 10px; border: 1px solid var(--bp-line); border-radius: 4px;
@@ -139,6 +190,7 @@ import {
     .export-btn .btn-label { font-size: 12.5px; font-weight: var(--bp-fw-medium, 500); }
 
     .filter-bar {
+      flex: 0 0 auto;
       display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
       padding: 4px 0 12px 0;
     }
@@ -174,10 +226,37 @@ import {
       margin-left: auto;
     }
 
-    .asrun-tabs { background: var(--bp-bg-2); }
+    /* 2026-05-28: Tab group dikey flex container; tab header sabit yükseklik,
+       tab body flex-fill + iç scroll panel'in .panel'inde. Material tab body
+       zinciri (mat-mdc-tab-body-wrapper -> tab-body -> tab-body-content
+       -> app-asrun-channel-panel) ::ng-deep ile flex-column'a çevrilir ve
+       min-height: 0 zinciri korunur. */
+    .asrun-tabs {
+      background: var(--bp-bg-2);
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
+    }
     ::ng-deep .asrun-tabs .mat-mdc-tab-header {
+      flex: 0 0 auto;
       border-bottom: 1px solid var(--bp-line);
       background: var(--bp-bg-2);
+    }
+    ::ng-deep .asrun-tabs .mat-mdc-tab-body-wrapper {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
+    }
+    ::ng-deep .asrun-tabs .mat-mdc-tab-body {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
+    }
+    ::ng-deep .asrun-tabs .mat-mdc-tab-body-content {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    ::ng-deep .asrun-tabs app-asrun-channel-panel {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
     }
     ::ng-deep .asrun-tabs .mat-mdc-tab .mdc-tab__text-label {
       font-size: 12.5px;
@@ -195,6 +274,20 @@ import {
     }
     ::ng-deep .asrun-tabs .mdc-tab-indicator__content--underline {
       border-top-width: 3px;
+    }
+    /* 2026-05-28: Dark mode aktif tab background — light'ta zaten var, dark'ta
+       sadece text rengi değişiyordu. Nötr beyaz translucent overlay; light
+       override (host-context html data-theme=light) daha specific olduğu için
+       light'ta var(--bp-bg-2) davranışı korunur.
+
+       Ek: dark mode aktif tab ÜST kenarına da Material indicator ile aynı
+       3px mor şerit (alt çubuk Material default rendering). currentColor
+       aktif tab text rengini takip eder — Material dark default'ta primary
+       mor. Light override (var(--bp-line)) bu property'i de override eder. */
+    ::ng-deep .asrun-tabs .mdc-tab--active,
+    ::ng-deep .asrun-tabs .mat-mdc-tab[aria-selected="true"] {
+      background: rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 3px 0 var(--mat-tab-active-indicator-color);
     }
 
     /* ───── LIGHT MODE NETLİK ─────
@@ -302,6 +395,12 @@ export class AsrunContentComponent implements OnInit, OnDestroy {
   async onDateChange(date: string): Promise<void> {
     if (!date) return;
     await this.service.setActiveDate(date);
+  }
+
+  /** 2026-05-29: Date nav arrows — ±1 gün (veya istenen delta). */
+  async shiftDate(deltaDays: number): Promise<void> {
+    const next = addDaysIso(this.service.activeDate(), deltaDays);
+    await this.service.setActiveDate(next);
   }
 
   onCategoryChange(event: MatButtonToggleChange): void {

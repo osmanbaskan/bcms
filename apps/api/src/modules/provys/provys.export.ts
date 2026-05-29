@@ -60,11 +60,13 @@ export interface ProvysExportOptions {
  * white background üstünde okunabilir tint + accent gerekiyor.
  */
 interface ExportColor { fillArgb: string; fillHex: string; accentHex: string; textHex: string }
+// 2026-05-27 (correction): REKLAM=yeşil, PROGRAM=sarı swap; UI ile birebir
+// tutarlı. Excel ve PDF her ikisi de bu palet üzerinden render edilir.
 const EXPORT_PALETTE: Record<ProvysCategory, ExportColor> = {
-  REKLAM:     { fillArgb: 'FFFFEDD5', fillHex: '#FFEDD5', accentHex: '#F59E0B', textHex: '#7C2D12' }, // turuncu
+  REKLAM:     { fillArgb: 'FFD1FAE5', fillHex: '#D1FAE5', accentHex: '#10B981', textHex: '#064E3B' }, // yeşil
   KAMU_SPOTU: { fillArgb: 'FFE0E7FF', fillHex: '#E0E7FF', accentHex: '#6366F1', textHex: '#312E81' }, // mavi/mor
   CANLI:      { fillArgb: 'FFFEE2E2', fillHex: '#FEE2E2', accentHex: '#DC2626', textHex: '#7F1D1D' }, // kırmızı
-  PROGRAM:    { fillArgb: 'FFD1FAE5', fillHex: '#D1FAE5', accentHex: '#10B981', textHex: '#064E3B' }, // yeşil
+  PROGRAM:    { fillArgb: 'FFFFEDD5', fillHex: '#FFEDD5', accentHex: '#F59E0B', textHex: '#7C2D12' }, // sarı
   TANITIM:    { fillArgb: 'FFF3E8FF', fillHex: '#F3E8FF', accentHex: '#A855F7', textHex: '#581C87' }, // mor
   DIGER:      { fillArgb: 'FFF3F4F6', fillHex: '#F3F4F6', accentHex: '#9CA3AF', textHex: '#374151' }, // gri
 };
@@ -112,73 +114,97 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
   const channelName = channelDisplayName(opts.channelSlug);
   const titleText = `Provys Akış — ${channelName} — ${opts.scheduleDate}`;
 
-  // 2026-05-26: Yeni 4 kolon eklendi — Seri, Bölüm, VersionName, Kaynak.
-  // Toplam kolon sayısı 7 → 11. Backward-compat: eski not export'larıyla
-  // sütun sırası değişmedi (yeni kolonlar Kategori-Not arasına eklendi,
-  // Sıra/Başlangıç/Süre/DC/Başlık aynı pozisyonda).
-  // Kolon haritası:
-  //   A=Sıra B=Başlangıç C=Süre D=DC E=Başlık F=Seri G=Bölüm H=VersionName
-  //   I=Kategori J=Kaynak K=Not
-  const EMPTY11 = ['', '', '', '', '', '', '', '', '', '', ''];
+  // 2026-05-27 (correction 5): Kullanıcı isteği ile "Not" kolonu eklendi.
+  // Kolon haritası (5 kolon, A4 portrait):
+  //   A=Başlangıç B=DC Kod C=Başlık D=Süre E=Not
+  //
+  // PROGRAM satırlarında "Başlık" hücresi iki satırlı richText (seri varsa):
+  //   üst satır: seriesName (küçük + italic + gri)
+  //   alt satır: title       (normal boyut)
+  // Seri yoksa / blank ise: tek satır, sadece title.
+  // PROGRAM dışı kategorilerde seri hiç kullanılmaz; başlık tek satır.
+  // Not hücresi (E) `userNote` ile dolar (UI'da kullanıcı doldurmadıysa boş).
+  const EMPTY5 = ['', '', '', '', ''];
 
-  // 1: başlık (tüm 11 kolon merge)
-  sheet.addRow([titleText, ...EMPTY11.slice(1)]);
-  sheet.mergeCells('A1:K1');
+  // 1: başlık (tüm 5 kolon merge)
+  sheet.addRow([titleText, ...EMPTY5.slice(1)]);
+  sheet.mergeCells('A1:E1');
   // 2: meta (üretim zamanı)
-  sheet.addRow([`Üretim: ${generationStampIstanbul()} (Europe/Istanbul)`, ...EMPTY11.slice(1)]);
-  sheet.mergeCells('A2:K2');
+  sheet.addRow([`Üretim: ${generationStampIstanbul()} (Europe/Istanbul)`, ...EMPTY5.slice(1)]);
+  sheet.mergeCells('A2:E2');
   // 3: sütun başlıkları
-  sheet.addRow(['Sıra', 'Başlangıç', 'Süre', 'DC Kod', 'Başlık', 'Seri', 'Bölüm', 'VersionName', 'Kategori', 'Kaynak', 'Not']);
+  sheet.addRow(['Başlangıç', 'DC Kod', 'Başlık', 'Süre', 'Not']);
 
   if (opts.rows.length === 0) {
-    sheet.addRow(['Seçili tarih için BXF akışı yok', ...EMPTY11.slice(1)]);
-    sheet.mergeCells(`A4:K4`);
+    sheet.addRow(['Seçili tarih için BXF akışı yok', ...EMPTY5.slice(1)]);
+    sheet.mergeCells(`A4:E4`);
     sheet.getRow(4).font = { italic: true, color: { argb: 'FF6B7280' } };
     sheet.getRow(4).alignment = { horizontal: 'center' };
   } else {
     for (const r of opts.rows) {
       // Timecode'lar text olarak — Excel otomatik saat formatına çevirmesin.
+      // Başlık (C) sonra richText/string olarak override edilir.
       const row = sheet.addRow([
-        r.sequence + 1,
         sanitizeCell(r.startTimecode ?? '—'),
-        sanitizeCell(r.durationTimecode ?? '—'),
         sanitizeCell(r.dcCode ?? '—'),
-        sanitizeCell(r.title),
-        sanitizeCell(r.seriesName ?? '—'),
-        r.episodeNumber ?? '—',
-        sanitizeCell(r.versionName ?? '—'),
-        sanitizeCell(categoryLabel(r.category)),
-        sanitizeCell(r.titleSource ?? '—'),
+        '',  // placeholder — aşağıda hücre olarak set edilir
+        sanitizeCell(r.durationTimecode ?? '—'),
         sanitizeCell(r.userNote ?? ''),
       ]);
-      // Kategori bazlı pastel fill — tüm satır.
+
+      // Başlık hücresi: PROGRAM + non-blank seriesName ise iki satır richText.
+      const hasSeries =
+        r.category === 'PROGRAM' && r.seriesName != null && r.seriesName.trim() !== '';
+      const titleCell = row.getCell(3);
+      if (hasSeries) {
+        titleCell.value = {
+          richText: [
+            {
+              font: { size: 8, italic: true, color: { argb: 'FF6B7280' } },
+              text: `${(r.seriesName as string).trim()}\n`,
+            },
+            {
+              font: { size: 9, color: { argb: 'FF000000' } },
+              text: sanitizeCell(r.title),
+            },
+          ],
+        };
+        titleCell.alignment = { wrapText: true, vertical: 'middle' };
+        row.height = 38;
+      } else {
+        titleCell.value = sanitizeCell(r.title);
+        titleCell.alignment = { wrapText: true, vertical: 'middle' };
+      }
+
+      // Not hücresi (E) — wrapText + middle vertical alignment.
+      const noteCell = row.getCell(5);
+      noteCell.alignment = { wrapText: true, vertical: 'middle' };
+
+      // Kategori bazlı pastel fill — 5 hücrenin tamamı (A:E).
       const palette = EXPORT_PALETTE[r.category];
-      row.fill = {
+      const rowFill = {
         type: 'pattern',
         pattern: 'solid',
         fgColor: { argb: palette.fillArgb },
-      };
-      // Kategori hücresine kalın text + kategori metin rengi. (Kategori col I = 9)
-      row.getCell(9).font = { bold: true, color: { argb: 'FF' + palette.textHex.slice(1) } };
+      } as const;
+      for (let col = 1; col <= 5; col++) {
+        row.getCell(col).fill = rowFill;
+      }
     }
   }
 
   sheet.columns = [
-    { width:  6 },   // A Sıra
-    { width: 14 },   // B Başlangıç (HH:MM:SS:FF)
-    { width: 14 },   // C Süre
-    { width: 14 },   // D DC Kod
-    { width: 50 },   // E Başlık
-    { width: 36 },   // F Seri
-    { width:  8 },   // G Bölüm
-    { width: 40 },   // H VersionName
-    { width: 14 },   // I Kategori
-    { width: 18 },   // J Kaynak (title_source)
-    { width: 26 },   // K Not
+    { width: 12 },   // A Başlangıç (HH:MM:SS:FF) — vertical middle
+    { width: 12 },   // B DC Kod                   — vertical middle
+    { width: 42 },   // C Başlık (PROGRAM: iki satır richText, wrapText)
+    { width: 11 },   // D Süre                     — vertical middle
+    { width: 20 },   // E Not  (kullanıcı yazısı, wrapText)
   ];
   // Timecode + DC sütunları text formatında — Excel saat/sayı autoconvert engellensin.
-  for (const col of ['B', 'C', 'D']) {
+  // Aynı zamanda kullanıcı isteği: Başlangıç / DC Kod / Süre dikey ortalı.
+  for (const col of ['A', 'B', 'D']) {
     sheet.getColumn(col).numFmt = '@';
+    sheet.getColumn(col).alignment = { vertical: 'middle' };
   }
 
   // Başlık + meta stilleri.
@@ -190,7 +216,25 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
   const header = sheet.getRow(3);
   header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
   header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF374151' } };
-  header.alignment = { vertical: 'middle' };
+  header.alignment = { vertical: 'middle', horizontal: 'center' };
+  // Data fontu küçültüldü (8-9 pt) — 5 kolonun A4 portrait'a sığması için.
+  for (let r = 4; r <= sheet.rowCount; r++) {
+    const row = sheet.getRow(r);
+    if (!row.font || !(row.font as { size?: number }).size) {
+      row.font = { size: 9 };
+    }
+  }
+
+  // A4 portrait, fit-to-width=1 (tek sayfa eninde sığar, sayfa adedi serbest).
+  // paperSize 9 = A4 (Excel standart enum).
+  sheet.pageSetup = {
+    orientation: 'portrait',
+    paperSize: 9,
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+  };
 
   const arr = await wb.xlsx.writeBuffer();
   return Buffer.from(arr);
@@ -198,14 +242,33 @@ export async function exportProvysToExcelBuffer(opts: ProvysExportOptions): Prom
 
 // ── PDF ──────────────────────────────────────────────────────────────────────
 
+/**
+ * 2026-05-27: PDF export, Excel export kontratına yaklaştırıldı.
+ *  - A4 portrait (Excel ile aynı yön).
+ *  - 4 kolon: Başlangıç | DC Kod | Başlık | Süre.
+ *  - Kaldırıldı: Sıra, Kategori metni, Not, Kaynak, Versiyon ve diğer
+ *    Excel'de olmayan ekstra alanlar.
+ *  - Kategori bilgisi yalnızca satır arka plan tint'i olarak korunur
+ *    (Excel paritesi); kategori metin hücresi yok.
+ *  - PROGRAM + seriesName satırlarında başlık iki satır: üstte küçük
+ *    italic gri seri adı, altta normal başlık (Excel richText ile aynı
+ *    görsel imza).
+ *
+ * Excel `exportProvysToExcelBuffer` davranışı dokunulmadı; iki export
+ * birbirinden bağımsız.
+ */
 export async function exportProvysToPdfBuffer(opts: ProvysExportOptions): Promise<Buffer> {
   const channelName = channelDisplayName(opts.channelSlug);
   const titleText = `Provys Akış — ${channelName} — ${opts.scheduleDate}`;
 
-  const doc = new PDFDocument({
-    size: 'A4',
-    layout: 'landscape',
+  const PAGE_OPTS = {
+    size: 'A4' as const,
+    layout: 'portrait' as const,
     margins: { top: 36, bottom: 36, left: 28, right: 28 },
+  };
+
+  const doc = new PDFDocument({
+    ...PAGE_OPTS,
     info: {
       Title: titleText,
       Author: 'BCMS',
@@ -214,8 +277,6 @@ export async function exportProvysToPdfBuffer(opts: ProvysExportOptions): Promis
   });
 
   // NotoSans Regular + Bold — Türkçe karakter desteği için TTF register.
-  // pdfkit `registerFont(name, source)` ile alias atar; sonrasında
-  // doc.font('NotoSans') gibi kullanılır.
   doc.registerFont('NotoSans', FONT_REGULAR);
   doc.registerFont('NotoSans-Bold', FONT_BOLD);
 
@@ -226,27 +287,39 @@ export async function exportProvysToPdfBuffer(opts: ProvysExportOptions): Promis
     doc.on('error', (err) => reject(err));
   });
 
-  // Tablo geometrisi.
+  // Portrait A4 content width = 595 - (28 + 28) = 539 pt.
+  // 5 kolon: 58 + 66 + 290 + 55 + 70 = 539 ✓ (Not eklendi).
   const cols = [
-    { key: 'sequence', label: 'Sıra',       width:  28 },
-    { key: 'start',    label: 'Başlangıç',  width:  68 },
-    { key: 'duration', label: 'Süre',       width:  62 },
-    { key: 'dcCode',   label: 'DC Kod',     width:  72 },
-    { key: 'title',    label: 'Başlık',     width: 254 },
-    { key: 'category', label: 'Kategori',   width:  60 },
-    { key: 'userNote', label: 'Not',        width: 130 },
+    { key: 'start',    label: 'Başlangıç', width:  58, align: 'center' as const },
+    { key: 'dcCode',   label: 'DC Kod',    width:  66, align: 'center' as const },
+    { key: 'title',    label: 'Başlık',    width: 290, align: 'left'   as const },
+    { key: 'duration', label: 'Süre',      width:  55, align: 'center' as const },
+    { key: 'userNote', label: 'Not',       width:  70, align: 'left'   as const },
   ] as const;
-  const rowHeight = 14;
-  const accentBarWidth = 3;       // Sol kategori bandı genişliği
+  const headerRowHeight = 16;
+  const baseRowHeight = 16;
+  // PROGRAM + non-blank seriesName satırlarında başlık iki satır (üst: seri,
+  // alt: title) — Excel `row.height = 38` paritesi.
+  const programWithSeriesRowHeight = 28;
   const startX = doc.page.margins.left;
   const pageBottom = doc.page.height - doc.page.margins.bottom;
+  const cellPad = 4;
 
-  const drawHeader = (): void => {
+  const rowHeightFor = (r: ProvysExportRow): number => {
+    const hasSeries =
+      r.category === 'PROGRAM' && typeof r.seriesName === 'string' && r.seriesName.trim() !== '';
+    return hasSeries ? programWithSeriesRowHeight : baseRowHeight;
+  };
+
+  const drawDocumentHeader = (): void => {
     doc.font('NotoSans-Bold').fontSize(14).fillColor('black')
       .text(titleText, { align: 'center' });
     doc.moveDown(0.2);
     doc.font('NotoSans').fontSize(9).fillColor('#666666')
-      .text(`Üretim: ${generationStampIstanbul()} (Europe/Istanbul) — ${opts.rows.length} kayıt`, { align: 'center' });
+      .text(
+        `Üretim: ${generationStampIstanbul()} (Europe/Istanbul) — ${opts.rows.length} kayıt`,
+        { align: 'center' },
+      );
     doc.fillColor('black');
     doc.moveDown(0.6);
     drawTableHeader();
@@ -255,60 +328,108 @@ export async function exportProvysToPdfBuffer(opts: ProvysExportOptions): Promis
   const drawTableHeader = (): void => {
     let x = startX;
     const y = doc.y;
-    doc.font('NotoSans-Bold').fontSize(8);
+    doc.font('NotoSans-Bold').fontSize(8.5);
     for (const c of cols) {
-      doc.rect(x, y, c.width, rowHeight).fillAndStroke('#e5e7eb', '#9ca3af');
-      doc.fillColor('black')
-        .text(c.label, x + 3, y + 3, { width: c.width - 6, height: rowHeight - 2, ellipsis: true, lineBreak: false });
+      doc.rect(x, y, c.width, headerRowHeight).fillAndStroke('#374151', '#1f2937');
+      doc.fillColor('#ffffff').text(c.label, x + cellPad, y + 3, {
+        width: c.width - cellPad * 2,
+        height: headerRowHeight - 3,
+        align: 'center',
+        ellipsis: true,
+        lineBreak: false,
+      });
       x += c.width;
     }
-    doc.y = y + rowHeight;
+    doc.y = y + headerRowHeight;
   };
 
   const drawRow = (r: ProvysExportRow): void => {
     const palette = EXPORT_PALETTE[r.category];
+    const rh = rowHeightFor(r);
     const y = doc.y;
-    const values = [
-      String(r.sequence + 1),
-      r.startTimecode ?? '—',
-      r.durationTimecode ?? '—',
-      r.dcCode ?? '—',
-      r.title,
-      categoryLabel(r.category),
-      r.userNote ?? '',
-    ];
+    const hasSeries =
+      r.category === 'PROGRAM' && typeof r.seriesName === 'string' && r.seriesName.trim() !== '';
+
+    // 1) Tüm satır boyunca 4 hücreyi kategori pastel tint ile çiz (Excel paritesi).
     let x = startX;
-    doc.font('NotoSans').fontSize(7.5).fillColor('black');
-    for (let i = 0; i < cols.length; i++) {
-      const c = cols[i];
-      const isCategory = c.key === 'category';
-      // Kategori hücresi pastel tint; diğer hücreler beyaz.
-      if (isCategory) {
-        doc.rect(x, y, c.width, rowHeight).fillAndStroke(palette.fillHex, '#d1d5db');
-      } else {
-        doc.rect(x, y, c.width, rowHeight).fillAndStroke('#ffffff', '#d1d5db');
-      }
-      doc.fillColor(isCategory ? palette.textHex : 'black')
-        .font(isCategory ? 'NotoSans-Bold' : 'NotoSans').fontSize(7.5)
-        .text(values[i] ?? '', x + 3, y + 3, { width: c.width - 6, height: rowHeight - 2, ellipsis: true, lineBreak: false });
+    for (const c of cols) {
+      doc.rect(x, y, c.width, rh).fillAndStroke(palette.fillHex, '#d1d5db');
       x += c.width;
     }
-    // Sol kategori bandı — ilk hücrenin solunda kategori accent rengi.
-    doc.rect(startX, y, accentBarWidth, rowHeight).fillAndStroke(palette.accentHex, palette.accentHex);
-    doc.y = y + rowHeight;
+
+    // 2) Hücre metinleri.
+    x = startX;
+    for (const c of cols) {
+      const cellWidth = c.width - cellPad * 2;
+      if (c.key === 'title') {
+        if (hasSeries) {
+          doc.font('NotoSans').fontSize(6.5).fillColor('#6B7280').text(
+            (r.seriesName ?? '').trim(),
+            x + cellPad,
+            y + 2,
+            { width: cellWidth, height: 9, ellipsis: true, lineBreak: false },
+          );
+          doc.font('NotoSans-Bold').fontSize(8).fillColor(palette.textHex).text(
+            r.title,
+            x + cellPad,
+            y + 13,
+            { width: cellWidth, height: rh - 13 - cellPad, ellipsis: true, lineBreak: false },
+          );
+        } else {
+          doc.font('NotoSans-Bold').fontSize(8).fillColor(palette.textHex).text(
+            r.title,
+            x + cellPad,
+            y + (rh / 2 - 4),
+            { width: cellWidth, height: rh, ellipsis: true, lineBreak: false },
+          );
+        }
+      } else if (c.key === 'userNote') {
+        const value = r.userNote ?? '';
+        doc.font('NotoSans').fontSize(8).fillColor(palette.textHex).text(
+          value,
+          x + cellPad,
+          y + (rh / 2 - 4),
+          { width: cellWidth, height: rh, align: c.align, ellipsis: true, lineBreak: false },
+        );
+      } else {
+        const value =
+          c.key === 'start'    ? (r.startTimecode    ?? '—') :
+          c.key === 'dcCode'   ? (r.dcCode           ?? '—') :
+          c.key === 'duration' ? (r.durationTimecode ?? '—') :
+          '';
+        doc.font('NotoSans').fontSize(8).fillColor(palette.textHex).text(
+          value,
+          x + cellPad,
+          y + (rh / 2 - 4),
+          { width: cellWidth, height: rh, align: c.align, ellipsis: true, lineBreak: false },
+        );
+      }
+      x += c.width;
+    }
+
+    doc.y = y + rh;
   };
 
-  drawHeader();
+  drawDocumentHeader();
 
   if (opts.rows.length === 0) {
-    doc.moveDown(2);
-    doc.font('NotoSans').fontSize(11).fillColor('#666666')
-      .text('Seçili tarih için BXF akışı yok', { align: 'center' });
+    // 4 kolon düzeninde merge edilmiş "Seçili tarih için BXF akışı yok" stripi.
+    const totalWidth = cols.reduce((acc, c) => acc + c.width, 0);
+    const y = doc.y;
+    doc.rect(startX, y, totalWidth, baseRowHeight).fillAndStroke('#f9fafb', '#d1d5db');
+    doc.font('NotoSans').fontSize(10).fillColor('#6b7280').text(
+      'Seçili tarih için BXF akışı yok',
+      startX + cellPad,
+      y + 4,
+      { width: totalWidth - cellPad * 2, height: baseRowHeight - 4, align: 'center', lineBreak: false },
+    );
+    doc.y = y + baseRowHeight;
   } else {
     for (const r of opts.rows) {
-      if (doc.y + rowHeight > pageBottom) {
-        doc.addPage({ size: 'A4', layout: 'landscape', margins: { top: 36, bottom: 36, left: 28, right: 28 } });
-        drawHeader();
+      const rh = rowHeightFor(r);
+      if (doc.y + rh > pageBottom) {
+        doc.addPage(PAGE_OPTS);
+        drawDocumentHeader();
       }
       drawRow(r);
     }

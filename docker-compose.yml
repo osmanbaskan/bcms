@@ -116,8 +116,13 @@ services:
       # -1 → port issuer URL'ye eklenmez (443 standart HTTPS port'u)
       KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:--1}
       KC_HTTP_RELATIVE_PATH: "/"
-      # Theme static resource Cache-Control max-age (saniye); -1 → no-cache.
-      # Default 30 gün — dev sırasında CSS değişiklikleri browser cache'ten dolayı görünmüyor.
+      # Theme cache — DEV default'ları (CSS hot-reload). Theme'e edit yapıp
+      # görmek için: `docker compose restart keycloak` + browser hard refresh
+      # (Ctrl+Shift+R). PRODUCTION'da .env'de override:
+      #   KC_SPI_THEME_STATIC_MAX_AGE=31536000
+      #   KC_SPI_THEME_CACHE_THEMES=true
+      #   KC_SPI_THEME_CACHE_TEMPLATES=true
+      # Bkz: O19 (2026-05-29) — ops/REQUIREMENTS-KEYCLOAK-THEME-DEV.md
       KC_SPI_THEME_STATIC_MAX_AGE: ${KC_SPI_THEME_STATIC_MAX_AGE:--1}
       KC_SPI_THEME_CACHE_THEMES: ${KC_SPI_THEME_CACHE_THEMES:-false}
       KC_SPI_THEME_CACHE_TEMPLATES: ${KC_SPI_THEME_CACHE_TEMPLATES:-false}
@@ -151,6 +156,10 @@ services:
     stop_grace_period: 30s
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # FA1 (2026-05-29): Prisma pool — API 30, Worker 20 (250 user scale).
+      PRISMA_CONNECTION_LIMIT_API:    ${PRISMA_CONNECTION_LIMIT_API:-10}
+      PRISMA_CONNECTION_LIMIT_WORKER: ${PRISMA_CONNECTION_LIMIT_WORKER:-5}
+      PRISMA_POOL_TIMEOUT:            ${PRISMA_POOL_TIMEOUT:-5}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-https://beinport/realms/bcms}
@@ -164,6 +173,40 @@ services:
       INGEST_ALLOWED_ROOTS: ${INGEST_ALLOWED_ROOTS:-/opta,/app/tmp/watch}
       OPTA_SYNC_SECRET: ${OPTA_WATCHER_API_TOKEN}
       METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # SSDB MAM resolver — feature flag default OFF; .env içine
+      # `PROVYS_SSDB_RESOLVER=on` + `SSDB_*` set edildiğinde aktive olur.
+      # API tarafı /api/v1/ssdb/health + /cache/refresh için flag'i okur.
+      PROVYS_SSDB_RESOLVER: ${PROVYS_SSDB_RESOLVER:-off}
+      SSDB_HOST:     ${SSDB_HOST:-}
+      SSDB_PORT:     ${SSDB_PORT:-}
+      SSDB_DATABASE: ${SSDB_DATABASE:-}
+      SSDB_USER:     ${SSDB_USER:-}
+      SSDB_PASSWORD: ${SSDB_PASSWORD:-}
+      # Concurrency limit'leri — clamp [1,10]; invalid/empty -> default.
+      # lookup: SSDB query fan-out (resolver Tier 1/2/3 + MEDIA_LINK).
+      # cache_write: Prisma upsert (P2024 onlem; worker icindeki 9 background
+      # service ortak pool'u paylasiyor, audit ext per-write ek query yapar).
+      SSDB_LOOKUP_CONCURRENCY:      ${SSDB_LOOKUP_CONCURRENCY:-5}
+      SSDB_CACHE_WRITE_CONCURRENCY: ${SSDB_CACHE_WRITE_CONCURRENCY:-5}
+      # SSDB resolver worker tuning (2026-05-28 deneme seti — env override; default=kod default'u).
+      SSDB_WORKER_INTERVAL_MS:       ${SSDB_WORKER_INTERVAL_MS:-3600000}
+      SSDB_WINDOW_FUTURE_DAYS:       ${SSDB_WINDOW_FUTURE_DAYS:-14}
+      SSDB_WORKER_MAX_PER_TICK:      ${SSDB_WORKER_MAX_PER_TICK:-100}
+      SSDB_BATCH_SIZE:               ${SSDB_BATCH_SIZE:-5}
+      SSDB_TTL_FOUND_MIN:            ${SSDB_TTL_FOUND_MIN:-60}
+      SSDB_TTL_DURATION_UNKNOWN_MIN: ${SSDB_TTL_DURATION_UNKNOWN_MIN:-120}
+      SSDB_TTL_MISSING_MIN:          ${SSDB_TTL_MISSING_MIN:-30}
+      SSDB_TTL_ERROR_MIN:            ${SSDB_TTL_ERROR_MIN:-5}
+      # Restore + Transfer V2 — API tarafı yalnız route layer (worker container'da
+      # çalışır; BCMS_BACKGROUND_SERVICES=none API'de). Env'ler config loader için
+      # erişilebilir olmalı (mock factory + route handler şu an env okumuyor ama
+      # ileride health endpoint için tutarlı). Mock mode default ON.
+      RESTORE_AVID_ENABLED:    ${RESTORE_AVID_ENABLED:-off}
+      RESTORE_AVID_MOCK:       ${RESTORE_AVID_MOCK:-true}
+      AVID_INTERPLAY_URL:      ${AVID_INTERPLAY_URL:-}
+      AVID_USER:               ${AVID_USER:-}
+      AVID_PASSWORD:           ${AVID_PASSWORD:-}
+      AVID_WORKSPACE:          ${AVID_WORKSPACE:-}
       PORT: 3000
       NODE_ENV: production
       BCMS_BACKGROUND_SERVICES: none
@@ -203,17 +246,25 @@ services:
     restart: unless-stopped
     logging: *default-logging
     stop_grace_period: 60s
-    # Bilinçli karar: worker arka plan job'ları (notifications, ingest-worker,
-    # audit-retention) için HTTP healthcheck endpoint'i yok; pgrep-tabanlı
-    # sahte healthcheck "(healthy)" sinyali aldatıcı olur (deadlock'ta da pass eder).
-    # Gerçek liveness probe tasarımı: ops/REQUIREMENTS-HEALTHCHECK.md (commit 13ae22c)
+    # Y15 (2026-05-29): /health/live per-service heartbeat liveness.
+    # /health (eski) DB+RabbitMQ ping → deadlock'ta da "healthy" gosterirdi.
+    # /health/live `service-heartbeat` Map'ten per-service threshold check.
+    # Heartbeat 60sn'de 1 kez polling tick + event-driven (boot+her message).
     healthcheck:
-      disable: true
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/health/live"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # FA1 (2026-05-29): Prisma pool — API 30, Worker 20 (250 user scale).
+      PRISMA_CONNECTION_LIMIT_API:    ${PRISMA_CONNECTION_LIMIT_API:-10}
+      PRISMA_CONNECTION_LIMIT_WORKER: ${PRISMA_CONNECTION_LIMIT_WORKER:-5}
+      PRISMA_POOL_TIMEOUT:            ${PRISMA_POOL_TIMEOUT:-5}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       NODE_ENV: production
-      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller,provys-watcher,asrun-watcher
+      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller,provys-watcher,asrun-watcher,ssdb-resolver,search-worker,restore-worker,transfer-worker
       OUTBOX_POLLER_ENABLED: ${OUTBOX_POLLER_ENABLED:-false}
       OUTBOX_POLLER_DRY_RUN: ${OUTBOX_POLLER_DRY_RUN:-false}
       # PR-C2 cut-over flag: true → poller authoritative (shadow=pending,
@@ -232,6 +283,52 @@ services:
       INGEST_CALLBACK_SECRET: ${INGEST_CALLBACK_SECRET}
       INGEST_ALLOWED_ROOTS: ${INGEST_ALLOWED_ROOTS:-/opta,/app/tmp/watch}
       OPTA_SYNC_SECRET: ${OPTA_WATCHER_API_TOKEN}
+      # SSDB MAM resolver — feature flag + read-only credentials. `.env`
+      # içinde PROVYS_SSDB_RESOLVER=on + SSDB_PASSWORD set edildiğinde worker
+      # tick periodic SSDB lookup yapar. Default off → tick erken return.
+      PROVYS_SSDB_RESOLVER: ${PROVYS_SSDB_RESOLVER:-off}
+      SSDB_HOST:     ${SSDB_HOST:-}
+      SSDB_PORT:     ${SSDB_PORT:-}
+      SSDB_DATABASE: ${SSDB_DATABASE:-}
+      SSDB_USER:     ${SSDB_USER:-}
+      SSDB_PASSWORD: ${SSDB_PASSWORD:-}
+      # Concurrency limit'leri — clamp [1,10]; invalid/empty -> default.
+      # lookup: SSDB query fan-out (resolver Tier 1/2/3 + MEDIA_LINK).
+      # cache_write: Prisma upsert (P2024 onlem; worker icindeki 9 background
+      # service ortak pool'u paylasiyor, audit ext per-write ek query yapar).
+      SSDB_LOOKUP_CONCURRENCY:      ${SSDB_LOOKUP_CONCURRENCY:-5}
+      SSDB_CACHE_WRITE_CONCURRENCY: ${SSDB_CACHE_WRITE_CONCURRENCY:-5}
+      # SSDB resolver worker tuning (2026-05-28 deneme seti — env override; default=kod default'u).
+      SSDB_WORKER_INTERVAL_MS:       ${SSDB_WORKER_INTERVAL_MS:-3600000}
+      SSDB_WINDOW_FUTURE_DAYS:       ${SSDB_WINDOW_FUTURE_DAYS:-14}
+      SSDB_WORKER_MAX_PER_TICK:      ${SSDB_WORKER_MAX_PER_TICK:-100}
+      SSDB_BATCH_SIZE:               ${SSDB_BATCH_SIZE:-5}
+      SSDB_TTL_FOUND_MIN:            ${SSDB_TTL_FOUND_MIN:-60}
+      SSDB_TTL_DURATION_UNKNOWN_MIN: ${SSDB_TTL_DURATION_UNKNOWN_MIN:-120}
+      SSDB_TTL_MISSING_MIN:          ${SSDB_TTL_MISSING_MIN:-30}
+      SSDB_TTL_ERROR_MIN:            ${SSDB_TTL_ERROR_MIN:-5}
+      # Restore + Transfer V2 — Avid Interplay iki kademeli iş akışı (2026-05-28).
+      # Mock mode default ON; gerçek Avid bağlantısı kullanıcı kontrolünde
+      # test edildiğinde (.env'de) RESTORE_AVID_ENABLED=on + RESTORE_AVID_MOCK=false.
+      RESTORE_AVID_ENABLED:    ${RESTORE_AVID_ENABLED:-off}
+      RESTORE_AVID_MOCK:       ${RESTORE_AVID_MOCK:-true}
+      AVID_INTERPLAY_URL:      ${AVID_INTERPLAY_URL:-}
+      AVID_USER:               ${AVID_USER:-}
+      AVID_PASSWORD:           ${AVID_PASSWORD:-}
+      AVID_WORKSPACE:          ${AVID_WORKSPACE:-}
+      AVID_REQUEST_TIMEOUT_MS: ${AVID_REQUEST_TIMEOUT_MS:-30000}
+      SEARCH_WORKER_INTERVAL_MS:   ${SEARCH_WORKER_INTERVAL_MS:-5000}
+      SEARCH_MAX_PER_TICK:         ${SEARCH_MAX_PER_TICK:-20}
+      SEARCH_CONCURRENCY:          ${SEARCH_CONCURRENCY:-3}
+      SEARCH_MAX_ATTEMPTS:         ${SEARCH_MAX_ATTEMPTS:-3}
+      RESTORE_WORKER_INTERVAL_MS:  ${RESTORE_WORKER_INTERVAL_MS:-5000}
+      RESTORE_MAX_PER_TICK:        ${RESTORE_MAX_PER_TICK:-20}
+      RESTORE_CONCURRENCY:         ${RESTORE_CONCURRENCY:-3}
+      RESTORE_MAX_ATTEMPTS:        ${RESTORE_MAX_ATTEMPTS:-3}
+      TRANSFER_WORKER_INTERVAL_MS: ${TRANSFER_WORKER_INTERVAL_MS:-5000}
+      TRANSFER_MAX_PER_TICK:       ${TRANSFER_MAX_PER_TICK:-20}
+      TRANSFER_CONCURRENCY:        ${TRANSFER_CONCURRENCY:-3}
+      TRANSFER_MAX_ATTEMPTS:       ${TRANSFER_MAX_ATTEMPTS:-3}
       LOG_LEVEL: info
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
@@ -404,6 +501,37 @@ services:
     networks:
       - bcms_net
 
+  # ── AlertManager (K15, 2026-05-29) ──────────────────────────────────────────
+  # Prometheus alert rules'unu email + Slack'e push eder. Email: mevcut SMTP
+  # env'leri (dev: mailhog; prod: SMTP_HOST override). Slack: SLACK_WEBHOOK_URL
+  # env'i set edilirse aktif; boş ise receiver pasif (warn log).
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: bcms_alertmanager
+    restart: unless-stopped
+    logging: *default-logging
+    volumes:
+      # Static config (dev: mailhog + Slack placeholder). Prod için:
+      # `bash ops/scripts/alertmanager-render-config.sh` ile .env'den render
+      # edip ardından `docker compose restart alertmanager` çalıştır.
+      - ./infra/alertmanager/config.yml:/etc/alertmanager/config.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/config.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=:9093
+      - --cluster.listen-address=
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9093/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    ports:
+      - "127.0.0.1:9093:9093"
+    networks:
+      - bcms_net
+
   # ── Grafana ───────────────────────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:11.1.0
@@ -438,6 +566,7 @@ volumes:
   postgres_data:
   rabbitmq_data:
   prometheus_data:
+  alertmanager_data:
   grafana_data:
   opta_data:
   ingest_watch:

@@ -44,6 +44,10 @@ export class StudioPlanToolbarComponent {
   @Output() selectedColorChange = new EventEmitter<string>();
   @Output() clearSelection = new EventEmitter<void>();
   @Output() moveCurrentWeekToNextWeek = new EventEmitter<void>();
+  // 2026-05-27: Tüm hafta kopyalamadan farklı olarak yalnızca toolbar'da
+  // seçili olan program'a ait slotları gelecek haftaya kopyalar. Parent
+  // mevcut haftada hiç slot yoksa veya selectedProgram boşsa erken çıkar.
+  @Output() copySelectedProgramToNextWeek = new EventEmitter<void>();
   @Output() eraserModeChange = new EventEmitter<boolean>();
 
   colorLabel(value: string): string {

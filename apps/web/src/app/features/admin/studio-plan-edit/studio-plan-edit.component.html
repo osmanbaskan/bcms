@@ -33,10 +33,13 @@
       </h2>
       <div class="time-form">
         <mat-form-field appearance="outline" class="field">
-          <mat-label>Hafta başlangıcı (Pazartesi)</mat-label>
-          <input matInput type="date"
-                 [value]="weekStart()"
-                 (change)="onWeekStartChange($any($event.target).value)" />
+          <mat-label>Hafta</mat-label>
+          <mat-select [ngModel]="weekStart()" [ngModelOptions]="{standalone:true}"
+                      (ngModelChange)="onWeekStartChange($event)">
+            @for (w of weekOptions; track w.value) {
+              <mat-option [value]="w.value">{{ w.label }}</mat-option>
+            }
+          </mat-select>
         </mat-form-field>
         <mat-form-field appearance="outline" class="field">
           <mat-label>Başlangıç saati</mat-label>

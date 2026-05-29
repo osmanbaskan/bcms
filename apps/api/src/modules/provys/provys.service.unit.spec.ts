@@ -140,6 +140,31 @@ describe('provys.service › selectCandidateFiles', () => {
     const sel = selectCandidateFiles(files, 'LT4', '2026-05-23');
     expect(sel.length).toBe(2);
   });
+
+  it('accepts an array of fileCodes (canonical + aliases)', () => {
+    const mixed = [
+      ...files,
+      { path: '/a/BXF_Playlist_xLT4_20260523_x.bxf', fileCode: 'xlt4', scheduleDate: '2026-05-23', mtime: new Date('2026-05-23T02:00:00Z') },
+      { path: '/a/BXF_Playlist_xLT4_20260522_x.bxf', fileCode: 'xlt4', scheduleDate: '2026-05-22', mtime: new Date('2026-05-22T02:00:00Z') },
+    ];
+    const sel = selectCandidateFiles(mixed, ['lt4', 'xlt4'], '2026-05-23');
+    expect(sel.map((c) => c.path).sort()).toEqual([
+      '/a/BXF_Playlist_LT4_20260522_x.bxf',
+      '/a/BXF_Playlist_LT4_20260523_x.bxf',
+      '/a/BXF_Playlist_xLT4_20260522_x.bxf',
+      '/a/BXF_Playlist_xLT4_20260523_x.bxf',
+    ]);
+  });
+
+  it('with array codes, ignores files whose fileCode is not in the accepted set', () => {
+    const sel = selectCandidateFiles(files, ['lt4', 'xlt4'], '2026-05-23');
+    expect(sel.some((c) => c.path.includes('LT2'))).toBe(false);
+  });
+
+  it('returns empty when fileCodes is an empty array', () => {
+    const sel = selectCandidateFiles(files, [], '2026-05-23');
+    expect(sel).toEqual([]);
+  });
 });
 
 describe('provys.service › previousIsoDate / nextIsoDate', () => {

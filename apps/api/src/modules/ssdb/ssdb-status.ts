@@ -57,6 +57,16 @@ export interface MaterialStatusInput {
   ssdbDurationFrames: number | null;
   /** Response handler'in Provys row'dan hesapladigi duration (frame). */
   provysDurationFrames: number | null;
+  /**
+   * Aynı (channelSlug, scheduleDate, dcCode) grubundaki tüm eligible satırların
+   * toplam frame süresi. Null ise split kontrolü yapılmaz (geriye dönük uyumlu).
+   *
+   * Split material senaryosu: aynı program REKLAM araya giren iki parçaya
+   * bölünmüş olabilir; her parça tek başına SSDB süresinden kısa olur. Toplam
+   * süre tolerans içinde SSDB'ye uyuyorsa duration mismatch yerine
+   * `found_match` (bölünmüş etiketli label) döner.
+   */
+  groupSumFrames?: number | null;
 }
 
 /** Karar fonksiyonu cikti; UI render bunu kullanir. */
@@ -131,6 +141,34 @@ export function decideMaterialStatus(input: MaterialStatusInput): MaterialStatus
     DEFAULT_TOLERANCE_FRAMES,
   );
   if (cmp === 'equal')    return buildDecision('found_match');
-  if (cmp === 'mismatch') return buildDecision('found_duration_mismatch');
+  if (cmp === 'mismatch') {
+    // 2026-05-27: Split material kontrolü — aynı dcCode birden fazla parçaya
+    // bölünmüşse (örn. REKLAM araya girmiş canlı yayın blokları) tek satır
+    // duration eşleşmez ama grup toplamı SSDB ile uyuşur. Bu durumda
+    // duration mismatch alarmı kaldırılır; UI 'found_match' (yeşil "Var")
+    // gösterir, label tooltip'inde split bilgisi verilir.
+    //
+    // Guard: grup toplamı sağlanmamışsa veya tek satır ise (sum === row)
+    // split kontrolü atlanır; mevcut mismatch davranışı korunur.
+    const groupSum = input.groupSumFrames;
+    if (
+      typeof groupSum === 'number' &&
+      Number.isFinite(groupSum) &&
+      groupSum !== input.provysDurationFrames
+    ) {
+      const groupCmp = compareDurations(
+        groupSum,
+        input.ssdbDurationFrames,
+        DEFAULT_TOLERANCE_FRAMES,
+      );
+      if (groupCmp === 'equal') {
+        return {
+          materialStatus: 'found_match',
+          statusLabel: 'Materyal var (yayın bölünmüş, toplam süre uyumlu)',
+        };
+      }
+    }
+    return buildDecision('found_duration_mismatch');
+  }
   return buildDecision('found_duration_unknown');
 }

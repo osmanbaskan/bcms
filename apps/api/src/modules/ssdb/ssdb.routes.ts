@@ -31,9 +31,18 @@ import {
 import { addDaysToIstanbulDate } from './ssdb-resolver.worker.js';
 import { istanbulTodayDate } from '../../core/tz.js';
 import { emitNotify } from '../provys/provys.service.js';
+import { ConcurrencyLimiter } from '../../core/concurrency.js';
 
 const refreshBodySchema = z.object({
   dcCode: z.string().trim().min(1).max(40),
+});
+
+/** Bulk cache refresh — UI sayfa acilis otomatik tetigi (Sira 5) + toplu yenile
+ *  butonu (Sira 6) icin. Tek DC endpoint'in batch versiyonu; max 100 ile spam
+ *  korumasi. Mevcut tek-DC endpoint korunur. */
+const BULK_REFRESH_MAX = 100;
+const bulkRefreshBodySchema = z.object({
+  dcCodes: z.array(z.string().trim().min(1).max(40)).min(1).max(BULK_REFRESH_MAX),
 });
 
 /** Route registration ile test injection birlestiren opts. */
@@ -176,5 +185,131 @@ export async function ssdbRoutes(
       ssdbDurationTimecode: outcome.ssdbDurationTimecode,
       changed,
     });
+  });
+
+  // ───────────────────────────────────────── POST /ssdb/cache/refresh/bulk
+  //
+  // Tek-DC endpoint'in batch versiyonu. Sistem yormama icin:
+  //  - Body max 100 DC (Zod reddeder, validation 400).
+  //  - Duplicate dcCode'lar Set ile elenir → tek SSDB sorgusu.
+  //  - Prev cache TEK round-trip (`findMany IN [...]`).
+  //  - Resolver array-aware + lookupConcurrency 5 (A2 grup ConcurrencyLimiter).
+  //  - Upsert bounded paralel (cacheWriteConcurrency 5; Prisma pool koruma).
+  //  - Per-item try/catch → tek failure tum batch'i OLDURMEZ; warn loglanir.
+  //  - Notify: yalniz changed DC'ler icin TEK `findAffectedTodayFuturePairs`.
+  //  - Response sirasi input dcCodes ile birebir (deterministik).
+  app.post('/cache/refresh/bulk', {
+    preHandler: app.requireGroup(...PERMISSIONS.ssdb.admin),
+    schema: { tags: ['SSDB'], summary: 'SSDB cache manual refresh (multi-DC, max 100)' },
+  }, async (request, reply) => {
+    const body = bulkRefreshBodySchema.parse(request.body);
+
+    // Trim + dedup (input sirasini koru).
+    const seen = new Set<string>();
+    const dcCodes: string[] = [];
+    for (const raw of body.dcCodes) {
+      const dc = raw.trim();
+      if (dc.length === 0) continue;
+      if (seen.has(dc)) continue;
+      seen.add(dc);
+      dcCodes.push(dc);
+    }
+    if (dcCodes.length === 0) {
+      return reply.code(400).send({
+        statusCode: 400, error: 'Bad Request',
+        message: 'dcCodes empty after trim/dedup',
+      });
+    }
+
+    const config = loadSsdbConfig();
+    if (!config.enabled) {
+      return reply.code(503).send({
+        statusCode: 503, error: 'Service Unavailable',
+        message: 'SSDB resolver disabled (PROVYS_SSDB_RESOLVER != on)',
+      });
+    }
+    if (!config.host || config.port == null || !config.database
+        || !config.user || !config.password) {
+      return reply.code(503).send({
+        statusCode: 503, error: 'Service Unavailable',
+        message: 'SSDB config incomplete (SSDB_* env eksik)',
+      });
+    }
+
+    // Prev cache TEK findMany (changed detection icin).
+    const prevs = await app.prisma.ssdbMaterialCache.findMany({
+      where: { dcCode: { in: dcCodes } },
+      select: {
+        dcCode: true, lookupStatus: true, mediaGuid: true, matchMethod: true,
+        tcSom: true, tcEom: true, ssdbDurationFrames: true,
+        lastCheckedAt: true, lastError: true,
+      },
+    });
+    const prevMap = new Map<string, SsdbCachePrevRow>(
+      prevs.map((p) => [p.dcCode, p as SsdbCachePrevRow]),
+    );
+
+    // Resolver — array-aware + lookupConcurrency 5 (A2 grup).
+    const outcomes = await resolverFn(dcCodes, {
+      defaultFrameRate: config.defaultFps,
+      batchSize: 50,
+      lookupConcurrency: 5,
+    });
+
+    const now = nowFn();
+    const writeLimiter = new ConcurrencyLimiter(5);
+    type BulkItem = {
+      dcCode: string;
+      lookupStatus: string;
+      mediaGuid: string | null;
+      matchMethod: string | null;
+      ssdbDurationFrames: number | null;
+      ssdbDurationTimecode: string | null;
+      changed: boolean;
+    };
+    // Pre-allocate — input sirasi korumasi icin.
+    const results: Array<BulkItem | null> = new Array(dcCodes.length).fill(null);
+    const changedDcs: string[] = [];
+
+    await Promise.all(dcCodes.map((dc, idx) => writeLimiter.run(async () => {
+      const outcome: SsdbMaterialLookupOutcome | undefined = outcomes.get(dc);
+      if (!outcome) {
+        // resolver outcome dondurmedi — slot null kalir; final filter eler.
+        return;
+      }
+      let wasChanged = false;
+      try {
+        await upsertSsdbCacheOutcome(app.prisma, outcome, now);
+        wasChanged = isSsdbCacheOutcomeChanged(prevMap.get(dc) ?? null, outcome);
+        if (wasChanged) changedDcs.push(dc);
+      } catch (err) {
+        app.log.warn({ err, dcCode: dc }, 'bulk refresh: per-item upsert failed');
+        // upsert basarisiz → changed=false; outcome'u yine de raporla.
+      }
+      results[idx] = {
+        dcCode: outcome.dcCode,
+        lookupStatus: outcome.lookupStatus,
+        mediaGuid: outcome.mediaGuid,
+        matchMethod: outcome.matchMethod,
+        ssdbDurationFrames: outcome.ssdbDurationFrames,
+        ssdbDurationTimecode: outcome.ssdbDurationTimecode,
+        changed: wasChanged,
+      };
+    })));
+
+    // Notify — yalniz changed DC'ler icin TEK round-trip.
+    let notified = 0;
+    if (changedDcs.length > 0) {
+      const today = todayFn();
+      const future = addDaysToIstanbulDate(today, windowDays);
+      const todayUtc = new Date(`${today}T00:00:00.000Z`);
+      const futureUtc = new Date(`${future}T00:00:00.000Z`);
+      const pairs = await findAffectedTodayFuturePairs(app.prisma, changedDcs, todayUtc, futureUtc);
+      notified = await notifyAffectedPairs(emitFn, app.prisma, app.log, pairs);
+    }
+
+    const finalResults: BulkItem[] = [];
+    for (const r of results) if (r) finalResults.push(r);
+    return reply.send({ results: finalResults, notified });
   });
 }

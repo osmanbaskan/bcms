@@ -55,6 +55,18 @@
     </button>
 
     <button
+      class="action-button copy-action"
+      mat-stroked-button
+      type="button"
+      [disabled]="!selectedProgram"
+      [title]="selectedProgram ? '' : 'Önce kopyalanacak programı seçin'"
+      (click)="copySelectedProgramToNextWeek.emit()"
+    >
+      <mat-icon>content_copy</mat-icon>
+      Seçili Programı Gelecek Haftaya Kopyala
+    </button>
+
+    <button
       class="action-button eraser-action"
       mat-stroked-button
       type="button"

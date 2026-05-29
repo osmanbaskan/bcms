@@ -8,6 +8,7 @@ import type { FastifyInstance } from 'fastify';
 import { QUEUES } from '../../plugins/rabbitmq.js';
 import { validateIngestSourcePath } from './ingest.paths.js';
 import { finalizeIngestJob } from './ingest.service.js';
+import { startHeartbeatTicker } from '../../lib/service-heartbeat.js';
 
 ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH ?? ffmpegPath.path);
 ffmpeg.setFfprobePath(process.env.FFPROBE_PATH ?? ffprobePath.path);
@@ -152,6 +153,7 @@ function redactPaths(msg: string): string {
 
 // ── Ana worker ────────────────────────────────────────────────────────────────
 export async function startIngestWorker(app: FastifyInstance): Promise<void> {
+  startHeartbeatTicker('ingest-worker', app);
   await app.rabbitmq.consume<IngestMessage>(QUEUES.INGEST_NEW, async (msg) => {
     const { jobId, sourcePath } = msg;
 

@@ -35,6 +35,16 @@ function dateFromIso(iso: string): Date {
   return new Date(y, m - 1, d);
 }
 
+// 2026-05-29: Date nav arrows helper — YYYY-MM-DD ± gün, UTC aritmetik.
+// DST'den bağımsız (Türkiye TZ DST yok 2016 sonrası); UTC üzerinde +N gün
+// ay/yıl taşmasını da güvenli yönetir.
+function addDaysIso(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map((s) => Number(s));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
 @Component({
   selector: 'app-provys-content-control',
   standalone: true,
@@ -64,18 +74,40 @@ function dateFromIso(iso: string): Date {
           <p class="subtitle">SMB Provys dizinindeki BXF akış dosyaları — kanal+gün başına snapshot.</p>
         </div>
         <div class="head-right">
-          <mat-form-field appearance="outline" class="date-field" subscriptSizing="dynamic">
-            <mat-label>Yayın günü</mat-label>
-            <input
-              matInput
-              [matDatepicker]="picker"
-              [value]="dateValue()"
-              (dateChange)="onDateChange($event)"
-              readonly
-            />
-            <mat-datepicker-toggle matIconSuffix [for]="picker" />
-            <mat-datepicker #picker />
-          </mat-form-field>
+          <div class="date-nav">
+            <button
+              type="button"
+              mat-icon-button
+              class="date-nav-btn"
+              matTooltip="Önceki gün"
+              aria-label="Önceki gün"
+              (click)="shiftDate(-1)"
+            >
+              <mat-icon>chevron_left</mat-icon>
+            </button>
+            <mat-form-field appearance="outline" class="date-field" subscriptSizing="dynamic">
+              <mat-label>Yayın günü</mat-label>
+              <input
+                matInput
+                [matDatepicker]="picker"
+                [value]="dateValue()"
+                (dateChange)="onDateChange($event)"
+                readonly
+              />
+              <mat-datepicker-toggle matIconSuffix [for]="picker" />
+              <mat-datepicker #picker />
+            </mat-form-field>
+            <button
+              type="button"
+              mat-icon-button
+              class="date-nav-btn"
+              matTooltip="Sonraki gün"
+              aria-label="Sonraki gün"
+              (click)="shiftDate(1)"
+            >
+              <mat-icon>chevron_right</mat-icon>
+            </button>
+          </div>
           <button
             type="button"
             mat-stroked-button
@@ -124,14 +156,6 @@ function dateFromIso(iso: string): Date {
         </mat-button-toggle-group>
         <mat-slide-toggle
           class="header-toggle"
-          [checked]="showProgramHeaders()"
-          (change)="onShowProgramHeadersToggle($event)"
-          aria-label="Program başlıklarını göster"
-        >
-          Program başlıkları
-        </mat-slide-toggle>
-        <mat-slide-toggle
-          class="header-toggle"
           [checked]="onlyMissingMaterial()"
           (change)="onOnlyMissingMaterialToggle($event)"
           aria-label="Sadece eksik materyaller"
@@ -159,12 +183,28 @@ function dateFromIso(iso: string): Date {
     </section>
   `,
   styles: [`
-    :host { display: block; color: var(--bp-fg-1); }
+    /* 2026-05-28: Provys sayfası viewport'a sabit; içerideki akış/tablo
+       kendi içinde scroll yapar. Üstteki kanal seçimi, filtre/başlık ve
+       tablo başlıkları sayfa scroll'unda kaybolmaz. Sayfa genelinin
+       genişliği/yüksekliği değişmez. App shell top bar yaklaşık 60px.
+       100dvh mobile/tablet keyboard/url-bar dinamiklerine sığar; eski
+       browser'larda 100vh fallback. */
+    :host {
+      display: flex; flex-direction: column;
+      height: calc(100vh - 64px);
+      height: calc(100dvh - 64px);
+      overflow: hidden;
+      color: var(--bp-fg-1);
+    }
     .page {
-      display: flex; flex-direction: column; gap: 12px; padding: 0;
-      background: var(--bp-bg-1); min-height: 100%;
+      display: flex; flex-direction: column;
+      height: 100%; min-height: 0;
+      overflow: hidden;
+      gap: 12px; padding: 0;
+      background: var(--bp-bg-1);
     }
     .page-head {
+      flex: 0 0 auto;
       display: flex; justify-content: space-between; align-items: center;
       padding: 12px 16px 0 16px; gap: 12px; flex-wrap: wrap;
     }
@@ -182,6 +222,9 @@ function dateFromIso(iso: string): Date {
     }
     .date-field { width: 180px; }
     ::ng-deep .date-field .mat-mdc-form-field-subscript-wrapper { display: none; }
+    /* 2026-05-29: Date nav arrows — chevron sol/sağ, form field ile inline. */
+    .date-nav { display: inline-flex; align-items: center; gap: 4px; }
+    .date-nav-btn { flex: 0 0 auto; }
     .export-btn {
       display: inline-flex; align-items: center; gap: 4px;
       min-height: 36px; padding: 0 12px;
@@ -208,10 +251,37 @@ function dateFromIso(iso: string): Date {
       background: rgba(239, 68, 68, 0.18); color: #fca5a5;
       border-color: rgba(239, 68, 68, 0.40);
     }
-    .provys-tabs { background: var(--bp-bg-2); }
+    /* 2026-05-28: Tab group dikey flex container; tab header sabit yükseklik,
+       tab body flex-fill + iç scroll panel'in .panel'inde. Material tab
+       body zinciri (mat-mdc-tab-body-wrapper -> tab-body -> tab-body-content
+       -> app-provys-channel-panel) ::ng-deep ile flex-column'a çevrilir
+       ve min-height: 0 zinciri korunur. */
+    .provys-tabs {
+      background: var(--bp-bg-2);
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
+    }
     ::ng-deep .provys-tabs .mat-mdc-tab-header {
+      flex: 0 0 auto;
       border-bottom: 1px solid var(--bp-line);
       background: var(--bp-bg-2);
+    }
+    ::ng-deep .provys-tabs .mat-mdc-tab-body-wrapper {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
+    }
+    ::ng-deep .provys-tabs .mat-mdc-tab-body {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
+    }
+    ::ng-deep .provys-tabs .mat-mdc-tab-body-content {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    ::ng-deep .provys-tabs app-provys-channel-panel {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
     }
     /* Aktif kanal ismi her iki temada da pasiflerden net büyük olsun.
        Material default 14px → pasif 12.5 (mevcut header), aktif 15.5 + 700.
@@ -230,9 +300,25 @@ function dateFromIso(iso: string): Date {
       font-weight: 700;
       letter-spacing: 0.01em;
     }
-    /* Aktif tab indicator (alt çubuk) tema-agnostik kalınlık + renk. */
+    /* Aktif tab indicator (alt çubuk) tema-agnostik kalınlık. Renk Material
+       M3 token (--mat-tab-active-indicator-color) tarafından yönetilir.
+       Light override (host-context) bu rengi var(--bp-line) ile override eder. */
     ::ng-deep .provys-tabs .mdc-tab-indicator__content--underline {
       border-top-width: 3px;
+    }
+    /* 2026-05-28: Dark mode aktif tab background — light'ta zaten var, dark'ta
+       sadece text rengi değişiyordu. Nötr beyaz translucent overlay; light
+       override (host-context html data-theme=light) daha specific olduğu için
+       light'ta var(--bp-bg-2) davranışı korunur.
+
+       Ek: dark mode aktif tab ÜST kenarına da Material indicator ile aynı
+       3px mor şerit (alt çubuk Material default rendering). currentColor
+       aktif tab text rengini takip eder — Material dark default'ta primary
+       mor. Light override (var(--bp-line)) bu property'i de override eder. */
+    ::ng-deep .provys-tabs .mdc-tab--active,
+    ::ng-deep .provys-tabs .mat-mdc-tab[aria-selected="true"] {
+      background: rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 3px 0 var(--mat-tab-active-indicator-color);
     }
     .filter-bar {
       display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -367,12 +453,10 @@ export class ProvysContentControlComponent implements OnInit, OnDestroy {
     this.service.setSelectedCategories(selected);
   }
 
-  /** Service'in showProgramHeaders signal'ini computed olarak okur. */
-  readonly showProgramHeaders = computed<boolean>(() => this.service.showProgramHeaders());
-
-  onShowProgramHeadersToggle(ev: MatSlideToggleChange): void {
-    this.service.setShowProgramHeaders(ev.checked);
-  }
+  // 2026-05-27 (night): "Program başlıkları" toggle kaldırıldı; rawKind=
+  // 'ProgramHeader' satırlar artık her zaman gizlenir (varsayılan davranış).
+  // Backend `includeProgramHeaders` query param korunur (default false);
+  // export yine ProgramHeader'ları hariç tutar.
 
   readonly onlyMissingMaterial = computed<boolean>(() => this.service.onlyMissingMaterial());
 
@@ -392,6 +476,12 @@ export class ProvysContentControlComponent implements OnInit, OnDestroy {
   onDateChange(ev: MatDatepickerInputEvent<Date>): void {
     if (!ev.value) return;
     void this.service.setActiveDate(isoFromDate(ev.value));
+  }
+
+  /** 2026-05-29: Date nav arrows — ±1 gün (veya istenen delta). */
+  shiftDate(deltaDays: number): void {
+    const next = addDaysIso(this.service.activeDate(), deltaDays);
+    void this.service.setActiveDate(next);
   }
 
   async onExportExcel(): Promise<void> {

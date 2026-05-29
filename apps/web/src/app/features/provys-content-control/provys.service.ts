@@ -52,13 +52,10 @@ export class ProvysService {
    */
   readonly selectedCategories = signal<ReadonlySet<ProvysCategory>>(new Set(PROVYS_CATEGORIES));
 
-  /**
-   * "Program başlıkları" toggle'ı — `Primary-ProgramHeader` event'lerini
-   * (rawKind='ProgramHeader', DC'siz block manşetleri) gösterip gizler.
-   * Default kapalı: kullanıcı gerçek Content satırlarını görür; aynı
-   * timecode'da çakışan duplicate görünüm önlenir.
-   */
-  readonly showProgramHeaders = signal<boolean>(false);
+  // 2026-05-27 (night): showProgramHeaders toggle kaldırıldı. `rawKind=
+  // 'ProgramHeader'` satırlar artık her zaman gizlenir; backend export query
+  // `includeProgramHeaders=false` sabit gönderilir. Backend Zod param ve
+  // `userNote` model alanı korunur (PATCH /provys/items/:id/note hâlâ aktif).
 
   /**
    * "Sadece eksik materyaller" filtresi. Açık iken `missing_material`,
@@ -67,6 +64,15 @@ export class ProvysService {
    * de SSDB kapsamı dışı), `unchecked`, `found_match` gizlenir.
    */
   readonly onlyMissingMaterial = signal<boolean>(false);
+
+  /**
+   * 2026-05-27: Kullanıcı UI'da her satır için opsiyonel transient "Not" yazabilir.
+   * Map key = `item.eventId`, value = boş veya kısa metin.
+   * DB'ye yazılmaz; sadece export request body'de gönderilir. Filtre/tab/tarih
+   * değiştirilince Map kaybolmaz (tek session içinde kalır).
+   */
+  readonly notesByEventId = signal<ReadonlyMap<string, string>>(new Map());
+
   /** O kanal için DB'de mevcut günler (`/provys/dates?channel=` döner). */
   private readonly availableDatesStore = new Map<ProvysChannelSlug, ReturnType<typeof signal<string[]>>>();
 
@@ -94,14 +100,12 @@ export class ProvysService {
     return computed(() => {
       const items = this.itemsFor(channel)();
       const allowed = this.selectedCategories();
-      const showHeaders = this.showProgramHeaders();
       const onlyMissing = this.onlyMissingMaterial();
       const allCategoriesActive = allowed.size === PROVYS_CATEGORIES.length;
-      // Short-circuit: hiçbir filter aktif değilse list aynen döner.
-      if (allCategoriesActive && showHeaders && !onlyMissing) return items;
+      // ProgramHeader satırlar her zaman gizli — toggle kaldırıldı (2026-05-27).
       return items.filter((i) => {
+        if (i.rawKind === 'ProgramHeader') return false;
         if (!allCategoriesActive && !allowed.has(i.category)) return false;
-        if (!showHeaders && i.rawKind === 'ProgramHeader') return false;
         if (onlyMissing && !isMaterialMissing(i)) return false;
         return true;
       });
@@ -118,10 +122,6 @@ export class ProvysService {
     if (cur.has(category)) cur.delete(category);
     else cur.add(category);
     this.selectedCategories.set(cur);
-  }
-
-  setShowProgramHeaders(show: boolean): void {
-    this.showProgramHeaders.set(show);
   }
 
   setOnlyMissingMaterial(show: boolean): void {
@@ -209,23 +209,44 @@ export class ProvysService {
    * (ApiService.getBlob + anchor download).
    */
   async exportExcel(channel: ProvysChannelSlug, date: string): Promise<void> {
-    await this.downloadBlob('/provys/export/excel', this.buildExportParams(channel, date), `provys_${channel}_${date}.xlsx`);
+    await this.downloadBlobPost('/provys/export/excel', this.buildExportBody(channel, date), `provys_${channel}_${date}.xlsx`);
   }
 
   async exportPdf(channel: ProvysChannelSlug, date: string): Promise<void> {
-    await this.downloadBlob('/provys/export/pdf', this.buildExportParams(channel, date), `provys_${channel}_${date}.pdf`);
+    await this.downloadBlobPost('/provys/export/pdf', this.buildExportBody(channel, date), `provys_${channel}_${date}.pdf`);
   }
 
-  /** Aktif UI filtrelerini export query param setine taşır. */
-  private buildExportParams(channel: ProvysChannelSlug, date: string): Record<string, string> {
-    const params: Record<string, string> = { channel, date };
+  /** UI'da bir satıra not yazıldığında çağrılır. Boş string Map'ten kaldırır. */
+  setNote(eventId: string, text: string): void {
+    const next = new Map(this.notesByEventId());
+    const trimmed = text ?? '';
+    if (trimmed.length === 0) next.delete(eventId);
+    else next.set(eventId, trimmed.slice(0, 500));
+    this.notesByEventId.set(next);
+  }
+
+  /** Template binding için tek satırın notunu döner. */
+  getNote(eventId: string): string {
+    return this.notesByEventId().get(eventId) ?? '';
+  }
+
+  /**
+   * Aktif UI filtreleri + notesByEventId Map'ini POST export body olarak
+   * yapılandırır. Backend `exportBodySchema` ile aynı sözleşme.
+   */
+  private buildExportBody(channel: ProvysChannelSlug, date: string): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      channel, date,
+      includeProgramHeaders: 'false',
+    };
     const cats = this.activeCategoriesParam();
-    if (cats) params['categories'] = cats;
-    // ProgramHeader gösterimi default kapalı → export'a hariç (default
-    // server-side davranışı zaten kapalı; explicit göndermesek de OK ama
-    // niyet netliği için her zaman gönderelim).
-    params['includeProgramHeaders'] = this.showProgramHeaders() ? 'true' : 'false';
-    return params;
+    if (cats) body['categories'] = cats;
+    const noteEntries: Record<string, string> = {};
+    for (const [eventId, text] of this.notesByEventId()) {
+      if (text && text.length > 0) noteEntries[eventId] = text;
+    }
+    if (Object.keys(noteEntries).length > 0) body['notes'] = noteEntries;
+    return body;
   }
 
   /**
@@ -241,6 +262,16 @@ export class ProvysService {
 
   private async downloadBlob(path: string, params: Record<string, string>, filename: string): Promise<void> {
     const blob = await firstValueFrom(this.api.getBlob(path, params));
+    this.triggerBlobDownload(blob, filename);
+  }
+
+  /** POST body ile blob indirme (export endpoint notes Map'i destekler). */
+  private async downloadBlobPost(path: string, body: Record<string, unknown>, filename: string): Promise<void> {
+    const blob = await firstValueFrom(this.api.postBlob(path, body));
+    this.triggerBlobDownload(blob, filename);
+  }
+
+  private triggerBlobDownload(blob: Blob, filename: string): void {
     const url = URL.createObjectURL(blob);
     try {
       const a = document.createElement('a');
@@ -250,7 +281,6 @@ export class ProvysService {
       a.click();
       a.remove();
     } finally {
-      // Browser yeterli süre tutması için kısa gecikme + revoke.
       setTimeout(() => URL.revokeObjectURL(url), 1500);
     }
   }

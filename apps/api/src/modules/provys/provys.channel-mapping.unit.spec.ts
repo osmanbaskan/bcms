@@ -72,6 +72,32 @@ describe('provys.channel-mapping › resolveChannel', () => {
     expect(resolveChannel('xsnw')?.slug).toBe('beinhaber');
   });
 
+  it('maps Beinhaber alias `snw` to the same canonical channel as `xsnw`', () => {
+    expect(resolveChannel('snw')?.slug).toBe('beinhaber');
+    expect(resolveChannel('snw')?.fileCode).toBe('xsnw');
+    expect(resolveChannel('SNW')?.slug).toBe('beinhaber');
+    expect(resolveChannel(' Snw ')?.slug).toBe('beinhaber');
+  });
+
+  it('maps beIN Sports `x`-prefix aliases to canonical sport channels', () => {
+    expect(resolveChannel('xltv')?.slug).toBe('beinsports1');
+    expect(resolveChannel('xltv')?.fileCode).toBe('ltv');
+    expect(resolveChannel('xlt3')?.slug).toBe('beinsports3');
+    expect(resolveChannel('xlt3')?.fileCode).toBe('lt3');
+    expect(resolveChannel('xlt4')?.slug).toBe('beinsports4');
+    expect(resolveChannel('xlt4')?.fileCode).toBe('lt4');
+    expect(resolveChannel('xlt5')?.slug).toBe('beinsports5');
+    expect(resolveChannel('xlt5')?.fileCode).toBe('lt5');
+    // Case + trim direnci alias'lara da uygulanır:
+    expect(resolveChannel(' XLT4 ')?.slug).toBe('beinsports4');
+  });
+
+  it('does NOT auto-strip unknown `x`-prefixed codes (explicit alias only)', () => {
+    // lt2 için alias eklenmedi (xlt2 izinde gözlemlenmedi); xlti hiç eşlenmedi.
+    expect(resolveChannel('xlt2')).toBeNull();
+    expect(resolveChannel('xlti')).toBeNull();
+  });
+
   it('returns null for unknown codes', () => {
     expect(resolveChannel('ltz')).toBeNull();
     expect(resolveChannel('unknown')).toBeNull();
@@ -102,6 +128,17 @@ describe('provys.channel-mapping › resolveChannelFromPath', () => {
     expect(
       resolveChannelFromPath('/mnt/provys/BXF_Playlist_XSNW_haber.bxf'),
     ).toBe('beinhaber');
+  });
+
+  it('Beinhaber `snw` alias resolves end-to-end from real exporter filenames', () => {
+    expect(
+      resolveChannelFromPath(
+        '/mnt/provys/BXF_Playlist_SNW_20260527_20260527_20260526_224244.bxf',
+      ),
+    ).toBe('beinhaber');
+    expect(resolveChannelFromPath('/mnt/provys/snw-haber.bxf')).toBe('beinhaber');
+    // Canonical varyant bozulmadı:
+    expect(resolveChannelFromPath('/mnt/provys/BXF_Playlist_XSNW_x.bxf')).toBe('beinhaber');
   });
 
   it('returns null when channel cannot be resolved', () => {

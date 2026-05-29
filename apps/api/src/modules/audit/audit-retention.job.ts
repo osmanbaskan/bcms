@@ -1,28 +1,36 @@
 import type { FastifyInstance } from 'fastify';
 import { dropPartition, findExpiredPartitions, isTablePartitioned } from './audit-retention.helpers.js';
-import { ISTANBUL_TZ } from '../../core/tz.js';
+import { istanbulTodayDate } from '../../core/tz.js';
+import { recordHeartbeat, startHeartbeatTicker } from '../../lib/service-heartbeat.js';
 
 const BATCH_SIZE = 10_000;
 const DEFAULT_RETENTION_DAYS = 90;
-const TR_TIMEZONE = ISTANBUL_TZ;
 
 function isDryRun(): boolean {
   return process.env.AUDIT_RETENTION_DRY_RUN === 'true';
 }
 
-// ORTA-API-1.10.6 fix (2026-05-04): retention job'unun "günün sonu"
-// hesaplamaları Istanbul saatine göre yapılmalı (yayıncılık standardı).
-// Önceden new Date(...) local TZ kullanıyordu; container UTC ise gerçek
-// Türkiye gece yarısı yerine 03:05 IST'te tetikleniyordu.
-function istanbulNow(): Date {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: TR_TIMEZONE }));
+// K3 fix (2026-05-29): Eski helper `new Date(toLocaleString(...))` round-trip
+// pattern'i TZ bilgisini kaybediyordu (container UTC -> "5/29 5:30 AM" string ->
+// new Date() local-parse -> aynı saat ama farklı TZ semantigi). ±3 saat hata.
+// Yerine: `istanbulTodayDate()` + `+03:00` literal (helper-icinde izinli,
+// CLAUDE.md TZ lock).
+
+/** X gün önceki TR gün başının UTC instant karşılığı. */
+function cutoffIstanbul(retentionDays: number): Date {
+  const today = istanbulTodayDate();
+  const d = new Date(`${today}T00:00:00+03:00`);
+  d.setUTCDate(d.getUTCDate() - retentionDays);
+  return d;
 }
 
+/** Yarın TR 00:05'in UTC instant'ına kaç ms (max 60sn alt sınır). */
 function msUntilNextMidnightIstanbul(): number {
-  const ist = istanbulNow();
-  const next = new Date(ist.getFullYear(), ist.getMonth(), ist.getDate() + 1, 0, 5, 0, 0);
-  // ist <-> wall-clock farkı zaten hesaba katılmış; runtime'da direkt diff.
-  return Math.max(60_000, next.getTime() - ist.getTime());
+  const today = istanbulTodayDate();
+  const target = new Date(`${today}T00:00:00+03:00`);
+  target.setUTCDate(target.getUTCDate() + 1);
+  target.setUTCMinutes(target.getUTCMinutes() + 5);
+  return Math.max(60_000, target.getTime() - Date.now());
 }
 
 function getRetentionDays(): number {
@@ -35,13 +43,12 @@ function getRetentionDays(): number {
 export async function startAuditRetentionJob(app: FastifyInstance): Promise<void> {
   const retentionDays = getRetentionDays();
   app.log.info({ retentionDays }, 'Audit retention job configured');
+  // Gunluk job; uzun threshold (25sa) ile heartbeat ticker idle olsa bile alive.
+  startHeartbeatTicker('audit-retention', app, 60_000);
 
   const runOnce = async (): Promise<void> => {
-    // ORTA-API-1.10.7 fix (2026-05-04): cutoff Istanbul gün başına hizalı.
-    const ist = istanbulNow();
-    ist.setDate(ist.getDate() - retentionDays);
-    ist.setHours(0, 0, 0, 0);
-    const cutoff = ist;
+    recordHeartbeat('audit-retention');
+    const cutoff = cutoffIstanbul(retentionDays);
     const dryRun = isDryRun();
 
     // Madde 1 PR-1B (audit doc): feature-detect partitioned vs regular.

@@ -2,17 +2,13 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
-# ORTA-INF-4.3.2 (2026-05-04): alertmanager hedefi boş — alert kuralları
-# var ama alarm gittiği yer yok. Production'a çıkarken aşağıdakilerden birini
-# ayarla:
-#   - Alertmanager container ekle (docker-compose 'alertmanager:9093' service)
-#   - Slack/Email/PagerDuty webhook receiver tanımla
-# Şu an sessiz: alert UI'da Prometheus 'firing' gösterir ama push yok.
+# K15 fix (2026-05-29): AlertManager sidecar aktif. Alert rule fire ettiğinde
+# email + Slack (SLACK_WEBHOOK_URL set ise) push edilir. Bkz:
+# infra/alertmanager/config.yml.tpl + docker-compose.yml alertmanager service.
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: []
-        # Örnek: - targets: ['alertmanager:9093']
+        - targets: ['alertmanager:9093']
 
 rule_files:
   - /etc/prometheus/alerts.yml

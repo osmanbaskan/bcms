@@ -82,6 +82,20 @@ export const routes: Routes = [
     data: { groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] },
   },
   {
+    // 2026-05-27: Operasyon → Restore (V1: yalnız eksik materyal listesi).
+    // Provys.read kapsamı ile erişilebilir; backend `/provys/restore-missing`
+    // endpoint'ini çağırır.
+    path: 'restore',
+    loadComponent: () =>
+      import('./features/restore/restore.component').then((m) => m.RestoreComponent),
+    canActivate: [AuthGuard],
+    data: { groups: [
+      GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama,
+      GROUP.Ingest, GROUP.Tekyon, GROUP.Transmisyon, GROUP.Booking, GROUP.Kurgu,
+      GROUP.Ses, GROUP.StudyoSefi,
+    ] },
+  },
+  {
     path: 'channels',
     loadChildren: () =>
       import('./features/channels/channels.routes').then((m) => m.channelsRoutes),

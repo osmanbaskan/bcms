@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ProvysService } from './provys.service';
 import {
   PROVYS_CATEGORY_STYLES,
@@ -26,7 +27,7 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
 @Component({
   selector: 'app-provys-channel-panel',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="panel">
@@ -42,11 +43,11 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
             <tr>
               <th class="col-seq">#</th>
               <th class="col-time">Başlangıç</th>
-              <th class="col-dur">Süre</th>
               <th class="col-cat">Kategori</th>
+              <th class="col-mat">NEXIO</th>
               <th class="col-dc">DC Kod</th>
-              <th class="col-mat">Materyal</th>
               <th class="col-title">Başlık</th>
+              <th class="col-dur">Süre</th>
               <th class="col-note">Not</th>
             </tr>
           </thead>
@@ -66,16 +67,15 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
                      akış sırasını sadece template $index garantiler. -->
                 <td class="col-seq">{{ i + 1 }}</td>
                 <td class="col-time mono">{{ formatStart(item) }}</td>
-                <td class="col-dur mono">{{ formatDur(item) }}</td>
                 <td class="col-cat">
                   <span class="cat-chip" [class]="'cat-chip cat-chip--' + categoryClass(item.category)">
                     {{ styleFor(item.category).label }}
                   </span>
                 </td>
-                <td class="col-dc mono" [class.muted]="!item.dcCode">{{ item.dcCode ?? '—' }}</td>
-                <!-- 2026-05-27 (C9): Materyal status badge — SSDB cache + Provys
+<!-- 2026-05-27 (C9): Materyal status badge — SSDB cache + Provys
                      row response-time computed. Provys duration ezilmez;
-                     SSDB süresi sadece tooltip'te. CANLI satır nötr/gri. -->
+                     SSDB süresi sadece tooltip'te. CANLI satır nötr/gri.
+                     2026-05-29: NEXIO ↔ DC Kod kolon sırası kullanıcı tercihiyle değişti. -->
                 <td class="col-mat">
                   <span
                     class="mat-badge"
@@ -83,6 +83,7 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
                     [title]="materialTooltipFor(item)"
                   >{{ materialBadgeFor(item).compact }}</span>
                 </td>
+                <td class="col-dc mono" [class.muted]="!item.dcCode">{{ item.dcCode ?? '—' }}</td>
                 <!-- 2026-05-26: 2 seviyeli görünüm — series_name varsa üst
                      bağlam (program ailesi/turnuva) + title alt başlık. Tanıtım/
                      Kamu Spotu gibi NonProgramEvent kayıtlarında series_name
@@ -99,17 +100,21 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
                   }
                   <div class="title-text" [title]="item.title">{{ item.title }}</div>
                 </td>
+                <!-- 2026-05-27 (night): "Not" kolonu kaldırıldı; "Süre" Not'un
+                     eski son-pozisyonuna taşındı. userNote model alanı + PATCH
+                     endpoint backend'de korunur (gelecekte tekrar eklenebilir). -->
+                <td class="col-dur mono">{{ formatDur(item) }}</td>
+                <!-- 2026-05-27: Kullanıcı transient not alanı.
+                     ngModel local; service.notesByEventId signal'ında tutulur.
+                     Export request body'ye eventId bazlı eklenir. -->
                 <td class="col-note">
-                  <!-- Serbest kullanıcı notu — blur'da PATCH. Optimistic UI;
-                       hata olursa servis önceki değere döner ve aria-invalid set. -->
                   <input
                     type="text"
                     class="note-input"
-                    [value]="item.userNote ?? ''"
-                    [attr.aria-invalid]="noteErrors().has(item.id) || null"
-                    [title]="(noteErrors().get(item.id)) ?? (item.userNote ?? '')"
-                    placeholder="Not"
-                    (blur)="onNoteBlur(item, $any($event.target).value)"
+                    [ngModel]="service.getNote(item.eventId)"
+                    (ngModelChange)="service.setNote(item.eventId, $event)"
+                    [attr.aria-label]="'Not: ' + item.title"
+                    maxlength="500"
                   />
                 </td>
               </tr>
@@ -120,8 +125,20 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     </div>
   `,
   styles: [`
-    :host { display: block; color: var(--bp-fg-1); }
-    .panel { background: var(--bp-bg-2); }
+    /* 2026-05-28: Panel kendi içinde flex container; tablo gövdesi scroll
+       context. Parent (mat-tab-body-content) flex-column ve panel'i fill
+       eder. .panel { overflow: auto } sticky thead için scroll context
+       sağlar; sayfa scroll'u büyütmez. */
+    :host {
+      display: flex; flex-direction: column;
+      min-height: 0; flex: 1 1 auto;
+      color: var(--bp-fg-1);
+    }
+    .panel {
+      flex: 1 1 auto; min-height: 0;
+      overflow: auto;
+      background: var(--bp-bg-2);
+    }
     .state {
       padding: 32px; text-align: center;
       color: var(--bp-fg-3); font-size: 13px;
@@ -156,6 +173,25 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     .col-dur  { color: var(--bp-fg-2); }
     .col-cat { width: 130px; }
     .col-dc { width: 110px; color: var(--bp-fg-2); }
+    /* 2026-05-27: Not kolonu (en sağda, kullanıcı transient input). */
+    .col-note { width: 160px; }
+    .note-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 2px 6px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--bp-fg-1);
+      border: 1px solid var(--bp-line-2, rgba(255, 255, 255, 0.14));
+      border-radius: 4px;
+      font: inherit;
+      font-size: 11.5px;
+      line-height: 1.3;
+    }
+    .note-input:focus {
+      outline: none;
+      border-color: rgba(124, 58, 237, 0.6);
+      background: rgba(124, 58, 237, 0.08);
+    }
     /* "Materyal" kolonu — dar + tek satır + ellipsis. Badge tek satır;
        kompakt etiketler (Canlı/Var/Eksik/...) sığsın. */
     .col-mat { width: 120px; }
@@ -205,27 +241,6 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
       font-family: var(--bp-font-mono);
     }
     .title-text { color: var(--bp-fg-1); }
-    .col-note { width: 200px; }
-    .note-input {
-      width: 100%;
-      min-width: 0;
-      padding: 3px 8px;
-      background: var(--bp-bg-2);
-      color: var(--bp-fg-1);
-      border: 1px solid var(--bp-line-2);
-      border-radius: 4px;
-      font-size: 12px;
-      line-height: 1.3;
-      font-family: var(--bp-font-sans, system-ui);
-      outline: none;
-    }
-    .note-input::placeholder { color: var(--bp-fg-4); }
-    .note-input:hover { border-color: var(--bp-fg-3); }
-    .note-input:focus { border-color: var(--bp-purple-500, #7c3aed); }
-    .note-input[aria-invalid="true"] {
-      border-color: #ef4444;
-      background: rgba(239, 68, 68, 0.08);
-    }
     .mono { font-family: var(--bp-font-mono, ui-monospace, 'JetBrains Mono', Menlo, monospace); font-variant-numeric: tabular-nums; }
     .muted { color: var(--bp-fg-3); }
     .cat-chip {
@@ -234,10 +249,11 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
       border: 1px solid transparent;
     }
     /* Kategori chip — dark uyumlu: translucent bg + soft border + parlak fg */
-    .cat-chip--reklam   { background: rgba(245, 158, 11, 0.18); color: #fcd34d; border-color: rgba(245, 158, 11, 0.40); }
+    /* 2026-05-27 (correction): REKLAM=yeşil, PROGRAM=sarı swap. */
+    .cat-chip--reklam   { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.40); }
     .cat-chip--kamu     { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; border-color: rgba(99, 102, 241, 0.40); }
     .cat-chip--canli    { background: rgba(239, 68, 68, 0.22);  color: #fca5a5; border-color: rgba(239, 68, 68, 0.45); }
-    .cat-chip--program  { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.40); }
+    .cat-chip--program  { background: rgba(245, 158, 11, 0.18); color: #fcd34d; border-color: rgba(245, 158, 11, 0.40); }
     .cat-chip--tanitim  { background: rgba(168, 85, 247, 0.18); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.40); }
     .cat-chip--diger    { background: rgba(156, 163, 175, 0.16); color: #d1d5db; border-color: rgba(156, 163, 175, 0.35); }
 
@@ -256,11 +272,20 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     :host-context(html[data-theme="light"]) tbody td {
       border-bottom-color: rgba(76, 29, 149, 0.28);
     }
+    :host-context(html[data-theme="light"]) .note-input {
+      background: #ffffff;
+      color: #1f2937;
+      border-color: rgba(76, 29, 149, 0.30);
+    }
+    :host-context(html[data-theme="light"]) .note-input:focus {
+      border-color: rgba(124, 58, 237, 0.7);
+      background: rgba(124, 58, 237, 0.06);
+    }
     :host-context(html[data-theme="light"]) .cat-chip {
       font-weight: 700;
     }
     :host-context(html[data-theme="light"]) .cat-chip--reklam {
-      background: rgba(245, 158, 11, 0.22); color: #92400e; border-color: #d97706;
+      background: rgba(16, 185, 129, 0.20); color: #065f46; border-color: #059669;
     }
     :host-context(html[data-theme="light"]) .cat-chip--kamu {
       background: rgba(99, 102, 241, 0.20); color: #3730a3; border-color: #4f46e5;
@@ -269,7 +294,7 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
       background: rgba(239, 68, 68, 0.20); color: #991b1b; border-color: #dc2626;
     }
     :host-context(html[data-theme="light"]) .cat-chip--program {
-      background: rgba(16, 185, 129, 0.20); color: #065f46; border-color: #059669;
+      background: rgba(245, 158, 11, 0.22); color: #92400e; border-color: #d97706;
     }
     :host-context(html[data-theme="light"]) .cat-chip--tanitim {
       background: rgba(168, 85, 247, 0.20); color: #6b21a8; border-color: #9333ea;
@@ -297,11 +322,12 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     .row { transition: background var(--bp-dur-fast, 100ms) linear; }
     .row:hover { background: var(--bp-bg-3); }
     /* Sol-bar accent — dark zeminde okunabilir kalsın; CANLI için ek soft tint */
-    .row--reklam  { box-shadow: inset 3px 0 0 #f59e0b; }
+    /* 2026-05-27 (correction): REKLAM=yeşil, PROGRAM=sarı swap (row accent). */
+    .row--reklam  { box-shadow: inset 3px 0 0 #10b981; }
     .row--kamu    { box-shadow: inset 3px 0 0 #6366f1; }
     .row--canli   { box-shadow: inset 3px 0 0 #ef4444; background: rgba(239, 68, 68, 0.06); }
     .row--canli:hover { background: rgba(239, 68, 68, 0.12); }
-    .row--program { box-shadow: inset 3px 0 0 #10b981; }
+    .row--program { box-shadow: inset 3px 0 0 #f59e0b; }
     .row--tanitim { box-shadow: inset 3px 0 0 #a855f7; }
     .row--diger   { box-shadow: inset 3px 0 0 #6b7280; }
   `],
@@ -313,27 +339,6 @@ export class ProvysChannelPanelComponent {
   readonly items = computed<ProvysItemDto[]>(() => this.service.itemsFor(this.channel())());
   /** Aktif kategori filtresi uygulanmış görünür satırlar. */
   readonly visibleItems = computed<ProvysItemDto[]>(() => this.service.filteredItemsFor(this.channel())());
-
-  /** Not kaydetme hataları — id → kullanıcıya gösterilecek mesaj. */
-  readonly noteErrors = signal<ReadonlyMap<number, string>>(new Map());
-
-  async onNoteBlur(item: ProvysItemDto, value: string): Promise<void> {
-    const current = item.userNote ?? '';
-    if (value === current) return;
-    // Önceki hatayı temizle (yeni deneme)
-    if (this.noteErrors().has(item.id)) {
-      const next = new Map(this.noteErrors());
-      next.delete(item.id);
-      this.noteErrors.set(next);
-    }
-    try {
-      await this.service.updateNote(this.channel(), item.id, value);
-    } catch (err) {
-      const next = new Map(this.noteErrors());
-      next.set(item.id, (err as Error)?.message || 'Not kaydedilemedi');
-      this.noteErrors.set(next);
-    }
-  }
 
   styleFor(category: ProvysCategory) {
     return PROVYS_CATEGORY_STYLES[category];

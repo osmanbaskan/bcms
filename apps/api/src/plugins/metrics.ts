@@ -1,6 +1,7 @@
 import fp from 'fastify-plugin';
 import type { FastifyInstance } from 'fastify';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
+import { getServiceAgeSeconds, getRegisteredServices } from '../lib/service-heartbeat.js';
 import { timingSafeEqual } from 'node:crypto';
 import {
   getDefaultPartitionRows,
@@ -142,6 +143,33 @@ const auditOldestPartitionAgeDays = new Gauge({
     } catch (err) {
       auditPartitionLogger?.debug({ err }, 'bcms_audit_oldest_partition_age_days collect failed');
       this.set(-1);
+    }
+  },
+});
+
+// YP0.2 (2026-05-29, 250 user scale): Response cache hit/miss/inflight counter.
+// /provys/restore-missing endpoint TTL cache + dog-pile prevention; 250 user'da
+// DB query 600/sn → ~12/sn beklenir. hit/miss/inflight oranı bu helper ile
+// izlenir; cache invalidation veya TTL ayarı buna göre yapılır.
+export const responseCacheTotal = new Counter({
+  name: 'bcms_response_cache_total',
+  help: 'In-memory response cache outcomes per endpoint key (hit|miss|inflight)',
+  labelNames: ['key', 'result'] as const,
+  registers: [registry],
+});
+
+// Y15 (2026-05-29): Background service heartbeat staleness gauge.
+// Per-service son tick'ten geçen saniye. -1 = service hiç heartbeat atmamış
+// (worker bu service'i çalıştırmıyor veya boot anında crash). Alert rule
+// per-service threshold üzerinden yazılabilir.
+const serviceHeartbeatAgeSeconds = new Gauge({
+  name: 'bcms_service_heartbeat_age_seconds',
+  help: 'Background service son heartbeat\'ten gecen saniye (-1: hic tick atmamis)',
+  labelNames: ['service'],
+  registers: [registry],
+  collect() {
+    for (const service of getRegisteredServices()) {
+      this.set({ service }, getServiceAgeSeconds(service));
     }
   },
 });

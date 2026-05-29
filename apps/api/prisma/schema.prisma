@@ -8,25 +8,25 @@ datasource db {
 }
 
 model League {
-  id         Int       @id @default(autoincrement())
-  code       String    @unique @db.VarChar(20)
-  name       String    @db.VarChar(200)
-  country    String    @db.VarChar(100)
-  metadata   Json?
+  id               Int       @id @default(autoincrement())
+  code             String    @unique @db.VarChar(20)
+  name             String    @db.VarChar(200)
+  country          String    @db.VarChar(100)
+  metadata         Json?
   /// 2026-05-13: OPTA fixture lig dropdown filtre alanı. Mevcut hardcoded
   /// FEATURED array yerine DB-driven görünürlük. Yeni ligler default
   /// gizli (false); admin endpoint /api/v1/opta/competitions/admin/:id ile
   /// toggle edilir. Migration 20260513090000_leagues_visibility geriye
   /// uyumluluk için 8 FEATURED kodu visible=true seed eder.
-  visible    Boolean   @default(false)
+  visible          Boolean   @default(false)
   /// 2026-05-13: Admin tarafından düzenlenebilir sıralama (visible=true
   /// ligler arasında). /fixture-competitions endpoint asc kullanır.
-  sortOrder  Int       @default(0) @map("sort_order")
+  sortOrder        Int       @default(0) @map("sort_order")
   /// 2026-05-13: Sport grup sınıfı — Yayın Planlama "Yeni Ekle" dropdown
   /// optgroup'a göre. CHECK constraint migration'da
   /// 20260513140000_leagues_sport_group:
   /// football | tennis | motogp | rugby | formula1 | basketball.
-  sportGroup String    @default("football") @map("sport_group") @db.VarChar(30)
+  sportGroup       String    @default("football") @map("sport_group") @db.VarChar(30)
   /// 2026-05-15: Canlı Yayın Plan "Yeni Ekle / Manuel Giriş" lig dropdown
   /// filtre alanı. OPTA fixture görünürlüğü olan `visible` ile KARIŞTIRMA —
   /// ayrı amaç. `/matches/leagues/manual` endpoint
@@ -34,12 +34,12 @@ model League {
   /// 20260515120000_add_leagues_manual_selectable TBL ('custom-tbl') için
   /// true backfill yapar. Admin yönetimi:
   /// /api/v1/matches/leagues/manual/admin* (PERMISSIONS.opta.admin paritesi).
-  manualSelectable Boolean @default(false) @map("manual_selectable")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-  deleted_at DateTime?
-  matches    Match[]
-  teams      Team[]
+  manualSelectable Boolean   @default(false) @map("manual_selectable")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deleted_at       DateTime?
+  matches          Match[]
+  teams            Team[]
 
   @@index([metadata], type: Gin)
   @@index([visible, sortOrder], map: "leagues_visible_sort_order_idx")
@@ -87,14 +87,14 @@ model Match {
 }
 
 model Channel {
-  id         Int               @id @default(autoincrement())
-  name       String            @unique @db.VarChar(100)
+  id         Int         @id @default(autoincrement())
+  name       String      @unique @db.VarChar(100)
   type       ChannelType
-  frequency  String?           @db.VarChar(50)
-  muxInfo    Json?             @map("mux_info")
-  active     Boolean           @default(true)
-  createdAt  DateTime          @default(now()) @map("created_at")
-  updatedAt  DateTime          @updatedAt @map("updated_at")
+  frequency  String?     @db.VarChar(50)
+  muxInfo    Json?       @map("mux_info")
+  active     Boolean     @default(true)
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
   deleted_at DateTime?
   // Y5-8 (2026-05-11): Schedule.channelId legacy FK kaldırıldı;
   // Schedule.channel back-relation kaldırıldı. Canonical 3-channel
@@ -187,31 +187,31 @@ model Schedule {
 }
 
 model Booking {
-  id           Int           @id @default(autoincrement())
-  scheduleId   Int?          @map("schedule_id")
-  requestedBy  String        @map("requested_by") @db.VarChar(100)
-  teamId       Int?          @map("team_id")
-  matchId      Int?          @map("match_id")
-  metadata     Json?
-  status       BookingStatus @default(PENDING)
-  version      Int           @default(1)
-  notes        String?
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
-  deleted_at   DateTime?
-  taskTitle    String?       @map("task_title") @db.VarChar(300)
-  taskDetails  String?       @map("task_details")
-  taskReport   String?       @map("task_report")
-  userGroup    String?       @map("user_group") @db.VarChar(50)
-  assigneeId   String?       @map("assignee_id") @db.VarChar(100)
-  assigneeName String?       @map("assignee_name") @db.VarChar(200)
-  startDate    DateTime?     @map("start_date") @db.Date
-  dueDate      DateTime?     @map("due_date") @db.Date
-  completedAt  DateTime?     @map("completed_at") @db.Timestamptz(6)
-  match        Match?        @relation(fields: [matchId], references: [id])
-  schedule     Schedule?     @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  team         Team?         @relation(fields: [teamId], references: [id])
-  comments     BookingComment[]
+  id            Int                    @id @default(autoincrement())
+  scheduleId    Int?                   @map("schedule_id")
+  requestedBy   String                 @map("requested_by") @db.VarChar(100)
+  teamId        Int?                   @map("team_id")
+  matchId       Int?                   @map("match_id")
+  metadata      Json?
+  status        BookingStatus          @default(PENDING)
+  version       Int                    @default(1)
+  notes         String?
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+  deleted_at    DateTime?
+  taskTitle     String?                @map("task_title") @db.VarChar(300)
+  taskDetails   String?                @map("task_details")
+  taskReport    String?                @map("task_report")
+  userGroup     String?                @map("user_group") @db.VarChar(50)
+  assigneeId    String?                @map("assignee_id") @db.VarChar(100)
+  assigneeName  String?                @map("assignee_name") @db.VarChar(200)
+  startDate     DateTime?              @map("start_date") @db.Date
+  dueDate       DateTime?              @map("due_date") @db.Date
+  completedAt   DateTime?              @map("completed_at") @db.Timestamptz(6)
+  match         Match?                 @relation(fields: [matchId], references: [id])
+  schedule      Schedule?              @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  team          Team?                  @relation(fields: [teamId], references: [id])
+  comments      BookingComment[]
   statusHistory BookingStatusHistory[]
 
   @@index([scheduleId])
@@ -438,19 +438,19 @@ model TimelineEvent {
 }
 
 model StudioPlan {
-  id              Int              @id @default(autoincrement())
-  weekStart       DateTime         @unique @map("week_start") @db.Date
-  version         Int              @default(1)
+  id             Int              @id @default(autoincrement())
+  weekStart      DateTime         @unique @map("week_start") @db.Date
+  version        Int              @default(1)
   // 2026-05-25: hafta bazlı time range ayarı (slot rendering / export'a opt-in).
   // Saatlik "HH:00" string; null = varsayılan 07:00-02:00 (frontend fallback).
-  timeRangeStart  String?          @map("time_range_start") @db.VarChar(5)
-  timeRangeEnd    String?          @map("time_range_end")   @db.VarChar(5)
-  createdBy       String           @map("created_by") @db.VarChar(100)
-  updatedBy       String?          @map("updated_by") @db.VarChar(100)
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-  deleted_at      DateTime?
-  slots           StudioPlanSlot[]
+  timeRangeStart String?          @map("time_range_start") @db.VarChar(5)
+  timeRangeEnd   String?          @map("time_range_end") @db.VarChar(5)
+  createdBy      String           @map("created_by") @db.VarChar(100)
+  updatedBy      String?          @map("updated_by") @db.VarChar(100)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  deleted_at     DateTime?
+  slots          StudioPlanSlot[]
 
   @@map("studio_plans")
 }
@@ -1311,63 +1311,63 @@ model ScheduleFormatOption {
 /// delete yok. (channelSlug, eventId) unique; aynı dosya 2x işlense
 /// hash karşılaştırması ile no-op (idempotent).
 model ProvysItem {
-  id               Int       @id @default(autoincrement())
-  channelSlug      String    @map("channel_slug") @db.VarChar(40)
+  id               Int      @id @default(autoincrement())
+  channelSlug      String   @map("channel_slug") @db.VarChar(40)
   /// Broadcast day (Europe/Istanbul naive date). Provys BXF dosyası bir
   /// "yayın günü" exporter çıktısıdır; aynı dosya gece yarısı sonrası
   /// event'leri taşısa bile scheduleDate dosya scope tarihidir.
   /// (channelSlug + scheduleDate) bir snapshot'ı tek olarak tanımlar.
-  scheduleDate     DateTime  @map("schedule_date") @db.Date
-  eventId          String    @map("event_id") @db.VarChar(120)
-  sequence         Int       @default(0)
-  startAt          DateTime  @map("start_at") @db.Timestamptz(6)
-  durationMs       Int?      @map("duration_ms")
+  scheduleDate     DateTime @map("schedule_date") @db.Date
+  eventId          String   @map("event_id") @db.VarChar(120)
+  sequence         Int      @default(0)
+  startAt          DateTime @map("start_at") @db.Timestamptz(6)
+  durationMs       Int?     @map("duration_ms")
   /// SMPTE timecode `HH:MM:SS:FF` (raw, frame korunur). 2026-05-22 eklendi;
   /// eski kayıtlarda null kalır, UI'da `startAt` Istanbul fallback'i render eder.
-  startTimecode    String?   @map("start_timecode")    @db.VarChar(20)
+  startTimecode    String?  @map("start_timecode") @db.VarChar(20)
   /// SMPTE duration `HH:MM:SS:FF`. Eski kayıt null → `durationMs` fallback.
-  durationTimecode String?   @map("duration_timecode") @db.VarChar(20)
+  durationTimecode String?  @map("duration_timecode") @db.VarChar(20)
   /// SmpteDateTime / SmpteDuration `@frameRate` (genelde 25).
-  frameRate        Int?      @map("frame_rate")
+  frameRate        Int?     @map("frame_rate")
   /// Content > ContentId > HouseNumber (Provys "DC..." house code).
-  dcCode           String?   @map("dc_code") @db.VarChar(40)
+  dcCode           String?  @map("dc_code") @db.VarChar(40)
   /// Derived display title — fallback chain (öncelikli ilk dolu kazanır):
   /// VersionName → EpisodeName → EventTitle → Content.Name → ProgramName →
   /// AdType/SpotType. Hangi kaynaktan geldiği `titleSource` kolonunda işaretli.
-  title            String    @db.VarChar(500)
-  rawKind          String?   @map("raw_kind") @db.VarChar(100)
-  category         String    @db.VarChar(20)
+  title            String   @db.VarChar(500)
+  rawKind          String?  @map("raw_kind") @db.VarChar(100)
+  category         String   @db.VarChar(20)
   /// 2026-05-25: BXF ham title kaynakları — `title` derived display alan
   /// olarak kalır; bu alanlar UI'da "üst başlık / alt başlık / metadata"
   /// ayrımı yapabilmek için ayrı saklanır. Hepsi nullable; backfill yok.
-  versionName      String?   @map("version_name")   @db.VarChar(500)
-  episodeName      String?   @map("episode_name")   @db.VarChar(500)
-  eventTitle       String?   @map("event_title")    @db.VarChar(500)
-  contentName      String?   @map("content_name")   @db.VarChar(500)
-  programName      String?   @map("program_name")   @db.VarChar(500)
+  versionName      String?  @map("version_name") @db.VarChar(500)
+  episodeName      String?  @map("episode_name") @db.VarChar(500)
+  eventTitle       String?  @map("event_title") @db.VarChar(500)
+  contentName      String?  @map("content_name") @db.VarChar(500)
+  programName      String?  @map("program_name") @db.VarChar(500)
   /// NonProgramEvent/Details/AdType (Promo / Paid Program / Commercial).
   /// `raw_kind` derivation'da kullanılır; ayrıca reporting için saklı.
-  adType           String?   @map("ad_type")        @db.VarChar(100)
-  spotType         String?   @map("spot_type")      @db.VarChar(100)
+  adType           String?  @map("ad_type") @db.VarChar(100)
+  spotType         String?  @map("spot_type") @db.VarChar(100)
   /// `title` hangi kaynaktan seçildi — parser'ın kararı. Değerler:
   /// VERSION_NAME, EPISODE_NAME, EVENT_TITLE, CONTENT_NAME, PROGRAM_NAME,
   /// AD_TYPE_SPOT_TYPE, UNKNOWN.
-  titleSource      String?   @map("title_source")   @db.VarChar(40)
+  titleSource      String?  @map("title_source") @db.VarChar(40)
   /// Series/SeriesName — program ailesi/turnuva adı (sadece ProgramEvent).
   /// UI'da `title` üst bağlamı olarak gösterilebilir.
-  seriesName       String?   @map("series_name")    @db.VarChar(300)
+  seriesName       String?  @map("series_name") @db.VarChar(300)
   /// Series/EpisodeNumber — sayısal bölüm/sıra no.
-  episodeNumber    Int?      @map("episode_number") @db.SmallInt
-  sourceFile       String    @map("source_file") @db.VarChar(500)
-  sourceMtime      DateTime  @map("source_mtime") @db.Timestamptz(6)
-  payloadHash      String    @map("payload_hash") @db.VarChar(64)
+  episodeNumber    Int?     @map("episode_number") @db.SmallInt
+  sourceFile       String   @map("source_file") @db.VarChar(500)
+  sourceMtime      DateTime @map("source_mtime") @db.Timestamptz(6)
+  payloadHash      String   @map("payload_hash") @db.VarChar(64)
   /// Kullanıcı tarafından eklenen serbest metin not (BCMS UI). BXF parser
   /// veya watcher tarafından yazılmaz; PATCH /provys/items/:id/note ile
   /// güncellenir. Composed snapshot diff bu alana dokunmaz — `update` data
   /// objesinde yer almadığı için Prisma korur.
-  userNote         String?   @map("user_note") @db.Text
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime  @updatedAt       @map("updated_at") @db.Timestamptz(6)
+  userNote         String?  @map("user_note") @db.Text
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([channelSlug, scheduleDate, eventId], name: "provys_items_channel_date_event_unique")
   @@index([channelSlug, scheduleDate, sequence], name: "provys_items_channel_date_seq_idx")
@@ -1380,28 +1380,28 @@ model ProvysItem {
 /// — geçmiş event'ler sabit; aynı eventId yeniden gelirse latest sourceMtime
 /// upsert kazanır. Not özelliği V1 kapsamında değil.
 model AsrunItem {
-  id               Int       @id @default(autoincrement())
-  channelSlug      String    @map("channel_slug") @db.VarChar(40)
+  id               Int      @id @default(autoincrement())
+  channelSlug      String   @map("channel_slug") @db.VarChar(40)
   /// Broadcast day (Europe/Istanbul naive date). Dosya filename'inden
   /// (örn. `BXF_..._20260523_..bxf`) çıkarılır; per-event broadcastDate
   /// override mevcut event'in scheduleDate'i olarak kullanılır.
-  scheduleDate     DateTime  @map("schedule_date") @db.Date
-  eventId          String    @map("event_id") @db.VarChar(120)
-  sequence         Int       @default(0)
-  startAt          DateTime  @map("start_at") @db.Timestamptz(6)
-  durationMs       Int?      @map("duration_ms")
-  startTimecode    String?   @map("start_timecode")    @db.VarChar(20)
-  durationTimecode String?   @map("duration_timecode") @db.VarChar(20)
-  frameRate        Int?      @map("frame_rate")
-  dcCode           String?   @map("dc_code") @db.VarChar(40)
-  title            String    @db.VarChar(500)
-  rawKind          String?   @map("raw_kind") @db.VarChar(100)
-  category         String    @db.VarChar(20)
-  sourceFile       String    @map("source_file") @db.VarChar(500)
-  sourceMtime      DateTime  @map("source_mtime") @db.Timestamptz(6)
-  payloadHash      String    @map("payload_hash") @db.VarChar(64)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime  @updatedAt       @map("updated_at") @db.Timestamptz(6)
+  scheduleDate     DateTime @map("schedule_date") @db.Date
+  eventId          String   @map("event_id") @db.VarChar(120)
+  sequence         Int      @default(0)
+  startAt          DateTime @map("start_at") @db.Timestamptz(6)
+  durationMs       Int?     @map("duration_ms")
+  startTimecode    String?  @map("start_timecode") @db.VarChar(20)
+  durationTimecode String?  @map("duration_timecode") @db.VarChar(20)
+  frameRate        Int?     @map("frame_rate")
+  dcCode           String?  @map("dc_code") @db.VarChar(40)
+  title            String   @db.VarChar(500)
+  rawKind          String?  @map("raw_kind") @db.VarChar(100)
+  category         String   @db.VarChar(20)
+  sourceFile       String   @map("source_file") @db.VarChar(500)
+  sourceMtime      DateTime @map("source_mtime") @db.Timestamptz(6)
+  payloadHash      String   @map("payload_hash") @db.VarChar(64)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([channelSlug, scheduleDate, eventId], name: "asrun_items_channel_date_event_unique")
   @@index([channelSlug, scheduleDate, startAt], name: "asrun_items_channel_date_start_idx")
@@ -1432,8 +1432,176 @@ model SsdbMaterialCache {
   lastFoundAt          DateTime? @map("last_found_at") @db.Timestamptz(6)
   lastError            String?   @map("last_error") @db.VarChar(500)
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt            DateTime  @updatedAt       @map("updated_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([lookupStatus, lastCheckedAt], name: "ssdb_cache_lookup_checked_idx")
   @@map("ssdb_material_cache")
+}
+
+/// Restore V2 — Avid Interplay iki kademeli iş akışı (kademe 1).
+/// Avid arşivinden Interplay workspace'e asset getirme job'u. SSDB cache
+/// tetiklemez (restore done → asset henüz production'da yok). Lifecycle:
+/// QUEUED → RUNNING → DONE / FAILED. CANCELLED V3 forward-compat.
+///
+/// Idempotency: aynı (dc_code, schedule_date) için aynı anda yalnız 1 aktif
+/// (QUEUED/RUNNING) job. Migration SQL partial unique index uygular
+/// (`restore_jobs_active_unique` WHERE status IN ('QUEUED','RUNNING') AND
+/// deleted_at IS NULL). Prisma 5 partial @@unique desteklemiyor — şema
+/// içinde @@unique YAZMAYIN; migration SQL drift'i hâlletmek için tek nokta.
+///
+/// Optimistic locking (version): worker tick + manuel cancel race koruması.
+/// Audit ext zorunlu; raw SQL write banned.
+model RestoreJob {
+  id              Int              @id @default(autoincrement())
+  dcCode          String           @map("dc_code") @db.VarChar(40)
+  channelSlug     String           @map("channel_slug") @db.VarChar(30)
+  scheduleDate    DateTime         @map("schedule_date") @db.Date
+  /// Bilgi amaçlı (FK YOK — lifecycle bağımsız). Search SELECTED job referansı.
+  searchJobId     Int?             @map("search_job_id")
+  status          RestoreJobStatus @default(QUEUED)
+  attemptCount    Int              @default(0) @map("attempt_count")
+  maxAttempts     Int              @default(3) @map("max_attempts")
+  /// Search kademe 1 SELECTED'ten kopyalanır. Worker NULL ise terminal FAILED.
+  avidAssetId     String?          @map("avid_asset_id") @db.VarChar(120)
+  avidAssetName   String?          @map("avid_asset_name")
+  /// Search'ten kopya — true ise Interplay no-op DONE (asset zaten online),
+  /// false ise DIVA→Avid restore (asıl iş). Worker adapter'a geçer.
+  avidAssetOnline Boolean?         @map("avid_asset_online")
+  avidJobId       String?          @map("avid_job_id") @db.VarChar(80)
+  startedAt       DateTime?        @map("started_at") @db.Timestamptz(6)
+  finishedAt      DateTime?        @map("finished_at") @db.Timestamptz(6)
+  errorMsg        String?          @map("error_msg")
+  requestedBy     String?          @map("requested_by") @db.VarChar(100)
+  version         Int              @default(1)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?        @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([status, updatedAt], map: "restore_jobs_status_updated_idx")
+  @@index([scheduleDate], map: "restore_jobs_schedule_date_idx")
+  @@index([dcCode, scheduleDate], map: "restore_jobs_dc_date_idx")
+  @@map("restore_jobs")
+}
+
+enum RestoreJobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  CANCELLED
+
+  @@map("restore_job_status")
+}
+
+/// Restore V2 — Avid Interplay iki kademeli iş akışı (kademe 2).
+/// Online asset'i Avid Interplay'den BCMS production storage'a aktarma job'u.
+/// Precondition (service guard): aynı (dc_code, schedule_date) için status=DONE
+/// bir restore_jobs satırı bulunmalı; yoksa 409 restore_not_done.
+/// DONE branch → requestSsdbResolverTick('transfer-completed:${dcCode}')
+/// → SSDB cache yenilenir → Provys "Var" görür.
+///
+/// restoreJobId bilgi alanı (FK YOK): lifecycle bağımsız; audit retention
+/// purge cascade riski yaratır. Service katmanı precondition check'i yeterli.
+///
+/// Idempotency + optimistic locking restore_jobs ile aynı pattern.
+model TransferJob {
+  id              Int               @id @default(autoincrement())
+  dcCode          String            @map("dc_code") @db.VarChar(40)
+  channelSlug     String            @map("channel_slug") @db.VarChar(30)
+  scheduleDate    DateTime          @map("schedule_date") @db.Date
+  restoreJobId    Int?              @map("restore_job_id")
+  /// Restore DONE'dan kopyalanır. Worker NULL ise terminal FAILED.
+  avidAssetId     String?           @map("avid_asset_id") @db.VarChar(120)
+  avidAssetName   String?           @map("avid_asset_name")
+  /// Restore'dan kopya (bilgi/audit; transfer kademesinde davranışı etkilemez).
+  avidAssetOnline Boolean?          @map("avid_asset_online")
+  status          TransferJobStatus @default(QUEUED)
+  attemptCount    Int               @default(0) @map("attempt_count")
+  maxAttempts     Int               @default(3) @map("max_attempts")
+  avidJobId       String?           @map("avid_job_id") @db.VarChar(80)
+  startedAt       DateTime?         @map("started_at") @db.Timestamptz(6)
+  finishedAt      DateTime?         @map("finished_at") @db.Timestamptz(6)
+  errorMsg        String?           @map("error_msg")
+  requestedBy     String?           @map("requested_by") @db.VarChar(100)
+  version         Int               @default(1)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?         @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([status, updatedAt], map: "transfer_jobs_status_updated_idx")
+  @@index([scheduleDate], map: "transfer_jobs_schedule_date_idx")
+  @@index([dcCode, scheduleDate], map: "transfer_jobs_dc_date_idx")
+  @@map("transfer_jobs")
+}
+
+enum TransferJobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  CANCELLED
+
+  @@map("transfer_job_status")
+}
+
+/// Restore V2 — Avid Interplay üç kademeli iş akışı (kademe 1).
+/// DC kod ile Avid arşivinde arama yapma + operatör seçim onayı.
+///
+/// State machine:
+///   QUEUED → RUNNING → AWAITING_SELECTION → SELECTED (terminal happy path)
+///                                       → NOT_FOUND  (terminal — 0 sonuç)
+///                                       → FAILED     (terminal — adapter hatası)
+///
+/// AWAITING_SELECTION durumunda `avid_assets` JSONB dolu (AvidAsset[]); operatör
+/// PATCH /search/jobs/:id/select ile birini seçer (whitelist check).
+/// SELECTED sonrası `selected_asset_id` + `selected_asset_name` set; restore
+/// kademesi (kademe 2) bu satırdan kopya alır.
+///
+/// Idempotency: aynı (dc_code, schedule_date) için aynı anda 1 aktif
+/// (QUEUED/RUNNING/AWAITING_SELECTION) job. Migration SQL partial unique index
+/// uygular (`search_jobs_active_unique`).
+model SearchJob {
+  id                  Int             @id @default(autoincrement())
+  dcCode              String          @map("dc_code") @db.VarChar(40)
+  channelSlug         String          @map("channel_slug") @db.VarChar(30)
+  scheduleDate        DateTime        @map("schedule_date") @db.Date
+  status              SearchJobStatus @default(QUEUED)
+  attemptCount        Int             @default(0) @map("attempt_count")
+  maxAttempts         Int             @default(3) @map("max_attempts")
+  /// AvidAsset[] dizisi — search sonuçları. AWAITING_SELECTION'da dolu;
+  /// NOT_FOUND iken []; FAILED iken null kalabilir.
+  avidAssets          Json?           @map("avid_assets")
+  /// AWAITING_SELECTION → SELECTED transition'ında set edilir (whitelist).
+  selectedAssetId     String?         @map("selected_asset_id") @db.VarChar(120)
+  selectedAssetName   String?         @map("selected_asset_name")
+  /// Whitelist'ten eşleşen AvidAsset.online alanı kopyalanır.
+  /// true=Interplay'de zaten online (DIVA gerek yok); false=DIVA'da, restore gerekli.
+  selectedAssetOnline Boolean?        @map("selected_asset_online")
+  selectedAt          DateTime?       @map("selected_at") @db.Timestamptz(6)
+  selectedBy          String?         @map("selected_by") @db.VarChar(100)
+  startedAt           DateTime?       @map("started_at") @db.Timestamptz(6)
+  finishedAt          DateTime?       @map("finished_at") @db.Timestamptz(6)
+  errorMsg            String?         @map("error_msg")
+  requestedBy         String?         @map("requested_by") @db.VarChar(100)
+  version             Int             @default(1)
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime?       @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([status, updatedAt], map: "search_jobs_status_updated_idx")
+  @@index([scheduleDate], map: "search_jobs_schedule_date_idx")
+  @@index([dcCode, scheduleDate], map: "search_jobs_dc_date_idx")
+  @@map("search_jobs")
+}
+
+enum SearchJobStatus {
+  QUEUED
+  RUNNING
+  AWAITING_SELECTION
+  SELECTED
+  NOT_FOUND
+  FAILED
+  CANCELLED
+
+  @@map("search_job_status")
 }

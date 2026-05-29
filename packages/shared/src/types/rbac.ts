@@ -187,4 +187,31 @@ export const PERMISSIONS = {
     read:  [GROUP.SystemEng] as BcmsGroup[],
     admin: [GROUP.SystemEng] as BcmsGroup[],
   },
+  /** Restore V2 — Avid Interplay üç kademeli iş akışı (2026-05-28 revize).
+   *  Kademe 1 (search): DC kod ile Avid arşivinde arama + operatör seçim onayı.
+   *  Read şimdilik dar; test sonrası operasyonel gruplara genişletilebilir (TODO). */
+  search: {
+    read:    [GROUP.SystemEng] as BcmsGroup[],
+    execute: [GROUP.SystemEng] as BcmsGroup[],
+    cancel:  [GROUP.SystemEng] as BcmsGroup[],
+  },
+  /** Restore V2 — Kademe 2 (restore): SELECTED asset arşivden Interplay workspace'e.
+   *  Read: yalnız SystemEng + Admin auto-bypass. İş tamamlanıp altyapı
+   *  doğrulandığında diğer operasyonel gruplar genişletilebilir
+   *  (TODO: kullanıcı kararı — Avid mock+canlı test sonrası).
+   *  Execute: yalnız SystemEng — Avid'e komut yollamak operasyonel risk. */
+  restore: {
+    read:    [GROUP.SystemEng] as BcmsGroup[],
+    execute: [GROUP.SystemEng] as BcmsGroup[],
+    cancel:  [GROUP.SystemEng] as BcmsGroup[],
+  },
+  /** Restore V2 — kademe 2 (transfer): Interplay'den production storage'a.
+   *  Aynı izin matrisi; precondition guard service katmanında (restore_not_done
+   *  → 409). UI butonu restore DONE olmadan disabled — defense-in-depth.
+   *  Read şimdilik dar (SystemEng+Admin); genişletme test sonrası kullanıcı kararı. */
+  transfer: {
+    read:    [GROUP.SystemEng] as BcmsGroup[],
+    execute: [GROUP.SystemEng] as BcmsGroup[],
+    cancel:  [GROUP.SystemEng] as BcmsGroup[],
+  },
 } as const;
