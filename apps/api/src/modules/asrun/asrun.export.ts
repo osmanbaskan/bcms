@@ -7,8 +7,10 @@ import { ASRUN_CHANNELS, PROVYS_CATEGORY_STYLES, type AsrunCategory } from '@bcm
 /**
  * Asrun "kanal × gün" snapshot'ı için Excel + PDF export.
  *
- * Kolonlar (UI tablosu paritesi, 6 sütun):
- *   Sıra | Başlangıç (HH:MM:SS:FF) | Süre (HH:MM:SS:FF) | DC Kod | Başlık | Kategori
+ * Kolonlar (6 sütun) — Süre, Başlık'tan hemen sonra. (UI'da Süre tablonun
+ * en sonunda; export'ta Kategori en sonda kaldığından Süre, Başlık ↔ Kategori
+ * arasına alındı — 2026-05-29.)
+ *   Sıra | Başlangıç (HH:MM:SS:FF) | DC Kod | Başlık | Süre (HH:MM:SS:FF) | Kategori
  *
  * Provys export'undan farklılıklar:
  *   - "Not" kolonu YOK (Asrun userNote feature'ı V1 kapsamında değil).
@@ -93,7 +95,7 @@ export async function exportAsrunToExcelBuffer(opts: AsrunExportOptions): Promis
   sheet.mergeCells('A1:F1');
   sheet.addRow([`Üretim: ${generationStampIstanbul()} (Europe/Istanbul)`, '', '', '', '', '']);
   sheet.mergeCells('A2:F2');
-  sheet.addRow(['Sıra', 'Başlangıç', 'Süre', 'DC Kod', 'Başlık', 'Kategori']);
+  sheet.addRow(['Sıra', 'Başlangıç', 'DC Kod', 'Başlık', 'Süre', 'Kategori']);
 
   if (opts.rows.length === 0) {
     sheet.addRow(['Seçili tarih için as-run kaydı yok', '', '', '', '', '']);
@@ -105,9 +107,9 @@ export async function exportAsrunToExcelBuffer(opts: AsrunExportOptions): Promis
       const row = sheet.addRow([
         r.sequence + 1,
         sanitizeCell(r.startTimecode ?? '—'),
-        sanitizeCell(r.durationTimecode ?? '—'),
         sanitizeCell(r.dcCode ?? '—'),
         sanitizeCell(r.title),
+        sanitizeCell(r.durationTimecode ?? '—'),
         sanitizeCell(categoryLabel(r.category)),
       ]);
       const palette = EXPORT_PALETTE[r.category];
@@ -119,12 +121,14 @@ export async function exportAsrunToExcelBuffer(opts: AsrunExportOptions): Promis
   sheet.columns = [
     { width:  6 },   // Sıra
     { width: 14 },   // Başlangıç
-    { width: 14 },   // Süre
     { width: 14 },   // DC Kod
     { width: 60 },   // Başlık
+    { width: 14 },   // Süre
     { width: 14 },   // Kategori
   ];
-  for (const col of ['B', 'C', 'D']) {
+  // Text format ('@'): timecode + DC kod sütunları — sayı/tarih coercion'ı önle.
+  // Yeni sıra: B=Başlangıç, C=DC Kod, E=Süre (D=Başlık serbest metin, gerekmez).
+  for (const col of ['B', 'C', 'E']) {
     sheet.getColumn(col).numFmt = '@';
   }
 
@@ -169,9 +173,9 @@ export async function exportAsrunToPdfBuffer(opts: AsrunExportOptions): Promise<
   const cols = [
     { key: 'sequence', label: 'Sıra',       width:  32 },
     { key: 'start',    label: 'Başlangıç',  width:  78 },
-    { key: 'duration', label: 'Süre',       width:  72 },
     { key: 'dcCode',   label: 'DC Kod',     width:  84 },
     { key: 'title',    label: 'Başlık',     width: 384 },
+    { key: 'duration', label: 'Süre',       width:  72 },
     { key: 'category', label: 'Kategori',   width:  74 },
   ] as const;
   const rowHeight = 14;
@@ -209,9 +213,9 @@ export async function exportAsrunToPdfBuffer(opts: AsrunExportOptions): Promise<
     const values = [
       String(r.sequence + 1),
       r.startTimecode ?? '—',
-      r.durationTimecode ?? '—',
       r.dcCode ?? '—',
       r.title,
+      r.durationTimecode ?? '—',
       categoryLabel(r.category),
     ];
     let x = startX;
