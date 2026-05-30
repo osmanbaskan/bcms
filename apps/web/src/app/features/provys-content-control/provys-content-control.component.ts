@@ -142,7 +142,8 @@ function addDaysIso(iso: string, days: number): string {
         <mat-button-toggle-group
           multiple
           class="cat-toggle"
-          hideMultipleSelectionIndicator="true"          [value]="selectedCategoryArray()"
+          hideMultipleSelectionIndicator="true"
+          [value]="selectedCategoryArray()"
           (change)="onCategoryToggle($event)"
           hideSingleSelectionIndicator="true"
           aria-label="Kategori filtresi"
