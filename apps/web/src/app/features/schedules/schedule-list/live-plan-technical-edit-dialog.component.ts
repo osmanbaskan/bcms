@@ -1,4 +1,4 @@
-import { Component, Inject, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Inject, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import {
@@ -29,6 +29,7 @@ export interface LivePlanTechnicalEditDialogData {
 @Component({
   selector: 'app-live-plan-technical-edit-dialog',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
     MatDialogModule,
