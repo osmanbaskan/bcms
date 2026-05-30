@@ -816,7 +816,7 @@ export class WeeklyShiftComponent implements OnInit {
       </style>
     `;
 
-    const sections = data.groups.map((group) => `
+    const sections = data.groups.filter((g) => g.users.length > 0).map((group) => `
       <div class="group-section">
         <div class="group-header">
           <div class="group-bar"></div>

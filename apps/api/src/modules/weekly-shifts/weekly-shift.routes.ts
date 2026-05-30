@@ -294,6 +294,9 @@ async function exportWeeklyShiftToBuffer(plan: Awaited<ReturnType<typeof buildWe
   };
 
   for (const group of plan.groups) {
+    // Boş grup (0 personel) sheet'i atlanır — export gürültüsünü azaltır
+    // (kompakt UI redesign paritesi). Tüm gruplar boşsa aşağıda bilgi sheet'i.
+    if (group.users.length === 0) continue;
     const sheet = workbook.addWorksheet(group.name.slice(0, 31));
     const totalCols = 1 + plan.days.length;
 
@@ -371,6 +374,11 @@ async function exportWeeklyShiftToBuffer(plan: Awaited<ReturnType<typeof buildWe
 
     // Freeze panes: ilk kolon ve ilk 3 satir sabit kalsin
     sheet.views = [{ state: 'frozen', xSplit: 1, ySplit: 3 }];
+  }
+
+  // Tüm gruplar boşsa ExcelJS writeBuffer 0 worksheet'te hata verir — guard.
+  if (workbook.worksheets.length === 0) {
+    workbook.addWorksheet('Bilgi').addRow(['Bu hafta için personel atanmış grup yok.']);
   }
 
   const arr = await workbook.xlsx.writeBuffer();

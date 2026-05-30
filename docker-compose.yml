@@ -356,8 +356,11 @@ services:
       ASRUN_WATCHER_CONCURRENCY: ${ASRUN_WATCHER_CONCURRENCY:-3}
     volumes:
       - ingest_watch:/app/tmp/watch
-      - ${PROVYS_HOST_MOUNT:-./tmp/provys}:/app/tmp/provys:ro
-      - ${ASRUN_HOST_MOUNT:-./tmp/asrun}:/app/tmp/asrun:ro
+      # rslave: host CIFS mount (boot'ta veya sonradan gelse de) çalışan
+      # worker container'ına yansısın → SMB watcher reboot-safe, docker'ı
+      # bloklamaz (bkz. provys-smb-mount-pending). ro: salt okunur.
+      - ${PROVYS_HOST_MOUNT:-./tmp/provys}:/app/tmp/provys:ro,rslave
+      - ${ASRUN_HOST_MOUNT:-./tmp/asrun}:/app/tmp/asrun:ro,rslave
     # HIGH-INF-017 (kapatıldı 2026-05-05): `api`'ye depends_on kaldırıldı.
     # Worker'ın API'ye runtime bağımlılığı yok; aynı imajdan farklı entry'lerle
     # çalışıyorlar. depends_on sadece startup ordering kontrol eder, ama buradaki

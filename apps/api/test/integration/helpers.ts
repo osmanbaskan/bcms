@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { JwtPayload } from '@bcms/shared';
+import { assertTestDatabaseUrl } from '../../src/lib/test-db-guard.js';
 
 /**
  * Test helpers for integration suite.
@@ -109,14 +110,8 @@ export async function cleanupTransactional(): Promise<void> {
       `Did you run integration spec without vitest.integration.config.ts? See K1 (2026-05-29).`,
     );
   }
-  const dbUrl = process.env.DATABASE_URL ?? '';
-  // Canli bcms_postgres host'u veya prod-like indicator → reddet.
-  if (/@(bcms_postgres|prod-)/i.test(dbUrl)) {
-    throw new Error(
-      `cleanupTransactional() refused: DATABASE_URL points to production-like host ` +
-      `("${dbUrl.replace(/:\/\/[^@]+@/, '://***@')}"). Refusing TRUNCATE.`,
-    );
-  }
+  // K1+ (2026-05-30): allowlist guard — yalniz local host VEYA test DB adi.
+  assertTestDatabaseUrl(process.env.DATABASE_URL, 'cleanupTransactional() TRUNCATE');
   const prisma = getRawPrisma();
   await prisma.$executeRawUnsafe(
     `TRUNCATE TABLE ${TRANSACTIONAL_TABLES.map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`,
