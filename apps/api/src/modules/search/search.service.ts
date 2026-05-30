@@ -94,6 +94,10 @@ export async function enqueueSearchJob(
  * Sıralama: scheduleDate asc → createdAt desc (aynı tarihte en yeni job
  * üstte). UI yeni job'a anında reaktif tepki versin diye desc tutuyor.
  */
+// Audit #2c (2026-05-30): GET /jobs tarih-filtreli ama satir-cap'i yoktu —
+// patolojik buyumeye karsi ust sinir (today-future is hacmini fazlasiyla asar).
+const SEARCH_JOBS_MAX = 2000;
+
 export async function listSearchJobs(
   app: FastifyInstance,
   date: string | null,
@@ -105,6 +109,7 @@ export async function listSearchJobs(
   return app.prisma.searchJob.findMany({
     where,
     orderBy: [{ scheduleDate: 'asc' }, { createdAt: 'desc' }],
+    take: SEARCH_JOBS_MAX,
   });
 }
 
