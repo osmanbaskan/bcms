@@ -1,10 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, computed, signal } from '@angular/core';
 import type { StudioPlanListEntry } from '../studio-plan.types';
 
 @Component({
   selector: 'app-studio-plan-list',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   templateUrl: './studio-plan-list.component.html',
   styleUrl: './studio-plan-list.component.scss',
