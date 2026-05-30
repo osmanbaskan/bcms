@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll } from 'vitest';
+import { assertTestDatabaseUrl } from '../../src/lib/test-db-guard.js';
 import { applyIngestPlanItemSourceTypeConstraint, applyLivePlanLookupConstraints, applyLivePlanTechnicalDetailsConstraints, applyLivePlanTransmissionSegmentsConstraints, applyOutboxConstraints, applyOutboxIdempotencyIndex, applyScheduleBroadcastFlowConstraints, applyTestConstraints, disconnectPrisma, seedTestFixtures } from './helpers.js';
 
 /**
@@ -32,6 +33,10 @@ beforeAll(async () => {
   // Prisma client'ı bu URL'e bağla.
   process.env.DATABASE_URL = databaseUrl;
   process.env.NODE_ENV = 'test';
+
+  // K1+ (2026-05-30): force-reset/db push semayi siler — TRUNCATE'ten yikici.
+  // Canli DB'ye karsi calismasini engelle (allowlist guard).
+  assertTestDatabaseUrl(databaseUrl, 'integration setup: prisma db push --force-reset');
 
   // Schema sync — clean slate.
   //
