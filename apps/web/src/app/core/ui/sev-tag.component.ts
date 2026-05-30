@@ -1,4 +1,4 @@
-import { Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 /**
@@ -16,6 +16,7 @@ const SEV_MAP: Record<string, SevDef> = {
 @Component({
   selector: 'bp-sev-tag',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     <span class="tag" [style.background]="def().bg" [style.color]="def().fg">{{ def().label }}</span>
