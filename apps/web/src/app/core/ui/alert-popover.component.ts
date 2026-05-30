@@ -1,4 +1,4 @@
-import { Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SevTagComponent } from './sev-tag.component';
 
@@ -18,6 +18,7 @@ export interface AlertItem {
 @Component({
   selector: 'bp-alert-popover',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, SevTagComponent],
   template: `
     @if (open()) {

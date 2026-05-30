@@ -1,4 +1,4 @@
-import { Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 /**
@@ -32,6 +32,7 @@ const STATUS_MAP: Record<string, StatusDef> = {
 @Component({
   selector: 'bp-status-tag',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     <span class="tag" [style.background]="def().bg" [style.color]="def().fg">
