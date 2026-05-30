@@ -5,9 +5,10 @@
  * Tone kategorileri (CSS class fragment ile birebir):
  *  - neutral : live_not_applicable, dc_not_applicable (her ikisi de SSDB kapsami disi)
  *  - muted   : unchecked
- *  - warning : missing_material, found_duration_unknown
- *  - success : found_match
- *  - danger  : found_duration_mismatch, ssdb_error
+ *  - found   : found_match            (VAR → #00a6d6 cyan)
+ *  - danger  : missing_material (EKSİK → kırmızı), ssdb_error
+ *  - warning : found_duration_mismatch (SÜRE UYMUYOR → sarı), found_duration_unknown
+ *  (2026-05-30 kullanıcı tercihi: var=cyan, eksik=kırmızı, süre uymuyor=sarı.)
  *
  * Provys/BXF süresi UI'nın "Süre" hücresinde mevcut (formatDur). SSDB süresi
  * SADECE bu badge'in tooltip'inde gösterilir; "Süre" hücresi ezilmez.
@@ -20,7 +21,7 @@ import type {
   SsdbMatchMethod,
 } from './provys.types';
 
-export type MaterialBadgeTone = 'neutral' | 'muted' | 'warning' | 'success' | 'danger';
+export type MaterialBadgeTone = 'neutral' | 'muted' | 'warning' | 'danger' | 'found';
 
 export interface MaterialBadgeStyle {
   /** Kompakt etiket; hücrede tek satır taşmasın diye kısa tutulmuştur. */
@@ -33,9 +34,9 @@ export const MATERIAL_BADGE: Record<ProvysMaterialStatus, MaterialBadgeStyle> = 
   // SSDB kapsami disi — alarm degil; kompakt notr em-dash, tooltip aciklayici.
   dc_not_applicable:       { compact: '—',            tone: 'neutral' },
   unchecked:               { compact: 'Bekliyor',     tone: 'muted' },
-  missing_material:        { compact: 'Eksik',        tone: 'warning' },
-  found_match:             { compact: 'Var',          tone: 'success' },
-  found_duration_mismatch: { compact: 'Süre uymuyor', tone: 'danger' },
+  missing_material:        { compact: 'Eksik',        tone: 'danger' },
+  found_match:             { compact: 'Var',          tone: 'found' },
+  found_duration_mismatch: { compact: 'Süre uymuyor', tone: 'warning' },
   found_duration_unknown:  { compact: 'Süre yok',     tone: 'warning' },
   ssdb_error:              { compact: 'SSDB hata',    tone: 'danger' },
 };

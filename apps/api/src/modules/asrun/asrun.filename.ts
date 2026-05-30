@@ -15,11 +15,12 @@ import type { AsrunChannelSlug } from '@bcms/shared';
  *   beIN SPORTS 4 HD_NEXIO-PLAYER 45_20260522_000000.bxf
  *   beIN SPORTS 5 HD_Nexio33-P2_20260522_000000.bxf
  *   beIN SPORTS 5 HD_Nexio33-P2_20260501_000000_ok.bxf       (extra `_ok` suffix)
+ *   beIN SPORTS HABER HD_MP_NEXIO33-P2_20260529_000000.bxf   (haber → beinhaber)
  *
  * Kontrat:
- *   - Kanal prefix dosya adının başında: `beIN SPORTS 1..5` veya
- *     `beIN HABER` / `beIN NEWS` (haber kanalı; mount'ta şu an yok ama
- *     destek hazır).
+ *   - Kanal prefix dosya adının başında: `beIN SPORTS 1..5`, `beIN SPORTS HABER`
+ *     (haber kanalı — Outbox/Ok'taki gerçek playout ismi, 2026-05-30), veya eski/
+ *     alternatif `beIN HABER` / `beIN NEWS`. Üçü de → beinhaber.
  *   - Tarih + saat suffix `_YYYYMMDD_HHMMSS` desenli; dosya adının
  *     herhangi bir yerinde olabilir (sonunda `.bxf` zorunlu, arada extra
  *     suffix `_ok` / ` - Copy` kabul edilir).
@@ -28,7 +29,9 @@ import type { AsrunChannelSlug } from '@bcms/shared';
  *   - Eşleşme yoksa `null` (watcher uyarı log'lar, sessiz skip).
  */
 
-const CHANNEL_PREFIX_RE = /^beIN (SPORTS [1-5]|HABER|NEWS)\b/i;
+// "SPORTS HABER" alternatifi "SPORTS [1-5]"den ÖNCE — rakamla çakışmaz ama
+// niyet net: beIN SPORTS HABER HD → beinhaber (sports kanalı değil).
+const CHANNEL_PREFIX_RE = /^beIN (SPORTS HABER|SPORTS [1-5]|HABER|NEWS)\b/i;
 const DATETIME_RE = /_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:[^/]*)?\.bxf$/i;
 
 export interface ParsedAsrunFilename {
@@ -49,7 +52,7 @@ function channelSlugFromMatch(part: string): AsrunChannelSlug | null {
   if (upper === 'SPORTS 3') return 'beinsports3';
   if (upper === 'SPORTS 4') return 'beinsports4';
   if (upper === 'SPORTS 5') return 'beinsports5';
-  if (upper === 'HABER' || upper === 'NEWS') return 'beinhaber';
+  if (upper === 'SPORTS HABER' || upper === 'HABER' || upper === 'NEWS') return 'beinhaber';
   return null;
 }
 

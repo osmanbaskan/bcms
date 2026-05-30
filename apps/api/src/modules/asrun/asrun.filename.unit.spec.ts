@@ -11,6 +11,7 @@ describe('asrun.filename › parseAsrunFilename', () => {
     ['beIN SPORTS 5 HD_Nexio32-P2_20260522_000000.bxf',    'beinsports5', '2026-05-22'],
     ['beIN HABER HD_NEXIO33-P1_20260522_000000.bxf',       'beinhaber',   '2026-05-22'],
     ['beIN NEWS HD_X_20260522_123456.bxf',                 'beinhaber',   '2026-05-22'],
+    ['beIN SPORTS HABER HD_MP_NEXIO33-P2_20260529_000000.bxf', 'beinhaber', '2026-05-29'], // Outbox/Ok gerçek haber ismi
   ])('parses %p → channel=%s, date=%s', (filename, expectedChannel, expectedDate) => {
     const parsed = parseAsrunFilename(filename);
     expect(parsed).not.toBeNull();
