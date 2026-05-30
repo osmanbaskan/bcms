@@ -208,7 +208,6 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     .mat-badge--neutral { background: rgba(156, 163, 175, 0.16); color: #d1d5db; border-color: rgba(156, 163, 175, 0.35); }
     .mat-badge--muted   { background: rgba(107, 114, 128, 0.14); color: #9ca3af; border-color: rgba(107, 114, 128, 0.30); font-style: italic; }
     .mat-badge--warning { background: rgba(245, 158, 11, 0.18); color: #fcd34d; border-color: rgba(245, 158, 11, 0.45); }
-    .mat-badge--success { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.45); }
     .mat-badge--danger  { background: rgba(239, 68, 68, 0.22);  color: #fca5a5; border-color: rgba(239, 68, 68, 0.50); }
     /* 2026-05-30: "Var" → #00a6d6 cyan (yeşilden ayrı tutuldu; kullanıcı tercihi). */
     .mat-badge--found   { background: rgba(0, 166, 214, 0.18);  color: #5fd0ec; border-color: #00a6d6; }
@@ -310,9 +309,6 @@ const CATEGORY_CLASS: Record<ProvysCategory, string> = {
     }
     :host-context(html[data-theme="light"]) .mat-badge--warning {
       background: rgba(245, 158, 11, 0.22); color: #92400e; border-color: #d97706;
-    }
-    :host-context(html[data-theme="light"]) .mat-badge--success {
-      background: rgba(16, 185, 129, 0.20); color: #065f46; border-color: #059669;
     }
     :host-context(html[data-theme="light"]) .mat-badge--danger {
       background: rgba(239, 68, 68, 0.20); color: #991b1b; border-color: #dc2626;

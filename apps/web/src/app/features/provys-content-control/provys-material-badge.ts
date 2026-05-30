@@ -21,7 +21,7 @@ import type {
   SsdbMatchMethod,
 } from './provys.types';
 
-export type MaterialBadgeTone = 'neutral' | 'muted' | 'warning' | 'success' | 'danger' | 'found';
+export type MaterialBadgeTone = 'neutral' | 'muted' | 'warning' | 'danger' | 'found';
 
 export interface MaterialBadgeStyle {
   /** Kompakt etiket; hücrede tek satır taşmasın diye kısa tutulmuştur. */
