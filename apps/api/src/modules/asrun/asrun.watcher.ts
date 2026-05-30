@@ -14,6 +14,8 @@ const DEBOUNCE_MS      = Number(process.env.ASRUN_WATCHER_DEBOUNCE_MS ?? '1500')
 const CONCURRENCY      = Math.max(1, Number(process.env.ASRUN_WATCHER_CONCURRENCY ?? '3'));
 const USE_POLLING      = parseBoolEnv(process.env.ASRUN_WATCHER_USE_POLLING, false);
 const POLL_INTERVAL_MS = parsePollIntervalMs(process.env.ASRUN_WATCHER_POLL_INTERVAL_MS, 30_000);
+// Audit #2b (2026-05-30): restart re-import; default false (davranis degismez).
+const IGNORE_INITIAL   = parseBoolEnv(process.env.ASRUN_WATCHER_IGNORE_INITIAL, false);
 
 /**
  * Asrun BXF dosya izleyici — worker container.
@@ -52,7 +54,7 @@ export function startAsrunWatcher(app: FastifyInstance): void {
 
   const watcher = chokidar.watch(WATCH_FOLDER, {
     persistent: true,
-    ignoreInitial: false,
+    ignoreInitial: IGNORE_INITIAL,
     usePolling: USE_POLLING,
     interval: POLL_INTERVAL_MS,
     binaryInterval: POLL_INTERVAL_MS,

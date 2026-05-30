@@ -5,14 +5,18 @@ import { QUEUES } from '../../plugins/rabbitmq.js';
 import { isOutboxPollerAuthoritative, writeShadowEvent } from '../outbox/outbox.helpers.js';
 import { validateIngestSourcePath, VIDEO_EXTENSIONS } from './ingest.paths.js';
 import { startHeartbeatTicker } from '../../lib/service-heartbeat.js';
+import { parseBoolEnv } from '../provys/provys.watcher.js';
 
 const WATCH_FOLDER    = process.env.WATCH_FOLDER ?? './tmp/watch';
+// Audit #2b (2026-05-30): default false (mevcut davranis); ops true yapip
+// restart re-import'u kapatabilir.
+const IGNORE_INITIAL  = parseBoolEnv(process.env.INGEST_WATCHER_IGNORE_INITIAL, false);
 
 export function startIngestWatcher(app: FastifyInstance): void {
   startHeartbeatTicker('ingest-watcher', app);
   const watcher = chokidar.watch(WATCH_FOLDER, {
     persistent:     true,
-    ignoreInitial:  false,   // process files already present on startup
+    ignoreInitial:  IGNORE_INITIAL,   // INGEST_WATCHER_IGNORE_INITIAL=true ile kapatilabilir
     awaitWriteFinish: {
       stabilityThreshold: 3000, // wait 3 s with no size change before firing
       pollInterval:        500,
@@ -27,6 +31,21 @@ export function startIngestWatcher(app: FastifyInstance): void {
 
     try {
       const sourcePath = validateIngestSourcePath(filePath);
+
+      // Audit #2b (2026-05-30): dosya ingest sonrasi klasorde kalir (worker
+      // tasimaz); ignoreInitial:false her restart'ta ayni sourcePath'e MUKERRER
+      // job yaratirdi. Inbox semantigi: ayni path icin job varsa atla.
+      const existing = await app.prisma.ingestJob.findFirst({
+        where: { sourcePath },
+        select: { id: true, status: true },
+      });
+      if (existing) {
+        app.log.info(
+          { filePath, existingJobId: existing.id, status: existing.status },
+          'Ingest: bu sourcePath icin job zaten var, atlandi (restart dedup)',
+        );
+        return;
+      }
 
       // Madde 2+7 PR-B3b-1: tx içinde job create + shadow outbox; direct
       // publish (queue.ingest.new) tx dışında — mevcut davranış korunur.
