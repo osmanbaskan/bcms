@@ -40,6 +40,9 @@ export function parsePollIntervalMs(raw: string | undefined, fallback = 30_000):
 
 const USE_POLLING = parseBoolEnv(process.env.PROVYS_WATCHER_USE_POLLING, false);
 const POLL_INTERVAL_MS = parsePollIntervalMs(process.env.PROVYS_WATCHER_POLL_INTERVAL_MS, 30_000);
+// Audit #2b (2026-05-30): restart'ta ignoreInitial:false tum dosyalari yeniden
+// sync eder (pahali). Ops ilk yuklemeden sonra true yapip kapatabilir; default false.
+const IGNORE_INITIAL = parseBoolEnv(process.env.PROVYS_WATCHER_IGNORE_INITIAL, false);
 
 /**
  * Worker bağlamında çalışan dosya izleyici. Host-side CIFS mount + Docker
@@ -81,7 +84,7 @@ export function startProvysWatcher(app: FastifyInstance): void {
   // bu yüzden write-stability poll'u (500 ms) ayrı tutuldu.
   const watcher = chokidar.watch(WATCH_FOLDER, {
     persistent: true,
-    ignoreInitial: false,
+    ignoreInitial: IGNORE_INITIAL,
     usePolling: USE_POLLING,
     interval: POLL_INTERVAL_MS,
     binaryInterval: POLL_INTERVAL_MS,
