@@ -7,26 +7,17 @@ import { interval, Subscription } from 'rxjs';
 import { GROUP, type ProvysLiveTodayDto } from '@bcms/shared';
 import { KpiComponent } from '../../core/ui/kpi.component';
 import { CardComponent } from '../../core/ui/card.component';
-import { StatusTagComponent } from '../../core/ui/status-tag.component';
-// DÜŞÜK-FE hijyen (2026-05-04): SevTagComponent template'de kullanılmıyor
-// (NG8113 warning); ileride uyarı/incident bölümü dashboard'a gelirse eklenecek.
 import { PageHeaderComponent } from '../../core/ui/page-header.component';
-// SCHED-B5a (2026-05-08): legacy ScheduleService silindi; broadcast list
-// endpoint canonical (/schedules/broadcast) doğrudan ApiService ile çağrılır.
 import { ApiService } from '../../core/services/api.service';
 import { STUDIO_PLAN_SLOT_MINUTES } from '../studio-plan/studio-plan.component';
-
-interface ScheduleRow {
-  id: number;
-  date: string;
-  startTime: string;
-  endTime: string;
-  channelId?: number | null;
-  title: string;
-  status: string;
-  channel?: { id: number; name: string } | null;
-  league?: { id: number; name: string; code: string } | null;
-}
+import { ProvysService } from '../provys-content-control/provys.service';
+import {
+  PROVYS_CHANNELS,
+  PROVYS_CATEGORY_STYLES,
+  type ProvysCategory,
+  type ProvysChannelSlug,
+  type ProvysItemDto,
+} from '../provys-content-control/provys.types';
 
 interface IngestPort {
   id: number;
@@ -44,10 +35,45 @@ interface StudioSlot {
 }
 
 /**
+ * Kanal kutusu (dashboard "şu an yayında" özeti). Provys per-channel store'undan
+ * türetilir: o an oynayan PROGRAM/CANLI materyali; eğer şu an REKLAM/KAMU_SPOTU/
+ * TANITIM/DIGER yayındaysa SIRADAKİ PROGRAM/CANLI bilgisini gösterir.
+ */
+interface ChannelBox {
+  slug: ProvysChannelSlug;
+  name: string;
+  state: 'live' | 'upcoming' | 'idle' | 'loading';
+  category: ProvysCategory | null;
+  catLabel: string;
+  catClass: string;
+  title: string;
+  series: string | null;
+  start: string;
+  end: string;
+}
+
+/** Kategori → CSS class fragment (provys panel ile aynı eşleme). */
+const CATEGORY_CLASS: Record<ProvysCategory, string> = {
+  REKLAM: 'reklam',
+  KAMU_SPOTU: 'kamu',
+  CANLI: 'canli',
+  PROGRAM: 'program',
+  TANITIM: 'tanitim',
+  DIGER: 'diger',
+};
+
+/** PROGRAM/CANLI = "esas materyal"; diğerleri ara-yayın (reklam/tanıtım/spot). */
+function isProgramLike(c: ProvysCategory): boolean {
+  return c === 'PROGRAM' || c === 'CANLI';
+}
+
+/**
  * Dashboard — beINport Genel Bakış pattern (UI V2 Aşama 2A).
- * KPI rail + Hero (canlı yayın) + Shift + Broadcast list + Studios + Ports + Alerts (placeholder).
+ * KPI rail + Hero (canlı yayın) + Vardiya + 6 kanal kutusu + Stüdyo + Ports.
  *
- * Pattern kaynağı: /home/ubuntu/website/beINport/genel-bakis.html
+ * 2026-05-31: "Bugünün yayın akışı" + "Son uyarılar" kartları kaldırıldı;
+ * yerine BUGÜN CANLİ YAYIN altına 6 kanal için "şu an yayında / sıradaki"
+ * kutuları eklendi (Provys snapshot'tan türetilir; her kutu büyütülebilir).
  *
  * KORUMA: BCMS API'lerine sadece read-only sorgu yapılır. Yetkiler default ([] — auth user).
  */
@@ -59,7 +85,6 @@ interface StudioSlot {
     RouterLink,
     KpiComponent,
     CardComponent,
-    StatusTagComponent,
     PageHeaderComponent,
   ],
   template: `
@@ -70,10 +95,6 @@ interface StudioSlot {
 
     <div class="dashboard">
       <!-- ─── KPI Rail ────────────────────────────────────────────────── -->
-      <!-- "Bugün canlı yayın": Provys'in bugünkü CANLI event'leri (tüm kanallar
-           birleşik). liveToday().length — /provys/live-today kanal filtresiz
-           olduğundan Provys'e yeni kanal eklenince otomatik sayıya dahil olur;
-           bu KPI'ya tekrar dokunmaya gerek yok. -->
       <div class="kpi-rail">
         <bp-kpi [accent]="true"
                 label="Bugün canlı yayın"
@@ -93,12 +114,57 @@ interface StudioSlot {
                 [sub]="'placeholder · Aşama 3'"></bp-kpi>
       </div>
 
+      <!-- ─── Kanal kutuları (6 yan yana) — KPI rail'in hemen altında ──── -->
+      <!-- Provys per-channel snapshot'tan türetilir. PROGRAM/CANLI yayındaysa
+           onu; REKLAM/TANITIM/KAMU_SPOTU/DIGER yayındaysa SIRADAKİ PROGRAM/
+           CANLI'yı gösterir. Her kutu çapraz-ok ile büyütülebilir (ortalanır). -->
+      <div class="channels-row" data-test="channel-boxes">
+        @for (box of channelBoxes(); track box.slug) {
+          <div class="ch-box"
+               [class.is-live]="box.state === 'live'"
+               [class.is-upcoming]="box.state === 'upcoming'"
+               [attr.data-slug]="box.slug">
+            <button type="button"
+                    class="ch-expand"
+                    (click)="expand(box.slug)"
+                    [attr.aria-label]="box.name + ' kutusunu büyüt'"
+                    title="Büyüt">
+              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+                <path fill="currentColor" d="M10 21H3v-7h2v3.59l4.29-4.3 1.42 1.42L6.41 19H10v2zm11-11h-2V6.41l-4.29 4.3-1.42-1.42L17.59 5H14V3h7v7z"/>
+              </svg>
+            </button>
+
+            <div class="ch-head">
+              <span class="ch-name" [title]="box.name">{{ box.name }}</span>
+            </div>
+
+            @if (box.state === 'loading') {
+              <div class="ch-empty">Yükleniyor…</div>
+            } @else if (box.state === 'idle') {
+              <div class="ch-empty">Program / Canlı yok</div>
+            } @else {
+              @if (box.series) {
+                <div class="ch-series" [title]="box.series">{{ box.series }}</div>
+              }
+              <div class="ch-title" [title]="box.title">{{ box.title }}</div>
+              <div class="ch-time">{{ box.start }}<span class="ch-dash">–</span>{{ box.end }}</div>
+            }
+          </div>
+        }
+      </div>
+
       <!-- ─── Hero + Shift row ───────────────────────────────────────── -->
-      <!-- Hero canlı yayın: Provys'in bugünkü CANLI kategorili event'leri (tüm
-           kanallar birleşik, başlangıç saatine göre). /provys/live-today; dcCode
-           gösterilmez, başlık (derived isim) yansır. (2026-05-29) -->
       <div class="row hero-row">
-        <div class="hero">
+        <div class="hero" [class.is-expanded]="expandedPanel() === 'hero'">
+          <button type="button"
+                  class="hero-expand"
+                  (click)="togglePanel('hero')"
+                  [attr.aria-label]="'Canlı yayın kutusunu büyüt'"
+                  [title]="expandedPanel() === 'hero' ? 'Kapat' : 'Büyüt'">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path fill="currentColor" d="M10 21H3v-7h2v3.59l4.29-4.3 1.42 1.42L6.41 19H10v2zm11-11h-2V6.41l-4.29 4.3-1.42-1.42L17.59 5H14V3h7v7z"/>
+            </svg>
+          </button>
           <div class="hero-live">
             <div class="hero-live-head">
               <span class="hero-badge"><span class="hero-dot"></span> CANLI</span>
@@ -122,7 +188,11 @@ interface StudioSlot {
           </div>
         </div>
 
-        <bp-card title="Vardiyam" [padded]="true">
+        <bp-card title="Vardiyam" [padded]="true"
+                 [expandable]="true"
+                 [expanded]="expandedPanel() === 'vardiya'"
+                 [class.is-expanded]="expandedPanel() === 'vardiya'"
+                 (expandClick)="togglePanel('vardiya')">
           @if (canViewWeeklyShift()) {
             <a card-action class="link-action" routerLink="/weekly-shift">Tümü →</a>
           }
@@ -136,47 +206,18 @@ interface StudioSlot {
         </bp-card>
       </div>
 
-      <!-- ─── Broadcasts + Studios row ───────────────────────────────── -->
-      <div class="row broadcasts-row">
-        <bp-card [title]="'Bugünün yayın akışı'"
-                 [count]="todayBroadcasts().length + ' yayın'">
-          <!-- Veri kaynağı /api/v1/schedules/broadcast (Schedule canonical
-               domain); "Tümü →" aynı domain liste sayfasına gider. Live-plan
-               domain'i ayrı (yayın-planlama list /api/v1/live-plan kullanıyor)
-               — dashboard'dan oraya cross-domain link verilmez. -->
-          <a card-action class="link-action" routerLink="/schedules">Tümü →</a>
-          <div class="broadcast-list">
-            @if (loadingBroadcasts()) {
-              <div class="empty">Yükleniyor…</div>
-            } @else {
-              <!-- /schedules/:id detail route yok (schedulesRoutes sadece ''
-                   + 'reporting' tanımlıyor). Sahte tıklanabilirlik yerine
-                   read-only satır; kullanıcı "Tümü →" üzerinden liste
-                   sayfasına gidip oradan detay/edit yapabilir. -->
-              @for (m of todayBroadcasts().slice(0, 14); track m.id) {
-                <div class="broadcast-row">
-                  <div class="row-time">{{ m.startTime }}</div>
-                  <div class="row-league">{{ m.league?.name ?? '—' }}</div>
-                  <div class="row-title">{{ m.title }}</div>
-                  <div class="row-channel">{{ m.channel?.name ?? '—' }}</div>
-                  <div class="row-status"><bp-status-tag [state]="m.status"></bp-status-tag></div>
-                </div>
-              } @empty {
-                <div class="empty">Bugün için yayın yok.</div>
-              }
-            }
-          </div>
-        </bp-card>
-
-        <bp-card [title]="'Stüdyo programı'" [count]="todayStudios().length + ' kayıt'">
+      <!-- ─── Stüdyo + Ingest portları row ───────────────────────────── -->
+      <div class="row info-row">
+        <bp-card [title]="'Stüdyo programı'" [count]="todayStudios().length + ' kayıt'"
+                 [expandable]="true"
+                 [expanded]="expandedPanel() === 'studio'"
+                 [class.is-expanded]="expandedPanel() === 'studio'"
+                 (expandClick)="togglePanel('studio')">
           <a card-action class="link-action" routerLink="/studio-plan">Tümü →</a>
           <div class="studio-list">
             @if (loadingStudios()) {
               <div class="empty">Yükleniyor…</div>
             } @else {
-              <!-- Drilldown: studio-plan ngOnInit day query-param'i okur; week
-                   normalize edip selectedDay'i ayarlar. studio/time bonus
-                   focus hint'i (şimdilik sadece accept, gelecekte highlight). -->
               @for (p of todayStudios().slice(0, 7); track p.id) {
                 <a class="studio-row"
                    [routerLink]="['/studio-plan']"
@@ -197,12 +238,13 @@ interface StudioSlot {
             }
           </div>
         </bp-card>
-      </div>
 
-      <!-- ─── Ports grid + Alerts row ────────────────────────────────── -->
-      <div class="row bottom-row">
         <bp-card [title]="'Ingest portları'"
-                 [count]="kpiActivePorts() + '/' + kpiTotalPorts() + ' aktif'">
+                 [count]="kpiActivePorts() + '/' + kpiTotalPorts() + ' aktif'"
+                 [expandable]="true"
+                 [expanded]="expandedPanel() === 'ports'"
+                 [class.is-expanded]="expandedPanel() === 'ports'"
+                 (expandClick)="togglePanel('ports')">
           <a card-action class="link-action" routerLink="/ingest">Detay →</a>
           <div class="ports-grid">
             @if (loadingPorts()) {
@@ -210,9 +252,6 @@ interface StudioSlot {
             } @else if (ports().length === 0) {
               <div class="empty">Tanımlı port yok.</div>
             } @else {
-              <!-- Drilldown: ingest-list port query-param'i okur, workspace
-                   tabını "Port Görünümü" (index 1) açar + highlightedPort
-                   sinyalini set eder. -->
               @for (p of ports(); track p.id) {
                 <a class="port-cell"
                    [class.active]="p.active"
@@ -230,21 +269,50 @@ interface StudioSlot {
             <span><i class="dot idle"></i>Pasif</span>
           </div>
         </bp-card>
-
-        <bp-card [title]="'Son uyarılar'" [count]="'placeholder'">
-          @if (canViewAuditLog()) {
-            <a card-action class="link-action" routerLink="/audit-logs">Audit log →</a>
-          }
-          <div class="alerts-empty">
-            <div class="placeholder-eyebrow">PLACEHOLDER · Aşama 3</div>
-            <div class="placeholder-text">Alert sistemi henüz BCMS'te yok.</div>
-            <div class="placeholder-sub">
-              Prometheus alerts (audit-internal) Aşama 3'te bu kart'a bağlanır.
-            </div>
-          </div>
-        </bp-card>
       </div>
     </div>
+
+    <!-- ─── Kart büyütme backdrop'u (hero + bp-card'lar için) ────────── -->
+    @if (expandedPanel()) {
+      <div class="panel-backdrop" (click)="collapsePanel()" data-test="panel-backdrop"></div>
+    }
+
+    <!-- ─── Büyütülmüş kanal kutusu (overlay, ortalanmış) ─────────────── -->
+    @if (expandedBox(); as box) {
+      <div class="ch-overlay" (click)="collapse()" data-test="channel-overlay">
+        <div class="ch-box ch-box--big"
+             [class.is-live]="box.state === 'live'"
+             [class.is-upcoming]="box.state === 'upcoming'"
+             [attr.data-slug]="box.slug"
+             (click)="$event.stopPropagation()">
+          <button type="button"
+                  class="ch-expand ch-collapse"
+                  (click)="collapse()"
+                  aria-label="Kapat"
+                  title="Kapat">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path fill="currentColor" d="M22 3.41 16.71 8.7 19 11h-7V4l2.29 2.29L19.59 1 22 3.41zM2 20.59 7.29 15.3 5 13h7v7l-2.29-2.29L4.41 23 2 20.59z"/>
+            </svg>
+          </button>
+
+          <div class="ch-head">
+            <span class="ch-name">{{ box.name }}</span>
+          </div>
+
+          @if (box.state === 'loading') {
+            <div class="ch-empty">Yükleniyor…</div>
+          } @else if (box.state === 'idle') {
+            <div class="ch-empty">Program / Canlı yok</div>
+          } @else {
+            @if (box.series) {
+              <div class="ch-series">{{ box.series }}</div>
+            }
+            <div class="ch-title ch-title--big">{{ box.title }}</div>
+            <div class="ch-time ch-time--big">{{ box.start }}<span class="ch-dash">–</span>{{ box.end }}</div>
+          }
+        </div>
+      </div>
+    }
   `,
   styles: [`
     :host { display: block; }
@@ -265,8 +333,7 @@ interface StudioSlot {
     /* ─── Layout rows ──────────────────────────────────────────────── */
     .row { display: grid; gap: 16px; }
     .hero-row { grid-template-columns: 1fr 320px; }
-    .broadcasts-row { grid-template-columns: 1.6fr 1fr; }
-    .bottom-row { grid-template-columns: 1fr 1fr; }
+    .info-row { grid-template-columns: 1.4fr 1fr; }
 
     /* ─── Hero ─────────────────────────────────────────────────────── */
     .hero {
@@ -280,7 +347,6 @@ interface StudioSlot {
       display: flex;
       align-items: stretch;
     }
-    .hero-content { display: flex; align-items: flex-end; flex: 1; }
     .hero-badge {
       display: inline-flex;
       gap: 8px;
@@ -302,44 +368,38 @@ interface StudioSlot {
       box-shadow: 0 0 8px #ef4444;
       animation: bp-pulse var(--bp-dur-pulse) infinite;
     }
-    .hero-teams {
-      font-family: var(--bp-font-display);
-      font-size: 28px;
-      font-weight: var(--bp-fw-semibold);
-      letter-spacing: var(--bp-ls-tight);
-      margin-top: 12px;
-      line-height: 1.1;
+    .hero-expand {
+      position: absolute; top: 14px; right: 14px; z-index: 2;
+      width: 26px; height: 26px;
+      display: grid; place-items: center;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 6px;
       color: #fff;
-    }
-    .hero-meta {
-      font-size: var(--bp-text-sm);
-      color: rgba(255, 255, 255, 0.65);
-      margin-top: 10px;
-      font-family: var(--bp-font-mono);
-      letter-spacing: 0.04em;
-    }
-    .hero-actions { display: flex; gap: 8px; margin-top: 18px; }
-    .hero-btn {
-      background: #fff;
-      color: var(--bp-purple-700);
-      border: 0;
-      padding: 9px 16px;
-      border-radius: var(--bp-r-md);
-      font-size: 12.5px;
-      font-weight: var(--bp-fw-semibold);
       cursor: pointer;
-      text-decoration: none;
-      font-family: inherit;
+      padding: 0;
+      transition: background var(--bp-dur-fast);
     }
-    .hero-btn-ghost {
-      background: rgba(255, 255, 255, 0.10);
-      color: #fff;
-      border: 1px solid rgba(255, 255, 255, 0.20);
-      padding: 9px 16px;
-      border-radius: var(--bp-r-md);
-      font-size: 12.5px;
-      cursor: pointer;
-      font-family: inherit;
+    .hero-expand:hover { background: rgba(255, 255, 255, 0.24); }
+    .hero.is-expanded {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: min(880px, 92vw);
+      max-height: 86vh;
+      overflow: auto;
+      z-index: 1001;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      animation: bp-card-pop 140ms ease-out;
+    }
+    @keyframes bp-card-pop { from { transform: translate(-50%, -50%) scale(0.96); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+    .hero.is-expanded .hero-live-list { max-height: 64vh; }
+    /* Kart büyütme backdrop'u — hero + bp-card .is-expanded ile birlikte. */
+    .panel-backdrop {
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(10, 10, 14, 0.66);
+      backdrop-filter: blur(2px);
+      animation: ch-fade var(--bp-dur-fast, 120ms) ease-out;
     }
     /* ─── Hero canlı (CANLI) liste ─────────────────────────────────── */
     .hero-live { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -383,7 +443,7 @@ interface StudioSlot {
     }
 
     /* ─── Shift placeholder ───────────────────────────────────────── */
-    .shift-empty, .alerts-empty {
+    .shift-empty {
       padding: 18px;
       display: flex;
       flex-direction: column;
@@ -401,49 +461,125 @@ interface StudioSlot {
       border-radius: 4px;
     }
     .placeholder-text { font-size: 13px; color: var(--bp-fg-2); }
-    .placeholder-sub { font-size: 11.5px; color: var(--bp-fg-3); line-height: 1.5; }
 
-    /* ─── Broadcast list ──────────────────────────────────────────── */
-    .broadcast-list { display: flex; flex-direction: column; }
-    .broadcast-row {
-      display: flex;
+    /* ─── Kanal kutuları ──────────────────────────────────────────── */
+    .channels-row {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
       gap: 12px;
-      padding: 10px 18px;
-      align-items: center;
-      border-bottom: 1px solid var(--bp-line-2);
-      text-decoration: none;
-      color: inherit;
-      transition: background var(--bp-dur-fast);
     }
-    .broadcast-row:last-child { border-bottom: 0; }
-    .broadcast-row:hover { background: var(--bp-row-hover); }
-    .row-time {
-      font-family: var(--bp-font-mono);
-      font-size: 13px;
-      color: var(--bp-purple-300);
-      font-weight: var(--bp-fw-medium);
-      width: 50px;
-    }
-    .row-league {
-      font-size: 9.5px;
-      letter-spacing: 0.10em;
-      color: var(--bp-fg-3);
-      font-weight: var(--bp-fw-semibold);
-      width: 130px;
-      text-transform: uppercase;
-      white-space: nowrap;
+    .ch-box {
+      position: relative;
+      background: var(--bp-bg-2);
+      border: 1px solid var(--bp-line-2);
+      border-left: 3px solid var(--bp-line);
+      border-radius: var(--bp-r-lg, 10px);
+      padding: 12px 12px 13px;
+      min-height: 148px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
       overflow: hidden;
-      text-overflow: ellipsis;
     }
-    .row-title { flex: 1; font-size: 13px; color: var(--bp-fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .row-channel {
-      font-family: var(--bp-font-mono);
-      font-size: 11.5px;
-      color: var(--bp-fg-2);
-      width: 80px;
-      text-align: right;
+    .ch-box.is-live { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.05); }
+    .ch-box.is-upcoming { border-left-color: var(--bp-purple-400, #a78bfa); }
+    .ch-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding-right: 22px; min-width: 0;
     }
-    .row-status { width: 80px; text-align: right; }
+    .ch-name {
+      font-size: 12.5px; font-weight: var(--bp-fw-semibold, 600);
+      color: var(--bp-fg-1);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ch-flag {
+      flex: 0 0 auto;
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 9px; font-weight: var(--bp-fw-bold, 700);
+      letter-spacing: 0.06em;
+      padding: 2px 6px; border-radius: 10px;
+    }
+    .ch-flag--live { color: #fca5a5; background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(239, 68, 68, 0.42); }
+    .ch-flag--next { color: var(--bp-purple-300, #c4b5fd); background: rgba(124, 58, 237, 0.16); border: 1px solid rgba(124, 58, 237, 0.40); }
+    .ch-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #ef4444; box-shadow: 0 0 6px #ef4444;
+      animation: bp-pulse var(--bp-dur-pulse) infinite;
+    }
+    .ch-expand {
+      position: absolute; top: 8px; right: 8px;
+      width: 22px; height: 22px;
+      display: grid; place-items: center;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--bp-line-2);
+      border-radius: 5px;
+      color: var(--bp-fg-3);
+      cursor: pointer;
+      padding: 0;
+      transition: background var(--bp-dur-fast), color var(--bp-dur-fast);
+    }
+    .ch-expand:hover { background: rgba(124, 58, 237, 0.20); color: var(--bp-fg-1); }
+    .ch-cat {
+      align-self: flex-start;
+      display: inline-block; padding: 2px 8px;
+      border-radius: var(--bp-r-pill, 999px);
+      font-size: 10.5px; font-weight: var(--bp-fw-semibold, 600); line-height: 1.4;
+      border: 1px solid transparent;
+    }
+    .ch-cat--reklam   { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.40); }
+    .ch-cat--kamu     { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; border-color: rgba(99, 102, 241, 0.40); }
+    .ch-cat--canli    { background: rgba(239, 68, 68, 0.22);  color: #fca5a5; border-color: rgba(239, 68, 68, 0.45); }
+    .ch-cat--program  { background: rgba(245, 158, 11, 0.18); color: #fcd34d; border-color: rgba(245, 158, 11, 0.40); }
+    .ch-cat--tanitim  { background: rgba(168, 85, 247, 0.18); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.40); }
+    .ch-cat--diger    { background: rgba(156, 163, 175, 0.16); color: #d1d5db; border-color: rgba(156, 163, 175, 0.35); }
+    .ch-series {
+      font-size: 10.5px; color: var(--bp-fg-3); letter-spacing: 0.03em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ch-title {
+      font-size: 13px; color: var(--bp-fg-1); line-height: 1.3;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .ch-time {
+      margin-top: auto;
+      font-family: var(--bp-font-mono); font-size: 12px;
+      color: var(--bp-purple-300, #c4b5fd);
+      font-variant-numeric: tabular-nums;
+    }
+    .ch-dash { margin: 0 4px; color: var(--bp-fg-4); }
+    .ch-empty {
+      flex: 1; display: grid; place-items: center;
+      color: var(--bp-fg-4); font-size: 12px; text-align: center;
+    }
+
+    /* ─── Büyütülmüş kutu (overlay) ───────────────────────────────── */
+    .ch-overlay {
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(10, 10, 14, 0.66);
+      backdrop-filter: blur(2px);
+      display: grid; place-items: center;
+      padding: 24px;
+      animation: ch-fade var(--bp-dur-fast, 120ms) ease-out;
+    }
+    .ch-box--big {
+      width: min(560px, 92vw);
+      min-height: 300px;
+      padding: 28px 30px 30px;
+      gap: 12px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+      animation: ch-pop var(--bp-dur-fast, 140ms) ease-out;
+    }
+    .ch-box--big .ch-head { padding-right: 34px; }
+    .ch-box--big .ch-name { font-size: 18px; }
+    .ch-collapse { width: 30px; height: 30px; top: 14px; right: 14px; }
+    .ch-title--big {
+      font-size: 22px; font-weight: var(--bp-fw-semibold, 600);
+      -webkit-line-clamp: 5;
+    }
+    .ch-time--big { font-size: 15px; }
+    @keyframes ch-fade { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes ch-pop { from { transform: scale(0.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
     /* ─── Studio list ─────────────────────────────────────────────── */
     .studio-list { display: flex; flex-direction: column; }
@@ -453,7 +589,6 @@ interface StudioSlot {
       padding: 11px 18px;
       align-items: center;
       border-bottom: 1px solid var(--bp-line-2);
-      /* Anchor variant (drilldown): visual eşit kalsın. */
       text-decoration: none;
       color: inherit;
       transition: background var(--bp-dur-fast);
@@ -489,7 +624,6 @@ interface StudioSlot {
       font-size: 9px;
       font-family: var(--bp-font-mono);
       color: #fff;
-      /* Anchor variant (drilldown): underline yok, hover'da hafif scale. */
       text-decoration: none;
       transition: transform var(--bp-dur-fast), filter var(--bp-dur-fast);
     }
@@ -518,20 +652,25 @@ interface StudioSlot {
     .empty { padding: 32px; text-align: center; color: var(--bp-fg-3); font-size: 13px; }
 
     /* ─── Responsive ──────────────────────────────────────────────── */
+    @media (max-width: 1300px) {
+      .channels-row { grid-template-columns: repeat(3, 1fr); }
+    }
     @media (max-width: 1100px) {
       .kpi-rail { grid-template-columns: repeat(2, 1fr); }
-      .hero-row, .broadcasts-row, .bottom-row { grid-template-columns: 1fr; }
+      .hero-row, .info-row { grid-template-columns: 1fr; }
       .ports-grid { grid-template-columns: repeat(8, 1fr); }
     }
     @media (max-width: 700px) {
       .dashboard { padding: 0 16px 16px; }
       .kpi-rail { grid-template-columns: 1fr; }
+      .channels-row { grid-template-columns: repeat(2, 1fr); }
     }
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   private keycloak = inject(KeycloakService);
+  private provys = inject(ProvysService);
 
   todayDate = signal('');
   todayEyebrow = computed(() => {
@@ -541,33 +680,40 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // ─── State ───────────────────────────────────────────────────────────────
   loadingLive = signal(true);
-  loadingBroadcasts = signal(true);
   loadingStudios = signal(true);
   loadingPorts = signal(true);
 
   liveToday = signal<ProvysLiveTodayDto[]>([]);
-  todayBroadcasts = signal<ScheduleRow[]>([]);
   todayStudios = signal<StudioSlot[]>([]);
   ports = signal<IngestPort[]>([]);
 
+  // ─── Kanal kutuları ────────────────────────────────────────────────────────
+  readonly channels = PROVYS_CHANNELS;
+  /** "Şu an" referansı; 30 sn'de bir tazelenir + SSE snapshot store değişimi. */
+  private readonly nowMs = signal(Date.now());
+  /** Büyütülmüş (overlay) kanal kutusunun slug'ı; null → kapalı. */
+  readonly expandedSlug = signal<ProvysChannelSlug | null>(null);
+  /** Büyütülmüş genel panel id'si (hero/vardiya/studio/ports); null → kapalı. */
+  readonly expandedPanel = signal<string | null>(null);
+
+  readonly channelBoxes = computed<ChannelBox[]>(() => {
+    const now = this.nowMs();
+    return this.channels.map((ch) => this.computeBox(ch.slug, ch.displayName, now));
+  });
+  readonly expandedBox = computed<ChannelBox | null>(() => {
+    const slug = this.expandedSlug();
+    if (!slug) return null;
+    return this.channelBoxes().find((b) => b.slug === slug) ?? null;
+  });
+
   // ─── Group-aware link visibility ─────────────────────────────────────────
-  // /audit-logs route SystemEng grubuna açık, Admin AuthGuard üzerinden bypass.
-  // /weekly-shift route Admin + SystemEng. Diğer gruplardaki kullanıcı linke
-  // tıklarsa AuthGuard 403 + redirect üretir — dashboard'da daha baştan gösterme.
+  // "Son uyarılar" kartı (audit-log linki) 2026-05-31'de kaldırıldı; canViewAuditLog
+  // artık template'de kullanılmıyor — Vardiyam kartı için canViewWeeklyShift kaldı.
   private readonly _userGroups = signal<string[]>([]);
   private readonly isAdmin = computed(() => this._userGroups().includes(GROUP.Admin));
-  readonly canViewAuditLog = computed(() => this.isAdmin() || this._userGroups().includes(GROUP.SystemEng));
   readonly canViewWeeklyShift = computed(() => this.isAdmin() || this._userGroups().includes(GROUP.SystemEng));
 
   // ─── KPIs ────────────────────────────────────────────────────────────────
-  // Hero canlı yayın: 2026-05-29 itibarıyla Provys'in bugünkü CANLI kategorili
-  // event'lerine bağlandı (/provys/live-today, tüm kanallar birleşik, saate göre).
-  // ON_AIR enum (2026-05-11 hard-delete) kaynağı DEĞİL — operasyonel "canlı"
-  // kaynağı olarak Provys CANLI kategorisi seçildi (kullanıcı kararı). dcCode
-  // gösterilmez; başlık (derived isim) yansır.
-  // "Şu an canlı" KPI (kpiLive) hâlâ placeholder; istenirse liveToday().length'e bağlanır.
-  // Bugünkü toplam CANLI yayın (tüm kanallar). liveToday() /provys/live-today'den
-  // gelir; endpoint kanal filtresiz olduğundan yeni Provys kanalı otomatik dahil.
   kpiLiveTotal = computed(() => this.liveToday().length);
   kpiActivePorts = computed(() => this.ports().filter((p) => p.active).length);
   kpiTotalPorts = computed(() => this.ports().length);
@@ -576,24 +722,113 @@ export class DashboardComponent implements OnInit, OnDestroy {
   kpiAlerts = signal('—');
 
   private clockSub?: Subscription;
+  private nowSub?: Subscription;
 
   ngOnInit() {
     this.updateDate();
     this.clockSub = interval(60_000).subscribe(() => this.updateDate());
+    // Kanal kutuları "şu an yayında" hesabı için saat tik'i.
+    this.nowSub = interval(30_000).subscribe(() => this.nowMs.set(Date.now()));
 
-    // Keycloak tokenParsed'dan grupları oku — group-aware link visibility için
-    // (audit-logs, weekly-shift). studio-plan.component.ts ile aynı pattern.
     const parsed = this.keycloak.getKeycloakInstance()?.tokenParsed as { groups?: string[] } | undefined;
     this._userGroups.set(parsed?.groups ?? []);
 
+    // Kanal kutuları için Provys snapshot (tüm kanallar, bugün) + canlı SSE akışı.
+    void this.provys.loadInitial();
+    this.provys.ensureStreaming();
+
     this.loadLiveToday();
-    this.loadTodayBroadcasts();
     this.loadStudios();
     this.loadPorts();
   }
 
   ngOnDestroy() {
     this.clockSub?.unsubscribe();
+    this.nowSub?.unsubscribe();
+    this.provys.stopStreaming();
+  }
+
+  // ─── Kanal kutusu hesabı ────────────────────────────────────────────────────
+  /**
+   * Bir kanal için "şu an yayında / sıradaki" kutusunu türetir.
+   * Kural: şu an PROGRAM/CANLI oynuyorsa onu (live). Şu an ara-yayın
+   * (REKLAM/TANITIM/KAMU_SPOTU/DIGER) ise SIRADAKİ PROGRAM/CANLI (upcoming).
+   * Hiçbiri yoksa idle. Store boşsa loading.
+   */
+  private computeBox(slug: ProvysChannelSlug, name: string, now: number): ChannelBox {
+    const base = { slug, name, category: null, catLabel: '', catClass: '', title: '', series: null, start: '', end: '' };
+    if (!this.provys.hasReceived(slug)) {
+      return { ...base, state: 'loading' };
+    }
+    const items = this.provys.itemsFor(slug)()
+      .filter((i) => i.rawKind !== 'ProgramHeader' && !Number.isNaN(Date.parse(i.startAt)))
+      .slice()
+      .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
+
+    // Şu an oynayan item (startMs <= now < endMs). endMs = start+duration,
+    // duration yoksa bir sonraki item'ın başlangıcı (son item → süresiz/ongoing).
+    let current: ProvysItemDto | null = null;
+    for (let idx = 0; idx < items.length; idx++) {
+      const s = Date.parse(items[idx].startAt);
+      const dur = items[idx].durationMs;
+      const e = dur != null
+        ? s + dur
+        : (idx + 1 < items.length ? Date.parse(items[idx + 1].startAt) : Number.POSITIVE_INFINITY);
+      if (s <= now && now < e) { current = items[idx]; break; }
+    }
+
+    if (current && isProgramLike(current.category)) {
+      return this.toBox(base, current, 'live');
+    }
+    // Ara-yayın (veya boşluk) → sıradaki PROGRAM/CANLI.
+    const next = items.find((i) => Date.parse(i.startAt) >= now && isProgramLike(i.category));
+    if (next) {
+      return this.toBox(base, next, 'upcoming');
+    }
+    return { ...base, state: 'idle' };
+  }
+
+  private toBox(
+    base: Omit<ChannelBox, 'state'>,
+    item: ProvysItemDto,
+    state: 'live' | 'upcoming',
+  ): ChannelBox {
+    const s = Date.parse(item.startAt);
+    const end = item.durationMs != null ? this.hhmmFromMs(s + item.durationMs) : '—';
+    return {
+      ...base,
+      state,
+      category: item.category,
+      catLabel: PROVYS_CATEGORY_STYLES[item.category]?.label ?? item.category,
+      catClass: CATEGORY_CLASS[item.category],
+      title: item.title,
+      series: item.seriesName,
+      start: this.hhmmFromMs(s),
+      end,
+    };
+  }
+
+  private hhmmFromMs(ms: number): string {
+    if (!Number.isFinite(ms)) return '—';
+    return new Intl.DateTimeFormat('tr-TR', {
+      timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(ms));
+  }
+
+  expand(slug: ProvysChannelSlug): void {
+    this.expandedPanel.set(null); // aynı anda iki büyütme olmasın
+    this.expandedSlug.set(slug);
+  }
+  collapse(): void {
+    this.expandedSlug.set(null);
+  }
+  /** Genel kart büyütme (hero/vardiya/studio/ports) — aç/kapat toggle. */
+  togglePanel(id: string): void {
+    this.expandedSlug.set(null);
+    this.expandedPanel.set(this.expandedPanel() === id ? null : id);
+  }
+  collapsePanel(): void {
+    this.expandedPanel.set(null);
   }
 
   private updateDate() {
@@ -603,7 +838,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.todayDate.set(`${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} · ${days[now.getDay()].toUpperCase()}`);
   }
 
-  // Template'den de okunuyor (studio satır drilldown queryParams.day).
   isoToday(): string {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -611,8 +845,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private loadLiveToday() {
     this.loadingLive.set(true);
-    // Provys'in bugünkü CANLI kategorili event'leri (tüm kanallar birleşik).
-    // Endpoint dcCode dönmez; UI yalnız saat · kanal · başlık gösterir.
     this.api.get<ProvysLiveTodayDto[]>('/provys/live-today').subscribe({
       next: (res) => {
         this.liveToday.set(res ?? []);
@@ -630,44 +862,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return tc && tc.length >= 5 ? tc.slice(0, 5) : '—';
   }
 
-  private loadTodayBroadcasts() {
-    this.loadingBroadcasts.set(true);
-    const today = this.isoToday();
-    // SCHED-B5a: canonical broadcast list endpoint (B4-prep edfda69 + acb8167).
-    // YYYY-MM-DD scheduleDate filter; legacy /schedules?from=ISO yerine.
-    this.api.get<{ data: ScheduleRow[]; total: number } | ScheduleRow[]>(`/schedules/broadcast?from=${today}&to=${today}&pageSize=50`).subscribe({
-      next: (res) => {
-        const rows = Array.isArray(res) ? res : (res.data ?? []);
-        // Sort by startTime
-        rows.sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''));
-        this.todayBroadcasts.set(rows);
-        this.loadingBroadcasts.set(false);
-      },
-      error: () => {
-        this.todayBroadcasts.set([]);
-        this.loadingBroadcasts.set(false);
-      },
-    });
-  }
-
   private loadStudios() {
     this.loadingStudios.set(true);
     const today = this.isoToday();
     const weekStart = this.mondayOf(today);
-    // Backend canonical: /api/v1/studio-plans/:weekStart (Monday-based weekly plan
-    // with embedded slots). Slot süresi STUDIO_PLAN_SLOT_MINUTES (15 dk; commit
-    // 77d7ca9). Aynı program/stüdyo için ardışık slot'lar dashboard'da tek satır
-    // olarak gösterilir (1 saat = 1 satır, 4 satır yerine).
-    // API response shape: slot.day (YYYY-MM-DD), studio, startMinute, program, color, time.
-    // Önceki kod `s.dayDate` ile filtreliyordu — pre-existing bug; gerçek alan
-    // `day`. Bu yüzden studio liste her zaman boş geliyordu.
     this.api.get<{ slots?: Array<{ id: number; day: string; studio: string; startMinute: number; program: string }> }>(
       `/studio-plans/${weekStart}`,
     ).subscribe({
       next: (plan) => {
         const rawToday = (plan?.slots ?? []).filter((s) => s.day === today);
-        // Stüdyo bazında grupla → her stüdyo içinde startMinute'a göre sırala →
-        // aynı programın ardışık 15 dk slot'larını birleştir.
         const byStudio = new Map<string, typeof rawToday>();
         for (const s of rawToday) {
           if (!byStudio.has(s.studio)) byStudio.set(s.studio, []);
@@ -691,8 +894,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
             }
           }
         }
-        // Display sort: zaman önce, sonra stüdyo (aynı saatte birden fazla stüdyo
-        // varsa stable order).
         merged.sort((a, b) => (a.startMinute - b.startMinute) || a.studio.localeCompare(b.studio));
         const todaySlots: StudioSlot[] = merged.map((m) => ({
           id: m.id,
@@ -715,8 +916,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadingPorts.set(true);
     this.api.get<IngestPort[]>(`/ingest/recording-ports`).subscribe({
       next: (res) => {
-        // beINport mockup 40 port grid; mevcut BCMS'te 8-12 port olabilir.
-        // active alanı yoksa varsayılan true.
         const arr = (res ?? []).map((p) => ({ ...p, active: p.active ?? true }));
         this.ports.set(arr);
         this.loadingPorts.set(false);
@@ -729,7 +928,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   portShortName(name: string): string {
-    // "IRD-12" → "12", "FIBER-3" → "3"
     const parts = name.split(/[-\s]/);
     return parts[parts.length - 1] || name.slice(0, 3);
   }
@@ -737,7 +935,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   /** YYYY-MM-DD → o haftanın pazartesi YYYY-MM-DD. */
   private mondayOf(dateIso: string): string {
     const d = new Date(`${dateIso}T00:00:00`);
-    const day = d.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const day = d.getDay();
     const offset = day === 0 ? -6 : 1 - day;
     d.setDate(d.getDate() + offset);
     const yyyy = d.getFullYear();
