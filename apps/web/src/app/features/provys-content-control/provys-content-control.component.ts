@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -66,6 +66,11 @@ function addDaysIso(iso: string, days: number): string {
     provideNativeDateAdapter(),
     { provide: MAT_DATE_LOCALE, useValue: 'tr-TR' },
   ],
+  // R1 (audit #2a): bileşen tamamen signal/computed tabanlı (ProvysService
+  // signal'leri + computed view; imperatif subscribe yok) → OnPush güvenli.
+  // Tab/filtre/tarih değişimi signal güncellemesiyle CD tetikler; tablo child
+  // paneli (provys-channel-panel) zaten OnPush.
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="page">
       <header class="page-head">
