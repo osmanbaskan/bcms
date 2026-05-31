@@ -150,6 +150,13 @@ const STUDIO_EDIT_GROUPS = [GROUP.Admin, GROUP.StudyoSefi];
 @Component({
   selector: 'app-studio-plan',
   standalone: true,
+  // R10 (audit #2a): state 13 signal + computed view; applyPlan tamamen
+  // signal.set (catalog/programs/days/cells/studios/...), cells.update immutable.
+  // 3 subscribe signal.set ile günceller; @ViewChild yalnız export/fullscreen
+  // DOM erişimi için (render'a bağlı değil). Imperatif ChangeDetectorRef/
+  // markForCheck/ngAfterViewInit YOK → OnPush güvenli. Çocuk table/list/toolbar
+  // immutable @Input alır.
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
     MatButtonModule,
