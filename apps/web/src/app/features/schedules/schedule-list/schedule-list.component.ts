@@ -1,5 +1,5 @@
 import {
-  Component, HostListener, OnDestroy, OnInit, signal, computed, inject,
+  ChangeDetectionStrategy, Component, HostListener, OnDestroy, OnInit, signal, computed, inject,
 } from '@angular/core';
 import { KeycloakService } from 'keycloak-angular';
 import { Router } from '@angular/router';
@@ -178,6 +178,12 @@ export class ReportIssueDialogComponent {
 @Component({
   selector: 'app-schedule-list',
   standalone: true,
+  // R8 (audit #2a): tüm state signal (channels/schedules/total/loading/
+  // currentTime/fullscreenActive; computed RBAC türevleri). REST subscribe'ları
+  // .set()/.update(immutable), clock signal.set, fullscreen @HostListener →
+  // hepsi OnPush'ta CD tetikler. Imperatif cdr/ViewChild/NgZone/nativeElement
+  // YOK → OnPush güvenli.
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule, FormsModule,
     MatTableModule, MatButtonModule, MatIconModule,

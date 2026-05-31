@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -105,6 +105,11 @@ function todayIstanbulMidnight(): Date {
 @Component({
   selector: 'app-yayin-planlama-list',
   standalone: true,
+  // R7 (audit #2a): tüm state signal (rows/total/page/loading/selectedIds...;
+  // computed türevler). REST subscribe'ları .set()/.update(immutable) ile,
+  // clock yok; optimistic update rows.update(...{...}). Imperatif cdr/ViewChild/
+  // NgZone YOK → OnPush güvenli.
+  changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
     { provide: MAT_DATE_LOCALE,  useValue: 'tr-TR' },
     { provide: MAT_DATE_FORMATS, useValue: TR_DATE_FORMATS },
