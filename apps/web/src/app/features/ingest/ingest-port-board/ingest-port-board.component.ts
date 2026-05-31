@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, EventEmitter, HostListener, Input, Output, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, HostListener, Input, Output, ViewChild } from '@angular/core';
 import { CdkDrag, CdkDragDrop, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -35,6 +35,12 @@ type PortBoardZoom = 'tight' | 'normal' | 'wide';
   selector: 'app-ingest-port-board',
   standalone: true,
   imports: [CommonModule, CdkDropList, CdkDrag, MatButtonModule, MatIconModule],
+  // R3 (audit #2a): presentational. State (zoom/isFullscreen) yalnız template
+  // click handler'ları + @HostListener(fullscreenchange) ile değişir — ikisi de
+  // OnPush'ta CD tetikler. @Input columns parent'tan yeni referansla gelir
+  // (ingest-list view'ı yeniden kurar); bileşen içinde yerinde mutasyon yok
+  // (drag → portOrderChange emit, parent günceller).
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="port-board-section" [class.full-page]="fullPage" [class.is-fullscreen]="isFullscreen" *ngIf="columns.length > 0" #boardRoot>
       <div class="port-board-header">
