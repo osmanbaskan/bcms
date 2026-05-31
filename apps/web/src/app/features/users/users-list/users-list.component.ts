@@ -320,6 +320,10 @@ export class NewUserDialogComponent {
     MatDialogModule, MatSlideToggleModule, MatSnackBarModule,
     MatTooltipModule, MatProgressSpinnerModule,
   ],
+  // R5 (audit #2a): state signal (users/loading). API get + dialog afterClosed
+  // + patch enabled subscribe'ları users.set()/users.update(immutable map) ile
+  // günceller → OnPush'ta CD tetiklenir. Imperatif cdr/detectChanges yok.
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
       <h2>Kullanıcılar & Yetkiler</h2>
