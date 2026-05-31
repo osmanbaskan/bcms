@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import type { StudioPlanAssignment, StudioPlanDay } from '../studio-plan.types';
 
 @Component({
@@ -8,6 +8,11 @@ import type { StudioPlanAssignment, StudioPlanDay } from '../studio-plan.types';
   imports: [CommonModule],
   templateUrl: './studio-plan-table.component.html',
   styleUrl: './studio-plan-table.component.scss',
+  // R4 (audit #2a): saf presentational (@Input cells/days/studios/timeSlots,
+  // @Output assignProgram). Parent (studio-plan.component) cells'i signal +
+  // immutable update ile günceller (cells.update(c => ({...c}))) → her değişimde
+  // YENİ referans → OnPush @Input CD'yi tetikler. İç state/mutasyon yok.
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StudioPlanTableComponent {
   @Input({ required: true }) days: StudioPlanDay[] = [];
