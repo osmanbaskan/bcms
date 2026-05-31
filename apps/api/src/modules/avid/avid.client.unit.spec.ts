@@ -34,7 +34,8 @@ function makeConfig(overrides: Partial<AvidConfig> = {}): AvidConfig {
     restoreProfile: 'BeINSports - Partial Restore',
     restoreService: 'com.avid.dms.restore',
     transferEngine: 'bsvmte01',
-    playbackDevice: 'PCR',
+    transferEngineFallback: 'bsvmte02',
+    playbackDevice: 'MCR',
     transferPriority: 'NORMAL',
     ...overrides,
   };
@@ -313,22 +314,18 @@ describe('K2 — requestRestore / pollRestoreStatus (fetch stub, ağ YOK)', () =
 });
 
 describe('K3 — buildSendToPlaybackBody (rapor §13.1/§16.8)', () => {
-  it('engine/device/priority/InterplayURI/Overwrite doğru', () => {
+  it('birincil hedef bsvmte01 + MCR (operasyon kararı)', () => {
     const xml = buildSendToPlaybackBody(makeConfig(), 'interplay://BSVMWG?mobid=M1');
     expect(xml).toContain('<b:TransferEngineHostName>bsvmte01</b:TransferEngineHostName>');
     expect(xml).toContain('<b:InterplayURI>interplay://BSVMWG?mobid=M1</b:InterplayURI>');
-    expect(xml).toContain('<b:DestinationPlaybackDevice>PCR</b:DestinationPlaybackDevice>');
+    expect(xml).toContain('<b:DestinationPlaybackDevice>MCR</b:DestinationPlaybackDevice>');
     expect(xml).toContain('<b:Priority>NORMAL</b:Priority>');
     expect(xml).toContain('<b:Overwrite>false</b:Overwrite>');
   });
-  it('config override edilen hedef yansır', () => {
-    const xml = buildSendToPlaybackBody(
-      makeConfig({ transferEngine: 'bsvmte02', playbackDevice: 'MCR', transferPriority: 'PWT' }),
-      'interplay://BSVMWG?mobid=M2',
-    );
+  it('engine parametresi override eder (failover yedek engine)', () => {
+    const xml = buildSendToPlaybackBody(makeConfig(), 'interplay://BSVMWG?mobid=M2', 'bsvmte02');
     expect(xml).toContain('<b:TransferEngineHostName>bsvmte02</b:TransferEngineHostName>');
     expect(xml).toContain('<b:DestinationPlaybackDevice>MCR</b:DestinationPlaybackDevice>');
-    expect(xml).toContain('<b:Priority>PWT</b:Priority>');
   });
 });
 
@@ -351,13 +348,50 @@ describe('K3 — requestTransfer / pollTransferStatus (fetch stub, ağ YOK)', ()
     expect(String(init.body)).toContain('interplay://BSVMWG?mobid=M1');
   });
 
-  it('requestTransfer: JobURI yoksa hata fırlatır', async () => {
+  it('requestTransfer: JobURI yoksa (her iki engine de) hata fırlatır', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true, status: 200, statusText: 'OK',
       text: async () => `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body><SendToPlaybackResponse/></s:Body></s:Envelope>`,
     })));
     const adapter = createInterplayAvidAdapter(makeConfig());
     await expect(adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' })).rejects.toThrow(/JobURI/i);
+  });
+
+  it('failover: birincil bsvmte01 başarısız → yedek bsvmte02 başarılı', async () => {
+    let call = 0;
+    const fetchFn = vi.fn(async () => {
+      call += 1;
+      if (call === 1) {
+        // Birincil engine: JobURI'siz yanıt → sendToPlaybackOnEngine throw.
+        return { ok: true, status: 200, statusText: 'OK',
+          text: async () => `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body><SendToPlaybackResponse/></s:Body></s:Envelope>` };
+      }
+      // Yedek engine: başarılı JobURI.
+      return { ok: true, status: 200, statusText: 'OK',
+        text: async () =>
+          `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body>` +
+          `<SendToPlaybackResponse><JobURI>interplay://BSVMWG/DMS?jobid=XFER2</JobURI></SendToPlaybackResponse>` +
+          `</s:Body></s:Envelope>` };
+    });
+    vi.stubGlobal('fetch', fetchFn);
+    const adapter = createInterplayAvidAdapter(makeConfig());
+    const r = await adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' });
+    expect(r.avidJobId).toBe('interplay://BSVMWG/DMS?jobid=XFER2');
+    expect(fetchFn).toHaveBeenCalledTimes(2); // birincil + yedek
+    // 1. çağrı bsvmte01, 2. çağrı bsvmte02 body'si içermeli.
+    expect(String((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body)).toContain('bsvmte01');
+    expect(String((fetchFn.mock.calls[1] as unknown as [string, RequestInit])[1].body)).toContain('bsvmte02');
+  });
+
+  it('failover yok: fallback engine boşsa yalnız birincil denenir', async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      text: async () => `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body><SendToPlaybackResponse/></s:Body></s:Envelope>`,
+    }));
+    vi.stubGlobal('fetch', fetchFn);
+    const adapter = createInterplayAvidAdapter(makeConfig({ transferEngineFallback: '' }));
+    await expect(adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' })).rejects.toThrow(/JobURI/i);
+    expect(fetchFn).toHaveBeenCalledTimes(1); // sadece birincil
   });
 
   it('pollTransferStatus: Completed → done (Jobs.GetJobStatus paylaşımı)', async () => {

@@ -495,19 +495,45 @@ async function interplayPollJobStatus(
 
 /**
  * SendToPlayback body (rapor §13.1/§16.8). Device-driven: hedef =
- * (TransferEngineHostName + DestinationPlaybackDevice) — config'ten.
- * FTP yolu engine config'inde gömülü, API'ye geçmez (rapor §13.2).
+ * (TransferEngineHostName + DestinationPlaybackDevice). FTP yolu engine
+ * config'inde gömülü, API'ye geçmez (rapor §13.2).
+ *
+ * `engine` parametre (failover için): birincil/yedek farklı engine'le aynı
+ * device'a gönderir. Verilmezse cfg.transferEngine kullanılır.
  */
-export function buildSendToPlaybackBody(cfg: AvidConfig, interplayUri: string): string {
+export function buildSendToPlaybackBody(
+  cfg: AvidConfig,
+  interplayUri: string,
+  engine: string = cfg.transferEngine,
+): string {
   return (
     `<b:SendToPlayback>` +
-    `<b:TransferEngineHostName>${escapeXml(cfg.transferEngine)}</b:TransferEngineHostName>` +
+    `<b:TransferEngineHostName>${escapeXml(engine)}</b:TransferEngineHostName>` +
     `<b:InterplayURI>${escapeXml(interplayUri)}</b:InterplayURI>` +
     `<b:DestinationPlaybackDevice>${escapeXml(cfg.playbackDevice)}</b:DestinationPlaybackDevice>` +
     `<b:Priority>${escapeXml(cfg.transferPriority)}</b:Priority>` +
     `<b:Overwrite>false</b:Overwrite>` +
     `</b:SendToPlayback>`
   );
+}
+
+/** Tek bir engine'e SendToPlayback dener; JobURI döner veya throw. */
+async function sendToPlaybackOnEngine(
+  cfg: AvidConfig,
+  interplayUri: string,
+  engine: string,
+): Promise<string> {
+  const bodyXml = buildSendToPlaybackBody(cfg, interplayUri, engine);
+  const body = await postSoap(cfg, {
+    service: 'Transfer',
+    bodyNs: AVID_NS.transferTypes,
+    bodyXml,
+  });
+  const jobUri = textOf(findFirstKey(body, 'JobURI'));
+  if (!jobUri) {
+    throw new Error(`Avid SendToPlayback (${engine}) yanıtında JobURI yok`);
+  }
+  return jobUri;
 }
 
 async function interplayRequestTransfer(
@@ -517,19 +543,27 @@ async function interplayRequestTransfer(
   // V1 basit: restore'dan gelen assetId doğrudan kullanılır. Rapor §10.5
   // ".transfer companion kanonik" notu ileride eklenebilir (ayrı iş).
   const interplayUri = assetIdToInterplayUri(cfg, input.assetId);
-  const bodyXml = buildSendToPlaybackBody(cfg, interplayUri);
-  const body = await postSoap(cfg, {
-    service: 'Transfer',
-    bodyNs: AVID_NS.transferTypes,
-    bodyXml,
-  });
 
-  // Yanıt: JobURI (XFER segment). ns-agnostik ara.
-  const jobUri = textOf(findFirstKey(body, 'JobURI'));
-  if (!jobUri) {
-    throw new Error('Avid SendToPlayback yanıtında JobURI yok (transfer submit başarısız?)');
+  // Failover: birincil engine (bsvmte01) başarısızsa yedek (bsvmte02) denenir.
+  // Yedek boşsa yalnız birincil. (Operasyon kararı: ikisi de MCR.)
+  const engines = [cfg.transferEngine];
+  if (cfg.transferEngineFallback && cfg.transferEngineFallback !== cfg.transferEngine) {
+    engines.push(cfg.transferEngineFallback);
   }
-  return { avidJobId: jobUri };
+
+  let lastErr: unknown;
+  for (const engine of engines) {
+    try {
+      const jobUri = await sendToPlaybackOnEngine(cfg, interplayUri, engine);
+      return { avidJobId: jobUri };
+    } catch (err) {
+      lastErr = err;
+      // Sonraki engine'e düş (varsa). Tümü tükenirse son hatayı fırlat.
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error('Avid SendToPlayback tüm engine\'lerde başarısız');
 }
 
 // ============================================================================

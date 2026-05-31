@@ -235,9 +235,16 @@ verdi ama pollRestoreStatus zaten çalışıyor (gereksiz).
 - **V1 basit:** restore'dan gelen assetId doğrudan kullanılır; `.transfer` companion
   mantığı (§10.5) eklenmedi (ileride ayrı iş).
 
-### ✅ K3.2 — Config (`avid.config.ts`)
-`transferEngine` (def `bsvmte01`), `playbackDevice` (def `PCR`), `transferPriority`
-(def `NORMAL`) env alanları. Default'lar **tahmin** (rapor §13.2); gerçek değer teyitle.
+### ✅ K3.2 — Config (`avid.config.ts`) + FAILOVER (operasyon kararı 2026-05-31)
+**Hedef NETLEŞTİ:** birincil **bsvmte01/MCR**, yedek **bsvmte02/MCR**.
+- `transferEngine` (def `bsvmte01`), `transferEngineFallback` (def `bsvmte02`),
+  `playbackDevice` (def **`MCR`** — PCR değil), `transferPriority` (def `NORMAL`).
+- **Failover:** `requestTransfer` birincil engine'e SendToPlayback dener; hata/JobURI-yok
+  olursa yedek engine'e (bsvmte02) tekrar dener. İkisi de olmazsa son hatayı fırlatır.
+  `transferEngineFallback` boşsa yalnız birincil. `buildSendToPlaybackBody` artık opsiyonel
+  `engine` parametresi alır; `sendToPlaybackOnEngine` tek-engine helper'ı.
+- env: `AVID_TRANSFER_ENGINE` / `AVID_TRANSFER_ENGINE_FALLBACK` / `AVID_PLAYBACK_DEVICE` /
+  `AVID_TRANSFER_PRIORITY`.
 
 ### ✅ K3.3 — Birim testler
 **48/48 GEÇTİ** (önceki 38 + 10 K3). TSC EXIT=0. Kapsam: buildSendToPlaybackBody
@@ -259,7 +266,7 @@ SendToPlayback canlı yayın havuzuna gönderir + hedef teyitsiz + WSDL-only.
 3. Açık kullanıcı onayı.
 
 ## Açık belirsizlikler (K3 — operasyon/araştırma bekliyor)
-- **Hedef:** TransferEngineHostName + DestinationPlaybackDevice gerçek değeri (rapor §19).
+- ~~**Hedef:**~~ ✅ NETLEŞTİ (2026-05-31): birincil bsvmte01/MCR, yedek bsvmte02/MCR.
 - **.transfer companion:** STP kanonik olarak .transfer mixdown üzerinden (§10.5);
   V1 basit assetId kullanıyor.
 - **SendToPlayback [WSDL-only]:** canlı doğrulanmadı; gerçek execute'ta sürpriz olabilir.
@@ -279,4 +286,5 @@ SendToPlayback canlı yayın havuzuna gönderir + hedef teyitsiz + WSDL-only.
 - 2026-05-31: **K2 (restore) kodu** — requestRestore (SubmitJobUsingProfile, SourceServerType=Assets) + pollRestoreStatus (GetJobStatus, mapJobStatus saha enum) bağlandı. Birim testler **38/38 geçti** (commit mesajında sehven 41 yazıldı), TSC EXIT=0. Commit `ce88a9b`.
 - 2026-05-31: K2.3 DRY-RUN smoke ✓ (DC00042608, ağa göndermedi, envelope doğru).
 - 2026-05-31: **K2.4 GERÇEK EXECUTE ✓ TAM KANIT** — DC00042608 `--execute`. JobURI (`...?jobid=1780247955990.1`) → ~3dk sonra JobStatus **done** → K1 search DC00042608 **offline→online** (Media Status=online). Restore uçtan uca gerçek Avid'de çalıştı. **K2 RESTORE ENTEGRASYONU TAMAMLANDI.**
-- 2026-05-31: **K3 (transfer) kodu** — requestTransfer (SendToPlayback, hedef env'den) + pollTransferStatus (Jobs.GetJobStatus paylaşımı) bağlandı. notImpl tamamen kalktı, **5 method da gerçek**. Testler **48/48**, TSC EXIT=0. DRY-RUN smoke ✓ (DC00042608, ağa göndermedi, envelope doğru). **Gerçek execute BİLİNÇLİ YAPILMADI** (canlı yayın + hedef teyitsiz). K3 kod tamam, execute operasyon teyidi + açık onay bekliyor.
+- 2026-05-31: **K3 (transfer) kodu** — requestTransfer (SendToPlayback) + pollTransferStatus (Jobs.GetJobStatus paylaşımı) bağlandı. notImpl tamamen kalktı, **5 method da gerçek**. TSC EXIT=0. DRY-RUN smoke ✓. (Test sayısı sehven 48 yazıldı; doğrusu sonraki failover ekiyle 46→47.)
+- 2026-05-31: **K3 hedef + FAILOVER** (operasyon kararı) — birincil **bsvmte01/MCR**, yedek **bsvmte02/MCR**. requestTransfer birincil→yedek failover (buildSendToPlaybackBody engine param + sendToPlaybackOnEngine). Default device PCR→MCR. Testler **47/47**, TSC EXIT=0. DRY-RUN envelope=bsvmte01/MCR doğrulandı. Commit `5452cca`. Gerçek execute hâlâ açık onay bekliyor.
