@@ -3,6 +3,10 @@ import {
   createInterplayAvidAdapter,
   createMockAvidAdapter,
   buildSearchBody,
+  buildRestoreSubmitBody,
+  buildJobStatusBody,
+  assetIdToInterplayUri,
+  mapJobStatus,
   getAvidAdapter,
   __resetAvidAdapterForTest,
 } from './avid.client.js';
@@ -173,10 +177,9 @@ describe('createInterplayAvidAdapter.searchByDcCode', () => {
 });
 
 describe('createInterplayAvidAdapter — kademeli rollout (K2/K3 henüz mock)', () => {
-  it('searchByDcCode gerçek; restore/transfer 4 method notImpl throw', async () => {
+  it('search+restore gerçek; transfer 2 method hâlâ notImpl throw (K3 sırada)', () => {
     const adapter = createInterplayAvidAdapter(makeConfig());
-    expect(() => adapter.requestRestore({ assetId: 'x', dcCode: 'd' })).toThrow(/not implemented/i);
-    expect(() => adapter.pollRestoreStatus('j')).toThrow(/not implemented/i);
+    // K2 bağlandı → requestRestore/pollRestoreStatus artık "not implemented" DEĞİL.
     expect(() => adapter.requestTransfer({ assetId: 'x', dcCode: 'd' })).toThrow(/not implemented/i);
     expect(() => adapter.pollTransferStatus('j')).toThrow(/not implemented/i);
   });
@@ -190,7 +193,7 @@ describe('getAvidAdapter — factory seçimi', () => {
     expect(r.avidJobId).toBeTruthy();
   });
 
-  it('enabled+mock=false+env dolu → interplay adapter (restore notImpl)', () => {
+  it('enabled+mock=false+env dolu → interplay adapter (transfer hâlâ notImpl)', () => {
     const env = {
       RESTORE_AVID_ENABLED: 'on',
       RESTORE_AVID_MOCK: 'false',
@@ -200,7 +203,104 @@ describe('getAvidAdapter — factory seçimi', () => {
       AVID_WORKSPACE: 'interplay://BSVMWG/',
     } as NodeJS.ProcessEnv;
     const adapter = getAvidAdapter(env);
-    expect(() => adapter.requestRestore({ assetId: 'x', dcCode: 'd' })).toThrow(/not implemented/i);
+    // K3 henüz bağlanmadı → transfer notImpl.
+    expect(() => adapter.requestTransfer({ assetId: 'x', dcCode: 'd' })).toThrow(/not implemented/i);
+  });
+});
+
+describe('K2 — buildRestoreSubmitBody / assetIdToInterplayUri (rapor §11)', () => {
+  it('mobid → interplay:// URI (workgroup ile)', () => {
+    expect(assetIdToInterplayUri(makeConfig(), 'ABC123')).toBe('interplay://BSVMWG?mobid=ABC123');
+  });
+  it('zaten interplay:// ise olduğu gibi bırakır', () => {
+    const uri = 'interplay://BSVMWG?mobid=XYZ';
+    expect(assetIdToInterplayUri(makeConfig(), uri)).toBe(uri);
+  });
+  it('SubmitJobUsingProfile body: Service/Profile/SourceServerType=Assets', () => {
+    const xml = buildRestoreSubmitBody(makeConfig(), 'interplay://BSVMWG?mobid=M1');
+    expect(xml).toContain('<b:Service>com.avid.dms.restore</b:Service>');
+    expect(xml).toContain('<b:Profile>BeINSports - Partial Restore</b:Profile>');
+    expect(xml).toContain('<b:InterplayURI>interplay://BSVMWG?mobid=M1</b:InterplayURI>');
+    // KRİTİK (§11.2): Assets, Archive DEĞİL.
+    expect(xml).toContain('<b:SourceServerType>Assets</b:SourceServerType>');
+    expect(xml).not.toContain('Archive');
+  });
+  it('GetJobStatus body: JobURI sarmalı', () => {
+    const xml = buildJobStatusBody('interplay://BSVMWG/DMS?jobid=J1');
+    expect(xml).toContain('<b:JobURIs><b:JobURI>interplay://BSVMWG/DMS?jobid=J1</b:JobURI></b:JobURIs>');
+  });
+});
+
+describe('K2 — mapJobStatus (rapor §11.5 saha enum)', () => {
+  it('Completed → done', () => { expect(mapJobStatus('Completed')).toBe('done'); });
+  it('Pending → pending', () => { expect(mapJobStatus('Pending')).toBe('pending'); });
+  it('Processing N% → running', () => { expect(mapJobStatus('Processing 42%')).toBe('running'); });
+  it('RUNNING (doc) → running', () => { expect(mapJobStatus('RUNNING')).toBe('running'); });
+  it('Failed → failed', () => { expect(mapJobStatus('Failed')).toBe('failed'); });
+  it('bilinmeyen → running (defansif)', () => { expect(mapJobStatus('Whatever')).toBe('running'); });
+});
+
+describe('K2 — requestRestore / pollRestoreStatus (fetch stub, ağ YOK)', () => {
+  it('requestRestore: doğru body gönderir + JobURI çıkarır', async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      text: async () =>
+        `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body>` +
+        `<SubmitJobUsingProfileResponse><JobURI>interplay://BSVMWG/DMS?jobid=JOB1</JobURI></SubmitJobUsingProfileResponse>` +
+        `</s:Body></s:Envelope>`,
+    }));
+    vi.stubGlobal('fetch', fetchFn);
+    const adapter = createInterplayAvidAdapter(makeConfig());
+    const r = await adapter.requestRestore({ assetId: 'M1', dcCode: 'DC1' });
+    expect(r.avidJobId).toBe('interplay://BSVMWG/DMS?jobid=JOB1');
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://avid.test/services/Jobs');
+    expect(String(init.body)).toContain('<b:SourceServerType>Assets</b:SourceServerType>');
+    expect(String(init.body)).toContain('interplay://BSVMWG?mobid=M1');
+  });
+
+  it('requestRestore: JobURI yoksa hata fırlatır', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      text: async () => `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body><SubmitJobUsingProfileResponse/></s:Body></s:Envelope>`,
+    })));
+    const adapter = createInterplayAvidAdapter(makeConfig());
+    await expect(adapter.requestRestore({ assetId: 'M1', dcCode: 'DC1' })).rejects.toThrow(/JobURI/i);
+  });
+
+  it('pollRestoreStatus: Completed → done', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      text: async () =>
+        `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body>` +
+        `<GetJobStatusResponse><JobStatus><Status>Completed</Status></JobStatus></GetJobStatusResponse>` +
+        `</s:Body></s:Envelope>`,
+    })));
+    const adapter = createInterplayAvidAdapter(makeConfig());
+    expect(await adapter.pollRestoreStatus('interplay://BSVMWG/DMS?jobid=JOB1')).toEqual({ status: 'done' });
+  });
+
+  it('pollRestoreStatus: Failed → failed (+errorMsg)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      text: async () =>
+        `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body>` +
+        `<GetJobStatusResponse><JobStatus><Status>Failed</Status><ErrorMessage>DIVA timeout</ErrorMessage></JobStatus></GetJobStatusResponse>` +
+        `</s:Body></s:Envelope>`,
+    })));
+    const adapter = createInterplayAvidAdapter(makeConfig());
+    const r = await adapter.pollRestoreStatus('j');
+    expect(r.status).toBe('failed');
+    expect(r.errorMsg).toContain('DIVA timeout');
+  });
+
+  it('pollRestoreStatus: Status okunamazsa defansif running', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      text: async () => `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body><GetJobStatusResponse/></s:Body></s:Envelope>`,
+    })));
+    const adapter = createInterplayAvidAdapter(makeConfig());
+    expect(await adapter.pollRestoreStatus('j')).toEqual({ status: 'running' });
   });
 });
 

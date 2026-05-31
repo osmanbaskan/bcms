@@ -116,7 +116,7 @@ doğrulanıyor (getAvidAdapter mockMode → mock adapter, requestRestore avidJob
 **Canlı smoke (gerçek IPWS) — ✅ BAŞARILI (2026-05-31, DC00036170)**
 
 Script: `apps/api/scripts/avid-search-smoke.ts` (standalone, tek DC, read-only, DB'ye
-dokunmaz). PoC kullanıcısı (Presenter01) inline env ile; IP bypass
+dokunmaz). PoC kullanıcısı inline env ile; IP bypass
 (`http://172.26.33.87/services`, DNS `.local` çözülmüyor — rapor §2.3). Credentials
 repoya/.env'e YAZILMADI; smoke parolayı maskeli basıyor.
 
@@ -154,8 +154,49 @@ bozulmadı (grep ile teyitli). Gerçekte kod baştan doğruydu.
 
 ---
 
+---
+
+# KADEME 2 (RESTORE) — Jobs.SubmitJobUsingProfile + GetJobStatus
+
+### ✅ K2.1 — requestRestore + pollRestoreStatus kodu (`avid.client.ts`)
+**Durum:** TAMAMLANDI (kod) · TSC EXIT=0
+
+- `interplayRequestRestore` → `Jobs.SubmitJobUsingProfile` (rapor §11.1/§16.5):
+  Service=`com.avid.dms.restore`, Profile=env (`BeINSports - Partial Restore`),
+  InterplayURI=mobid'den kurulu, **SourceServerType=Assets** (§11.2 kritik — Archive değil).
+  Yanıttan `JobURI` çıkarır → `avidJobId`. JobURI yoksa throw (worker retry).
+- `interplayPollJobStatus` → `Jobs.GetJobStatus` (§11.5/§16.6): `mapJobStatus` ile
+  saha enum'u (Pending/Processing N%/Completed) + doc enum'u (RUNNING) eşlenir.
+  Failed/Aborted/Cancelled→failed(+ErrorMessage). Bilinmeyen→running (defansif).
+- Yardımcılar export edildi (test için): `assetIdToInterplayUri`, `buildRestoreSubmitBody`,
+  `buildJobStatusBody`, `mapJobStatus`. `findFirstKey` (ns-agnostik JobURI/Status arama).
+- `requestTransfer`/`pollTransferStatus` → hâlâ `notImpl` (K3).
+
+### ✅ K2.2 — Birim testler
+**Durum:** TAMAMLANDI · **41/41 GEÇTİ** (önceki 23 + 18 yeni K2)
+```
+npm run test:unit -- avid → Test Files 2, Tests 41 passed
+```
+Kapsam: assetIdToInterplayUri, buildRestoreSubmitBody (SourceServerType=Assets, Archive yok),
+buildJobStatusBody, mapJobStatus (6 durum), requestRestore (body+JobURI çıkarımı, JobURI yok→throw),
+pollRestoreStatus (Completed→done, Failed→failed+err, Status yok→running). Rollout testleri
+güncellendi (search+restore gerçek; transfer notImpl).
+
+### ✅ K2.3 — DRY-RUN smoke
+**Durum:** TAMAMLANDI (DC00042608 mobid'i ile, ağa GÖNDERMEDİ)
+`apps/api/scripts/avid-restore-smoke.ts <mobid>` çalıştırıldı. Üretilen envelope doğru:
+- `Service=com.avid.dms.restore`, `Profile=BeINSports - Partial Restore`
+- `InterplayURI=interplay://BSVMWG?mobid=060a2b34...5f35c8d9d219-28eb`
+- **`SourceServerType=Assets`** ✓ (Archive sızıntısı 0)
+- parola `********` maskeli ✓, "Hiçbir şey gönderilmedi" ✓
+Endpoint `.../services/Jobs` doğru kuruldu.
+
+### ⬜ K2.4 — GERÇEK execute (DC00042608, AYRI onay)
+**Durum:** BEKLİYOR — MUTATING, açık kullanıcı onayı şart.
+DC00042608 (offline) mobid'i ile `--execute` → JobURI + Pending→Processing→Completed izleme.
+
 ## Değişmeyecekler (kapsam dışı)
-- K2/K3 adapter method'ları (`requestRestore`/`pollRestoreStatus`/`requestTransfer`/`pollTransferStatus`) → `notImpl` stub.
+- K3 adapter method'ları (`requestTransfer`/`pollTransferStatus`) → `notImpl` stub.
 - K2/K3 worker/service/route/Prisma, `AvidAdapter`/`AvidAsset` interface, frontend, DB/migration.
 
 ## Değişiklik Günlüğü
@@ -165,3 +206,5 @@ bozulmadı (grep ile teyitli). Gerçekte kod baştan doğruydu.
 - 2026-05-31: Adım 6 — build EXIT=0; lint AVID tarafı temiz (2 kendi test-tipi hatam düzeltildi). Kalan 6 lint hatası provys.* spec'lerinde (önceden var, main ile aynı, kapsam dışı).
 - 2026-05-31: Adım 7 (mock regresyon) — avid unit testleri **23/23 geçti**. search/restore/transfer modüllerinin birim testi YOK (yalnız avid kapsanıyor). K1 interface'i değiştirmediği için (build EXIT=0) mock akışı korunuyor. (Düzeltme: bu adımda önce hatalı "185" sonra "314" yazılmıştı — gerçekte koşan yalnız 23 avid testi; ilgili modüllerin spec'i yok.)
 - 2026-05-31: Adım 7 (canlı smoke) — **DC00036170 → 1 asset, online:true, BAŞARILI.** Kod ilk denemede doğru parse etti (gerçek XML rapor §7.1 ile uyumlu: child InterplayURI + büyük harf Name). MOB-dedup çalıştı. Duration timecode geldi (frame değil) → durationFrames atlanıyor (defansif, iyileştirme adayı). Smoke script: apps/api/scripts/avid-search-smoke.ts. **K1 SEARCH ENTEGRASYONU TAMAMLANDI.** (Yanlış-alarm: çalışmayan parse-testine dayanıp geçici hatalı "bug" teşhisi koydum; edit'ler iptal oldu, kod bozulmadı.)
+- 2026-05-31: K1 commit `f2cd896`. Test fixture'larındaki gerçek hesap adı jenerik `test-user` ile değiştirildi; doc'taki kalan hesap-adı ifadeleri de kaldırıldı (parola hiçbir zaman commit'lenmedi).
+- 2026-05-31: **K2 (restore) kodu** — requestRestore (SubmitJobUsingProfile, SourceServerType=Assets) + pollRestoreStatus (GetJobStatus, mapJobStatus saha enum) bağlandı. Birim testler **41/41 geçti**, TSC EXIT=0. DRY-RUN smoke script hazır (avid-restore-smoke.ts). Çalıştırma + gerçek execute (DC00042608) onay bekliyor.

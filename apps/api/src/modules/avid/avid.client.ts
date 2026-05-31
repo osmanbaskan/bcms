@@ -227,9 +227,10 @@ export function createInterplayAvidAdapter(cfg: AvidConfig): AvidAdapter {
   return {
     // K1 (search) — gerçek IPWS Assets.Search bağlı.
     searchByDcCode:     (dcCode: string) => interplaySearchByDcCode(cfg, dcCode),
-    // K2/K3 — kademeli rollout; henüz mock'ta (ayrı PR'da bağlanır).
-    requestRestore:     notImpl('requestRestore'),
-    pollRestoreStatus:  notImpl('pollRestoreStatus'),
+    // K2 (restore) — gerçek IPWS Jobs.SubmitJobUsingProfile + GetJobStatus.
+    requestRestore:     (input: AvidRestoreTransferInput) => interplayRequestRestore(cfg, input),
+    pollRestoreStatus:  (avidJobId: string) => interplayPollJobStatus(cfg, avidJobId),
+    // K3 (transfer) — kademeli rollout; henüz mock'ta (ayrı PR'da bağlanır).
     requestTransfer:    notImpl('requestTransfer'),
     pollTransferStatus: notImpl('pollTransferStatus'),
   };
@@ -304,6 +305,18 @@ function attributesToMap(assetDesc: Record<string, unknown>): Record<string, str
   return map;
 }
 
+/** Bir element düğümünün metin içeriğini al (#text; yoksa primitive değer). */
+function textOf(node: unknown): string {
+  if (typeof node === 'string') return node;
+  if (typeof node === 'number' || typeof node === 'boolean') return String(node);
+  if (node && typeof node === 'object') {
+    const t = (node as Record<string, unknown>)['#text'];
+    if (typeof t === 'string') return t;
+    if (typeof t === 'number' || typeof t === 'boolean') return String(t);
+  }
+  return '';
+}
+
 /** InterplayURI'den mobid= parçasını çıkar (rapor §7.3 dedup anahtarı). */
 function extractMobId(interplayUri: string): string {
   const idx = interplayUri.indexOf('mobid=');
@@ -355,6 +368,125 @@ async function interplaySearchByDcCode(cfg: AvidConfig, dcCode: string): Promise
   }
 
   return Array.from(byMob.values());
+}
+
+// ----------------------------------------------------------------------------
+// K2 — Jobs.SubmitJobUsingProfile (restore) + Jobs.GetJobStatus (rapor §11, §16.5/6)
+// ----------------------------------------------------------------------------
+
+/**
+ * assetId (mobid) → tam InterplayURI. K1 search'te id alanına mobid sakladık;
+ * restore submit için `interplay://<workgroup>?mobid=<id>` formatına geri kurarız.
+ * assetId zaten tam `interplay://...` ise olduğu gibi kullan (defansif).
+ */
+export function assetIdToInterplayUri(cfg: AvidConfig, assetId: string): string {
+  if (assetId.startsWith('interplay://')) return assetId;
+  return `interplay://${cfg.workgroup}?mobid=${assetId}`;
+}
+
+/**
+ * SubmitJobUsingProfile body (rapor §11.1, §16.5). KRİTİK (§11.2):
+ * SourceServerType=Assets — Archive sahada INVALID_PARAMETER döner.
+ * Profile string birebir eşleşmeli (§11.3, env'den).
+ */
+export function buildRestoreSubmitBody(cfg: AvidConfig, interplayUri: string): string {
+  return (
+    `<b:SubmitJobUsingProfile>` +
+    `<b:Service>${escapeXml(cfg.restoreService)}</b:Service>` +
+    `<b:Profile>${escapeXml(cfg.restoreProfile)}</b:Profile>` +
+    `<b:InterplayURI>${escapeXml(interplayUri)}</b:InterplayURI>` +
+    `<b:SourceServerType>Assets</b:SourceServerType>` +
+    `</b:SubmitJobUsingProfile>`
+  );
+}
+
+/** GetJobStatus body (rapor §16.6). Tek JobURI sorgular. */
+export function buildJobStatusBody(jobUri: string): string {
+  return (
+    `<b:GetJobStatus>` +
+    `<b:JobURIs><b:JobURI>${escapeXml(jobUri)}</b:JobURI></b:JobURIs>` +
+    `</b:GetJobStatus>`
+  );
+}
+
+/**
+ * Saha job status string'ini AvidJobPhaseStatus'a çevir (rapor §11.5).
+ * Saha enum'u: Pending → Processing N% → Completed. Doc `RUNNING` der; ikisi de
+ * tanınır. Failed/Aborted/Cancelled → failed. Tanınmayan → running (defansif;
+ * sonraki tick tekrar bakar — yanlışlıkla terminal'e düşmesin).
+ */
+export function mapJobStatus(raw: string): AvidJobPhaseStatus {
+  const s = raw.trim().toLowerCase();
+  if (s === 'completed' || s === 'complete' || s === 'done' || s === 'finished') return 'done';
+  if (s === 'pending' || s === 'queued' || s === 'submitted') return 'pending';
+  if (s.startsWith('processing') || s === 'running' || s === 'inprogress' || s === 'in progress') return 'running';
+  if (s === 'failed' || s === 'aborted' || s === 'cancelled' || s === 'canceled' || s === 'error') return 'failed';
+  return 'running';
+}
+
+/** Parse ağacında ilk JobURI / JobStatus düğümünü bul (ns-agnostik, recursive). */
+function findFirstKey(node: unknown, key: string): unknown {
+  if (node == null || typeof node !== 'object') return undefined;
+  const obj = node as Record<string, unknown>;
+  if (key in obj && obj[key] != null) return obj[key];
+  for (const value of Object.values(obj)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = findFirstKey(item, key);
+        if (found !== undefined) return found;
+      }
+    } else if (value && typeof value === 'object') {
+      const found = findFirstKey(value, key);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+}
+
+async function interplayRequestRestore(
+  cfg: AvidConfig,
+  input: AvidRestoreTransferInput,
+): Promise<{ avidJobId: string }> {
+  const interplayUri = assetIdToInterplayUri(cfg, input.assetId);
+  const bodyXml = buildRestoreSubmitBody(cfg, interplayUri);
+  const body = await postSoap(cfg, {
+    service: 'Jobs',
+    bodyNs: AVID_NS.jobsTypes,
+    bodyXml,
+  });
+
+  // Yanıt: JobURI (örn. interplay://BSVMWG/DMS?jobid=...). ns-agnostik ara.
+  const jobUriRaw = findFirstKey(body, 'JobURI');
+  const jobUri = textOf(jobUriRaw);
+  if (!jobUri) {
+    throw new Error('Avid SubmitJobUsingProfile yanıtında JobURI yok (restore submit başarısız?)');
+  }
+  return { avidJobId: jobUri };
+}
+
+async function interplayPollJobStatus(
+  cfg: AvidConfig,
+  avidJobId: string,
+): Promise<AvidJobStatusResult> {
+  const bodyXml = buildJobStatusBody(avidJobId);
+  const body = await postSoap(cfg, {
+    service: 'Jobs',
+    bodyNs: AVID_NS.jobsTypes,
+    bodyXml,
+  });
+
+  // JobStatus düğümü: { Status, PercentComplete?, ErrorMessage? } (ns-agnostik).
+  const statusRaw = textOf(findFirstKey(body, 'Status'));
+  if (!statusRaw) {
+    // Status okunamadı → defansif running (terminal'e düşürme).
+    return { status: 'running' };
+  }
+  const phase = mapJobStatus(statusRaw);
+  if (phase === 'failed') {
+    const errMsg = textOf(findFirstKey(body, 'ErrorMessage')) || `avid job status=${statusRaw}`;
+    return { status: 'failed', errorMsg: errMsg };
+  }
+  return { status: phase };
 }
 
 // ============================================================================
