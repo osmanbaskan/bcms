@@ -221,18 +221,16 @@ export function createMockAvidAdapter(state: MockState = createInitialMockState(
 // ============================================================================
 
 export function createInterplayAvidAdapter(cfg: AvidConfig): AvidAdapter {
-  const notImpl = (op: string) => () => {
-    throw new Error(`Avid Interplay adapter not implemented yet (op=${op}); set RESTORE_AVID_MOCK=true`);
-  };
+  // 5 method da gerçek IPWS'e bağlı (K1 search + K2 restore + K3 transfer).
   return {
     // K1 (search) — gerçek IPWS Assets.Search bağlı.
     searchByDcCode:     (dcCode: string) => interplaySearchByDcCode(cfg, dcCode),
     // K2 (restore) — gerçek IPWS Jobs.SubmitJobUsingProfile + GetJobStatus.
     requestRestore:     (input: AvidRestoreTransferInput) => interplayRequestRestore(cfg, input),
     pollRestoreStatus:  (avidJobId: string) => interplayPollJobStatus(cfg, avidJobId),
-    // K3 (transfer) — kademeli rollout; henüz mock'ta (ayrı PR'da bağlanır).
-    requestTransfer:    notImpl('requestTransfer'),
-    pollTransferStatus: notImpl('pollTransferStatus'),
+    // K3 (transfer) — gerçek IPWS Transfer.SendToPlayback + Jobs.GetJobStatus.
+    requestTransfer:    (input: AvidRestoreTransferInput) => interplayRequestTransfer(cfg, input),
+    pollTransferStatus: (avidJobId: string) => interplayPollJobStatus(cfg, avidJobId),
   };
 }
 
@@ -487,6 +485,51 @@ async function interplayPollJobStatus(
     return { status: 'failed', errorMsg: errMsg };
   }
   return { status: phase };
+}
+
+// ----------------------------------------------------------------------------
+// K3 — Transfer.SendToPlayback (transfer) — Jobs.GetJobStatus ile izlenir
+//      (rapor §13.1, §16.8). ⚠️ Avid DIŞI yayın havuzuna gönderir; hedef
+//      (engine+device) OP-TEYİDİ bekliyor. SendToPlayback canlı doğrulanMADI.
+// ----------------------------------------------------------------------------
+
+/**
+ * SendToPlayback body (rapor §13.1/§16.8). Device-driven: hedef =
+ * (TransferEngineHostName + DestinationPlaybackDevice) — config'ten.
+ * FTP yolu engine config'inde gömülü, API'ye geçmez (rapor §13.2).
+ */
+export function buildSendToPlaybackBody(cfg: AvidConfig, interplayUri: string): string {
+  return (
+    `<b:SendToPlayback>` +
+    `<b:TransferEngineHostName>${escapeXml(cfg.transferEngine)}</b:TransferEngineHostName>` +
+    `<b:InterplayURI>${escapeXml(interplayUri)}</b:InterplayURI>` +
+    `<b:DestinationPlaybackDevice>${escapeXml(cfg.playbackDevice)}</b:DestinationPlaybackDevice>` +
+    `<b:Priority>${escapeXml(cfg.transferPriority)}</b:Priority>` +
+    `<b:Overwrite>false</b:Overwrite>` +
+    `</b:SendToPlayback>`
+  );
+}
+
+async function interplayRequestTransfer(
+  cfg: AvidConfig,
+  input: AvidRestoreTransferInput,
+): Promise<{ avidJobId: string }> {
+  // V1 basit: restore'dan gelen assetId doğrudan kullanılır. Rapor §10.5
+  // ".transfer companion kanonik" notu ileride eklenebilir (ayrı iş).
+  const interplayUri = assetIdToInterplayUri(cfg, input.assetId);
+  const bodyXml = buildSendToPlaybackBody(cfg, interplayUri);
+  const body = await postSoap(cfg, {
+    service: 'Transfer',
+    bodyNs: AVID_NS.transferTypes,
+    bodyXml,
+  });
+
+  // Yanıt: JobURI (XFER segment). ns-agnostik ara.
+  const jobUri = textOf(findFirstKey(body, 'JobURI'));
+  if (!jobUri) {
+    throw new Error('Avid SendToPlayback yanıtında JobURI yok (transfer submit başarısız?)');
+  }
+  return { avidJobId: jobUri };
 }
 
 // ============================================================================

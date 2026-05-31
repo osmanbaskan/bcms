@@ -217,9 +217,56 @@ Avid'de baştan sona çalıştı.**
 ortam çıktıyı bir tur gecikmeli verdi; raw PercentComplete denemesi (rawstatus.ts) hata
 verdi ama pollRestoreStatus zaten çalışıyor (gereksiz).
 
+---
+
+# KADEME 3 (TRANSFER) — Transfer.SendToPlayback (Jobs.GetJobStatus ile izlenir)
+
+> ⚠️ K1/K2'den farklı: SendToPlayback rapor §13'te **WSDL-only, HİÇ çağrılmadı**;
+> hedef (engine+device) OP-TEYİDİ bekliyor; canlı yayın havuzuna iter. Bu yüzden
+> bu PR **kod + DRY-RUN ile sınırlı — GERÇEK EXECUTE YOK** (kullanıcı kararı).
+
+### ✅ K3.1 — requestTransfer + pollTransferStatus kodu (`avid.client.ts`)
+- `interplayRequestTransfer` → `Transfer.SendToPlayback` (§13.1/§16.8): hedef
+  config'ten (`transferEngine`/`playbackDevice`/`transferPriority`), InterplayURI
+  mobid'den, Overwrite=false. Yanıttan JobURI çıkarır; yoksa throw.
+- `pollTransferStatus` = K2'nin `interplayPollJobStatus`'unu yeniden kullanır
+  (SendToPlayback XFER job'u da Jobs.GetJobStatus ile izlenir — §13.1).
+- `buildSendToPlaybackBody` export (test). `notImpl` tamamen kalktı — **5 method da gerçek**.
+- **V1 basit:** restore'dan gelen assetId doğrudan kullanılır; `.transfer` companion
+  mantığı (§10.5) eklenmedi (ileride ayrı iş).
+
+### ✅ K3.2 — Config (`avid.config.ts`)
+`transferEngine` (def `bsvmte01`), `playbackDevice` (def `PCR`), `transferPriority`
+(def `NORMAL`) env alanları. Default'lar **tahmin** (rapor §13.2); gerçek değer teyitle.
+
+### ✅ K3.3 — Birim testler
+**48/48 GEÇTİ** (önceki 38 + 10 K3). TSC EXIT=0. Kapsam: buildSendToPlaybackBody
+(hedef alanları + override), requestTransfer (/services/Transfer endpoint, body,
+JobURI, JobURI yok→throw), pollTransferStatus (Completed→done, Failed→failed).
+Rollout testleri güncellendi (5 method da gerçek, notImpl yok).
+
+### ✅ K3.4 — DRY-RUN smoke
+`apps/api/scripts/avid-transfer-smoke.ts <mobid>` (default dry-run). DC00042608
+mobid ile çalıştırıldı → envelope doğru: transfer/types ns, `SendToPlayback`
+TransferEngineHostName=bsvmte01, DestinationPlaybackDevice=PCR, Priority=NORMAL,
+Overwrite=false, InterplayURI mobid'li, parola maskeli, **ağa gönderilmedi**.
+
+### ⛔ K3.5 — GERÇEK execute — BİLİNÇLİ YAPILMADI
+SendToPlayback canlı yayın havuzuna gönderir + hedef teyitsiz + WSDL-only.
+`--execute` script'te var ama çalıştırılmadı. Gerçek gönderim için:
+1. Operasyon ekibinden engine+device teyidi (rapor §19).
+2. `.transfer` companion mantığı değerlendirmesi (§10.5).
+3. Açık kullanıcı onayı.
+
+## Açık belirsizlikler (K3 — operasyon/araştırma bekliyor)
+- **Hedef:** TransferEngineHostName + DestinationPlaybackDevice gerçek değeri (rapor §19).
+- **.transfer companion:** STP kanonik olarak .transfer mixdown üzerinden (§10.5);
+  V1 basit assetId kullanıyor.
+- **SendToPlayback [WSDL-only]:** canlı doğrulanmadı; gerçek execute'ta sürpriz olabilir.
+
 ## Değişmeyecekler (kapsam dışı)
-- K3 adapter method'ları (`requestTransfer`/`pollTransferStatus`) → `notImpl` stub.
-- K2/K3 worker/service/route/Prisma, `AvidAdapter`/`AvidAsset` interface, frontend, DB/migration.
+- **Gerçek SendToPlayback execute** — bu PR'da YOK.
+- transfer worker/service/route/Prisma, `AvidAdapter`/`AvidAsset` interface, frontend, DB/migration.
 
 ## Değişiklik Günlüğü
 - 2026-05-31: Döküman oluşturuldu. Adım 1-2-3 kod yazımı tamam.
@@ -232,3 +279,4 @@ verdi ama pollRestoreStatus zaten çalışıyor (gereksiz).
 - 2026-05-31: **K2 (restore) kodu** — requestRestore (SubmitJobUsingProfile, SourceServerType=Assets) + pollRestoreStatus (GetJobStatus, mapJobStatus saha enum) bağlandı. Birim testler **38/38 geçti** (commit mesajında sehven 41 yazıldı), TSC EXIT=0. Commit `ce88a9b`.
 - 2026-05-31: K2.3 DRY-RUN smoke ✓ (DC00042608, ağa göndermedi, envelope doğru).
 - 2026-05-31: **K2.4 GERÇEK EXECUTE ✓ TAM KANIT** — DC00042608 `--execute`. JobURI (`...?jobid=1780247955990.1`) → ~3dk sonra JobStatus **done** → K1 search DC00042608 **offline→online** (Media Status=online). Restore uçtan uca gerçek Avid'de çalıştı. **K2 RESTORE ENTEGRASYONU TAMAMLANDI.**
+- 2026-05-31: **K3 (transfer) kodu** — requestTransfer (SendToPlayback, hedef env'den) + pollTransferStatus (Jobs.GetJobStatus paylaşımı) bağlandı. notImpl tamamen kalktı, **5 method da gerçek**. Testler **48/48**, TSC EXIT=0. DRY-RUN smoke ✓ (DC00042608, ağa göndermedi, envelope doğru). **Gerçek execute BİLİNÇLİ YAPILMADI** (canlı yayın + hedef teyitsiz). K3 kod tamam, execute operasyon teyidi + açık onay bekliyor.

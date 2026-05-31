@@ -5,6 +5,7 @@ import {
   buildSearchBody,
   buildRestoreSubmitBody,
   buildJobStatusBody,
+  buildSendToPlaybackBody,
   assetIdToInterplayUri,
   mapJobStatus,
   getAvidAdapter,
@@ -32,6 +33,9 @@ function makeConfig(overrides: Partial<AvidConfig> = {}): AvidConfig {
     workgroup: 'BSVMWG',
     restoreProfile: 'BeINSports - Partial Restore',
     restoreService: 'com.avid.dms.restore',
+    transferEngine: 'bsvmte01',
+    playbackDevice: 'PCR',
+    transferPriority: 'NORMAL',
     ...overrides,
   };
 }
@@ -176,12 +180,16 @@ describe('createInterplayAvidAdapter.searchByDcCode', () => {
   });
 });
 
-describe('createInterplayAvidAdapter — kademeli rollout (K2/K3 henüz mock)', () => {
-  it('search+restore gerçek; transfer 2 method hâlâ notImpl throw (K3 sırada)', () => {
+describe('createInterplayAvidAdapter — tüm 5 method gerçek (K1+K2+K3)', () => {
+  it('hiçbir method "not implemented" fırlatmaz (notImpl tamamen kalktı)', () => {
     const adapter = createInterplayAvidAdapter(makeConfig());
-    // K2 bağlandı → requestRestore/pollRestoreStatus artık "not implemented" DEĞİL.
-    expect(() => adapter.requestTransfer({ assetId: 'x', dcCode: 'd' })).toThrow(/not implemented/i);
-    expect(() => adapter.pollTransferStatus('j')).toThrow(/not implemented/i);
+    // Tüm method'lar fonksiyon; çağrıldıklarında fetch'e gider (stub yok →
+    // ağ hatası olabilir ama "not implemented" ASLA olmaz). Sadece tip/varlık.
+    expect(typeof adapter.searchByDcCode).toBe('function');
+    expect(typeof adapter.requestRestore).toBe('function');
+    expect(typeof adapter.pollRestoreStatus).toBe('function');
+    expect(typeof adapter.requestTransfer).toBe('function');
+    expect(typeof adapter.pollTransferStatus).toBe('function');
   });
 });
 
@@ -193,7 +201,7 @@ describe('getAvidAdapter — factory seçimi', () => {
     expect(r.avidJobId).toBeTruthy();
   });
 
-  it('enabled+mock=false+env dolu → interplay adapter (transfer hâlâ notImpl)', () => {
+  it('enabled+mock=false+env dolu → interplay adapter (5 method da fonksiyon)', () => {
     const env = {
       RESTORE_AVID_ENABLED: 'on',
       RESTORE_AVID_MOCK: 'false',
@@ -203,8 +211,8 @@ describe('getAvidAdapter — factory seçimi', () => {
       AVID_WORKSPACE: 'interplay://BSVMWG/',
     } as NodeJS.ProcessEnv;
     const adapter = getAvidAdapter(env);
-    // K3 henüz bağlanmadı → transfer notImpl.
-    expect(() => adapter.requestTransfer({ assetId: 'x', dcCode: 'd' })).toThrow(/not implemented/i);
+    expect(typeof adapter.requestTransfer).toBe('function');
+    expect(typeof adapter.pollTransferStatus).toBe('function');
   });
 });
 
@@ -301,6 +309,81 @@ describe('K2 — requestRestore / pollRestoreStatus (fetch stub, ağ YOK)', () =
     })));
     const adapter = createInterplayAvidAdapter(makeConfig());
     expect(await adapter.pollRestoreStatus('j')).toEqual({ status: 'running' });
+  });
+});
+
+describe('K3 — buildSendToPlaybackBody (rapor §13.1/§16.8)', () => {
+  it('engine/device/priority/InterplayURI/Overwrite doğru', () => {
+    const xml = buildSendToPlaybackBody(makeConfig(), 'interplay://BSVMWG?mobid=M1');
+    expect(xml).toContain('<b:TransferEngineHostName>bsvmte01</b:TransferEngineHostName>');
+    expect(xml).toContain('<b:InterplayURI>interplay://BSVMWG?mobid=M1</b:InterplayURI>');
+    expect(xml).toContain('<b:DestinationPlaybackDevice>PCR</b:DestinationPlaybackDevice>');
+    expect(xml).toContain('<b:Priority>NORMAL</b:Priority>');
+    expect(xml).toContain('<b:Overwrite>false</b:Overwrite>');
+  });
+  it('config override edilen hedef yansır', () => {
+    const xml = buildSendToPlaybackBody(
+      makeConfig({ transferEngine: 'bsvmte02', playbackDevice: 'MCR', transferPriority: 'PWT' }),
+      'interplay://BSVMWG?mobid=M2',
+    );
+    expect(xml).toContain('<b:TransferEngineHostName>bsvmte02</b:TransferEngineHostName>');
+    expect(xml).toContain('<b:DestinationPlaybackDevice>MCR</b:DestinationPlaybackDevice>');
+    expect(xml).toContain('<b:Priority>PWT</b:Priority>');
+  });
+});
+
+describe('K3 — requestTransfer / pollTransferStatus (fetch stub, ağ YOK)', () => {
+  it('requestTransfer: /services/Transfer endpoint + SendToPlayback body + JobURI', async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      text: async () =>
+        `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body>` +
+        `<SendToPlaybackResponse><JobURI>interplay://BSVMWG/DMS?jobid=XFER1</JobURI></SendToPlaybackResponse>` +
+        `</s:Body></s:Envelope>`,
+    }));
+    vi.stubGlobal('fetch', fetchFn);
+    const adapter = createInterplayAvidAdapter(makeConfig());
+    const r = await adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' });
+    expect(r.avidJobId).toBe('interplay://BSVMWG/DMS?jobid=XFER1');
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://avid.test/services/Transfer');
+    expect(String(init.body)).toContain('<b:SendToPlayback>');
+    expect(String(init.body)).toContain('interplay://BSVMWG?mobid=M1');
+  });
+
+  it('requestTransfer: JobURI yoksa hata fırlatır', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      text: async () => `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body><SendToPlaybackResponse/></s:Body></s:Envelope>`,
+    })));
+    const adapter = createInterplayAvidAdapter(makeConfig());
+    await expect(adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' })).rejects.toThrow(/JobURI/i);
+  });
+
+  it('pollTransferStatus: Completed → done (Jobs.GetJobStatus paylaşımı)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      text: async () =>
+        `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body>` +
+        `<GetJobStatusResponse><JobStatus><Status>Completed</Status></JobStatus></GetJobStatusResponse>` +
+        `</s:Body></s:Envelope>`,
+    })));
+    const adapter = createInterplayAvidAdapter(makeConfig());
+    expect(await adapter.pollTransferStatus('interplay://BSVMWG/DMS?jobid=XFER1')).toEqual({ status: 'done' });
+  });
+
+  it('pollTransferStatus: Failed → failed (+errorMsg)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      text: async () =>
+        `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body>` +
+        `<GetJobStatusResponse><JobStatus><Status>Failed</Status><ErrorMessage>playout reject</ErrorMessage></JobStatus></GetJobStatusResponse>` +
+        `</s:Body></s:Envelope>`,
+    })));
+    const adapter = createInterplayAvidAdapter(makeConfig());
+    const r = await adapter.pollTransferStatus('j');
+    expect(r.status).toBe('failed');
+    expect(r.errorMsg).toContain('playout reject');
   });
 });
 

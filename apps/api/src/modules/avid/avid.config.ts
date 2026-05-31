@@ -34,6 +34,16 @@ export interface AvidConfig {
   restoreProfile: string;
   /** K2 hazırlığı — Jobs.SubmitJobUsingProfile Service. Default com.avid.dms.restore. */
   restoreService: string;
+  /**
+   * K3 (transfer) — Transfer.SendToPlayback hedefi (rapor §13.1). Asset'i Avid
+   * DIŞI yayın havuzuna gönderir. Hedef OP-TEYİDİ bekliyor (rapor tahmini
+   * bsvmte01 + PCR). Gerçek değer teyitle .env'e konur.
+   */
+  transferEngine: string;
+  /** K3 — DestinationPlaybackDevice (PCR/MCR/GURME_PCR ...). Default PCR. */
+  playbackDevice: string;
+  /** K3 — SendToPlayback Priority. NORMAL | PWT | UNASSIGNED. Default NORMAL. */
+  transferPriority: string;
 }
 
 function parseBoolEnv(v: string | undefined): boolean {
@@ -66,6 +76,10 @@ export function loadAvidConfig(env: NodeJS.ProcessEnv = process.env): AvidConfig
     // K2 hazırlığı (bu PR'da kullanılmaz). Boşluk/tire farkı önemli (rapor §11.3).
     restoreProfile: env.AVID_RESTORE_PROFILE?.trim() || 'BeINSports - Partial Restore',
     restoreService: env.AVID_RESTORE_SERVICE?.trim() || 'com.avid.dms.restore',
+    // K3 (transfer) — SendToPlayback hedefi. Hedef OP-TEYİDİ bekliyor (rapor §13/§19).
+    transferEngine: env.AVID_TRANSFER_ENGINE?.trim() || 'bsvmte01',
+    playbackDevice: env.AVID_PLAYBACK_DEVICE?.trim() || 'PCR',
+    transferPriority: env.AVID_TRANSFER_PRIORITY?.trim() || 'NORMAL',
   };
 }
 
