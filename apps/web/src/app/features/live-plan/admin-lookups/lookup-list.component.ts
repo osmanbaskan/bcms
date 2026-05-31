@@ -1,4 +1,4 @@
-import { Component, Input, OnChanges, SimpleChanges, signal, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, OnChanges, SimpleChanges, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
@@ -32,6 +32,7 @@ import {
 @Component({
   selector: 'app-lookup-list',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule, FormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatChipsModule,

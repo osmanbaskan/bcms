@@ -1,6 +1,6 @@
 import { CommonModule, DatePipe } from '@angular/common';
 import { environment } from '../../../../environments/environment';
-import { Component, Injectable, Inject, Optional, OnInit, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Injectable, Inject, Optional, OnInit, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { DateAdapter, NativeDateAdapter, MatNativeDateModule, MAT_DATE_LOCALE } from '@angular/material/core';
@@ -140,6 +140,7 @@ function describeIngestKey(sourceKey: string): string {
 @Component({
   selector: 'app-schedule-reporting',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
     FormsModule,

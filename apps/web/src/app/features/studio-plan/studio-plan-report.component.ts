@@ -1,4 +1,4 @@
-import { Component, signal, inject, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -38,6 +38,7 @@ function formatHours(minutes: number): string {
 @Component({
   selector: 'app-studio-plan-report',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule, FormsModule,
     MatButtonModule, MatIconModule,

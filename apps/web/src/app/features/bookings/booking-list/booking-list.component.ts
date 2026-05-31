@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -61,6 +61,7 @@ function todayDateOnly(): string {
 @Component({
   selector: 'app-booking-task-dialog',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule, FormsModule, MatButtonModule, MatDialogModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatProgressSpinnerModule, MatIconModule,
@@ -440,6 +441,7 @@ export class BookingTaskDialogComponent implements OnInit {
 @Component({
   selector: 'app-booking-list',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule, FormsModule, MatButtonModule, MatIconModule, MatCardModule,
     MatSnackBarModule, MatTooltipModule, MatProgressSpinnerModule, MatFormFieldModule,

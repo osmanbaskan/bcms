@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -123,6 +123,7 @@ export function dateInputValueToDate(value: string): Date | null {
 @Component({
   selector: 'app-live-plan-entry-add-dialog',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
     { provide: MAT_DATE_LOCALE, useValue: 'tr-TR' },
     { provide: MAT_DATE_FORMATS, useValue: TR_DATE_FORMATS },
