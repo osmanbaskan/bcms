@@ -47,6 +47,10 @@ interface ChannelOption { id: number; name: string; }
 @Component({
   selector: 'app-yayin-planlama-form',
   standalone: true,
+  // batch-d (audit #2a): state signal/computed; tüm subscribe handler'larında
+  // signal.set (rows/leagues/weeks/error + complete:loading) → OnPush'ta CD
+  // tetiklenir. ngModel düz alanları (scheduleDate/Time) kendi event'inde CD yapar.
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule, FormsModule, RouterLink, MatCardModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatButtonModule, MatIconModule,

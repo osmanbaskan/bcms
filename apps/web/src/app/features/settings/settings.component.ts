@@ -26,6 +26,11 @@ interface SmbConfig {
 @Component({
   selector: 'app-settings',
   standalone: true,
+  // batch-d (audit #2a): cfg/portNames [(ngModel)]-bound düz alanlar; AMA her
+  // async subscribe handler'ında signal.set var (loading/saving/portsLoading/
+  // portsSaving) → OnPush'ta CD tetiklenir, düz alanlar güncel okunur. ngModel
+  // two-way kendi event'inde zaten CD yapar.
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule, FormsModule, RouterLink,
     MatCardModule, MatFormFieldModule, MatInputModule,
