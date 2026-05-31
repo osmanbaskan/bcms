@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { MatTableModule } from '@angular/material/table';
@@ -39,6 +39,10 @@ import { LivePlanCreateDialogComponent } from './live-plan-create-dialog.compone
     MatTableModule, MatButtonModule, MatIconModule, MatChipsModule,
     MatDialogModule, MatSnackBarModule, MatTooltipModule, MatProgressSpinnerModule,
   ],
+  // R2 (audit #2a): state signal-tabanlı (rows/loading/userGroups signal;
+  // computed canWrite). API subscribe'ları signal.set() ile günceller →
+  // OnPush'ta CD tetiklenir, markForCheck gerekmez.
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
       <h2>Canlı Yayın Plan</h2>

@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -43,6 +43,10 @@ import { TechnicalDetailsFormComponent } from './technical-details-form.componen
     TransmissionSegmentsComponent,
     TechnicalDetailsFormComponent,
   ],
+  // R2 (audit #2a): state signal-tabanlı (entryId/entry/loading/userGroups
+  // signal; computed canWrite/canDelete). route paramMap + API subscribe'ları
+  // signal.set() ile günceller → OnPush'ta CD tetiklenir, markForCheck gerekmez.
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
       <button mat-icon-button [routerLink]="['/live-plan']" matTooltip="Listeye dön">
