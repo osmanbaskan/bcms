@@ -60,6 +60,11 @@ const END_TIMES = ['06:15', '13:15', '15:00', '16:45', '20:00', '22:00', '23:45'
 @Component({
   selector: 'app-weekly-shift',
   standalone: true,
+  // R6 (audit #2a): state signal-tabanlı (shifts/saving/filtreler signal;
+  // computed türevler). 3 subscribe (put/get) + 2 setTimeout hepsi signal.set
+  // ile günceller → OnPush'ta CD tetiklenir. Imperatif cdr/detectChanges yok;
+  // scroll-sync ayrı directive (CD'den bağımsız DOM senkronu).
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
     FormsModule,
