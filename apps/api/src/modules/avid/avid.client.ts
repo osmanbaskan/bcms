@@ -17,6 +17,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { loadAvidConfig, assertAvidConfigReady, type AvidConfig } from './avid.config.js';
+import { postSoap, AVID_NS, escapeXml } from './avid.soap.js';
 
 export type AvidJobPhaseStatus = 'pending' | 'running' | 'done' | 'failed';
 
@@ -219,17 +220,141 @@ export function createMockAvidAdapter(state: MockState = createInitialMockState(
 // Gerçek Interplay adapter — V2 stub (ayrı PR'da doldurulur)
 // ============================================================================
 
-export function createInterplayAvidAdapter(_cfg: AvidConfig): AvidAdapter {
+export function createInterplayAvidAdapter(cfg: AvidConfig): AvidAdapter {
   const notImpl = (op: string) => () => {
     throw new Error(`Avid Interplay adapter not implemented yet (op=${op}); set RESTORE_AVID_MOCK=true`);
   };
   return {
-    searchByDcCode:     notImpl('searchByDcCode'),
+    // K1 (search) — gerçek IPWS Assets.Search bağlı.
+    searchByDcCode:     (dcCode: string) => interplaySearchByDcCode(cfg, dcCode),
+    // K2/K3 — kademeli rollout; henüz mock'ta (ayrı PR'da bağlanır).
     requestRestore:     notImpl('requestRestore'),
     pollRestoreStatus:  notImpl('pollRestoreStatus'),
     requestTransfer:    notImpl('requestTransfer'),
     pollTransferStatus: notImpl('pollTransferStatus'),
   };
+}
+
+// ----------------------------------------------------------------------------
+// K1 — Assets.Search implementasyonu (rapor §9, §16.2, §7.1)
+// ----------------------------------------------------------------------------
+
+/**
+ * Assets.Search body XML'i kur. İki AND koşulu:
+ *  - Display Name `Contains` dcCode (Group=USER) — rapor §9.2: yalnız
+ *    Equals/Contains çalışır.
+ *  - Type `Equals` sequence (Group=SYSTEM).
+ */
+export function buildSearchBody(cfg: AvidConfig, dcCode: string, maxResults = 50): string {
+  return (
+    `<b:Search>` +
+    `<b:InterplayPathURI>${escapeXml(cfg.searchRootUri)}</b:InterplayPathURI>` +
+    `<b:SearchGroup Operator="AND">` +
+    `<b:AttributeCondition Condition="Contains">` +
+    `<b:Attribute Name="Display Name" Group="USER">${escapeXml(dcCode)}</b:Attribute>` +
+    `</b:AttributeCondition>` +
+    `<b:AttributeCondition Condition="Equals">` +
+    `<b:Attribute Name="Type" Group="SYSTEM">sequence</b:Attribute>` +
+    `</b:AttributeCondition>` +
+    `</b:SearchGroup>` +
+    `<b:MaxResults>${maxResults}</b:MaxResults>` +
+    `</b:Search>`
+  );
+}
+
+/** Parse ağacında tüm `AssetDescription` düğümlerini topla (ns-agnostik, recursive). */
+function collectAssetDescriptions(node: unknown, out: Record<string, unknown>[]): void {
+  if (node == null || typeof node !== 'object') return;
+  const obj = node as Record<string, unknown>;
+  if ('AssetDescription' in obj && obj.AssetDescription) {
+    const list = Array.isArray(obj.AssetDescription) ? obj.AssetDescription : [obj.AssetDescription];
+    for (const item of list) {
+      if (item && typeof item === 'object') out.push(item as Record<string, unknown>);
+    }
+  }
+  for (const value of Object.values(obj)) {
+    if (Array.isArray(value)) {
+      for (const item of value) collectAssetDescriptions(item, out);
+    } else if (value && typeof value === 'object') {
+      collectAssetDescriptions(value, out);
+    }
+  }
+}
+
+/** Bir AssetDescription'ın <Attributes> içini { name: value } map'e çevir (rapor §7.1). */
+function attributesToMap(assetDesc: Record<string, unknown>): Record<string, string> {
+  const map: Record<string, string> = {};
+  const attrsNode = assetDesc.Attributes as Record<string, unknown> | undefined;
+  if (!attrsNode) return map;
+  const raw = attrsNode.Attribute;
+  const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  for (const a of list) {
+    if (!a || typeof a !== 'object') continue;
+    const ar = a as Record<string, unknown>;
+    const name = typeof ar['@_Name'] === 'string' ? ar['@_Name'] : null;
+    if (!name) continue;
+    // Element metni: #text (attribute'lu element); yoksa primitive değer.
+    const value =
+      typeof ar['#text'] === 'string' ? ar['#text']
+      : typeof ar['#text'] === 'number' ? String(ar['#text'])
+      : typeof ar['#text'] === 'boolean' ? String(ar['#text'])
+      : '';
+    map[name] = value;
+  }
+  return map;
+}
+
+/** InterplayURI'den mobid= parçasını çıkar (rapor §7.3 dedup anahtarı). */
+function extractMobId(interplayUri: string): string {
+  const idx = interplayUri.indexOf('mobid=');
+  return idx >= 0 ? interplayUri.slice(idx + 'mobid='.length) : interplayUri;
+}
+
+async function interplaySearchByDcCode(cfg: AvidConfig, dcCode: string): Promise<AvidAsset[]> {
+  const bodyXml = buildSearchBody(cfg, dcCode);
+  const body = await postSoap(cfg, {
+    service: 'Assets',
+    bodyNs: AVID_NS.assetsTypes,
+    bodyXml,
+  });
+
+  const descriptions: Record<string, unknown>[] = [];
+  collectAssetDescriptions(body, descriptions);
+
+  // MOB-dedup (rapor §7.3): aynı mobid birden çok path'te ayrı AssetDescription
+  // olarak dönebilir → tek asset say.
+  const byMob = new Map<string, AvidAsset>();
+  for (const desc of descriptions) {
+    const uriRaw = desc.InterplayURI;
+    const uri = typeof uriRaw === 'string' ? uriRaw
+      : (uriRaw && typeof uriRaw === 'object' && typeof (uriRaw as Record<string, unknown>)['#text'] === 'string')
+        ? (uriRaw as Record<string, unknown>)['#text'] as string
+        : '';
+    if (!uri) continue;
+
+    const attrs = attributesToMap(desc);
+    const name = attrs['Display Name'] ?? '';
+
+    // Defansif client-side filtre (rapor §9.2: server Contains; false-positive
+    // ihtimaline karşı dcCode gerçekten adda mı?).
+    if (dcCode && !name.includes(dcCode)) continue;
+
+    const id = extractMobId(uri);
+    const online = (attrs['Media Status'] ?? '').toLowerCase() === 'online';
+    const modifiedAt = attrs['Modified Date'] ?? '';
+
+    const asset: AvidAsset = { id, name, modifiedAt, online };
+    const durationRaw = attrs['Duration'];
+    if (durationRaw) {
+      const n = Number(durationRaw);
+      if (Number.isFinite(n)) asset.durationFrames = n;
+    }
+
+    // Aynı mobid varsa ilkini koru (path varyasyonu sadece kopya).
+    if (!byMob.has(id)) byMob.set(id, asset);
+  }
+
+  return Array.from(byMob.values());
 }
 
 // ============================================================================

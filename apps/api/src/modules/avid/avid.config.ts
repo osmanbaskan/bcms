@@ -23,6 +23,17 @@ export interface AvidConfig {
   password: string | null;
   workspace: string | null;
   requestTimeoutMs: number;
+  /** Search kök path (Assets.Search InterplayPathURI). Default Projects kökü. */
+  searchRootUri: string;
+  /** Workgroup adı — interplay:// URI prefix kurarken. Default BSVMWG. */
+  workgroup: string;
+  /**
+   * K2 (restore) hazırlığı — bu PR'da KULLANILMAZ. Jobs.SubmitJobUsingProfile
+   * profile string'i birebir eşleşmeli (rapor §11.3). Default Partial.
+   */
+  restoreProfile: string;
+  /** K2 hazırlığı — Jobs.SubmitJobUsingProfile Service. Default com.avid.dms.restore. */
+  restoreService: string;
 }
 
 function parseBoolEnv(v: string | undefined): boolean {
@@ -50,6 +61,11 @@ export function loadAvidConfig(env: NodeJS.ProcessEnv = process.env): AvidConfig
     password: env.AVID_PASSWORD && env.AVID_PASSWORD !== '' ? env.AVID_PASSWORD : null,
     workspace: env.AVID_WORKSPACE?.trim() || null,
     requestTimeoutMs: parsePositiveIntEnv(env.AVID_REQUEST_TIMEOUT_MS, 30000),
+    searchRootUri: env.AVID_SEARCH_ROOT_URI?.trim() || 'interplay://BSVMWG/Projects/',
+    workgroup: env.AVID_WORKGROUP?.trim() || 'BSVMWG',
+    // K2 hazırlığı (bu PR'da kullanılmaz). Boşluk/tire farkı önemli (rapor §11.3).
+    restoreProfile: env.AVID_RESTORE_PROFILE?.trim() || 'BeINSports - Partial Restore',
+    restoreService: env.AVID_RESTORE_SERVICE?.trim() || 'com.avid.dms.restore',
   };
 }
 
