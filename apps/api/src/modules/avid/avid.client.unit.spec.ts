@@ -36,6 +36,7 @@ function makeConfig(overrides: Partial<AvidConfig> = {}): AvidConfig {
     transferEngine: 'bsvmte01',
     transferEngineFallback: 'bsvmte02',
     playbackDevice: 'MCR',
+    playbackDeviceFallback: 'MCR_YEDEK',
     transferPriority: 'NORMAL',
     ...overrides,
   };
@@ -322,10 +323,10 @@ describe('K3 — buildSendToPlaybackBody (rapor §13.1/§16.8)', () => {
     expect(xml).toContain('<b:Priority>NORMAL</b:Priority>');
     expect(xml).toContain('<b:Overwrite>false</b:Overwrite>');
   });
-  it('engine parametresi override eder (failover yedek engine)', () => {
-    const xml = buildSendToPlaybackBody(makeConfig(), 'interplay://BSVMWG?mobid=M2', 'bsvmte02');
+  it('engine+device parametresi override eder (yedek bsvmte02/MCR_YEDEK)', () => {
+    const xml = buildSendToPlaybackBody(makeConfig(), 'interplay://BSVMWG?mobid=M2', 'bsvmte02', 'MCR_YEDEK');
     expect(xml).toContain('<b:TransferEngineHostName>bsvmte02</b:TransferEngineHostName>');
-    expect(xml).toContain('<b:DestinationPlaybackDevice>MCR</b:DestinationPlaybackDevice>');
+    expect(xml).toContain('<b:DestinationPlaybackDevice>MCR_YEDEK</b:DestinationPlaybackDevice>');
   });
 });
 
@@ -378,9 +379,13 @@ describe('K3 — requestTransfer / pollTransferStatus (fetch stub, ağ YOK)', ()
     const r = await adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' });
     expect(r.avidJobId).toBe('interplay://BSVMWG/DMS?jobid=XFER2');
     expect(fetchFn).toHaveBeenCalledTimes(2); // birincil + yedek
-    // 1. çağrı bsvmte01, 2. çağrı bsvmte02 body'si içermeli.
-    expect(String((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body)).toContain('bsvmte01');
-    expect(String((fetchFn.mock.calls[1] as unknown as [string, RequestInit])[1].body)).toContain('bsvmte02');
+    // 1. çağrı bsvmte01/MCR, 2. çağrı bsvmte02/MCR_YEDEK body'si içermeli.
+    const body1 = String((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body);
+    const body2 = String((fetchFn.mock.calls[1] as unknown as [string, RequestInit])[1].body);
+    expect(body1).toContain('bsvmte01');
+    expect(body1).toContain('<b:DestinationPlaybackDevice>MCR</b:DestinationPlaybackDevice>');
+    expect(body2).toContain('bsvmte02');
+    expect(body2).toContain('<b:DestinationPlaybackDevice>MCR_YEDEK</b:DestinationPlaybackDevice>');
   });
 
   it('failover yok: fallback engine boşsa yalnız birincil denenir', async () => {

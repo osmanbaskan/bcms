@@ -498,32 +498,37 @@ async function interplayPollJobStatus(
  * (TransferEngineHostName + DestinationPlaybackDevice). FTP yolu engine
  * config'inde gömülü, API'ye geçmez (rapor §13.2).
  *
- * `engine` parametre (failover için): birincil/yedek farklı engine'le aynı
- * device'a gönderir. Verilmezse cfg.transferEngine kullanılır.
+ * `engine` + `device` parametre (failover için): birincil/yedek farklı
+ * (engine, device) çiftine gönderir. ⚠️ Yedek engine'de device adı farklı
+ * olabilir (bsvmte02 → MCR_YEDEK, MCR değil). Verilmezse cfg birincil değerleri.
  */
 export function buildSendToPlaybackBody(
   cfg: AvidConfig,
   interplayUri: string,
   engine: string = cfg.transferEngine,
+  device: string = cfg.playbackDevice,
 ): string {
   return (
     `<b:SendToPlayback>` +
     `<b:TransferEngineHostName>${escapeXml(engine)}</b:TransferEngineHostName>` +
     `<b:InterplayURI>${escapeXml(interplayUri)}</b:InterplayURI>` +
-    `<b:DestinationPlaybackDevice>${escapeXml(cfg.playbackDevice)}</b:DestinationPlaybackDevice>` +
+    `<b:DestinationPlaybackDevice>${escapeXml(device)}</b:DestinationPlaybackDevice>` +
     `<b:Priority>${escapeXml(cfg.transferPriority)}</b:Priority>` +
     `<b:Overwrite>false</b:Overwrite>` +
     `</b:SendToPlayback>`
   );
 }
 
-/** Tek bir engine'e SendToPlayback dener; JobURI döner veya throw. */
-async function sendToPlaybackOnEngine(
+/** SendToPlayback hedefi — (engine, device) çifti. */
+interface PlaybackTarget { engine: string; device: string; }
+
+/** Tek bir (engine, device) hedefine SendToPlayback dener; JobURI döner veya throw. */
+async function sendToPlaybackOnTarget(
   cfg: AvidConfig,
   interplayUri: string,
-  engine: string,
+  target: PlaybackTarget,
 ): Promise<string> {
-  const bodyXml = buildSendToPlaybackBody(cfg, interplayUri, engine);
+  const bodyXml = buildSendToPlaybackBody(cfg, interplayUri, target.engine, target.device);
   const body = await postSoap(cfg, {
     service: 'Transfer',
     bodyNs: AVID_NS.transferTypes,
@@ -531,7 +536,7 @@ async function sendToPlaybackOnEngine(
   });
   const jobUri = textOf(findFirstKey(body, 'JobURI'));
   if (!jobUri) {
-    throw new Error(`Avid SendToPlayback (${engine}) yanıtında JobURI yok`);
+    throw new Error(`Avid SendToPlayback (${target.engine}/${target.device}) yanıtında JobURI yok`);
   }
   return jobUri;
 }
@@ -544,26 +549,32 @@ async function interplayRequestTransfer(
   // ".transfer companion kanonik" notu ileride eklenebilir (ayrı iş).
   const interplayUri = assetIdToInterplayUri(cfg, input.assetId);
 
-  // Failover: birincil engine (bsvmte01) başarısızsa yedek (bsvmte02) denenir.
-  // Yedek boşsa yalnız birincil. (Operasyon kararı: ikisi de MCR.)
-  const engines = [cfg.transferEngine];
+  // Failover hedefleri (operasyon kararı 2026-05-31, canlı doğrulandı):
+  //   birincil bsvmte01/MCR → yedek bsvmte02/MCR_YEDEK.
+  // ⚠️ Yedekte device adı FARKLI (MCR yok, MCR_YEDEK var).
+  const targets: PlaybackTarget[] = [
+    { engine: cfg.transferEngine, device: cfg.playbackDevice },
+  ];
   if (cfg.transferEngineFallback && cfg.transferEngineFallback !== cfg.transferEngine) {
-    engines.push(cfg.transferEngineFallback);
+    targets.push({
+      engine: cfg.transferEngineFallback,
+      device: cfg.playbackDeviceFallback || cfg.playbackDevice,
+    });
   }
 
   let lastErr: unknown;
-  for (const engine of engines) {
+  for (const target of targets) {
     try {
-      const jobUri = await sendToPlaybackOnEngine(cfg, interplayUri, engine);
+      const jobUri = await sendToPlaybackOnTarget(cfg, interplayUri, target);
       return { avidJobId: jobUri };
     } catch (err) {
       lastErr = err;
-      // Sonraki engine'e düş (varsa). Tümü tükenirse son hatayı fırlat.
+      // Sonraki hedefe düş (varsa). Tümü tükenirse son hatayı fırlat.
     }
   }
   throw lastErr instanceof Error
     ? lastErr
-    : new Error('Avid SendToPlayback tüm engine\'lerde başarısız');
+    : new Error('Avid SendToPlayback tüm hedeflerde başarısız');
 }
 
 // ============================================================================

@@ -44,8 +44,13 @@ export interface AvidConfig {
    * bu engine'e tekrar denenir. Operasyon kararı: bsvmte02. Boş ise failover yok.
    */
   transferEngineFallback: string;
-  /** K3 — DestinationPlaybackDevice (PCR/MCR/GURME_PCR ...). Operasyon kararı: MCR. */
+  /** K3 — DestinationPlaybackDevice (birincil). Operasyon kararı: bsvmte01/MCR. */
   playbackDevice: string;
+  /**
+   * K3 — Yedek engine'in device adı. ⚠️ bsvmte02'de device "MCR" DEĞİL,
+   * "MCR_YEDEK" (canlı doğrulandı 2026-05-31). Boş ise playbackDevice kullanılır.
+   */
+  playbackDeviceFallback: string;
   /** K3 — SendToPlayback Priority. NORMAL | PWT | UNASSIGNED. Default NORMAL. */
   transferPriority: string;
 }
@@ -85,6 +90,8 @@ export function loadAvidConfig(env: NodeJS.ProcessEnv = process.env): AvidConfig
     transferEngine: env.AVID_TRANSFER_ENGINE?.trim() || 'bsvmte01',
     transferEngineFallback: env.AVID_TRANSFER_ENGINE_FALLBACK?.trim() || 'bsvmte02',
     playbackDevice: env.AVID_PLAYBACK_DEVICE?.trim() || 'MCR',
+    // bsvmte02'de device adı MCR_YEDEK (MCR değil — canlı doğrulandı).
+    playbackDeviceFallback: env.AVID_PLAYBACK_DEVICE_FALLBACK?.trim() || 'MCR_YEDEK',
     transferPriority: env.AVID_TRANSFER_PRIORITY?.trim() || 'NORMAL',
   };
 }

@@ -235,16 +235,21 @@ verdi ama pollRestoreStatus zaten çalışıyor (gereksiz).
 - **V1 basit:** restore'dan gelen assetId doğrudan kullanılır; `.transfer` companion
   mantığı (§10.5) eklenmedi (ileride ayrı iş).
 
-### ✅ K3.2 — Config (`avid.config.ts`) + FAILOVER (operasyon kararı 2026-05-31)
-**Hedef NETLEŞTİ:** birincil **bsvmte01/MCR**, yedek **bsvmte02/MCR**.
-- `transferEngine` (def `bsvmte01`), `transferEngineFallback` (def `bsvmte02`),
-  `playbackDevice` (def **`MCR`** — PCR değil), `transferPriority` (def `NORMAL`).
-- **Failover:** `requestTransfer` birincil engine'e SendToPlayback dener; hata/JobURI-yok
-  olursa yedek engine'e (bsvmte02) tekrar dener. İkisi de olmazsa son hatayı fırlatır.
-  `transferEngineFallback` boşsa yalnız birincil. `buildSendToPlaybackBody` artık opsiyonel
-  `engine` parametresi alır; `sendToPlaybackOnEngine` tek-engine helper'ı.
-- env: `AVID_TRANSFER_ENGINE` / `AVID_TRANSFER_ENGINE_FALLBACK` / `AVID_PLAYBACK_DEVICE` /
-  `AVID_TRANSFER_PRIORITY`.
+### ✅ K3.2 — Config (`avid.config.ts`) + FAILOVER (operasyon kararı + canlı keşif)
+**Hedef NETLEŞTİ + DEVICE İSİMLERİ CANLI DOĞRULANDI** (`GetTransferDevices`, read-only):
+- **Birincil: bsvmte01 / `MCR`** (canlı: bsvmte01 → PCR, MCR, GURME_PCR).
+- **Yedek: bsvmte02 / `MCR_YEDEK`** ⚠️ — bsvmte02'de "MCR" YOK; device adı `MCR_YEDEK`
+  (canlı: MCR_YEDEK, PCR_YEDEK, GURME_PCR_YEDEK, GURME_HD_DIGI…). Diğer engine'ler:
+  bsvmte04→MCR4, bsvmte05→MCR5 (bunlar kullanılmıyor).
+- **SendToPlayback PROFİL-BAZLI DEĞİL, DEVICE-BAZLI** (rapor §13.1) → "profil ismi" yok,
+  (engine + device) çifti var. Keşif script'i: `apps/api/scripts/avid-devices-smoke.ts`.
+- Config: `transferEngine`(bsvmte01) / `playbackDevice`(MCR) / `transferEngineFallback`(bsvmte02)
+  / `playbackDeviceFallback`(MCR_YEDEK) / `transferPriority`(NORMAL).
+- **Failover (engine,device) çifti:** birincil hedef başarısızsa yedek **(engine,device)**
+  çiftine dener (sadece engine değil — device adı da değişiyor). `buildSendToPlaybackBody`
+  opsiyonel `engine`+`device` param; `sendToPlaybackOnTarget` helper; `PlaybackTarget` tipi.
+- env: `AVID_TRANSFER_ENGINE` / `AVID_PLAYBACK_DEVICE` / `AVID_TRANSFER_ENGINE_FALLBACK` /
+  `AVID_PLAYBACK_DEVICE_FALLBACK` / `AVID_TRANSFER_PRIORITY`.
 
 ### ✅ K3.3 — Birim testler
 **48/48 GEÇTİ** (önceki 38 + 10 K3). TSC EXIT=0. Kapsam: buildSendToPlaybackBody
@@ -287,4 +292,5 @@ SendToPlayback canlı yayın havuzuna gönderir + hedef teyitsiz + WSDL-only.
 - 2026-05-31: K2.3 DRY-RUN smoke ✓ (DC00042608, ağa göndermedi, envelope doğru).
 - 2026-05-31: **K2.4 GERÇEK EXECUTE ✓ TAM KANIT** — DC00042608 `--execute`. JobURI (`...?jobid=1780247955990.1`) → ~3dk sonra JobStatus **done** → K1 search DC00042608 **offline→online** (Media Status=online). Restore uçtan uca gerçek Avid'de çalıştı. **K2 RESTORE ENTEGRASYONU TAMAMLANDI.**
 - 2026-05-31: **K3 (transfer) kodu** — requestTransfer (SendToPlayback) + pollTransferStatus (Jobs.GetJobStatus paylaşımı) bağlandı. notImpl tamamen kalktı, **5 method da gerçek**. TSC EXIT=0. DRY-RUN smoke ✓. (Test sayısı sehven 48 yazıldı; doğrusu sonraki failover ekiyle 46→47.)
-- 2026-05-31: **K3 hedef + FAILOVER** (operasyon kararı) — birincil **bsvmte01/MCR**, yedek **bsvmte02/MCR**. requestTransfer birincil→yedek failover (buildSendToPlaybackBody engine param + sendToPlaybackOnEngine). Default device PCR→MCR. Testler **47/47**, TSC EXIT=0. DRY-RUN envelope=bsvmte01/MCR doğrulandı. Commit `5452cca`. Gerçek execute hâlâ açık onay bekliyor.
+- 2026-05-31: **K3 hedef + FAILOVER** (operasyon kararı) — birincil **bsvmte01/MCR**, yedek **bsvmte02/MCR**. requestTransfer birincil→yedek failover. Default device PCR→MCR. TSC EXIT=0. DRY-RUN envelope=bsvmte01/MCR doğrulandı. Commit `660c8a7`.
+- 2026-05-31: **K3 device keşfi + DÜZELTME** — `GetTransferDevices` ile canlı device isimleri çekildi (avid-devices-smoke.ts). Kritik bulgu: **bsvmte02'de "MCR" YOK, device adı `MCR_YEDEK`**. Failover (engine,device) çiftine çevrildi: birincil bsvmte01/MCR → yedek bsvmte02/MCR_YEDEK. `playbackDeviceFallback` + `AVID_PLAYBACK_DEVICE_FALLBACK` eklendi; `sendToPlaybackOnTarget`/`PlaybackTarget`. Testler **46/46**, TSC EXIT=0. (SendToPlayback profil değil DEVICE-bazlı.)
