@@ -294,3 +294,56 @@ SendToPlayback canlı yayın havuzuna gönderir + hedef teyitsiz + WSDL-only.
 - 2026-05-31: **K3 (transfer) kodu** — requestTransfer (SendToPlayback) + pollTransferStatus (Jobs.GetJobStatus paylaşımı) bağlandı. notImpl tamamen kalktı, **5 method da gerçek**. TSC EXIT=0. DRY-RUN smoke ✓. (Test sayısı sehven 48 yazıldı; doğrusu sonraki failover ekiyle 46→47.)
 - 2026-05-31: **K3 hedef + FAILOVER** (operasyon kararı) — birincil **bsvmte01/MCR**, yedek **bsvmte02/MCR**. requestTransfer birincil→yedek failover. Default device PCR→MCR. TSC EXIT=0. DRY-RUN envelope=bsvmte01/MCR doğrulandı. Commit `660c8a7`.
 - 2026-05-31: **K3 device keşfi + DÜZELTME** — `GetTransferDevices` ile canlı device isimleri çekildi (avid-devices-smoke.ts). Kritik bulgu: **bsvmte02'de "MCR" YOK, device adı `MCR_YEDEK`**. Failover (engine,device) çiftine çevrildi: birincil bsvmte01/MCR → yedek bsvmte02/MCR_YEDEK. `playbackDeviceFallback` + `AVID_PLAYBACK_DEVICE_FALLBACK` eklendi; `sendToPlaybackOnTarget`/`PlaybackTarget`. Testler **46/46**, TSC EXIT=0. (SendToPlayback profil değil DEVICE-bazlı.)
+
+## KADEME 3 (TRANSFER) — YENİDEN: CTMS submitSTPJob (Cloud UX) — DOĞRU YOL ✅
+
+> **ÖZET:** IPWS `Transfer.SendToPlayback` (ve çıplak `Jobs.SubmitJobUsingParameters`
+> longgopexport) "Cannot import" verdi — çünkü STP Encode mixdown YAPMAZ, hazır
+> `.mxf.temp` bekler. Cloud UX'in "transfer" butonu **CTMS REST `submitSTPJob`**
+> çağırır; arkadaki **CDS Service** mixdown+encode+SendToPlayback'i kendi orkestra
+> eder. 2026-06-01 HAR capture ile bulundu, **BCMS'ten canlı doğrulandı** (job
+> RUNNING→COMPLETED, DC00042608 MCR'ye indi).
+
+### Endpoint + auth + body (HAR + canlı)
+- `POST {AVID_CLOUDUX_URL}/apis/avid.pam.stp;version=1;realm={REALM}/submitSTPJob`
+- Auth: Cookie `avidAccessToken=<token>` (login session; IP-bağımsız — ubuntu-srv'den çalıştı).
+- Body: `{"stpRequestDTO":{device,profile,burnGraphics:false,highPriority:false,overwrite:false,mobId,nodeId,processName,videoId}}`
+  - `mobId` = **HAM sequence** mob ID (companion gerekmez — CDS üretir).
+  - `nodeId` = `interplay:{realm}:sequence:{mobId}`; `processName` = asset display name; `videoId` = DC kodu (TapeID).
+- Yanıt 200: `{"errorSet":[],"responseData":"{\"jobId\":\"<uuid>\",\"mcdsStatusURL\":\"https://bsvmstp01:8443/STPService/jobs/status/\"}"}`
+
+### Kod (2026-06-01)
+- **YENİ `avid.ctms.ts`:** `buildStpRequestBody`, `postSubmitStpJob` (cookie auth,
+  self-signed TLS yalnız undici Agent ile — global bypass YOK, errorSet/401→throw,
+  token redaction), `createCtmsTokenManager` (`/auth/tokens/current/extension` ile
+  ~10dk'da bir token canlı tutar).
+- **`avid.client.ts`:** `requestTransfer`→`ctmsRequestTransfer` (CTMS), `pollTransferStatus`→
+  `ctmsPollTransferStatus`. `AvidRestoreTransferInput.assetName?` eklendi (processName için).
+  Eski `interplayRequestTransfer`/`sendToPlaybackOnTarget`/`buildSendToPlaybackBody` referans
+  için DURUYOR (kullanılmıyor).
+- **`avid.config.ts`:** `AVID_CLOUDUX_URL/REALM/TOKEN`, `AVID_STP_DEVICE/PROFILE`,
+  `AVID_CLOUDUX_INSECURE_TLS`. `assertCtmsConfigReady` (token zorunlu — yalnız transfer yolu).
+- **`transfer.worker.ts`:** `requestTransfer`'a `assetName: claimed.avidAssetName` (1 satır).
+- **Buton akışı:** Ara/Restore/Transfer butonları ZATEN bağlıydı; yalnız adapter'ın
+  transfer ucu CTMS'e çevrildi. Worker/route/DB/frontend/interface değişmedi.
+
+### Status izleme — V1 sınırı (optimistic-submit)
+Per-job REST status endpoint'i YOK: `bsvmstp01:8443` ubuntu-srv'den erişilemiyor;
+CTMS'te REST job-status rel'i 404; UI status'u **websocket** (`broadcastNotifications`)
+ile alıyor. **V1: submitSTPJob 200 = job kabul → `pollTransferStatus` `done` döner**
+(transfer Avid'e teslim edildi semantiği). Nihai encode/playback sonucu operatör
+Cloud UX Process ekranından görür. Gerçek RUNNING→COMPLETED takibi (WS veya Process
+job-list REST'i) **sonraki faz**.
+
+### Açık / sonraki faz
+- **Auth kalıcılık:** env token + extension. Süreç restart/tam expiry → token elle
+  yenilenir. Prod için **service account + OAuth2 login** (`/auth/oauth2/token`) sonraki faz.
+- **Gerçek status takibi** (yukarıda).
+- Smoke: `apps/api/scripts/avid-ctms-stp-smoke.ts` (dry-run default, --execute).
+
+### Değişiklik günlüğü (K3-CTMS)
+- 2026-06-01: HAR capture → CTMS submitSTPJob endpoint+body+auth bulundu; BCMS smoke
+  `--execute` → jobId döndü, GUI'de RUNNING→COMPLETED, DC00042608 MCR'ye indi. **K3 ÇÖZÜLDÜ.**
+- 2026-06-01: K3 adapter IPWS SendToPlayback'ten CTMS'e çevrildi. `avid.ctms.ts` (+ token
+  manager), config CLOUDUX_* env, worker assetName. Birim testler: avid **58/58** geçti
+  (client 35 + ctms 12 + soap 11), TSC EXIT=0.

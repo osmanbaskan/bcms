@@ -38,6 +38,13 @@ function makeConfig(overrides: Partial<AvidConfig> = {}): AvidConfig {
     playbackDevice: 'MCR',
     playbackDeviceFallback: 'MCR_YEDEK',
     transferPriority: 'NORMAL',
+    // K3 CTMS (Cloud UX submitSTPJob).
+    clouduxUrl: 'https://cloudux.test',
+    clouduxRealm: 'REALM1',
+    clouduxToken: 'tok-secret',
+    stpDevice: 'MCR',
+    stpProfile: 'MCR',
+    clouduxInsecureTls: true,
     ...overrides,
   };
 }
@@ -330,99 +337,77 @@ describe('K3 — buildSendToPlaybackBody (rapor §13.1/§16.8)', () => {
   });
 });
 
-describe('K3 — requestTransfer / pollTransferStatus (fetch stub, ağ YOK)', () => {
-  it('requestTransfer: /services/Transfer endpoint + SendToPlayback body + JobURI', async () => {
-    const fetchFn = vi.fn(async () => ({
+describe('K3 — requestTransfer (CTMS submitSTPJob, fetch stub, ağ YOK)', () => {
+  function ctmsOkResponse(jobId = 'CTMS-JOB-1') {
+    return {
       ok: true, status: 200, statusText: 'OK',
-      text: async () =>
-        `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body>` +
-        `<SendToPlaybackResponse><JobURI>interplay://BSVMWG/DMS?jobid=XFER1</JobURI></SendToPlaybackResponse>` +
-        `</s:Body></s:Envelope>`,
-    }));
+      text: async () => JSON.stringify({
+        errorSet: [],
+        responseData: JSON.stringify({ jobId, mcdsStatusURL: 'https://bsvmstp01:8443/STPService/jobs/status/' }),
+        errors: [],
+      }),
+    };
+  }
+
+  it('requestTransfer: submitSTPJob endpoint + cookie auth + stpRequestDTO body + jobId', async () => {
+    const fetchFn = vi.fn(async () => ctmsOkResponse('CTMS-JOB-1'));
     vi.stubGlobal('fetch', fetchFn);
     const adapter = createInterplayAvidAdapter(makeConfig());
-    const r = await adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' });
-    expect(r.avidJobId).toBe('interplay://BSVMWG/DMS?jobid=XFER1');
-    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('http://avid.test/services/Transfer');
-    expect(String(init.body)).toContain('<b:SendToPlayback>');
-    expect(String(init.body)).toContain('interplay://BSVMWG?mobid=M1');
+    const r = await adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC00042608', assetName: 'DC00042608_TARAFTAR' });
+    expect(r.avidJobId).toBe('CTMS-JOB-1');
+
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit & { headers: Record<string, string> }];
+    expect(url).toBe('https://cloudux.test/apis/avid.pam.stp;version=1;realm=REALM1/submitSTPJob');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>).Cookie).toBe('avidAccessToken=tok-secret');
+    const body = JSON.parse(String(init.body)) as { stpRequestDTO: Record<string, unknown> };
+    expect(body.stpRequestDTO.mobId).toBe('M1'); // HAM sequence
+    expect(body.stpRequestDTO.nodeId).toBe('interplay:REALM1:sequence:M1');
+    expect(body.stpRequestDTO.processName).toBe('DC00042608_TARAFTAR'); // assetName
+    expect(body.stpRequestDTO.videoId).toBe('DC00042608'); // TapeID = düz DC kodu
+    expect(body.stpRequestDTO.device).toBe('MCR');
+    expect(body.stpRequestDTO.profile).toBe('MCR');
   });
 
-  it('requestTransfer: JobURI yoksa (her iki engine de) hata fırlatır', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true, status: 200, statusText: 'OK',
-      text: async () => `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body><SendToPlaybackResponse/></s:Body></s:Envelope>`,
-    })));
-    const adapter = createInterplayAvidAdapter(makeConfig());
-    await expect(adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' })).rejects.toThrow(/JobURI/i);
-  });
-
-  it('failover: birincil bsvmte01 başarısız → yedek bsvmte02 başarılı', async () => {
-    let call = 0;
-    const fetchFn = vi.fn(async () => {
-      call += 1;
-      if (call === 1) {
-        // Birincil engine: JobURI'siz yanıt → sendToPlaybackOnEngine throw.
-        return { ok: true, status: 200, statusText: 'OK',
-          text: async () => `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body><SendToPlaybackResponse/></s:Body></s:Envelope>` };
-      }
-      // Yedek engine: başarılı JobURI.
-      return { ok: true, status: 200, statusText: 'OK',
-        text: async () =>
-          `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body>` +
-          `<SendToPlaybackResponse><JobURI>interplay://BSVMWG/DMS?jobid=XFER2</JobURI></SendToPlaybackResponse>` +
-          `</s:Body></s:Envelope>` };
-    });
+  it('requestTransfer: assetName yoksa processName=dcCode', async () => {
+    const fetchFn = vi.fn(async () => ctmsOkResponse('CTMS-JOB-2'));
     vi.stubGlobal('fetch', fetchFn);
     const adapter = createInterplayAvidAdapter(makeConfig());
-    const r = await adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' });
-    expect(r.avidJobId).toBe('interplay://BSVMWG/DMS?jobid=XFER2');
-    expect(fetchFn).toHaveBeenCalledTimes(2); // birincil + yedek
-    // 1. çağrı bsvmte01/MCR, 2. çağrı bsvmte02/MCR_YEDEK body'si içermeli.
-    const body1 = String((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body);
-    const body2 = String((fetchFn.mock.calls[1] as unknown as [string, RequestInit])[1].body);
-    expect(body1).toContain('bsvmte01');
-    expect(body1).toContain('<b:DestinationPlaybackDevice>MCR</b:DestinationPlaybackDevice>');
-    expect(body2).toContain('bsvmte02');
-    expect(body2).toContain('<b:DestinationPlaybackDevice>MCR_YEDEK</b:DestinationPlaybackDevice>');
+    await adapter.requestTransfer({ assetId: 'M9', dcCode: 'DC9' });
+    const init = (fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1];
+    const body = JSON.parse(String(init.body)) as { stpRequestDTO: Record<string, unknown> };
+    expect(body.stpRequestDTO.processName).toBe('DC9');
   });
 
-  it('failover yok: fallback engine boşsa yalnız birincil denenir', async () => {
-    const fetchFn = vi.fn(async () => ({
-      ok: true, status: 200, statusText: 'OK',
-      text: async () => `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body><SendToPlaybackResponse/></s:Body></s:Envelope>`,
-    }));
-    vi.stubGlobal('fetch', fetchFn);
-    const adapter = createInterplayAvidAdapter(makeConfig({ transferEngineFallback: '' }));
-    await expect(adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' })).rejects.toThrow(/JobURI/i);
-    expect(fetchFn).toHaveBeenCalledTimes(1); // sadece birincil
-  });
-
-  it('pollTransferStatus: Completed → done (Jobs.GetJobStatus paylaşımı)', async () => {
+  it('requestTransfer: errorSet doluysa hata fırlatır', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true, status: 200, statusText: 'OK',
-      text: async () =>
-        `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body>` +
-        `<GetJobStatusResponse><JobStatus><Status>Completed</Status></JobStatus></GetJobStatusResponse>` +
-        `</s:Body></s:Envelope>`,
+      text: async () => JSON.stringify({ errorSet: [{ code: 'X', message: 'boom' }], responseData: '', errors: [] }),
     })));
     const adapter = createInterplayAvidAdapter(makeConfig());
-    expect(await adapter.pollTransferStatus('interplay://BSVMWG/DMS?jobid=XFER1')).toEqual({ status: 'done' });
+    await expect(adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' })).rejects.toThrow(/CTMS submitSTPJob error/i);
   });
 
-  it('pollTransferStatus: Failed → failed (+errorMsg)', async () => {
+  it('requestTransfer: 401 → AUTH hatası (token mesaja sızmaz)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true, status: 200, statusText: 'OK',
-      text: async () =>
-        `<s:Envelope xmlns:s="${AVID_NS.soapEnvelope}"><s:Body>` +
-        `<GetJobStatusResponse><JobStatus><Status>Failed</Status><ErrorMessage>playout reject</ErrorMessage></JobStatus></GetJobStatusResponse>` +
-        `</s:Body></s:Envelope>`,
+      ok: false, status: 401, statusText: 'Unauthorized', text: async () => 'nope',
     })));
     const adapter = createInterplayAvidAdapter(makeConfig());
-    const r = await adapter.pollTransferStatus('j');
-    expect(r.status).toBe('failed');
-    expect(r.errorMsg).toContain('playout reject');
+    await expect(adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' }))
+      .rejects.toThrow(/auth failed/i);
+  });
+
+  it('requestTransfer: CLOUDUX_TOKEN yoksa assertCtmsConfigReady fırlatır', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const adapter = createInterplayAvidAdapter(makeConfig({ clouduxToken: null }));
+    // assertCtmsConfigReady senkron fırlatır (ensureCtms içinde, fetch'ten önce).
+    expect(() => adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' }))
+      .toThrow(/AVID_CLOUDUX_TOKEN/);
+  });
+
+  it('pollTransferStatus: V1 optimistic — done döner (per-job REST status yok)', async () => {
+    const adapter = createInterplayAvidAdapter(makeConfig());
+    expect(await adapter.pollTransferStatus('CTMS-JOB-1')).toEqual({ status: 'done' });
   });
 });
 

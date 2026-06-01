@@ -16,8 +16,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { loadAvidConfig, assertAvidConfigReady, type AvidConfig } from './avid.config.js';
+import { loadAvidConfig, assertAvidConfigReady, assertCtmsConfigReady, type AvidConfig } from './avid.config.js';
 import { postSoap, AVID_NS, escapeXml } from './avid.soap.js';
+import { postSubmitStpJob, createCtmsTokenManager, type CtmsTokenManager } from './avid.ctms.js';
 
 export type AvidJobPhaseStatus = 'pending' | 'running' | 'done' | 'failed';
 
@@ -56,6 +57,11 @@ export interface AvidRestoreTransferInput {
   /** Audit/log için DC kod; adapter çağrısına bilgi amaçlı geçer. */
   dcCode: string;
   channelSlug?: string;
+  /**
+   * Asset display name (transfer_jobs.avidAssetName). K3 CTMS submitSTPJob
+   * `processName` alanı için. Yoksa dcCode kullanılır. Restore/search ignore eder.
+   */
+  assetName?: string;
 }
 
 export interface AvidAdapter {
@@ -221,16 +227,29 @@ export function createMockAvidAdapter(state: MockState = createInitialMockState(
 // ============================================================================
 
 export function createInterplayAvidAdapter(cfg: AvidConfig): AvidAdapter {
-  // 5 method da gerçek IPWS'e bağlı (K1 search + K2 restore + K3 transfer).
+  // K1 search + K2 restore = IPWS SOAP. K3 transfer = CTMS submitSTPJob (Cloud UX).
+  // CTMS token yöneticisi: env token'ı /extension ile canlı tutar (transfer için).
+  // Token yalnız transfer kullanılınca gerekli — lazy: ilk requestTransfer'da
+  // assertCtmsConfigReady + manager.start().
+  let ctmsToken: CtmsTokenManager | null = null;
+  const ensureCtms = (): CtmsTokenManager => {
+    if (!ctmsToken) {
+      assertCtmsConfigReady(cfg);
+      ctmsToken = createCtmsTokenManager(cfg);
+      ctmsToken.start();
+    }
+    return ctmsToken;
+  };
+
   return {
     // K1 (search) — gerçek IPWS Assets.Search bağlı.
     searchByDcCode:     (dcCode: string) => interplaySearchByDcCode(cfg, dcCode),
     // K2 (restore) — gerçek IPWS Jobs.SubmitJobUsingProfile + GetJobStatus.
     requestRestore:     (input: AvidRestoreTransferInput) => interplayRequestRestore(cfg, input),
     pollRestoreStatus:  (avidJobId: string) => interplayPollJobStatus(cfg, avidJobId),
-    // K3 (transfer) — gerçek IPWS Transfer.SendToPlayback + Jobs.GetJobStatus.
-    requestTransfer:    (input: AvidRestoreTransferInput) => interplayRequestTransfer(cfg, input),
-    pollTransferStatus: (avidJobId: string) => interplayPollJobStatus(cfg, avidJobId),
+    // K3 (transfer) — CTMS submitSTPJob (CDS mixdown+encode+playback orkestra eder).
+    requestTransfer:    (input: AvidRestoreTransferInput) => ctmsRequestTransfer(cfg, ensureCtms(), input),
+    pollTransferStatus: (avidJobId: string) => ctmsPollTransferStatus(cfg, avidJobId),
   };
 }
 
@@ -575,6 +594,55 @@ async function interplayRequestTransfer(
   throw lastErr instanceof Error
     ? lastErr
     : new Error('Avid SendToPlayback tüm hedeflerde başarısız');
+}
+
+// ----------------------------------------------------------------------------
+// K3 GERÇEK YOLU — CTMS submitSTPJob (Cloud UX). IPWS SendToPlayback "Cannot
+// import" verdiği için yukarıdaki kod KULLANILMIYOR (referans/rollback için
+// tutuluyor). CDS Service mixdown+encode+playback'i kendi orkestra eder.
+// 2026-06-01 BCMS'ten canlı doğrulandı.
+// ----------------------------------------------------------------------------
+
+/**
+ * CTMS submitSTPJob ile transfer başlat. Token yöneticisinden canlı token alır.
+ *  - mobId = HAM sequence (input.assetId) — companion gerekmez.
+ *  - processName = input.assetName ?? input.dcCode (GUI'de görünen ad).
+ *  - videoId = input.dcCode (TapeID; kullanıcı kararı: düz DC kodu).
+ * Dönen CTMS uuid jobId `avidJobId` olarak saklanır (DB değişmez).
+ */
+async function ctmsRequestTransfer(
+  cfg: AvidConfig,
+  tokenManager: CtmsTokenManager,
+  input: AvidRestoreTransferInput,
+): Promise<{ avidJobId: string }> {
+  const result = await postSubmitStpJob(cfg, tokenManager.getToken(), {
+    realm: cfg.clouduxRealm,
+    mobId: input.assetId,
+    processName: input.assetName ?? input.dcCode,
+    videoId: input.dcCode,
+    device: cfg.stpDevice,
+    profile: cfg.stpProfile,
+  });
+  return { avidJobId: result.jobId };
+}
+
+/**
+ * CTMS transfer status izleme — V1 (optimistic-submit).
+ *
+ * ⚠️ Per-job REST status endpoint'i YOK (bsvmstp01:8443 erişilemez; CTMS'te REST
+ * status rel'i yok; UI websocket kullanıyor — 2026-06-01 keşif). submitSTPJob 200
+ * = transfer CDS kuyruğuna kabul edildi. Gerçek RUNNING→COMPLETED takibi sonraki
+ * faz (WS broadcastNotifications veya Process job-list REST'i).
+ *
+ * V1 davranışı: kabul edilen job `done` sayılır (transfer Avid'e teslim edildi
+ * semantiği). Operatör nihai sonucu Cloud UX Process ekranından görür. Bu sınır
+ * dokümana yazıldı.
+ */
+async function ctmsPollTransferStatus(
+  _cfg: AvidConfig,
+  _avidJobId: string,
+): Promise<AvidJobStatusResult> {
+  return { status: 'done' };
 }
 
 // ============================================================================

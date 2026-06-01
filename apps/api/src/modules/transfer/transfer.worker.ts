@@ -158,6 +158,8 @@ async function processOneJob(
         assetId:     claimed.avidAssetId,
         dcCode:      claimed.dcCode,
         channelSlug: claimed.channelSlug,
+        // K3 CTMS processName için asset display name (varsa). Yoksa dcCode.
+        assetName:   claimed.avidAssetName ?? undefined,
       });
       avidJobId = resp.avidJobId;
     } catch (err) {

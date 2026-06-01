@@ -53,6 +53,30 @@ export interface AvidConfig {
   playbackDeviceFallback: string;
   /** K3 — SendToPlayback Priority. NORMAL | PWT | UNASSIGNED. Default NORMAL. */
   transferPriority: string;
+  /**
+   * K3 (transfer) GERÇEK YOLU — MediaCentral Cloud UX / CTMS REST.
+   * IPWS SendToPlayback "Cannot import" verdiği için terk edildi; transfer artık
+   * Cloud UX'in `submitSTPJob` endpoint'ine gider (CDS mixdown+encode+playback'i
+   * kendi orkestra eder). 2026-06-01 BCMS'ten canlı doğrulandı.
+   */
+  /** Cloud UX taban URL (CTMS). Default https://172.26.33.57. */
+  clouduxUrl: string;
+  /** CTMS realm = Interplay PAM systemID. Default saha değeri (BSVMIPE). */
+  clouduxRealm: string;
+  /**
+   * Başlangıç `avidAccessToken` (login session cookie değeri). SIR — hata
+   * mesajlarına ASLA değeri girmez (sadece env adı). extension ile canlı tutulur.
+   */
+  clouduxToken: string | null;
+  /** STP hedef device (submitSTPJob device alanı). Default MCR. */
+  stpDevice: string;
+  /** STP profil adı (submitSTPJob profile alanı). Default MCR. */
+  stpProfile: string;
+  /**
+   * Cloud UX self-signed sertifika — TLS doğrulamasını SADECE CTMS client'ta
+   * gevşetir (global NODE_TLS_REJECT_UNAUTHORIZED kullanılmaz). Default true.
+   */
+  clouduxInsecureTls: boolean;
 }
 
 function parseBoolEnv(v: string | undefined): boolean {
@@ -93,6 +117,16 @@ export function loadAvidConfig(env: NodeJS.ProcessEnv = process.env): AvidConfig
     // bsvmte02'de device adı MCR_YEDEK (MCR değil — canlı doğrulandı).
     playbackDeviceFallback: env.AVID_PLAYBACK_DEVICE_FALLBACK?.trim() || 'MCR_YEDEK',
     transferPriority: env.AVID_TRANSFER_PRIORITY?.trim() || 'NORMAL',
+    // K3 gerçek yolu — Cloud UX / CTMS submitSTPJob (2026-06-01 canlı doğrulandı).
+    clouduxUrl: (env.AVID_CLOUDUX_URL?.trim() || 'https://172.26.33.57').replace(/\/+$/, ''),
+    clouduxRealm: env.AVID_CLOUDUX_REALM?.trim() || 'F580021A-2720-4117-B33C-A5B843A2B586',
+    // Token trim YAPMA — opaque değer; boşsa null.
+    clouduxToken: env.AVID_CLOUDUX_TOKEN && env.AVID_CLOUDUX_TOKEN !== '' ? env.AVID_CLOUDUX_TOKEN : null,
+    stpDevice: env.AVID_STP_DEVICE?.trim() || 'MCR',
+    stpProfile: env.AVID_STP_PROFILE?.trim() || 'MCR',
+    clouduxInsecureTls: env.AVID_CLOUDUX_INSECURE_TLS === undefined
+      ? true
+      : parseBoolEnv(env.AVID_CLOUDUX_INSECURE_TLS),
   };
 }
 
@@ -120,5 +154,21 @@ export function assertAvidConfigReady(config: AvidConfig): void {
   if (!config.workspace)    missing.push('AVID_WORKSPACE');
   if (missing.length > 0) {
     throw new Error(`Avid config missing required env: ${missing.join(', ')}`);
+  }
+}
+
+/**
+ * K3 (transfer / CTMS submitSTPJob) için zorunlu env kontrolü. K1/K2'den AYRI —
+ * search/restore CTMS token'ı gerektirmez, transfer gerektirir. Transfer yolu
+ * (requestTransfer) çağrılınca kontrol edilir. Mesaj SADECE env adı (token değeri
+ * ASLA). Mock mode'da çağrılmaz.
+ */
+export function assertCtmsConfigReady(config: AvidConfig): void {
+  const missing: string[] = [];
+  if (!config.clouduxUrl)   missing.push('AVID_CLOUDUX_URL');
+  if (!config.clouduxRealm) missing.push('AVID_CLOUDUX_REALM');
+  if (!config.clouduxToken) missing.push('AVID_CLOUDUX_TOKEN');
+  if (missing.length > 0) {
+    throw new Error(`Avid CTMS (transfer) config missing required env: ${missing.join(', ')}`);
   }
 }

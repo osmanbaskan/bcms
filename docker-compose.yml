@@ -207,6 +207,13 @@ services:
       AVID_USER:               ${AVID_USER:-}
       AVID_PASSWORD:           ${AVID_PASSWORD:-}
       AVID_WORKSPACE:          ${AVID_WORKSPACE:-}
+      # K3 transfer — Cloud UX / CTMS submitSTPJob (gerçek yol).
+      AVID_CLOUDUX_URL:        ${AVID_CLOUDUX_URL:-}
+      AVID_CLOUDUX_REALM:      ${AVID_CLOUDUX_REALM:-}
+      AVID_CLOUDUX_TOKEN:      ${AVID_CLOUDUX_TOKEN:-}
+      AVID_STP_DEVICE:         ${AVID_STP_DEVICE:-MCR}
+      AVID_STP_PROFILE:        ${AVID_STP_PROFILE:-MCR}
+      AVID_CLOUDUX_INSECURE_TLS: ${AVID_CLOUDUX_INSECURE_TLS:-true}
       PORT: 3000
       NODE_ENV: production
       BCMS_BACKGROUND_SERVICES: none
@@ -317,6 +324,13 @@ services:
       AVID_PASSWORD:           ${AVID_PASSWORD:-}
       AVID_WORKSPACE:          ${AVID_WORKSPACE:-}
       AVID_REQUEST_TIMEOUT_MS: ${AVID_REQUEST_TIMEOUT_MS:-30000}
+      # K3 transfer — Cloud UX / CTMS submitSTPJob (transfer worker burada koşar).
+      AVID_CLOUDUX_URL:        ${AVID_CLOUDUX_URL:-}
+      AVID_CLOUDUX_REALM:      ${AVID_CLOUDUX_REALM:-}
+      AVID_CLOUDUX_TOKEN:      ${AVID_CLOUDUX_TOKEN:-}
+      AVID_STP_DEVICE:         ${AVID_STP_DEVICE:-MCR}
+      AVID_STP_PROFILE:        ${AVID_STP_PROFILE:-MCR}
+      AVID_CLOUDUX_INSECURE_TLS: ${AVID_CLOUDUX_INSECURE_TLS:-true}
       SEARCH_WORKER_INTERVAL_MS:   ${SEARCH_WORKER_INTERVAL_MS:-5000}
       SEARCH_MAX_PER_TICK:         ${SEARCH_MAX_PER_TICK:-20}
       SEARCH_CONCURRENCY:          ${SEARCH_CONCURRENCY:-3}
