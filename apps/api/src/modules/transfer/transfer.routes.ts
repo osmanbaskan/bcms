@@ -49,20 +49,20 @@ export async function transferRoutes(app: FastifyInstance) {
       const result = await enqueueTransferJob(app, body, user);
       // YP0.4-B: yeni job enqueue cache'i stale yapar → invalidate.
       transferJobsCache.invalidate();
-      reply.status(202).send({
+      // `return reply` ŞART (2026-06-02 fix — "Reply already sent" / HEADERS_SENT).
+      return reply.status(202).send({
         jobId:    result.job.id,
         status:   result.job.status,
         existing: result.existing,
       });
     } catch (err) {
       if (err instanceof RestoreNotDoneError) {
-        reply.status(409).send({
+        return reply.status(409).send({
           statusCode: 409,
           error:      'Conflict',
           code:       err.code,
           message:    err.message,
         });
-        return;
       }
       throw err;
     }

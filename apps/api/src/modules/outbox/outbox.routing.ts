@@ -19,6 +19,10 @@ const EVENT_TYPE_TO_QUEUE: Record<string, QueueName> = {
   'notification.email_requested':  QUEUES.NOTIFICATIONS_EMAIL,
   'ingest.job_started':            QUEUES.INGEST_NEW,
   'ingest.job_completed':          QUEUES.INGEST_COMPLETED,
+  // Restore V2 (Avid) — search/restore/transfer worker shadow event'leri.
+  'search.job_completed':          QUEUES.SEARCH_COMPLETED,
+  'restore.job_completed':         QUEUES.RESTORE_COMPLETED,
+  'transfer.job_completed':        QUEUES.TRANSFER_COMPLETED,
 };
 
 export function resolveOutboxQueue(eventType: string): QueueName {

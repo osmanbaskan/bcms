@@ -50,7 +50,10 @@ export async function searchRoutes(app: FastifyInstance) {
     const result = await enqueueSearchJob(app, body, user);
     // YP0.4-B: yeni enqueue cache'i stale yapar → invalidate.
     searchJobsCache.invalidate();
-    reply.status(202).send({
+    // `return reply` ŞART: aksi halde handler bitince Fastify ikinci yanıt
+    // denemesi yapıp "Reply was already sent / HEADERS_SENT" hatası veriyordu
+    // (UI'da "sunucu hatası"). 2026-06-02 fix.
+    return reply.status(202).send({
       jobId:    result.job.id,
       status:   result.job.status,
       existing: result.existing,

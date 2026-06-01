@@ -11,6 +11,12 @@ export const QUEUES = {
   INGEST_NEW:         'queue.ingest.new',
   INGEST_COMPLETED:   'queue.ingest.completed',
   NOTIFICATIONS_EMAIL:'queue.notifications.email',
+  // Restore V2 (Avid) — search/restore/transfer iş tamamlanma event'leri.
+  // Şu an consumer YOK (shadow audit + ileride SSDB/bildirim tüketicisi); outbox
+  // poller routing için tanımlı olmalı (yoksa resolveOutboxQueue throw eder).
+  SEARCH_COMPLETED:   'queue.search.completed',
+  RESTORE_COMPLETED:  'queue.restore.completed',
+  TRANSFER_COMPLETED: 'queue.transfer.completed',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
