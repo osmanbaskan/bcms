@@ -19,11 +19,20 @@ import { CommonModule } from '@angular/common';
     </div>
   `,
   styles: [`
+    :host { display: block; height: 100%; }
     .kpi {
       background: var(--bp-bg-2);
       border: 1px solid var(--bp-line-2);
       border-radius: var(--bp-r-lg);
       padding: 14px 16px;
+      /* Grid hücresini doldur (eşit yükseklik) + içeriği dikey ortala —
+         sub'ı olmayan kartta "alt boş kalıyor" sorununu çözer. */
+      height: 100%;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 84px;
     }
     .kpi.accent {
       border-color: rgba(167, 139, 250, 0.40);

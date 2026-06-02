@@ -58,9 +58,10 @@ interface NavGroup {
       <aside class="side" [class.collapsed]="sidebarCollapsed()">
         <div class="brand-wrap">
           <a class="brand-link" routerLink="/" [title]="sidebarCollapsed() ? 'beINport' : ''">
-            <div class="brand">
-              <span class="brand-be">be</span><span class="brand-in">IN</span><span class="brand-port">port</span>
-            </div>
+            <img class="brand-img brand-full" src="assets/branding/bein-wordmark.png"
+                 alt="beINport" draggable="false" />
+            <img class="brand-img brand-mini" src="assets/branding/bein-mark.png"
+                 alt="" aria-hidden="true" draggable="false" />
           </a>
           <button class="collapse-btn"
                   type="button"
@@ -180,6 +181,9 @@ interface NavGroup {
       text-decoration: none;
       display: block;
       color: #fff;
+      position: relative;
+      height: 30px;
+      overflow: hidden;
     }
     .collapse-btn {
       flex-shrink: 0;
@@ -208,28 +212,40 @@ interface NavGroup {
     .side.collapsed .brand-wrap {
       flex-direction: column;
       gap: 12px;
-      padding: 0 8px 14px;
+      padding: 0 4px 14px;
     }
     .side.collapsed .brand-link {
       width: 100%;
       text-align: center;
+      /* flex column'da flex:1 flex-basis'i dikey eksende 0 yapıp height'ı
+         ezerdi (brand-link 0px → overflow:hidden logoyu kırpıyordu). */
+      flex: none;
+      height: 30px;
     }
-    .side.collapsed .brand {
-      font-size: 14px;
-      justify-content: center;
+    /* İki logo üst üste; boyut sabit (px), geçişte sadece opacity cross-fade
+       edilir — sidebar genişlik animasyonuyla aynı süre/easing. Container
+       genişliğine bağlı boyut YOK → menü daralırken logo büyümez. */
+    .brand-img {
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      display: block;
+      user-select: none;
+      pointer-events: none;
+      transition: opacity var(--bp-dur-slow) var(--bp-ease);
     }
-    .side.collapsed .brand-port { display: none; }
-    .brand {
-      font-family: var(--bp-font-display);
-      font-size: 26px;
-      font-weight: var(--bp-fw-bold);
-      letter-spacing: -0.025em;
-      display: flex;
-      align-items: baseline;
-      gap: 1px;
+    .brand-full { height: 30px; opacity: 1; }
+    .brand-mini { height: 18px; opacity: 0; }
+    .side.collapsed .brand-full { opacity: 0; }
+    /* Kapalı menüde beIN ortalanır (sol hizalı duruyordu, alttaki > butonuyla
+       hizasızdı) + biraz küçülür ki dar barda rahat otursun. */
+    .side.collapsed .brand-mini {
+      opacity: 1;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      height: 20px;
     }
-    .brand-be, .brand-in { color: #fff; }
-    .brand-port { color: var(--bp-purple-200); font-weight: var(--bp-fw-regular); font-size: 16px; margin-left: 1px; }
 
     .section { padding: 4px 12px; }
     .section-label {
@@ -239,18 +255,25 @@ interface NavGroup {
       color: rgba(255, 255, 255, 0.55);
       text-transform: uppercase;
       padding: 8px 12px 6px;
+      max-height: 32px;
+      opacity: 1;
+      overflow: hidden;
+      white-space: nowrap;
+      transition: max-height var(--bp-dur-slow) var(--bp-ease),
+                  opacity var(--bp-dur-slow) var(--bp-ease),
+                  padding var(--bp-dur-slow) var(--bp-ease);
     }
     .item {
       display: flex;
       align-items: center;
-      gap: 12px;
       padding: 9px 12px;
       color: rgba(255, 255, 255, 0.78);
       font-size: 13.5px;
       border-radius: var(--bp-r-md);
       cursor: pointer;
       text-decoration: none;
-      transition: background var(--bp-dur-fast) var(--bp-ease);
+      transition: background var(--bp-dur-fast) var(--bp-ease),
+                  padding var(--bp-dur-slow) var(--bp-ease);
     }
     .item:hover { background: rgba(255, 255, 255, 0.08); }
     .item.active {
@@ -264,7 +287,17 @@ interface NavGroup {
       opacity: 0.85;
       flex-shrink: 0;
     }
-    .item-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-label {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+      margin-left: 12px;
+      opacity: 1;
+      transition: max-width var(--bp-dur-slow) var(--bp-ease),
+                  margin-left var(--bp-dur-slow) var(--bp-ease),
+                  opacity var(--bp-dur-slow) var(--bp-ease);
+    }
     .pill {
       font-size: 10px;
       font-weight: var(--bp-fw-semibold);
@@ -286,15 +319,22 @@ interface NavGroup {
       margin: 12px 20px;
     }
 
-    /* Collapsed sidebar — only icons visible */
-    .side.collapsed .section { padding: 4px 6px; }
-    .side.collapsed .section-label { display: none; }
-    .side.collapsed .item {
-      justify-content: center;
-      padding: 9px 6px;
-      gap: 0;
+    /* Collapsed sidebar — etiketler display:none yerine fade+collapse edilir
+       (geçiş sidebar genişlik animasyonuyla senkron, ani kayboluş yok).
+       İkon ortalaması padding ile yapılır; justify-content:center expand'de
+       ikonu zıplatıyordu. */
+    .side.collapsed .section-label {
+      max-height: 0;
+      opacity: 0;
+      padding-top: 0;
+      padding-bottom: 0;
     }
-    .side.collapsed .item-label { display: none; }
+    .side.collapsed .item { padding: 9px 10px; }
+    .side.collapsed .item-label {
+      max-width: 0;
+      margin-left: 0;
+      opacity: 0;
+    }
     .side.collapsed .pill { display: none; }
     .side.collapsed .alert-dot {
       position: absolute;
@@ -316,7 +356,7 @@ interface NavGroup {
       align-items: center;
       margin: auto 6px 6px;
     }
-    .side.collapsed .user-meta { display: none; }
+    .side.collapsed .user-meta { opacity: 0; max-width: 0; }
 
     .user {
       margin: auto 12px 12px;
@@ -339,7 +379,14 @@ interface NavGroup {
       font-weight: var(--bp-fw-bold);
       flex-shrink: 0;
     }
-    .user-meta { flex: 1; min-width: 0; }
+    .user-meta {
+      flex: 1;
+      min-width: 0;
+      opacity: 1;
+      overflow: hidden;
+      transition: opacity var(--bp-dur-slow) var(--bp-ease),
+                  max-width var(--bp-dur-slow) var(--bp-ease);
+    }
     .user-name {
       font-size: 13px;
       font-weight: var(--bp-fw-medium);

@@ -100,17 +100,21 @@ function isProgramLike(c: ProvysCategory): boolean {
         <bp-kpi [accent]="true"
                 label="Bugün canlı yayın"
                 [value]="kpiLiveTotal()"></bp-kpi>
-        <bp-kpi label="Aktif port"
+        <bp-kpi [accent]="true"
+                label="Aktif port"
                 [value]="kpiActivePorts()"
                 [unit]="'/' + kpiTotalPorts()"
                 [sub]="(kpiTotalPorts() - kpiActivePorts()) + ' boş/bekleme'"></bp-kpi>
-        <bp-kpi label="Stüdyo programı"
+        <bp-kpi [accent]="true"
+                label="Stüdyo programı"
                 [value]="kpiStudios()"
                 [sub]="'bugün'"></bp-kpi>
-        <bp-kpi label="Ekip · vardiya"
+        <bp-kpi [accent]="true"
+                label="Ekip · vardiya"
                 [value]="kpiShiftCount()"
                 [sub]="'placeholder · Aşama 3'"></bp-kpi>
-        <bp-kpi label="Aktif uyarı"
+        <bp-kpi [accent]="true"
+                label="Aktif uyarı"
                 [value]="kpiAlerts()"
                 [sub]="'placeholder · Aşama 3'"></bp-kpi>
       </div>
@@ -189,7 +193,7 @@ function isProgramLike(c: ProvysCategory): boolean {
           </div>
         </div>
 
-        <bp-card title="Vardiyam" [padded]="true"
+        <bp-card title="Vardiyam" [padded]="true" [accent]="true"
                  [expandable]="true"
                  [expanded]="expandedPanel() === 'vardiya'"
                  [class.is-expanded]="expandedPanel() === 'vardiya'"
@@ -209,7 +213,7 @@ function isProgramLike(c: ProvysCategory): boolean {
 
       <!-- ─── Stüdyo + Ingest portları row ───────────────────────────── -->
       <div class="row info-row">
-        <bp-card [title]="'Stüdyo programı'" [count]="todayStudios().length + ' kayıt'"
+        <bp-card [title]="'Stüdyo programı'" [count]="todayStudios().length + ' kayıt'" [accent]="true"
                  [expandable]="true"
                  [expanded]="expandedPanel() === 'studio'"
                  [class.is-expanded]="expandedPanel() === 'studio'"

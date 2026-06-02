@@ -14,6 +14,7 @@ import { CommonModule } from '@angular/common';
   standalone: true,
   imports: [CommonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[class.accent]': 'accent()' },
   template: `
     @if (title() || hasAction() || expandable()) {
       <header class="head">
@@ -54,6 +55,12 @@ import { CommonModule } from '@angular/common';
       border-radius: var(--bp-r-xl);
       border: 1px solid var(--bp-line-2);
       overflow: hidden;
+    }
+    /* KPI accent ile aynı mor gradient; uzun kartta tüm yüzeyi mora boyamamak
+       için geçiş ~160px'de bg-2'ye iner (üstte mor parıltı, altı düz). */
+    :host(.accent) {
+      border-color: rgba(167, 139, 250, 0.40);
+      background: linear-gradient(180deg, rgba(124, 58, 237, 0.18) 0%, var(--bp-bg-2) 160px);
     }
     /* Büyütülmüş hâli — parent .is-expanded host class verir; ekrana ortalanır. */
     :host(.is-expanded) {
@@ -99,6 +106,8 @@ export class CardComponent {
   title = input<string>();
   count = input<string | number | null>();
   padded = input<boolean>(false);
+  /** Mor gradient vurgu arka planı (KPI accent ile aynı görsel dil). */
+  accent = input<boolean>(false);
   /** Sağ üstte büyüt (çapraz-ok) butonu göster. */
   expandable = input<boolean>(false);
   /** Şu an büyütülmüş mü (ikon yönü için). */
