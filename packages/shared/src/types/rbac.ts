@@ -127,6 +127,10 @@ export const PERMISSIONS = {
   auditLogs: {
     read:   ['SystemEng'] as BcmsGroup[],
   },
+  notifications: {
+    read:   [] as BcmsGroup[],                            // all authenticated — herkes kendi grup-süzülmüş akışını alır
+    config: ['Admin', 'SystemEng'] as BcmsGroup[],        // tip->grup eşlemesi + manuel bildirim
+  },
   reports: {
     read:   ['Admin'] as BcmsGroup[],                     // SystemEng dahil non-Admin grupları görmesin
     export: ['Admin'] as BcmsGroup[],

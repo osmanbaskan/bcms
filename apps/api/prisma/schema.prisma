@@ -1642,3 +1642,81 @@ model WatcherSetting {
 
   @@map("watcher_settings")
 }
+
+// ── Bildirim (in-app push) sistemi — KULLANICI-BAZLI abonelik ────────────────
+/// Olay olur -> Notification kaydı + pg_notify('bcms_notify') -> SSE ile bağlı
+/// kullanıcılara iletilir. Teslim: kullanıcı o TİPE abone (açık) ise gelir.
+/// Grup yalnız sekme erişimini (hangi tipleri açabileceğini) belirler; asıl
+/// tercih kullanıcıda. Admin tip katalogunu (sekme bazlı) tanımlar.
+enum NotificationSeverity {
+  info
+  warning
+  critical
+
+  @@map("notification_severity")
+}
+
+model Notification {
+  id        Int                  @id @default(autoincrement())
+  type      String               @db.VarChar(80)
+  severity  NotificationSeverity @default(info)
+  title     String               @db.VarChar(200)
+  body      String?
+  link      String?              @db.VarChar(300)
+  data      Json?
+  createdBy String?              @map("created_by") @db.VarChar(100)
+  createdAt DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  reads     NotificationRead[]
+
+  @@index([createdAt])
+  @@index([type])
+  @@map("notifications")
+}
+
+/// Kullanıcı-bazlı okundu işareti (okunmadı sayacı).
+model NotificationRead {
+  notificationId Int          @map("notification_id")
+  userId         String       @map("user_id") @db.VarChar(100)
+  readAt         DateTime     @default(now()) @map("read_at") @db.Timestamptz(6)
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, userId])
+  @@index([userId])
+  @@map("notification_reads")
+}
+
+/// Admin tanımlı bildirim tipi katalogu (sekme bazlı).
+/// `section` = sekme anahtarı; `requiredGroups` = bu tipi görebilen/abone
+/// olabilen gruplar (sekme erişimi); `defaultOn` = yeni kullanıcı için varsayılan.
+model NotificationType {
+  key            String               @id @db.VarChar(80)
+  label          String               @db.VarChar(200)
+  section        String               @db.VarChar(60)
+  requiredGroups String[]             @map("required_groups")
+  severity       NotificationSeverity @default(info)
+  sound          String               @default("normal") @db.VarChar(20)
+  defaultOn      Boolean              @default(true) @map("default_on")
+  active         Boolean              @default(true)
+  sortOrder      Int                  @default(0) @map("sort_order")
+  updatedAt      DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([section])
+  @@map("notification_types")
+}
+
+/// Kullanıcının tip bazlı aç/kapa tercihi (default'tan sapma). Satır yoksa
+/// tipin defaultOn'u geçerli.
+model NotificationSubscription {
+  userId    String   @map("user_id") @db.VarChar(100)
+  typeKey   String   @map("type_key") @db.VarChar(80)
+  enabled   Boolean
+  /// Kullanıcının bu tip için seçtiği ses: 'off' (sessiz) | 'normal' | 'critical'.
+  /// null = tipin varsayılan sesi kullanılır.
+  sound     String?  @db.VarChar(20)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@id([userId, typeKey])
+  @@index([userId])
+  @@map("notification_subscriptions")
+}

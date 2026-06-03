@@ -54,6 +54,8 @@ import { startRestoreWorker } from './modules/restore/restore.worker.js';
 import { transferRoutes } from './modules/transfer/transfer.routes.js';
 import { avidRoutes } from './modules/avid/avid.routes.js';
 import { watchersRoutes } from './modules/watchers/watchers.routes.js';
+import { notificationRoutes } from './modules/notifications/notification.routes.js';
+import { seedTypes as seedNotificationTypes } from './modules/notifications/notification.service.js';
 import { startTransferWorker } from './modules/transfer/transfer.worker.js';
 import { getServiceHealthStatuses } from './lib/service-heartbeat.js';
 import { getWatcherRuntimeState } from './lib/watcher-supervisor.js';
@@ -469,6 +471,10 @@ export async function buildApp() {
   await app.register(transferRoutes,       { prefix: '/api/v1/transfer' });
   await app.register(avidRoutes,           { prefix: '/api/v1/avid' });
   await app.register(watchersRoutes,       { prefix: '/api/v1/watchers' });
+  await app.register(notificationRoutes,   { prefix: '/api/v1/notifications' });
+
+  // Bildirim tip katalogu — idempotent seed (mevcutlar korunur).
+  await seedNotificationTypes(app).catch((err) => app.log.warn({ err }, 'notification seed atlandı'));
 
   return app;
 }
