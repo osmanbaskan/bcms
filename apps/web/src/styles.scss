@@ -670,11 +670,23 @@ html[data-theme="light"] .mat-mdc-raised-button:not(.mat-warn):not(.mat-accent):
   color: #fff !important;
 }
 
-// mat-card için light theme'de görünür kenar — beyaz üstüne beyaz panel
-// kayboluyor; --bp-line-2 (patlıcan moru %42) ile yumuşak ama net çerçeve.
+// mat-card için light theme'de görünür kenar + MOR GRADIENT — beyaz üstüne
+// beyaz panel sayfa zeminine (--bp-bg-0 #f5f1ff) karışıyordu. Kullanıcı talebi
+// (2026-06-02): light'ta zeminle aynı kalan kutulara mor gradient uygula. Tek
+// global kural → tüm sekmelerdeki mat-card'lar (dökümanlar, admin, ayarlar…)
+// aynı görünür panel hâline gelir. Border --bp-line-2 (patlıcan moru) ile net.
 html[data-theme="light"] .mat-mdc-card,
 html[data-theme="light"] mat-card {
+  background: linear-gradient(160deg, #faf6ff 0%, #ece1ff 100%) !important;
   border: 1px solid var(--bp-line-2);
+}
+
+// Dark için tasarlanmış inline beyaz-alfa paneller (ingest) light'ta görünmez
+// kalıyordu → aynı mor tint. Class'lar tekil (her biri tek component).
+html[data-theme="light"] .planning-board,
+html[data-theme="light"] .port-board-empty,
+html[data-theme="light"] .qc-detail {
+  background: linear-gradient(160deg, #f3ecff 0%, #e7dbff 100%) !important;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

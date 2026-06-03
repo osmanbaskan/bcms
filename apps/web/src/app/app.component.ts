@@ -165,7 +165,10 @@ interface NavGroup {
       flex-shrink: 0;
       transition: width var(--bp-dur-slow) var(--bp-ease);
     }
-    .side.collapsed { width: 64px; }
+    /* 2026-06-02: Daraltılmış bar 64px iken brand-mini logo + ikonlar dar
+       kalıp kırpılıyordu; %15 genişletildi (64 → 74px). İkon ortalaması
+       .side.collapsed .item padding'i ile buna göre yeniden ayarlandı. */
+    .side.collapsed { width: 74px; }
 
     .brand-wrap {
       display: flex;
@@ -329,7 +332,8 @@ interface NavGroup {
       padding-top: 0;
       padding-bottom: 0;
     }
-    .side.collapsed .item { padding: 9px 10px; }
+    /* İkon yatay ortalaması: (rail 74 − section 2×12) / 2 − ikon/2 = 15px. */
+    .side.collapsed .item { padding: 9px 15px; }
     .side.collapsed .item-label {
       max-width: 0;
       margin-left: 0;
