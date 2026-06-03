@@ -164,16 +164,18 @@ html[data-theme="dark"] {
 // LIGHT THEME
 // ─────────────────────────────────────────────────────────────────────────────
 html[data-theme="light"] {
-  // ── Açık zeminler — Tailwind slate ölçeği ──────────────────────────────────
-  // 2026-05-14 high-contrast operasyon teması revize:
-  //   - bg-0/bg-1 hafif mor tint sayfa zemini ile kart bg-2 #fff ayrımı net
-  //   - bg-3 hover daha belirgin (önce f5f0ff → ece4ff)
-  //   - bg-4 table header tonu kuvvetlendi (ede4ff → d8c8ff)
-  --bp-bg-0: #f5f1ff;     // page bg — biraz daha belirgin mor tint
-  --bp-bg-1: #faf7ff;     // app body / header — kırık beyaz mor
-  --bp-bg-2: #ffffff;     // card, dialog — net beyaz, page'ten ayrılır
-  --bp-bg-3: #ece4ff;     // hover, alt row — gözle fark edilir
-  --bp-bg-4: #d8c8ff;     // emphasized, table header — kuvvetli ton
+  // ── Açık zeminler — lavanta-grisi rampa ────────────────────────────────────
+  // 2026-06-03: 3-seviye bg ayrımı düzeltmesi. ÖNCE bg-0/bg-1 (#f5f1ff/#faf7ff)
+  // beyaza çok yakındı → tablo "çevre (bg-1) + satır (bg-2 #fff)" ikisi de
+  // beyaz görünüp light'ta yalnız 2 seviye algılanıyordu (dark'ta 3). Rampa
+  // net ama yumuşak adımlarla yeniden aralandı: white(row) → tinted(çevre) →
+  // stronger(header) gözle açıkça ayrılır. mat-table global token kullandığı
+  // için tüm sekmelerdeki tablolar tek seferde düzelir. Dark dokunulmadı.
+  --bp-bg-0: #e8e2f6;     // page base + custom-table thead — açık lavanta
+  --bp-bg-1: #eee9f8;     // app body / .main (tablo çevresi) — net tint, beyazdan ayrılır
+  --bp-bg-2: #ffffff;     // card, row — net beyaz (içerik yüzeyi, pop eder)
+  --bp-bg-3: #ddd3f0;     // mat-table header / hover / zebra-odd — orta ton (en belirgin)
+  --bp-bg-4: #cabbed;     // emphasized / strong header — kuvvetli ton
   // Border: patlıcan moru → purple-800 ölçeğine geçti (daha güçlü).
   --bp-line:    #4c1d95;                       // purple-800 — strong border
   --bp-line-2:  rgba(76, 29, 149, 0.42);       // purple-800 %42 — net ama yumuşak
