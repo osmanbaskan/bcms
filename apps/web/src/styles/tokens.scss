@@ -151,6 +151,15 @@ html[data-theme="dark"] {
   --bp-status-REJECTED-bg:  rgba(239, 68, 68, 0.20);
   --bp-status-REJECTED-fg:  #fca5a5;
 
+  // ── Accent badge/chip foreground (tema-duyarlı) ────────────────────────────
+  // Bileşenlerde rgba(renk, 0.18) yarı-saydam zeminde metin rengi olarak kullanılan
+  // accent'ler. Dark: pastel (zemin koyu, pastel okunur). Light: koyu ton (zemin
+  // açılınca pastel görünmezdi → 700-shade). Tek token, tüm bileşenler takip eder.
+  --bp-acc-green:  #6ee7b7;
+  --bp-acc-indigo: #a5b4fc;
+  --bp-acc-purple: #c4b5fd;
+  --bp-acc-violet: #a78bfa;
+
   // ── Shadow (koyu zeminde derinlik) ─────────────────────────────────────────
   --bp-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.20);
   --bp-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.30);
@@ -206,6 +215,12 @@ html[data-theme="light"] {
   --bp-status-APPROVED-fg:  #15803d;
   --bp-status-REJECTED-bg:  rgba(239, 68, 68, 0.13);
   --bp-status-REJECTED-fg:  #b91c1c;
+
+  // ── Accent badge/chip foreground (light — koyu tonlar) ─────────────────────
+  --bp-acc-green:  #047857;     // emerald-700
+  --bp-acc-indigo: #4338ca;     // indigo-700
+  --bp-acc-purple: #6d28d9;     // purple-700
+  --bp-acc-violet: #6d28d9;     // purple-700 (violet light'ta da koyu)
 
   // ── Shadow (açık zeminde yumuşak gölge) ────────────────────────────────────
   --bp-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);

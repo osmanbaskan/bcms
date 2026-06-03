@@ -382,7 +382,7 @@ type JobTone = 'idle' | 'queued' | 'running' | 'awaiting' | 'done' | 'failed' | 
     .subtitle { margin: 4px 0 0; color: var(--bp-fg-3); font-size: 12px; }
     .actions { display: flex; align-items: center; gap: 12px; }
     .refresh {
-      padding: 6px 12px; background: rgba(124, 58, 237, 0.18); color: #c4b5fd;
+      padding: 6px 12px; background: rgba(124, 58, 237, 0.18); color: var(--bp-acc-purple);
       border: 1px solid rgba(124, 58, 237, 0.40); border-radius: 5px;
       font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
     }
@@ -398,7 +398,7 @@ type JobTone = 'idle' | 'queued' | 'running' | 'awaiting' | 'done' | 'failed' | 
     .section-count {
       font-size: 11px; font-weight: 600; padding: 1px 8px;
       border-radius: var(--bp-r-pill, 999px);
-      background: rgba(99, 102, 241, 0.18); color: #a5b4fc;
+      background: rgba(99, 102, 241, 0.18); color: var(--bp-acc-indigo);
       border: 1px solid rgba(99, 102, 241, 0.35);
     }
     .section-count-total { color: var(--bp-fg-3); font-weight: 500; }
@@ -411,7 +411,7 @@ type JobTone = 'idle' | 'queued' | 'running' | 'awaiting' | 'done' | 'failed' | 
       background: rgba(99, 102, 241, 0.12);
       border: 1px solid rgba(99, 102, 241, 0.32);
       border-radius: 6px;
-      color: #a5b4fc;
+      color: var(--bp-acc-indigo);
       font: inherit; font-size: 11.5px; font-weight: 600;
       cursor: pointer;
       transition: background-color 120ms, border-color 120ms, color 120ms;
@@ -470,7 +470,7 @@ type JobTone = 'idle' | 'queued' | 'running' | 'awaiting' | 'done' | 'failed' | 
     .phase-chip {
       font-size: 10.5px; font-weight: 600; padding: 1px 7px;
       border-radius: var(--bp-r-pill, 999px);
-      background: rgba(124, 58, 237, 0.15); color: #c4b5fd;
+      background: rgba(124, 58, 237, 0.15); color: var(--bp-acc-purple);
       border: 1px solid rgba(124, 58, 237, 0.35);
       letter-spacing: 0.04em;
     }
@@ -534,7 +534,7 @@ type JobTone = 'idle' | 'queued' | 'running' | 'awaiting' | 'done' | 'failed' | 
     .ch-chip {
       display: inline-block; padding: 2px 8px; border-radius: var(--bp-r-pill, 999px);
       font-size: 11px; font-weight: 600; line-height: 1.4;
-      background: rgba(99, 102, 241, 0.16); color: #a5b4fc;
+      background: rgba(99, 102, 241, 0.16); color: var(--bp-acc-indigo);
       border: 1px solid rgba(99, 102, 241, 0.35);
     }
     .ssdb-badge {
@@ -597,7 +597,7 @@ type JobTone = 'idle' | 'queued' | 'running' | 'awaiting' | 'done' | 'failed' | 
     .status-badge--queued    { background: rgba(156, 163, 175, 0.18); color: #d1d5db; border-color: rgba(156, 163, 175, 0.40); font-style: italic; }
     .status-badge--running   { background: rgba(245, 158, 11, 0.20);  color: #fcd34d; border-color: rgba(245, 158, 11, 0.50); }
     .status-badge--awaiting  { background: rgba(168, 85, 247, 0.22);  color: #d8b4fe; border-color: rgba(168, 85, 247, 0.55); }
-    .status-badge--done      { background: rgba(16, 185, 129, 0.20);  color: #6ee7b7; border-color: rgba(16, 185, 129, 0.50); }
+    .status-badge--done      { background: rgba(16, 185, 129, 0.20);  color: var(--bp-acc-green); border-color: rgba(16, 185, 129, 0.50); }
     .status-badge--failed    { background: rgba(239, 68, 68, 0.22);   color: #fca5a5; border-color: rgba(239, 68, 68, 0.55); }
     .status-badge--not_found { background: rgba(249, 115, 22, 0.22);  color: #fdba74; border-color: rgba(249, 115, 22, 0.55); }
     .status-badge--idle      { background: rgba(107, 114, 128, 0.14); color: #9ca3af; border-color: rgba(107, 114, 128, 0.30); }
@@ -610,7 +610,7 @@ type JobTone = 'idle' | 'queued' | 'running' | 'awaiting' | 'done' | 'failed' | 
       border: 1px solid transparent; letter-spacing: 0.04em;
       vertical-align: middle;
     }
-    .online-badge--on  { background: rgba(16, 185, 129, 0.20); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.50); }
+    .online-badge--on  { background: rgba(16, 185, 129, 0.20); color: var(--bp-acc-green); border-color: rgba(16, 185, 129, 0.50); }
     .online-badge--off { background: rgba(249, 115, 22, 0.22); color: #fdba74; border-color: rgba(249, 115, 22, 0.55); }
     :host-context(html[data-theme="light"]) .online-badge--on  { background: rgba(16, 185, 129, 0.18); color: #065f46; border-color: #059669; }
     :host-context(html[data-theme="light"]) .online-badge--off { background: rgba(249, 115, 22, 0.18); color: #9a3412; border-color: #ea580c; }
@@ -624,14 +624,14 @@ type JobTone = 'idle' | 'queued' | 'running' | 'awaiting' | 'done' | 'failed' | 
       border: 1px solid transparent;
       cursor: pointer;
       transition: background 100ms linear, opacity 100ms linear;
-      background: rgba(124, 58, 237, 0.18); color: #c4b5fd; border-color: rgba(124, 58, 237, 0.45);
+      background: rgba(124, 58, 237, 0.18); color: var(--bp-acc-purple); border-color: rgba(124, 58, 237, 0.45);
     }
     .job-btn:hover:not(:disabled) { background: rgba(124, 58, 237, 0.30); }
     .job-btn:disabled { opacity: 0.45; cursor: not-allowed; }
     .job-btn--queued    { background: rgba(156, 163, 175, 0.18); color: #d1d5db; border-color: rgba(156, 163, 175, 0.40); font-style: italic; }
     .job-btn--running   { background: rgba(245, 158, 11, 0.20); color: #fcd34d; border-color: rgba(245, 158, 11, 0.55); }
     .job-btn--awaiting  { background: rgba(168, 85, 247, 0.25); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.60); }
-    .job-btn--done      { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.50); }
+    .job-btn--done      { background: rgba(16, 185, 129, 0.18); color: var(--bp-acc-green); border-color: rgba(16, 185, 129, 0.50); }
     .job-btn--failed    { background: rgba(239, 68, 68, 0.22); color: #fca5a5; border-color: rgba(239, 68, 68, 0.55); }
     .job-btn--not_found { background: rgba(249, 115, 22, 0.22); color: #fdba74; border-color: rgba(249, 115, 22, 0.55); }
 

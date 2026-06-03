@@ -192,6 +192,66 @@ app-root {
 .mat-mdc-header-row { background: var(--bp-bg-3) !important; }
 .mat-mdc-row { background: var(--bp-bg-2) !important; }
 .mat-mdc-row:hover { background: var(--bp-bg-3) !important; }
+
+// MatList / MatNavList — içerik alanı listeleri (ör. Live-Plan Lookup sol kolonu).
+// Material default list rengi light temada düşük kontrast veriyordu (silik etiketler);
+// --bp-fg-* tema-duyarlı. Ana menü custom <a class="item"> kullanır (mat-list DEĞİL)
+// → bu override'dan etkilenmez.
+.mat-mdc-list-base,
+.mat-mdc-nav-list,
+.mat-mdc-list-item {
+  --mdc-list-list-item-label-text-color:               var(--bp-fg-1);
+  --mdc-list-list-item-supporting-text-color:          var(--bp-fg-3);
+  --mdc-list-list-item-leading-icon-color:             var(--bp-fg-3);
+  --mdc-list-list-item-trailing-supporting-text-color: var(--bp-fg-3);
+  --mdc-list-list-item-focus-label-text-color:         var(--bp-fg-1);
+  --mdc-list-list-item-hover-label-text-color:         var(--bp-fg-1);
+}
+// Token TEK BAŞINA yetmiyor: Material bu build'de primary-text rengini bu
+// token'a bağlamıyor → liste etiketleri Material default'una (light'ta silik)
+// düşüyordu. Doğrudan renk ver. Specificity 2-class → Material 1-class default'u
+// ezer. Ana menü mat-list DEĞİL (custom <a class="item">) → etkilenmez.
+// mat-select option panelleri .mat-mdc-list-base/.nav-list altında DEĞİL → etkilenmez.
+.mat-mdc-list-base .mdc-list-item__primary-text,
+.mat-mdc-nav-list  .mdc-list-item__primary-text,
+.mat-mdc-list-base .mat-mdc-list-item-title,
+.mat-mdc-nav-list  .mat-mdc-list-item-title {
+  color: var(--bp-fg-1);
+}
+.mat-mdc-list-base .mat-mdc-list-item-icon,
+.mat-mdc-nav-list  .mat-mdc-list-item-icon,
+.mat-mdc-list-base .mdc-list-item__start,
+.mat-mdc-nav-list  .mdc-list-item__start {
+  color: var(--bp-fg-3) !important;
+}
+// Checkbox / radio etiketleri (mdc-label) light temada açık default'a düşüyordu
+// (ör. Live-Plan Lookup "Silinenler"). Tema-duyarlı fg-1.
+.mdc-form-field > label,
+.mat-mdc-checkbox label,
+.mat-mdc-radio-button label,
+label.mdc-label {
+  color: var(--bp-fg-1);
+}
+// MatExpansionPanel (ör. "Teknik Düzenle" accordion bölümleri: Yayın/OB, Ana Feed…).
+// Material default'u light temada başlık/açıklamayı silik bırakıyordu → tema-duyarlı
+// token + doğrudan renk (token bağlanmazsa diye). Başlık fg-1, açıklama fg-3.
+.mat-expansion-panel {
+  --mat-expansion-container-background-color: var(--bp-bg-2);
+  --mat-expansion-container-text-color:       var(--bp-fg-1);
+  --mat-expansion-header-text-color:          var(--bp-fg-1);
+  --mat-expansion-header-description-color:   var(--bp-fg-3);
+  --mat-expansion-header-indicator-color:     var(--bp-fg-3);
+  // 3-seviye derinlik (global): panel yüzeyi bg-2 (beyaz) + kart kenarlığı,
+  // başlık bandı bg-3 (vurgu). Tüm accordion'lar (Teknik Düzenle, Ingest…) tutarlı.
+  border: 1px solid var(--bp-line-2);
+  box-shadow: none !important;
+}
+.mat-expansion-panel-header { background: var(--bp-bg-3); }
+.mat-expansion-panel-header:hover:not([aria-disabled="true"]) { background: var(--bp-bg-4); }
+.mat-expansion-panel-header-title,
+.mat-expansion-panel .mat-expansion-panel-body { color: var(--bp-fg-1); }
+.mat-expansion-panel-header-description { color: var(--bp-fg-3); }
+.mat-expansion-indicator::after { color: var(--bp-fg-3) !important; }
 .mat-mdc-header-cell,
 .mat-mdc-cell {
   color: var(--bp-fg-1);
@@ -335,7 +395,7 @@ html[data-theme="light"] .mat-mdc-header-cell {
   --mat-standard-button-toggle-text-color:                var(--bp-fg-1);
   --mat-standard-button-toggle-background-color:          var(--bp-bg-2);
   --mat-standard-button-toggle-state-layer-color:         var(--bp-fg-1);
-  --mat-standard-button-toggle-selected-state-text-color: var(--bp-purple-700);
+  --mat-standard-button-toggle-selected-state-text-color: #fff;
   --mat-standard-button-toggle-selected-state-background-color: var(--bp-purple-500);
   --mat-standard-button-toggle-divider-color:             var(--bp-line-2);
   border: 1px solid var(--bp-line-2);
@@ -343,7 +403,11 @@ html[data-theme="light"] .mat-mdc-header-cell {
 .mat-button-toggle-label-content {
   color: var(--bp-fg-1) !important;
 }
-.mat-button-toggle-checked .mat-button-toggle-label-content {
+.mat-button-toggle-checked .mat-button-toggle-label-content,
+.mat-button-toggle-checked .mat-button-toggle-label-content * {
+  // Seçili toggle zemini purple-500 (!important). İçe yansıyan custom span'ler
+  // (cat-name, cat-toggle-label, "Tablo" vb.) component override'ları yüzünden
+  // koyu kalıyordu → checked durumda HEPSİNİ beyaz zorla (swatch bg etkilenmez).
   color: #fff !important;
 }
 .mat-button-toggle-checked {
@@ -618,7 +682,10 @@ html[data-theme="light"] .mat-mdc-icon-button .mat-icon,
 html[data-theme="light"] .mat-mdc-icon-button mat-icon {
   color: var(--bp-fg-1) !important;
 }
-html[data-theme="light"] .mat-button-toggle .mat-button-toggle-label-content {
+html[data-theme="light"] .mat-button-toggle:not(.mat-button-toggle-checked) .mat-button-toggle-label-content {
+  // SADECE seçili OLMAYAN toggle'lar koyu (fg-1). Seçili olanlar purple-500
+  // zeminde olduğu için yukarıdaki `.mat-button-toggle-checked ... *{#fff}`
+  // kuralına düşer. Önceden bu kural :not olmadan seçiliyi de koyu yapıyordu.
   color: var(--bp-fg-1) !important;
 }
 // Stroked button label — palette-300 tone (purple-300) light bg'de silik.

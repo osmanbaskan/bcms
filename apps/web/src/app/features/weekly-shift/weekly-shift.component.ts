@@ -349,7 +349,7 @@ const END_TIMES = ['06:15', '13:15', '15:00', '16:45', '20:00', '22:00', '23:45'
       justify-content: center;
     }
     .supervisor {
-      color: var(--bp-purple-300);
+      color: var(--bp-acc-purple);
       background: rgba(124, 58, 237, 0.18);
       border-radius: var(--bp-r-pill);
       padding: 2px 8px;

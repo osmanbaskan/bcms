@@ -249,7 +249,7 @@ function addDaysIso(iso: string, days: number): string {
     }
     .status .dot { font-size: 16px; width: 16px; height: 16px; }
     .status--ok  {
-      background: rgba(16, 185, 129, 0.16); color: #6ee7b7;
+      background: rgba(16, 185, 129, 0.16); color: var(--bp-acc-green);
       border-color: rgba(16, 185, 129, 0.40);
     }
     .status--err {

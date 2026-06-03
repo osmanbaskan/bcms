@@ -116,9 +116,9 @@ const CATEGORY_CLASS: Record<AsrunCategory, string> = {
       border: 1px solid transparent;
     }
     .cat-chip--reklam   { background: rgba(245, 158, 11, 0.18); color: #fcd34d; border-color: rgba(245, 158, 11, 0.40); }
-    .cat-chip--kamu     { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; border-color: rgba(99, 102, 241, 0.40); }
+    .cat-chip--kamu     { background: rgba(99, 102, 241, 0.18); color: var(--bp-acc-indigo); border-color: rgba(99, 102, 241, 0.40); }
     .cat-chip--canli    { background: rgba(239, 68, 68, 0.22);  color: #fca5a5; border-color: rgba(239, 68, 68, 0.45); }
-    .cat-chip--program  { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.40); }
+    .cat-chip--program  { background: rgba(16, 185, 129, 0.18); color: var(--bp-acc-green); border-color: rgba(16, 185, 129, 0.40); }
     .cat-chip--tanitim  { background: rgba(168, 85, 247, 0.18); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.40); }
     .cat-chip--diger    { background: rgba(156, 163, 175, 0.16); color: #d1d5db; border-color: rgba(156, 163, 175, 0.35); }
     .row { transition: background var(--bp-dur-fast, 100ms) linear; }

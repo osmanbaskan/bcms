@@ -80,7 +80,7 @@ export interface AvidAssetSelectionData {
       font-size: 10.5px; font-weight: 600; line-height: 1.45; border: 1px solid transparent;
       letter-spacing: 0.04em;
     }
-    .online-badge--on  { background: rgba(16, 185, 129, 0.20); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.50); }
+    .online-badge--on  { background: rgba(16, 185, 129, 0.20); color: var(--bp-acc-green); border-color: rgba(16, 185, 129, 0.50); }
     .online-badge--off { background: rgba(249, 115, 22, 0.22); color: #fdba74; border-color: rgba(249, 115, 22, 0.55); }
     :host-context(html[data-theme="light"]) .online-badge--on  { background: rgba(16, 185, 129, 0.18); color: #065f46; border-color: #059669; }
     :host-context(html[data-theme="light"]) .online-badge--off { background: rgba(249, 115, 22, 0.18); color: #9a3412; border-color: #ea580c; }

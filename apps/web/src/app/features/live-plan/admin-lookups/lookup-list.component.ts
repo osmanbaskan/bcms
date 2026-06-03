@@ -146,12 +146,12 @@ import {
   styles: [`
     .header { display:flex; align-items:center; justify-content:space-between; padding:16px 8px; gap:16px; flex-wrap:wrap; }
     .title h3 { margin:0; font-size:18px; font-weight:500; }
-    .title .meta { font-size:12px; color:#888; margin-left:8px; }
+    .title .meta { font-size:12px; color: var(--bp-fg-3); margin-left:8px; }
     .actions { display:flex; align-items:center; gap:12px; }
     .filter-field { width:180px; }
     .lookup-table { width:100%; }
     .loading { display:flex; justify-content:center; padding:40px; }
-    .empty { padding:40px; text-align:center; color:#888; font-size:14px; }
+    .empty { padding:40px; text-align:center; color: var(--bp-fg-3); font-size:14px; }
     .status { font-size:11px; padding:2px 10px; border-radius:10px; font-weight:600; }
     .status.on  { background:#1b5e20; color:#fff; }
     .status.off { background:#37474f; color:#cfd8dc; }

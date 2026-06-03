@@ -442,7 +442,7 @@ function isProgramLike(c: ProvysCategory): boolean {
     /* ─── Card slot link action ───────────────────────────────────── */
     .link-action {
       font-size: 11px;
-      color: var(--bp-purple-300);
+      color: var(--bp-acc-purple);
       text-decoration: none;
       white-space: nowrap;
     }
@@ -487,7 +487,7 @@ function isProgramLike(c: ProvysCategory): boolean {
       overflow: hidden;
     }
     .ch-box.is-live { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.05); }
-    .ch-box.is-upcoming { border-left-color: var(--bp-purple-400, #a78bfa); }
+    .ch-box.is-upcoming { border-left-color: var(--bp-acc-violet); }
     .ch-head {
       display: flex; align-items: center; justify-content: space-between;
       gap: 8px; padding-right: 22px; min-width: 0;
@@ -505,7 +505,7 @@ function isProgramLike(c: ProvysCategory): boolean {
       padding: 2px 6px; border-radius: 10px;
     }
     .ch-flag--live { color: #fca5a5; background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(239, 68, 68, 0.42); }
-    .ch-flag--next { color: var(--bp-purple-300, #c4b5fd); background: rgba(124, 58, 237, 0.16); border: 1px solid rgba(124, 58, 237, 0.40); }
+    .ch-flag--next { color: var(--bp-acc-purple); background: rgba(124, 58, 237, 0.16); border: 1px solid rgba(124, 58, 237, 0.40); }
     .ch-dot {
       width: 5px; height: 5px; border-radius: 50%;
       background: #ef4444; box-shadow: 0 0 6px #ef4444;
@@ -531,8 +531,8 @@ function isProgramLike(c: ProvysCategory): boolean {
       font-size: 10.5px; font-weight: var(--bp-fw-semibold, 600); line-height: 1.4;
       border: 1px solid transparent;
     }
-    .ch-cat--reklam   { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.40); }
-    .ch-cat--kamu     { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; border-color: rgba(99, 102, 241, 0.40); }
+    .ch-cat--reklam   { background: rgba(16, 185, 129, 0.18); color: var(--bp-acc-green); border-color: rgba(16, 185, 129, 0.40); }
+    .ch-cat--kamu     { background: rgba(99, 102, 241, 0.18); color: var(--bp-acc-indigo); border-color: rgba(99, 102, 241, 0.40); }
     .ch-cat--canli    { background: rgba(239, 68, 68, 0.22);  color: #fca5a5; border-color: rgba(239, 68, 68, 0.45); }
     .ch-cat--program  { background: rgba(245, 158, 11, 0.18); color: #fcd34d; border-color: rgba(245, 158, 11, 0.40); }
     .ch-cat--tanitim  { background: rgba(168, 85, 247, 0.18); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.40); }
@@ -549,7 +549,7 @@ function isProgramLike(c: ProvysCategory): boolean {
     .ch-time {
       margin-top: auto;
       font-family: var(--bp-font-mono); font-size: 12px;
-      color: var(--bp-purple-300, #c4b5fd);
+      color: var(--bp-acc-purple);
       font-variant-numeric: tabular-nums;
     }
     .ch-dash { margin: 0 4px; color: var(--bp-fg-4); }
@@ -611,7 +611,7 @@ function isProgramLike(c: ProvysCategory): boolean {
     }
     .studio-meta { font-size: 11px; color: var(--bp-fg-3); margin-top: 2px; }
     .studio-time { text-align: right; }
-    .studio-start { font-family: var(--bp-font-mono); font-size: 12px; color: var(--bp-purple-300); }
+    .studio-start { font-family: var(--bp-font-mono); font-size: 12px; color: var(--bp-acc-purple); }
     .studio-end { font-family: var(--bp-font-mono); font-size: 10px; color: var(--bp-fg-4); margin-top: 2px; }
 
     /* ─── Ports grid ──────────────────────────────────────────────── */

@@ -416,7 +416,7 @@ export class ReportIssueDialogComponent {
       font-size: 10.5px;
       line-height: 1.2;
       letter-spacing: var(--bp-ls-eyebrow);
-      color: var(--bp-purple-300);
+      color: var(--bp-acc-purple);
       text-transform: uppercase;
     }
     .broadcast-table thead th:last-child { border-right: 0; }
@@ -448,7 +448,7 @@ export class ReportIssueDialogComponent {
 
     .td-time {
       font-weight: var(--bp-fw-bold);
-      color: var(--bp-purple-300);
+      color: var(--bp-acc-purple);
       font-family: var(--bp-font-mono);
       white-space: nowrap;
       width: 64px;
@@ -499,7 +499,7 @@ export class ReportIssueDialogComponent {
     .td-mono { white-space: pre-line; line-height: 1.20; }
     .td-lang { text-align: center; color: var(--bp-fg-2); white-space: pre-line; line-height: 1.20; }
     .td-channel {
-      color: var(--bp-purple-300);
+      color: var(--bp-acc-purple);
       font-weight: var(--bp-fw-semibold);
       white-space: pre-line;
       line-height: 1.20;

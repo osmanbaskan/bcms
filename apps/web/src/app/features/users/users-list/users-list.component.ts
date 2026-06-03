@@ -95,7 +95,7 @@ const USER_TYPE_LABELS: Record<KcUser['userType'], string> = {
         <mat-slide-toggle [(ngModel)]="f.enabled" name="enabled">
           {{ f.enabled ? 'Aktif' : 'Pasif' }}
         </mat-slide-toggle>
-        <p style="font-size:12px;color:#aaa;margin:12px 0 4px">Gruplar</p>
+        <p style="font-size:12px;color:var(--bp-fg-3);margin:12px 0 4px">Gruplar</p>
         <div style="display:flex;flex-wrap:wrap;gap:8px">
         @for (group of allGroups; track group) {
           <mat-checkbox
@@ -237,7 +237,7 @@ export function formatUserApiError(err: unknown, fallback = 'Kullanıcı oluştu
             <mat-option value="admin">Admin</mat-option>
           </mat-select>
         </mat-form-field>
-        <p style="font-size:12px;color:#aaa;margin:4px 0">Gruplar * (en az 1)</p>
+        <p style="font-size:12px;color:var(--bp-fg-3);margin:4px 0">Gruplar * (en az 1)</p>
         <div style="display:flex;flex-wrap:wrap;gap:8px">
           @for (group of allGroups; track group) {
             <mat-checkbox

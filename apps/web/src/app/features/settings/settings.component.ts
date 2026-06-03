@@ -487,7 +487,7 @@ type SettingsSection = 'connections' | 'ports' | 'leagues';
     .nav-item:hover { background: rgba(255,255,255,.06); opacity: 1; }
     .nav-item.active {
       background: rgba(124,77,255,.16);
-      color: #b79bff; opacity: 1; font-weight: 600;
+      color: var(--bp-acc-purple); opacity: 1; font-weight: 600;
     }
     .nav-item mat-icon { font-size: 20px; width: 20px; height: 20px; }
 

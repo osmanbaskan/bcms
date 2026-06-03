@@ -147,7 +147,7 @@ function formatHours(minutes: number): string {
 
     .report-header { margin-bottom: 20px; }
     .report-header h2 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
-    .subtitle { margin: 0; color: rgba(255,255,255,.5); font-size: 13px; }
+    .subtitle { margin: 0; color: var(--bp-fg-3); font-size: 13px; }
 
     .filter-bar {
       display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -186,7 +186,7 @@ function formatHours(minutes: number): string {
     }
     .usage-table tr:hover td { background: rgba(255,255,255,.03); }
 
-    .th-rank, .td-rank { width: 36px; color: rgba(255,255,255,.4); text-align: center; }
+    .th-rank, .td-rank { width: 36px; color: var(--bp-fg-3); text-align: center; }
     .th-color, .td-color { width: 48px; text-align: center; }
     .th-num, .td-num { text-align: right; white-space: nowrap; }
     .th-studios { min-width: 200px; }
@@ -204,7 +204,7 @@ function formatHours(minutes: number): string {
 
     .empty-state {
       display: flex; flex-direction: column; align-items: center;
-      padding: 60px 20px; color: rgba(255,255,255,.4);
+      padding: 60px 20px; color: var(--bp-fg-3);
     }
     .empty-state mat-icon { font-size: 48px; width: 48px; height: 48px; margin-bottom: 12px; }
   `],

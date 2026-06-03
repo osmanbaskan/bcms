@@ -60,18 +60,19 @@ import { LookupListComponent } from './lookup-list.component';
     :host { display:block; height:100%; }
     .page { display:flex; height:100%; min-height:calc(100vh - 120px); }
     .side {
-      width:280px; min-width:240px; border-right:1px solid rgba(255,255,255,0.08);
-      overflow-y:auto; padding:16px 0; background:rgba(255,255,255,0.015);
+      width:280px; min-width:240px; border-right:1px solid var(--bp-line-2);
+      overflow-y:auto; padding:16px 0; background:var(--bp-bg-1);
     }
     .side-header { padding:0 16px 12px; }
-    .side-header h2 { margin:0; font-size:16px; font-weight:600; }
-    .side-header p { margin:2px 0 0; font-size:11px; color:#888; }
+    .side-header h2 { margin:0; font-size:16px; font-weight:600; color:var(--bp-fg-1); }
+    .side-header p { margin:2px 0 0; font-size:11px; color:var(--bp-fg-3); }
     .group-section { margin-top:8px; }
     .group-label {
       padding:8px 16px 4px; font-size:10px; letter-spacing:.08em;
-      color:#888; font-weight:600; text-transform:uppercase;
+      color:var(--bp-fg-3); font-weight:600; text-transform:uppercase;
     }
     .active { background: rgba(33,150,243,0.18) !important; }
+    .active span[matListItemTitle] { color:var(--bp-fg-1); font-weight:600; }
     .main { flex:1; padding:16px 24px; overflow:auto; }
   `],
 })
