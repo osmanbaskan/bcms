@@ -12,6 +12,7 @@ import { KeycloakService } from 'keycloak-angular';
 import { isSkipAuthAllowed } from './core/auth/skip-auth';
 import { getPublicAppOrigin } from './core/auth/public-origin';
 import { GROUP } from '@bcms/shared';
+import { NotificationService } from './features/notifications/notification.service';
 import { AlertPopoverComponent, AlertItem } from './core/ui/alert-popover.component';
 import type { BcmsTokenParsed } from './core/types/auth';
 import { environment } from '../environments/environment';
@@ -523,6 +524,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private keycloak = inject(KeycloakService);
   private cdr = inject(ChangeDetectorRef);
+  private notif = inject(NotificationService);
 
   username = '';
   userGroups = signal<string[]>([]);
@@ -647,6 +649,7 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Kanallar',          icon: 'tune',                route: '/channels',           groups: [GROUP.Admin] },
         { label: 'Kullanıcılar',      icon: 'manage_accounts',     route: '/users',              groups: [GROUP.SystemEng] },
         { label: 'Ayarlar',           icon: 'settings',            route: '/settings',           groups: [GROUP.SystemEng] },
+        { label: 'Bildirimler',       icon: 'notifications',       route: '/notifications',      groups: [] },
         // 2026-05-25: Live-Plan Lookup nav yalnız Admin/SystemEng'e. Önceden
         // `groups: []` (auth-only) idi — normal kullanıcılar da görüyordu.
         // Backend lookup read hâlâ auth-only (UI gizler, API erişimi açık);
@@ -730,6 +733,7 @@ export class AppComponent implements OnInit, OnDestroy {
   async ngOnInit() {
     this.currentUrl.set(this.router.url);
     this.updateClock();
+    this.notif.start();   // global bildirim SSE + ses + tarayıcı bildirimi
     // DÜŞÜK-FE-2.8.2 fix (2026-05-04): 30sn → 60sn. Tarih+dakika header'ı
     // sadece dakika hassasiyetinde değişiyor; 30sn'lik tick boş change
     // detection cycle yaratıyordu.

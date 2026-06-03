@@ -127,6 +127,13 @@ export const routes: Routes = [
     data: { groups: [GROUP.SystemEng] },
   },
   {
+    path: 'notifications',
+    loadComponent: () =>
+      import('./features/notifications/notifications.component').then((m) => m.NotificationsComponent),
+    canActivate: [AuthGuard],
+    data: { groups: [] },
+  },
+  {
     path: 'audit-logs',
     loadComponent: () =>
       import('./features/audit/audit-log.component').then((m) => m.AuditLogComponent),
