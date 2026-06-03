@@ -57,6 +57,7 @@
 | Kanallar | `/channels` | [kanallar.md](sekmeler/kanallar.md) |
 | Kullanıcılar | `/users` | [kullanicilar.md](sekmeler/kullanicilar.md) |
 | Ayarlar | `/settings` | [ayarlar.md](sekmeler/ayarlar.md) |
+| Bildirimler | `/notifications` | [bildirimler.md](sekmeler/bildirimler.md) |
 | Live-Plan Lookup | `/admin/live-plan-lookups` | [live-plan-lookup.md](sekmeler/live-plan-lookup.md) |
 | Stüdyo Planı Edit | `/admin/studio-plan-edit` | [studyo-plani-edit.md](sekmeler/studyo-plani-edit.md) |
 | OPTA Lig Görünürlüğü | `/admin/opta-competitions` | [opta-lig-gorunurlugu.md](sekmeler/opta-lig-gorunurlugu.md) |
