@@ -1,6 +1,5 @@
 import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { environment } from '../../../../environments/environment';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
@@ -20,7 +19,7 @@ import { interval, Subscription, timer } from 'rxjs';
 import { filter, switchMap, take } from 'rxjs/operators';
 
 import { ApiService } from '../../../core/services/api.service';
-import { formatIstanbulDateTr, formatIstanbulTime, istanbulDayRangeUtc } from '../../../core/time/tz.helpers';
+import { istanbulDayRangeUtc } from '../../../core/time/tz.helpers';
 import { LoggerService } from '../../../core/services/logger.service';
 import {
   IngestPortBoardColumnView,
@@ -87,14 +86,6 @@ const PLAN_FILTERS: Array<{ label: string; value: PlanFilter }> = [
   { label: 'Aktif İşler', value: 'active' },
   { label: 'Port Atanmamış', value: 'unassigned' },
   { label: 'Sorunlular', value: 'issues' },
-];
-
-const PLAN_STATUS_OPTIONS: Array<{ value: IngestPlanStatus; label: string }> = [
-  { value: 'WAITING',        label: 'Bekliyor' },
-  { value: 'RECEIVED',       label: 'Alındı' },
-  { value: 'INGEST_STARTED', label: 'İşlemde' },
-  { value: 'COMPLETED',      label: 'Tamamlandı' },
-  { value: 'ISSUE',          label: 'Sorun' },
 ];
 
 const PORT_BOARD_SLOT_MINUTES = 30;
@@ -548,9 +539,9 @@ class TrDateAdapter extends NativeDateAdapter {
     .plan-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 14px 0; }
     .plan-filter-button { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border: 1px solid var(--bp-line); border-radius: 999px; background: var(--bp-bg-3); color: var(--bp-fg-2); cursor: pointer; transition: border-color var(--bp-dur-fast), background var(--bp-dur-fast); }
     .plan-filter-button:hover { border-color: var(--bp-purple-500); }
-    .plan-filter-button span { min-width: 22px; padding: 2px 7px; border-radius: 999px; background: var(--bp-line-2); color: var(--bp-fg-1); font-size: 0.72rem; font-weight: 800; text-align: center; }
+    .plan-filter-button span { min-width: 22px; padding: 2px 7px; border-radius: 999px; background: var(--bp-purple-500); color: #fff !important; font-size: 0.72rem; font-weight: 800; text-align: center; }
     .plan-filter-button.active { border-color: var(--bp-purple-500); background: rgba(124,58,237,0.14); color: var(--bp-fg-1); }
-    .plan-filter-button.active span { background: var(--bp-purple-500); color: #fff; }
+    .plan-filter-button.active span { background: var(--bp-purple-500); color: #fff !important; }
     .source-filter-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 14px 0; }
     .source-filter-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--bp-fg-3); margin-right: 2px; }
     .source-filter-button { height: 28px; padding: 0 10px; border: 1px solid var(--bp-line); border-radius: 999px; background: transparent; color: var(--bp-fg-2); font-size: 0.78rem; cursor: pointer; transition: border-color var(--bp-dur-fast), background var(--bp-dur-fast); }
@@ -610,10 +601,10 @@ class TrDateAdapter extends NativeDateAdapter {
       text-transform: uppercase;
     }
     .status-badge.PENDING    { background: rgba(107,114,128,0.20); color: var(--bp-fg-3); }
-    .status-badge.PROCESSING { background: rgba(124,58,237,0.18); color: var(--bp-purple-300); }
-    .status-badge.PROXY_GEN  { background: rgba(167,139,250,0.18); color: var(--bp-purple-300); }
+    .status-badge.PROCESSING { background: rgba(124,58,237,0.18); color: var(--bp-acc-purple); }
+    .status-badge.PROXY_GEN  { background: rgba(167,139,250,0.18); color: var(--bp-acc-purple); }
     .status-badge.QC         { background: rgba(245,158,11,0.16); color: #fbbf24; }
-    .status-badge.COMPLETED  { background: rgba(16,185,129,0.16); color: #6ee7b7; }
+    .status-badge.COMPLETED  { background: rgba(16,185,129,0.16); color: var(--bp-acc-green); }
     .status-badge.FAILED     { background: rgba(239,68,68,0.18); color: #fca5a5; }
 
     .detail-row td   { padding: 0 !important; border: none; }
@@ -632,7 +623,6 @@ export class IngestListComponent implements OnInit, OnDestroy {
   statusTabs       = STATUS_TABS;
   planFilters      = PLAN_FILTERS;
   sourceFilters    = SOURCE_FILTERS;
-  planStatusOptions = PLAN_STATUS_OPTIONS;
 
   jobs        = signal<IngestJob[]>([]);
   livePlanCandidates = signal<Schedule[]>([]);
@@ -658,7 +648,6 @@ export class IngestListComponent implements OnInit, OnDestroy {
   livePlanDate = this.todayDate();
   livePlanDateValue = new Date(`${this.livePlanDate}T00:00:00`);
   selectedScheduleId: number | null = null;
-  livePlanSourcePath = '';
 
   portBoardDate = signal<string>(this.todayDate());
   portBoardDateValue: Date = new Date(`${this.todayDate()}T00:00:00`);
@@ -1540,10 +1529,6 @@ export class IngestListComponent implements OnInit, OnDestroy {
     return typeof contentName === 'string' && contentName.trim() ? contentName : schedule.title;
   }
 
-  private formatTime(value: string): string {
-    return formatIstanbulTime(value);
-  }
-
   private minuteToTime(value: number): string {
     const hour = Math.floor(value / 60) % 24;
     const minute = value % 60;
@@ -1692,43 +1677,6 @@ export class IngestListComponent implements OnInit, OnDestroy {
         });
         this.loadIngestPlanItems(row.day);
         this.snack.open(`Ingest plan satırı kaydedilemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
-      },
-    });
-  }
-
-  triggerLivePlanJob() {
-    const sourcePath = this.livePlanSourcePath.trim();
-    const schedule = this.livePlanCandidates().find((item) => item.id === this.selectedScheduleId);
-    if (!sourcePath || !schedule) return;
-
-    this.triggering.set(true);
-    // SCHED-B5a (Y5-7): ingest schedule coupling kaldırıldı; metadata.usageScope
-    // ref kaldırılır. Backend ingest.service artık live_plan_entry.id bekler;
-    // frontend "live-plan'dan ingest tetikleme" akışı ayrı PR follow-up.
-    // Mevcut çağrıda schedule.id geçici olarak gönderilir; backend reddederse
-    // operasyonel break (Y5-7 follow-up).
-    this.api.post<IngestJob>('/ingest', {
-      sourcePath,
-      targetId: schedule.id,
-      metadata: {
-        source: 'live-plan',
-        ingestPlanSourceKey: `live:${schedule.id}`,
-        scheduleId: schedule.id,
-        scheduleTitle: schedule.metadata?.['contentName'] || schedule.title,
-        channelName: schedule.channel?.name ?? null,
-        startTime: schedule.startTime,
-      },
-    }).subscribe({
-      next: (job) => {
-        this.snack.open(`Canlı yayın planı ingest #${job.id} kuyruğa eklendi`, 'Kapat', { duration: 3000 });
-        this.livePlanSourcePath = '';
-        this.selectedScheduleId = null;
-        this.triggering.set(false);
-        this.load();
-      },
-      error: (err) => {
-        this.snack.open(`Hata: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
-        this.triggering.set(false);
       },
     });
   }
