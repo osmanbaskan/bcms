@@ -16,7 +16,12 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { loadAvidConfig, assertAvidConfigReady, assertCtmsConfigReady, type AvidConfig } from './avid.config.js';
+import type { PrismaClient } from '@prisma/client';
+import {
+  loadAvidConfig, applyAvidOverrides, assertAvidConfigReady, assertCtmsConfigReady,
+  type AvidConfig,
+} from './avid.config.js';
+import { readAvidSettings } from './avid.settings.js';
 import { postSoap, AVID_NS, escapeXml } from './avid.soap.js';
 import { postSubmitStpJob, createCtmsTokenManager, type CtmsTokenManager } from './avid.ctms.js';
 
@@ -651,22 +656,50 @@ async function ctmsPollTransferStatus(
 
 let _singleton: AvidAdapter | null = null;
 let _mockState: MockState | null = null;
+/** Cache imzası: DB `avid_settings.updatedAt` ISO (yoksa 'env'). Değişince rebuild. */
+let _sig: string | null = null;
 
-export function getAvidAdapter(env: NodeJS.ProcessEnv = process.env): AvidAdapter {
-  if (_singleton) return _singleton;
-  const cfg = loadAvidConfig(env);
+/**
+ * Adapter factory — DB-farkında, imza-cache'li.
+ *
+ * `prisma` verilirse `avid_settings` satırı env üstüne bindirilir
+ * (`applyAvidOverrides`); satır yok/boşsa davranış = bugünkü env. Ayar değişince
+ * (`updatedAt` farklı) adapter bir sonraki çağrıda yeniden kurulur — worker bir
+ * sonraki tick'te yeni bilgiyi alır (restart gerekmez, cross-container DB ortak).
+ *
+ * `prisma` yoksa (testler / eski çağrı) → env-only, bugünkü davranış. DB okuma
+ * hatası → sessizce env'e düşülür (canlı akış kesilmez).
+ */
+export async function getAvidAdapter(
+  prisma?: PrismaClient,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<AvidAdapter> {
+  let overrides = null;
+  let updatedAt: Date | null = null;
+  if (prisma) {
+    try {
+      const r = await readAvidSettings(prisma);
+      if (r) { overrides = r.overrides; updatedAt = r.updatedAt; }
+    } catch { /* DB okunamadı → env'e düş (canlı akış kesilmesin) */ }
+  }
+  const sig = updatedAt ? updatedAt.toISOString() : 'env';
+  if (_singleton && _sig === sig) return _singleton;
+
+  const cfg = applyAvidOverrides(loadAvidConfig(env), overrides);
   if (cfg.mockMode || !cfg.enabled) {
     _mockState = createInitialMockState();
     _singleton = createMockAvidAdapter(_mockState);
-    return _singleton;
+  } else {
+    assertAvidConfigReady(cfg);
+    _singleton = createInterplayAvidAdapter(cfg);
   }
-  assertAvidConfigReady(cfg);
-  _singleton = createInterplayAvidAdapter(cfg);
+  _sig = sig;
   return _singleton;
 }
 
-/** Test-only: singleton + mock state'i sıfırla (her test başı izolasyon). */
+/** Test-only: singleton + mock state + cache imzasını sıfırla (her test başı izolasyon). */
 export function __resetAvidAdapterForTest(): void {
   _singleton = null;
   _mockState = null;
+  _sig = null;
 }

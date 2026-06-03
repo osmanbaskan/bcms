@@ -88,7 +88,7 @@ export async function runTransferWorkerTickOnce(
 ): Promise<TransferWorkerTickResult> {
   const { app } = deps;
   const cfg = deps.workerConfig ?? loadTransferWorkerConfig();
-  const adapter = deps.adapter ?? getAvidAdapter();
+  const adapter = deps.adapter ?? await getAvidAdapter(app.prisma);
   const triggerSsdb = deps.triggerSsdbTick ?? requestSsdbResolverTick;
   const startedAt = Date.now();
 

@@ -97,7 +97,7 @@ export async function runRestoreWorkerTickOnce(
 ): Promise<RestoreWorkerTickResult> {
   const { app } = deps;
   const cfg = deps.workerConfig ?? loadRestoreWorkerConfig();
-  const adapter = deps.adapter ?? getAvidAdapter();
+  const adapter = deps.adapter ?? await getAvidAdapter(app.prisma);
   const startedAt = Date.now();
 
   const result: RestoreWorkerTickResult = {

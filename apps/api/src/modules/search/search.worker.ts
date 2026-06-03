@@ -95,7 +95,7 @@ export async function runSearchWorkerTickOnce(
 ): Promise<SearchWorkerTickResult> {
   const { app } = deps;
   const cfg = deps.workerConfig ?? loadSearchWorkerConfig();
-  const adapter = deps.adapter ?? getAvidAdapter();
+  const adapter = deps.adapter ?? await getAvidAdapter(app.prisma);
   const startedAt = Date.now();
 
   const result: SearchWorkerTickResult = {

@@ -204,13 +204,13 @@ describe('createInterplayAvidAdapter — tüm 5 method gerçek (K1+K2+K3)', () =
 
 describe('getAvidAdapter — factory seçimi', () => {
   it('mockMode=true → mock adapter (4 method çalışır, throw etmez)', async () => {
-    const adapter = getAvidAdapter({ RESTORE_AVID_MOCK: 'true', RESTORE_AVID_ENABLED: 'on' } as NodeJS.ProcessEnv);
+    const adapter = await getAvidAdapter(undefined, { RESTORE_AVID_MOCK: 'true', RESTORE_AVID_ENABLED: 'on' } as NodeJS.ProcessEnv);
     // mock requestRestore throw etmez, avidJobId döner.
     const r = await adapter.requestRestore({ assetId: 'x', dcCode: 'd' });
     expect(r.avidJobId).toBeTruthy();
   });
 
-  it('enabled+mock=false+env dolu → interplay adapter (5 method da fonksiyon)', () => {
+  it('enabled+mock=false+env dolu → interplay adapter (5 method da fonksiyon)', async () => {
     const env = {
       RESTORE_AVID_ENABLED: 'on',
       RESTORE_AVID_MOCK: 'false',
@@ -219,7 +219,7 @@ describe('getAvidAdapter — factory seçimi', () => {
       AVID_PASSWORD: 'p',
       AVID_WORKSPACE: 'interplay://BSVMWG/',
     } as NodeJS.ProcessEnv;
-    const adapter = getAvidAdapter(env);
+    const adapter = await getAvidAdapter(undefined, env);
     expect(typeof adapter.requestTransfer).toBe('function');
     expect(typeof adapter.pollTransferStatus).toBe('function');
   });

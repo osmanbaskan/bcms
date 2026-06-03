@@ -1,0 +1,10 @@
+import { loadAvidConfig, assertAvidConfigReady } from '../src/modules/avid/avid.config.js';
+import { buildEnvelope, AVID_NS, serviceEndpoint, escapeXml } from '../src/modules/avid/avid.soap.js';
+import { buildJobStatusBody } from '../src/modules/avid/avid.client.js';
+process.env.RESTORE_AVID_ENABLED='on'; process.env.RESTORE_AVID_MOCK='false';
+const cfg=loadAvidConfig(); assertAvidConfigReady(cfg);
+const env=buildEnvelope({username:cfg.user!,password:cfg.password!,bodyNs:AVID_NS.jobsTypes,bodyXml:buildJobStatusBody(process.argv[2])});
+const r=await fetch(serviceEndpoint(cfg.interplayUrl!,'Jobs'),{method:'POST',headers:{'Content-Type':'text/xml; charset=utf-8',SOAPAction:'""'},body:env});
+const t=await r.text();
+console.log('HTTP',r.status);
+console.log(t);

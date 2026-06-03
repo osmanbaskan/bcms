@@ -172,3 +172,36 @@ export function assertCtmsConfigReady(config: AvidConfig): void {
     throw new Error(`Avid CTMS (transfer) config missing required env: ${missing.join(', ')}`);
   }
 }
+
+/**
+ * DB'deki `avid_settings` satırından gelen, env üstüne bindirilecek override
+ * alanları. Sadece DOLU (boş/null olmayan) alanlar env değerini ezer; boş/null
+ * alan env'e düşer (geriye dönük uyumlu). `avid.settings.ts` doldurur.
+ */
+export interface AvidSettingsOverrides {
+  interplayUrl?: string;
+  avidUser?: string;
+  avidPassword?: string;
+  workspace?: string;
+  clouduxUrl?: string;
+  clouduxRealm?: string;
+  clouduxToken?: string;
+}
+
+/**
+ * `loadAvidConfig(env)` çıktısına DB override'larını bindirir (saf fonksiyon).
+ * Override yoksa cfg aynen döner → DB satırı yok/boşken davranış = bugünkü env.
+ */
+export function applyAvidOverrides(cfg: AvidConfig, ov?: AvidSettingsOverrides | null): AvidConfig {
+  if (!ov) return cfg;
+  return {
+    ...cfg,
+    interplayUrl: ov.interplayUrl ?? cfg.interplayUrl,
+    user:         ov.avidUser ?? cfg.user,
+    password:     ov.avidPassword ?? cfg.password,
+    workspace:    ov.workspace ?? cfg.workspace,
+    clouduxUrl:   ov.clouduxUrl ? ov.clouduxUrl.replace(/\/+$/, '') : cfg.clouduxUrl,
+    clouduxRealm: ov.clouduxRealm ?? cfg.clouduxRealm,
+    clouduxToken: ov.clouduxToken ?? cfg.clouduxToken,
+  };
+}
