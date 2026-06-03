@@ -46,23 +46,29 @@ body.login-pf,
   display: none !important;
 }
 
-/* ─── Header (realm displayNameHtml — beINport branding) ──────────────── */
-#kc-header,
-#kc-header-wrapper {
+/* ─── Header (beINport logo — arayüzle aynı güncel PNG) ────────────────── */
+/* Önceden displayNameHtml metni (be/IN/port) gösteriliyordu; artık arayüzdeki
+   güncel logo (bein-wordmark.png) ölçekli resim olarak basılır, metin gizlenir. */
+#kc-header {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff !important;
-  font-family: var(--bp-font-sans) !important;
-  font-size: 36px !important;
-  font-weight: 700 !important;
-  letter-spacing: -0.025em !important;
   padding: 48px 24px 16px !important;
-  text-shadow: 0 0 24px rgba(124, 58, 237, 0.45);
 }
-
-#kc-header-wrapper strong { font-weight: 700; }
-#kc-header-wrapper span { font-weight: 400; font-size: 0.62em; margin-left: 2px; }
+#kc-header-wrapper {
+  display: block;
+  width: 300px;
+  height: 72px;
+  max-width: 82vw;
+  background: url(../img/bein-wordmark.png) center center / contain no-repeat;
+  /* displayNameHtml metnini gizle (logo resmi gösteriliyor) */
+  font-size: 0 !important;
+  color: transparent !important;
+  text-shadow: none !important;
+  filter: drop-shadow(0 0 24px rgba(124, 58, 237, 0.40));
+}
+#kc-header-wrapper strong,
+#kc-header-wrapper span { display: none !important; }
 
 /* ─── Card ─────────────────────────────────────────────────────────────── */
 .card-pf,
@@ -346,9 +352,9 @@ input[type="checkbox"] {
   border: 1px solid var(--bp-line-2) !important;
 }
 
-/* ─── Footer brand-tag + designer credit ──────────────────────────────── */
+/* ─── Footer brand-tag + copyright ────────────────────────────────────── */
 .login-pf-page::after {
-  content: 'beINport · Yayın Operasyon Paneli\A Designed by Osman Başkan';
+  content: 'beINport · Yayın Operasyon Paneli\A © 2026 beIN Sports · Tüm hakları saklıdır';
   white-space: pre;
   display: block;
   text-align: center;
