@@ -214,4 +214,17 @@ export const PERMISSIONS = {
     execute: [GROUP.SystemEng] as BcmsGroup[],
     cancel:  [GROUP.SystemEng] as BcmsGroup[],
   },
+  /** Restore V2 — Avid bağlantı ayarları (Ayarlar ekranı): IPWS + Cloud UX
+   *  IP/kullanıcı/şifre/token. Yalnız SystemEng (+ Admin auto-bypass). */
+  avidSettings: {
+    read:  [GROUP.SystemEng] as BcmsGroup[],
+    write: [GROUP.SystemEng] as BcmsGroup[],
+  },
+  /** Watcher bilgi + canlı durum (Ayarlar > Bağlantılar): BXF/Provys + ASRUN
+   *  izleyicilerinin klasör/polling config'i ve sağlık durumu. write = izlenen
+   *  klasör override'ı (canlı re-watch). Sır içermez. Yalnız SystemEng (+ Admin). */
+  watchers: {
+    read:  [GROUP.SystemEng] as BcmsGroup[],
+    write: [GROUP.SystemEng] as BcmsGroup[],
+  },
 } as const;

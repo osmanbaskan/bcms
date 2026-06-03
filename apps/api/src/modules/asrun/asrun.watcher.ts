@@ -8,8 +8,11 @@ import { parseAsrunFilename } from './asrun.filename.js';
 import { ConcurrencyLimiter } from '../provys/provys.concurrency.js';
 import { parseBoolEnv, parsePollIntervalMs } from '../provys/provys.watcher.js';
 import { startHeartbeatTicker } from '../../lib/service-heartbeat.js';
+import { startWatcherSupervisor, type SupervisedWatcher } from '../../lib/watcher-supervisor.js';
+import { getEffectiveWatchFolders } from '../watchers/watcher.settings.js';
 
-const WATCH_FOLDER     = process.env.ASRUN_WATCH_FOLDER ?? './tmp/asrun';
+// Klasör DIŞINDAKİ ayarlar env-sabit (editable değil). İzlenen klasör artık
+// watcher_settings DB'sinden okunur (supervisor canlı re-watch eder).
 const DEBOUNCE_MS      = Number(process.env.ASRUN_WATCHER_DEBOUNCE_MS ?? '1500');
 const CONCURRENCY      = Math.max(1, Number(process.env.ASRUN_WATCHER_CONCURRENCY ?? '3'));
 const USE_POLLING      = parseBoolEnv(process.env.ASRUN_WATCHER_USE_POLLING, false);
@@ -18,39 +21,25 @@ const POLL_INTERVAL_MS = parsePollIntervalMs(process.env.ASRUN_WATCHER_POLL_INTE
 /**
  * Asrun BXF dosya izleyici — worker container.
  *
- * Provys watcher'dan tamamen ayrı:
- *   - Ayrı `WATCH_FOLDER`  (ASRUN_WATCH_FOLDER → SMB Outbox/Ok mount).
- *   - Ayrı debounce map + concurrency limiter.
- *   - Audit actor: `system:asrun-watcher`.
- *   - Composed snapshot merge YOK; service.ingestAsrunFile dosya başına
- *     idempotent upsert yapar.
- *
- * SMB üzerinde inotify event delivery güvensiz (`PROVYS_*` ile aynı sebep)
- * — `ASRUN_WATCHER_USE_POLLING=true` ile chokidar polling moduna alınır.
- * Mount yoksa watcher kontrollü warn ile başlatılmaz; container crash'lemez.
+ * Provys watcher'dan tamamen ayrı (ayrı klasör, debounce, concurrency, audit
+ * actor). İzlenen klasör `watcher_settings.asrun_watch_folder` (override) ya da
+ * `ASRUN_WATCH_FOLDER` env'inden gelir; supervisor ~30 sn'de bir DB'yi okuyup
+ * klasör değişince canlı yeniden izler (restart yok). Mount eksikse kontrollü
+ * warn ile izleme durdurulur, container crash'lemez.
  */
 export function startAsrunWatcher(app: FastifyInstance): void {
   startHeartbeatTicker('asrun-watcher', app);
-  if (!fs.existsSync(WATCH_FOLDER)) {
-    app.log.warn(
-      { folder: WATCH_FOLDER },
-      'Asrun watcher: ASRUN_WATCH_FOLDER mevcut değil; izleyici başlatılmadı (ops mount eksik?)',
-    );
-    return;
-  }
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(WATCH_FOLDER);
-  } catch (err) {
-    app.log.warn({ err, folder: WATCH_FOLDER }, 'Asrun watcher: stat hatası; izleyici başlatılmadı');
-    return;
-  }
-  if (!stat.isDirectory()) {
-    app.log.warn({ folder: WATCH_FOLDER }, 'Asrun watcher: ASRUN_WATCH_FOLDER dizin değil; izleyici başlatılmadı');
-    return;
-  }
+  startWatcherSupervisor({
+    service: 'asrun-watcher',
+    app,
+    resolveFolder: async () => (await getEffectiveWatchFolders(app.prisma)).asrun,
+    createWatcher: (folder) => buildAsrunWatcher(app, folder),
+  });
+}
 
-  const watcher = chokidar.watch(WATCH_FOLDER, {
+/** Verilen klasör için chokidar + handler'ları kurar (supervisor çağırır). */
+function buildAsrunWatcher(app: FastifyInstance, folder: string): SupervisedWatcher {
+  const watcher = chokidar.watch(folder, {
     persistent: true,
     ignoreInitial: false,
     usePolling: USE_POLLING,
@@ -120,25 +109,17 @@ export function startAsrunWatcher(app: FastifyInstance): void {
     app.log.error({ err }, 'Asrun watcher: izleyici hatası');
   });
 
-  app.addHook('onClose', async () => {
+  // Lifecycle supervisor'da: cleanup debounce timer'larını temizler, watcher'ı
+  // supervisor close eder (klasör değişimi veya onClose).
+  const cleanup = (): void => {
     for (const t of debounceTimers.values()) clearTimeout(t);
     debounceTimers.clear();
-    try {
-      await watcher.close();
-      app.log.info('Asrun watcher kapandı');
-    } catch (err) {
-      app.log.warn({ err }, 'Asrun watcher close hatası');
-    }
-  });
+  };
 
   app.log.info(
-    {
-      folder: WATCH_FOLDER,
-      usePolling: USE_POLLING,
-      pollIntervalMs: POLL_INTERVAL_MS,
-      debounceMs: DEBOUNCE_MS,
-      concurrency: CONCURRENCY,
-    },
-    'Asrun watcher başlatıldı',
+    { folder, usePolling: USE_POLLING, pollIntervalMs: POLL_INTERVAL_MS, debounceMs: DEBOUNCE_MS, concurrency: CONCURRENCY },
+    'Asrun watcher: klasör izleyici kuruldu',
   );
+
+  return { watcher, cleanup };
 }

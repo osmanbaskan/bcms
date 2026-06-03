@@ -52,8 +52,11 @@ import { startSearchWorker } from './modules/search/search.worker.js';
 import { restoreRoutes } from './modules/restore/restore.routes.js';
 import { startRestoreWorker } from './modules/restore/restore.worker.js';
 import { transferRoutes } from './modules/transfer/transfer.routes.js';
+import { avidRoutes } from './modules/avid/avid.routes.js';
+import { watchersRoutes } from './modules/watchers/watchers.routes.js';
 import { startTransferWorker } from './modules/transfer/transfer.worker.js';
 import { getServiceHealthStatuses } from './lib/service-heartbeat.js';
+import { getWatcherRuntimeState } from './lib/watcher-supervisor.js';
 
 const BACKGROUND_SERVICES = [
   'notifications',
@@ -396,6 +399,31 @@ export async function buildApp() {
     });
   });
 
+  // Watcher canlı runtime durumu (yalnız worker'da dolu) — izlenen klasör,
+  // folderExists, watching + heartbeat. API container'ı bu endpoint'i kendi
+  // /api/v1/watchers route'undan proxy ile çağırır (state process-içi).
+  app.get('/internal/watchers', { schema: { hide: true }, config: { rateLimit: false } }, async () => {
+    const hb = new Map(
+      getServiceHealthStatuses(['provys-watcher', 'asrun-watcher']).map((s) => [s.service, s]),
+    );
+    const build = (service: string) => {
+      const rt = getWatcherRuntimeState(service);
+      const h = hb.get(service);
+      return {
+        effectiveFolder: rt?.effectiveFolder ?? null,
+        folderExists:    rt?.folderExists ?? null,
+        watching:        rt?.watching ?? null,
+        alive:           h?.alive ?? false,
+        ageMs:           h?.ageMs ?? null,
+        lastTickAt:      h?.lastTickAt ?? null,
+      };
+    };
+    return {
+      'provys-watcher': build('provys-watcher'),
+      'asrun-watcher':  build('asrun-watcher'),
+    };
+  });
+
   // ── Consumers & watchers ──────────────────────────────────────────────────────
   await startBackgroundServices(app);
 
@@ -439,6 +467,8 @@ export async function buildApp() {
   await app.register(searchRoutes,         { prefix: '/api/v1/search' });
   await app.register(restoreRoutes,        { prefix: '/api/v1/restore' });
   await app.register(transferRoutes,       { prefix: '/api/v1/transfer' });
+  await app.register(avidRoutes,           { prefix: '/api/v1/avid' });
+  await app.register(watchersRoutes,       { prefix: '/api/v1/watchers' });
 
   return app;
 }

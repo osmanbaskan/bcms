@@ -16,9 +16,18 @@ async function goToSettingsViaNav(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle', { timeout: 10_000 });
 }
 
+/**
+ * 2026-06-02: Ayarlar sol-menü bölümlü oldu. OPTA & Manuel Lig kartları
+ * 'leagues' (Lig / İçerik) bölümünde — kartları görmeden önce bölüme geç.
+ */
+async function goToLeaguesSection(page: Page): Promise<void> {
+  await goToSettingsViaNav(page);
+  await page.locator('.settings-nav [data-section="leagues"]').click();
+}
+
 test.describe('Settings + Admin smoke', () => {
   test('Settings sayfasında 2 admin kartı listelenir', async ({ page }) => {
-    await goToSettingsViaNav(page);
+    await goToLeaguesSection(page);
     await expect(page.getByRole('heading', { name: 'Sistem Ayarları' })).toBeVisible();
     // Card içine scope — 2026-05-20: "Manuel Lig Yönetimi" hem sidebar entry
     // hem kart başlığı olarak görünüyor; strict mode için kart-bazlı locator.
@@ -29,7 +38,7 @@ test.describe('Settings + Admin smoke', () => {
   });
 
   test('Manuel Lig Yönetimi kartından admin sayfası açılır + TBL listelenir', async ({ page }) => {
-    await goToSettingsViaNav(page);
+    await goToLeaguesSection(page);
 
     // Manuel Lig Yönetimi kartındaki "Aç" linki
     const card = page.locator('mat-card:has-text("Manuel Lig Yönetimi")');
@@ -53,7 +62,7 @@ test.describe('Settings + Admin smoke', () => {
   });
 
   test('OPTA Lig Görünürlüğü kartından admin sayfası açılır (regression)', async ({ page }) => {
-    await goToSettingsViaNav(page);
+    await goToLeaguesSection(page);
 
     const card = page.locator('mat-card:has-text("OPTA Lig / Turnuva Görünürlüğü")');
     await card.getByRole('link', { name: /Aç/ }).click();

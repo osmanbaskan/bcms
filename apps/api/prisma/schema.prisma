@@ -1605,3 +1605,40 @@ enum SearchJobStatus {
 
   @@map("search_job_status")
 }
+
+/// Restore V2 — Avid bağlantı ayarları (2026-06-02). TEK satır (id=1).
+/// Ayarlar ekranından düzenlenir; boş/null alan env'e (AVID_*) düşer
+/// (getAvidAdapter → applyAvidOverrides). Ara + Restore tek user/pass (IPWS);
+/// Transfer ayrı Cloud UX URL+token (Cloud UX user/pass login'i yok).
+/// Şifre/token düz metin (.env ile eş risk); API GET'te MASKELİ döner,
+/// yalnız SystemEng erişir. updatedAt → getAvidAdapter cache invalidation imzası.
+model AvidSetting {
+  id            Int       @id @default(1)
+  interplayUrl  String?   @map("interplay_url")
+  avidUser      String?   @map("avid_user")     @db.VarChar(200)
+  avidPassword  String?   @map("avid_password")
+  workspace     String?   @map("workspace")
+  clouduxUrl    String?   @map("cloudux_url")
+  clouduxRealm  String?   @map("cloudux_realm")
+  clouduxToken  String?   @map("cloudux_token")
+  updatedBy     String?   @map("updated_by")    @db.VarChar(100)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("avid_settings")
+}
+
+/// Watcher izlenen klasör override'ları (Ayarlar > Bağlantılar).
+/// TEK satır (id=1). Boş/null alan runtime'da env'e (PROVYS_WATCH_FOLDER /
+/// ASRUN_WATCH_FOLDER) düşer. Watcher worker'da çalışır; bu değeri ~30 sn'de
+/// bir DB'den okur ve klasör değişince eski izlemeyi kapatıp yenisini açar
+/// (canlı re-watch, restart gerektirmez). Klasör container içinde erişilebilir
+/// (mount) olmalı; aksi halde folderExists=false raporlanır. Yalnız SystemEng.
+model WatcherSetting {
+  id                Int       @id @default(1)
+  provysWatchFolder String?   @map("provys_watch_folder")
+  asrunWatchFolder  String?   @map("asrun_watch_folder")
+  updatedBy         String?   @map("updated_by")  @db.VarChar(100)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("watcher_settings")
+}

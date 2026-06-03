@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import chokidar from 'chokidar';
 import type { FastifyInstance } from 'fastify';
@@ -8,8 +7,9 @@ import { extractFileCode, resolveChannel } from './provys.channel-mapping.js';
 import { extractScheduleDate } from './provys.file-resolver.js';
 import { startHeartbeatTicker } from '../../lib/service-heartbeat.js';
 import { ConcurrencyLimiter } from './provys.concurrency.js';
+import { startWatcherSupervisor, type SupervisedWatcher } from '../../lib/watcher-supervisor.js';
+import { getEffectiveWatchFolders } from '../watchers/watcher.settings.js';
 
-const WATCH_FOLDER = process.env.PROVYS_WATCH_FOLDER ?? './tmp/provys';
 const DEBOUNCE_MS = Number(process.env.PROVYS_WATCHER_DEBOUNCE_MS ?? '1500');
 const CONCURRENCY = Math.max(1, Number(process.env.PROVYS_WATCHER_CONCURRENCY ?? '3'));
 
@@ -42,44 +42,30 @@ const USE_POLLING = parseBoolEnv(process.env.PROVYS_WATCHER_USE_POLLING, false);
 const POLL_INTERVAL_MS = parsePollIntervalMs(process.env.PROVYS_WATCHER_POLL_INTERVAL_MS, 30_000);
 
 /**
- * Worker bağlamında çalışan dosya izleyici. Host-side CIFS mount + Docker
- * bind volume ile PROVYS_WATCH_FOLDER container içinde lokal path olarak
- * görünür; izleyici Samba protokolüne dokunmaz (filesystem watch yeterli).
+ * Worker bağlamında çalışan dosya izleyici. İzlenen klasör
+ * `watcher_settings.provys_watch_folder` (override) ya da `PROVYS_WATCH_FOLDER`
+ * env'inden gelir; supervisor ~30 sn'de bir DB'yi okuyup klasör değişince canlı
+ * yeniden izler (restart yok). Host-side CIFS mount + Docker bind volume ile
+ * klasör container içinde lokal path olarak görünür.
  *
- * Audit ext aktif — yazımlar ALS context ile sarmalanarak actor
- * 'system:provys-watcher' olarak işaretlenir.
- *
- * Defansif: dizin yoksa worker süreci çökertilmez; kontrollü warn loglanır
- * ve izleyici başlatılmaz.
+ * Audit ext aktif — yazımlar ALS context ile actor 'system:provys-watcher'.
+ * Defansif: dizin yoksa worker süreci çökertilmez; kontrollü warn loglanır.
  */
 export function startProvysWatcher(app: FastifyInstance): void {
   startHeartbeatTicker('provys-watcher', app);
-  if (!fs.existsSync(WATCH_FOLDER)) {
-    app.log.warn(
-      { folder: WATCH_FOLDER },
-      'Provys watcher: PROVYS_WATCH_FOLDER mevcut değil; izleyici başlatılmadı (ops mount eksik?)',
-    );
-    return;
-  }
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(WATCH_FOLDER);
-  } catch (err) {
-    app.log.warn({ err, folder: WATCH_FOLDER }, 'Provys watcher: stat hatası; izleyici başlatılmadı');
-    return;
-  }
-  if (!stat.isDirectory()) {
-    app.log.warn({ folder: WATCH_FOLDER }, 'Provys watcher: PROVYS_WATCH_FOLDER dizin değil; izleyici başlatılmadı');
-    return;
-  }
+  startWatcherSupervisor({
+    service: 'provys-watcher',
+    app,
+    resolveFolder: async () => (await getEffectiveWatchFolders(app.prisma)).provys,
+    createWatcher: (folder) => buildProvysWatcher(app, folder),
+  });
+}
 
-  // CIFS/SMB mount'lar inotify event'lerini başka client'ların yazımı için
-  // güvenilir taşımaz; PROVYS_WATCHER_USE_POLLING=true ile chokidar polling
-  // moduna alınır. `interval` ve `binaryInterval` tarayıcının dosya keşfi
-  // sıklığını yönetir (default 30 sn). `awaitWriteFinish` ayrı bir kontrol —
-  // bir kez tetiklenen yazımın boyutu sabitlenene kadar event geciktirilir,
-  // bu yüzden write-stability poll'u (500 ms) ayrı tutuldu.
-  const watcher = chokidar.watch(WATCH_FOLDER, {
+/** Verilen klasör için chokidar + handler'ları kurar (supervisor çağırır). */
+function buildProvysWatcher(app: FastifyInstance, folder: string): SupervisedWatcher {
+  // CIFS/SMB mount'lar inotify event'lerini güvenilir taşımaz;
+  // PROVYS_WATCHER_USE_POLLING=true ile chokidar polling moduna alınır.
+  const watcher = chokidar.watch(folder, {
     persistent: true,
     ignoreInitial: false,
     usePolling: USE_POLLING,
@@ -115,7 +101,8 @@ export function startProvysWatcher(app: FastifyInstance): void {
   /**
    * Composed snapshot sync — folder'daki o kanal için tüm aday dosyalardan
    * (target day + bir önceki gün) latest-wins coverage merge çalıştırır.
-   * `syncChannelDate` snapshot boşsa o gün satırlarını temizler.
+   * `syncChannelDate` snapshot boşsa o gün satırlarını temizler. Klasör
+   * supervisor tarafından sağlanır (canlı değişebilir).
    */
   const flushGroup = async (
     channelSlug: string,
@@ -129,7 +116,7 @@ export function startProvysWatcher(app: FastifyInstance): void {
           app.prisma,
           channelSlug as Parameters<typeof syncChannelDate>[1],
           scheduleDate,
-          WATCH_FOLDER,
+          folder,
           app.log,
         );
       });
@@ -143,10 +130,7 @@ export function startProvysWatcher(app: FastifyInstance): void {
 
   /**
    * Bir filesystem event'i — `(channel, fileNameDate, fileNameDate+1)`
-   * günlerini etkileyebilir: dosya kendi günü için kaynak; aynı dosya gece
-   * yarısı sonrası event'leri ile bir sonraki güne de katkı yapabilir
-   * (per-event `broadcastDate`). Debounce hala `(fileCode, scheduleDate)`
-   * scope'lu — aynı gün için art arda gelen event'ler tek sync'e indirgenir.
+   * günlerini etkileyebilir. Debounce `(fileCode, scheduleDate)` scope'lu.
    */
   const handle = (filePath: string, op: 'add' | 'change' | 'unlink'): void => {
     if (path.extname(filePath).toLowerCase() !== '.bxf') return;
@@ -194,25 +178,15 @@ export function startProvysWatcher(app: FastifyInstance): void {
     app.log.error({ err }, 'Provys watcher: izleyici hatası');
   });
 
-  app.addHook('onClose', async () => {
+  const cleanup = (): void => {
     for (const t of debounceTimers.values()) clearTimeout(t);
     debounceTimers.clear();
-    try {
-      await watcher.close();
-      app.log.info('Provys watcher kapandı');
-    } catch (err) {
-      app.log.warn({ err }, 'Provys watcher close hatası');
-    }
-  });
+  };
 
   app.log.info(
-    {
-      folder: WATCH_FOLDER,
-      usePolling: USE_POLLING,
-      pollIntervalMs: POLL_INTERVAL_MS,
-      debounceMs: DEBOUNCE_MS,
-      concurrency: CONCURRENCY,
-    },
-    'Provys watcher başlatıldı',
+    { folder, usePolling: USE_POLLING, pollIntervalMs: POLL_INTERVAL_MS, debounceMs: DEBOUNCE_MS, concurrency: CONCURRENCY },
+    'Provys watcher: klasör izleyici kuruldu',
   );
+
+  return { watcher, cleanup };
 }
