@@ -192,12 +192,24 @@ type FormState = Record<TechnicalDetailsFieldKey, FieldValue>;
       display:flex; align-items:center; gap:8px;
       padding: 8px 0 16px; flex-wrap: wrap;
     }
-    .td-version { font-size: 12px; color: #666; background: #f0f0f0;
+    .td-version { font-size: 12px; color: var(--bp-fg-3); background: var(--bp-bg-3);
                   border-radius: 10px; padding: 2px 8px; }
-    .td-saved { font-size: 12px; color: #888; }
+    .td-saved { font-size: 12px; color: var(--bp-fg-3); }
     .td-spacer { flex: 1; }
 
     .td-accordion { display:block; }
+    /* 3-seviye bg derinliği (tablo paritesi): çevre bg-1 (dialog content) →
+       panel yüzeyi bg-2 (beyaz) → başlık bg-3 (vurgu bandı). Tek-katman düz
+       görünüm yerine her bölüm net ayrışır. */
+    :host ::ng-deep .td-accordion .mat-expansion-panel {
+      background: var(--bp-bg-2);
+      border: 1px solid var(--bp-line-2);
+      border-radius: 10px;
+      margin: 0 0 10px;
+      box-shadow: none;
+    }
+    :host ::ng-deep .td-accordion .mat-expansion-panel-header { background: var(--bp-bg-3); }
+    :host ::ng-deep .td-accordion .mat-expansion-panel-header:hover { background: var(--bp-bg-4); }
 
     .td-grid {
       display: grid;

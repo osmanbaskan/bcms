@@ -56,6 +56,9 @@ export interface LivePlanTechnicalEditDialogData {
       max-height: 92vh;
       overflow: auto;
       padding: 16px 24px;
+      /* 3-seviye derinlik: içerik alanı çevre tonu (bg-1); içindeki paneller
+         bg-2 (beyaz), başlıkları bg-3 — diyalog tek-katman beyaz görünmesin. */
+      background: var(--bp-bg-1);
     }
   `],
 })
