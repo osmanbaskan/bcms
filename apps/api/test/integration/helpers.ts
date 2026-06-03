@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { JwtPayload } from '@bcms/shared';
+import { assertSafeTruncateTarget } from '../../src/lib/truncate-guard.js';
 
 /**
  * Test helpers for integration suite.
@@ -102,21 +103,10 @@ export async function disconnectPrisma(): Promise<void> {
  * (vitest.integration.config.ts dis i), bu guard hard-fail ile durdurur.
  */
 export async function cleanupTransactional(): Promise<void> {
-  const nodeEnv = process.env.NODE_ENV;
-  if (nodeEnv !== 'test') {
-    throw new Error(
-      `cleanupTransactional() refused: NODE_ENV="${nodeEnv ?? 'undefined'}", expected "test". ` +
-      `Did you run integration spec without vitest.integration.config.ts? See K1 (2026-05-29).`,
-    );
-  }
-  const dbUrl = process.env.DATABASE_URL ?? '';
-  // Canli bcms_postgres host'u veya prod-like indicator → reddet.
-  if (/@(bcms_postgres|prod-)/i.test(dbUrl)) {
-    throw new Error(
-      `cleanupTransactional() refused: DATABASE_URL points to production-like host ` +
-      `("${dbUrl.replace(/:\/\/[^@]+@/, '://***@')}"). Refusing TRUNCATE.`,
-    );
-  }
+  // K1 guard (2026-05-29) + 2026-06-01 localhost:5433/bcms açığı kapatıldı:
+  // canlı/prod DB'ye karşı TRUNCATE'i hard-fail ile reddet. Saf kontrol
+  // src/lib/truncate-guard.ts'te (unit test: truncate-guard.unit.spec.ts).
+  assertSafeTruncateTarget(process.env.NODE_ENV, process.env.DATABASE_URL ?? '');
   const prisma = getRawPrisma();
   await prisma.$executeRawUnsafe(
     `TRUNCATE TABLE ${TRANSACTIONAL_TABLES.map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`,
