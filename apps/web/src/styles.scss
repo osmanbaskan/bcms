@@ -963,3 +963,29 @@ html[data-theme="light"] .mat-mdc-form-field.mat-focused .mdc-notched-outline__t
   border-color: var(--bp-purple-500) !important;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Bildirimler — Kapalı (pasif) abonelik satırı, LIGHT tema.
+// Light'ta "muted/disabled" tokenları mor (fg-3=purple-700, fg-4=purple-500);
+// disabled mat-select + toggle hâlâ canlı görünüp "pasif" algısı vermiyor.
+// Dark'ta aynı tokenlar gerçek gri olduğu için zaten doğru çalışıyor → bu blok
+// yalnız light. Kapalı satırı nötr-gri + hafif soluk yaparak net pasifleştirir.
+// ─────────────────────────────────────────────────────────────────────────────
+html[data-theme="light"] app-notifications .sub-row.off {
+  opacity: 0.62;
+}
+html[data-theme="light"] app-notifications .sub-row.off .lbl {
+  color: #6b7280 !important;            // slate-500 (mor değil, nötr gri = pasif)
+}
+html[data-theme="light"] app-notifications .sub-row.off .mat-mdc-select-value-text,
+html[data-theme="light"] app-notifications .sub-row.off .mat-mdc-select-value {
+  color: #9ca3af !important;            // slate-400
+}
+html[data-theme="light"] app-notifications .sub-row.off .mdc-notched-outline__leading,
+html[data-theme="light"] app-notifications .sub-row.off .mdc-notched-outline__notch,
+html[data-theme="light"] app-notifications .sub-row.off .mdc-notched-outline__trailing {
+  border-color: #d1d5db !important;     // slate-300 — soluk outline
+}
+html[data-theme="light"] app-notifications .sub-row.off .mat-mdc-select-arrow svg {
+  fill: #9ca3af !important;
+}
+

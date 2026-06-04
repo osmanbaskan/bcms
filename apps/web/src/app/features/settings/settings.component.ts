@@ -15,6 +15,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { ApiService } from '../../core/services/api.service';
+import { NotificationTypeCatalogComponent } from '../notifications/notification-type-catalog.component';
 import type { RecordingPort } from '@bcms/shared';
 
 interface SmbConfig {
@@ -61,7 +62,7 @@ interface WatcherStatus {
 }
 
 /** Sol menü bölümleri. */
-type SettingsSection = 'connections' | 'ports' | 'leagues';
+type SettingsSection = 'connections' | 'ports' | 'leagues' | 'notifications';
 
 @Component({
   selector: 'app-settings',
@@ -81,6 +82,7 @@ type SettingsSection = 'connections' | 'ports' | 'leagues';
     MatCardModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatIconModule, MatDividerModule,
     MatProgressSpinnerModule, MatSnackBarModule,
+    NotificationTypeCatalogComponent,
   ],
   template: `
     <div class="page-container">
@@ -457,6 +459,11 @@ type SettingsSection = 'connections' | 'ports' | 'leagues';
                 </mat-card-actions>
               </mat-card>
             }
+
+            <!-- ───────────── Bildirimler (admin tip katalogu) ───────────── -->
+            @case ('notifications') {
+              <app-notification-type-catalog />
+            }
           }
         </div>
       </div>
@@ -620,9 +627,10 @@ export class SettingsComponent implements OnInit {
   /** Aktif sol-menü bölümü. Varsayılan: Bağlantılar. */
   section = signal<SettingsSection>('connections');
   readonly sections: ReadonlyArray<{ id: SettingsSection; label: string; icon: string }> = [
-    { id: 'connections', label: 'Bağlantılar',    icon: 'cable' },
-    { id: 'ports',       label: 'Kayıt Portları',  icon: 'settings_input_component' },
-    { id: 'leagues',     label: 'Lig / İçerik',    icon: 'sports_soccer' },
+    { id: 'connections',   label: 'Bağlantılar',    icon: 'cable' },
+    { id: 'ports',         label: 'Kayıt Portları',  icon: 'settings_input_component' },
+    { id: 'leagues',       label: 'Lig / İçerik',    icon: 'sports_soccer' },
+    { id: 'notifications', label: 'Bildirimler',     icon: 'notifications' },
   ];
 
   cfg: SmbConfig = { share: '', mountPoint: '', subdir: '', username: '', password: '', domain: '' };
