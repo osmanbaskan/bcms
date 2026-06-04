@@ -21,7 +21,7 @@ function makeConfig(overrides: Partial<AvidConfig> = {}): AvidConfig {
     workspace: 'interplay://BSVMWG/', requestTimeoutMs: 5000,
     searchRootUri: 'interplay://BSVMWG/Projects/', workgroup: 'BSVMWG',
     restoreProfile: 'P', restoreService: 'com.avid.dms.restore',
-    transferEngine: 'bsvmte01', transferEngineFallback: 'bsvmte02',
+    transferEngine: 'playback-engine-01', transferEngineFallback: 'playback-engine-02',
     playbackDevice: 'MCR', playbackDeviceFallback: 'MCR_YEDEK', transferPriority: 'NORMAL',
     clouduxUrl: 'https://cloudux.test', clouduxRealm: 'REALM1', clouduxToken: 'tok-secret',
     stpDevice: 'MCR', stpProfile: 'MCR', clouduxInsecureTls: true,
@@ -63,13 +63,13 @@ describe('postSubmitStpJob', () => {
       ok: true, status: 200, statusText: 'OK',
       text: async () => JSON.stringify({
         errorSet: [], errors: [],
-        responseData: JSON.stringify({ jobId: 'J1', mcdsStatusURL: 'https://bsvmstp01:8443/STPService/jobs/status/' }),
+        responseData: JSON.stringify({ jobId: 'J1', mcdsStatusURL: 'https://mcds-host:8443/STPService/jobs/status/' }),
       }),
     })));
     const r = await postSubmitStpJob(makeConfig(), 'tok-secret', {
       realm: 'REALM1', mobId: 'M1', processName: 'P', videoId: 'DC1', device: 'MCR', profile: 'MCR',
     });
-    expect(r).toEqual({ jobId: 'J1', mcdsStatusURL: 'https://bsvmstp01:8443/STPService/jobs/status/' });
+    expect(r).toEqual({ jobId: 'J1', mcdsStatusURL: 'https://mcds-host:8443/STPService/jobs/status/' });
   });
 
   it('cookie auth + JSON content-type header', async () => {

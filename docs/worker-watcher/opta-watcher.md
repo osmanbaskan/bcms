@@ -14,7 +14,7 @@ Bu yüzden gerçek tarama **Python** container'da (polling), Node tarafı sadece
 ## Python container (asıl sync)
 - **Container:** `bcms_opta_watcher` (`infra/docker/opta-watcher.Dockerfile`)
 - **Okur:** OPTA SMB — `OPTA_SMB_SHARE/SUBDIR/USERNAME/PASSWORD/DOMAIN` (kalıcı yol
-  `//beinfilesrv/BACKUPS/OPTAfromFTP20511`). Bu bilgiler **Ayarlar > OPTA SMB Bağlantısı**'ndan da gelir
+  `//fileserver/BACKUPS/OPTAfromFTP20511`). Bu bilgiler **Ayarlar > OPTA SMB Bağlantısı**'ndan da gelir
   (`~/.bcms-opta.cred`).
 - **Polling:** `OPTA_POLL_INTERVAL` (default **3600 sn / 1 saat**).
 - **API'ye gönderir:** `POST /api/v1/opta/sync` — Bearer `OPTA_WATCHER_API_TOKEN` (= `OPTA_SYNC_SECRET`).

@@ -7,7 +7,7 @@
  *
  * Çalıştırma (credentials environment'tan; repoya YAZILMAZ):
  *   # DRY-RUN (güvenli, ağa gönderMEZ):
- *   AVID_INTERPLAY_URL="http://172.26.33.87/services" AVID_USER="..." \
+ *   AVID_INTERPLAY_URL="http://ipws-host.example.local/services" AVID_USER="..." \
  *   AVID_PASSWORD="..." AVID_WORKSPACE="interplay://BSVMWG/" \
  *   npx tsx apps/api/scripts/avid-restore-smoke.ts <mobid>
  *

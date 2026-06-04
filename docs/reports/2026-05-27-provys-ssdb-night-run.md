@@ -133,7 +133,7 @@ Bu 62 fail SSDB değişikliklerinden bağımsız; standalone TestBed setup'ları
 | **`PROVYS_SSDB_RESOLVER=on` set** | ⛔ BLOCKED (secret bağımlı) |
 | `docker compose up -d --no-deps --build worker` | ⛔ BLOCKED |
 | `docker compose up -d --no-deps --force-recreate api` | ⛔ BLOCKED |
-| TCP smoke: `worker → 172.28.208.20:60813` | ⛔ blocked |
+| TCP smoke: `worker → ssdb-host.example.local:60813` | ⛔ blocked |
 | HTTP smoke: `GET /api/v1/ssdb/health` Bearer JWT ile | ⛔ blocked (auth bypass yok) |
 | HTTP smoke: `POST /api/v1/ssdb/cache/refresh {dcCode: "DC00040962"}` | ⛔ blocked |
 | Worker tick gözlemi 60-120 sn | ⛔ blocked |
@@ -147,7 +147,7 @@ Kod ve compose tarafı tamamen hazır. Aktivasyon için kullanıcının manuel y
 ```bash
 # 1) .env dosyasına ekle (secret store / vault'tan al)
 echo 'PROVYS_SSDB_RESOLVER=on' >> .env
-echo 'SSDB_HOST=172.28.208.20' >> .env
+echo 'SSDB_HOST=ssdb-host.example.local' >> .env
 echo 'SSDB_PORT=60813' >> .env
 echo 'SSDB_DATABASE=LIGTV-SSDB' >> .env
 echo 'SSDB_USER=read1' >> .env
@@ -160,7 +160,7 @@ docker compose up -d --no-deps --build worker
 docker compose up -d --no-deps --force-recreate api
 
 # 4) TCP smoke
-docker compose exec worker nc -zv 172.28.208.20 60813
+docker compose exec worker nc -zv ssdb-host.example.local 60813
 
 # 5) /health smoke — geçerli JWT ile (auth bypass YOK)
 TOKEN=<browser_devtools'tan kopyala>
@@ -187,7 +187,7 @@ docker compose logs worker -f --tail 50
 2. **JWT token** smoke testler için gerekli; SKIP_AUTH yasak. Browser DevTools veya `kc-token-helper.sh` ile alınır.
 
 ### 🟡 Riskler
-3. **Network erişimi** — `172.28.208.20:60813` Docker bridge'inden erişilebilir mi? Host'tan sqlcmd çalıştı, container'dan test edilmedi. Eğer erişim yoksa compose `extra_hosts` veya routing config gerekir.
+3. **Network erişimi** — `ssdb-host.example.local:60813` Docker bridge'inden erişilebilir mi? Host'tan sqlcmd çalıştı, container'dan test edilmedi. Eğer erişim yoksa compose `extra_hosts` veya routing config gerekir.
 4. **62 pre-existing test fail** (`NG0201: ActivatedRoute`) — SSDB ile ilgisiz; ayrı PR'da düzeltilecek.
 5. **Lokal main 44 commit önde** — `origin/main`'e push edilmedi. Production deploy stratejisi GitHub akışı mı, lokal image mi belirsiz; kullanıcı kararı.
 6. **Worker container hâlâ 25+ saat önceki image'da** (pre-SSDB). Sabah rebuild zorunlu.

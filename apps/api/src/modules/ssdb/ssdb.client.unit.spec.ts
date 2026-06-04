@@ -104,7 +104,7 @@ describe('ssdb.client > getSsdbPool — lazy / disabled guard', () => {
   it('config enabled ama eksik env -> "missing required env" hatasi', async () => {
     const partial = loadSsdbConfig({
       PROVYS_SSDB_RESOLVER: 'on',
-      SSDB_HOST: '172.28.208.20',
+      SSDB_HOST: 'ssdb-host.example.local',
       // PORT/DATABASE/USER/PASSWORD eksik
     });
     await expect(getSsdbPool(partial)).rejects.toThrow(/missing required env/);

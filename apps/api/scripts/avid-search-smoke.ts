@@ -6,7 +6,7 @@
  * varsayımlarını canlı veriyle doğrular.
  *
  * Çalıştırma (credentials environment'tan; repoya YAZILMAZ):
- *   AVID_INTERPLAY_URL="http://172.26.33.87/services" \
+ *   AVID_INTERPLAY_URL="http://ipws-host.example.local/services" \
  *   AVID_USER="..." AVID_PASSWORD="..." AVID_WORKSPACE="interplay://BSVMWG/" \
  *   npx tsx apps/api/scripts/avid-search-smoke.ts DC00036170
  *

@@ -524,7 +524,7 @@ async function interplayPollJobStatus(
  *
  * `engine` + `device` parametre (failover için): birincil/yedek farklı
  * (engine, device) çiftine gönderir. ⚠️ Yedek engine'de device adı farklı
- * olabilir (bsvmte02 → MCR_YEDEK, MCR değil). Verilmezse cfg birincil değerleri.
+ * olabilir (playback-engine-02 → MCR_YEDEK, MCR değil). Verilmezse cfg birincil değerleri.
  */
 export function buildSendToPlaybackBody(
   cfg: AvidConfig,
@@ -574,7 +574,7 @@ async function interplayRequestTransfer(
   const interplayUri = assetIdToInterplayUri(cfg, input.assetId);
 
   // Failover hedefleri (operasyon kararı 2026-05-31, canlı doğrulandı):
-  //   birincil bsvmte01/MCR → yedek bsvmte02/MCR_YEDEK.
+  //   birincil playback-engine-01/MCR → yedek playback-engine-02/MCR_YEDEK.
   // ⚠️ Yedekte device adı FARKLI (MCR yok, MCR_YEDEK var).
   const targets: PlaybackTarget[] = [
     { engine: cfg.transferEngine, device: cfg.playbackDevice },
@@ -634,7 +634,7 @@ async function ctmsRequestTransfer(
 /**
  * CTMS transfer status izleme — V1 (optimistic-submit).
  *
- * ⚠️ Per-job REST status endpoint'i YOK (bsvmstp01:8443 erişilemez; CTMS'te REST
+ * ⚠️ Per-job REST status endpoint'i YOK (mcds-host:8443 erişilemez; CTMS'te REST
  * status rel'i yok; UI websocket kullanıyor — 2026-06-01 keşif). submitSTPJob 200
  * = transfer CDS kuyruğuna kabul edildi. Gerçek RUNNING→COMPLETED takibi sonraki
  * faz (WS broadcastNotifications veya Process job-list REST'i).

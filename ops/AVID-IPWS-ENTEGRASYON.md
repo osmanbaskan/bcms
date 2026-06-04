@@ -117,7 +117,7 @@ doğrulanıyor (getAvidAdapter mockMode → mock adapter, requestRestore avidJob
 
 Script: `apps/api/scripts/avid-search-smoke.ts` (standalone, tek DC, read-only, DB'ye
 dokunmaz). PoC kullanıcısı inline env ile; IP bypass
-(`http://172.26.33.87/services`, DNS `.local` çözülmüyor — rapor §2.3). Credentials
+(`http://ipws-host.example.local/services`, DNS `.local` çözülmüyor — rapor §2.3). Credentials
 repoya/.env'e YAZILMADI; smoke parolayı maskeli basıyor.
 
 Sonuç:
@@ -150,7 +150,7 @@ teşhisi koyup düzeltme denedim; komut hatası sayesinde o edit'ler iptal oldu 
 bozulmadı (grep ile teyitli). Gerçekte kod baştan doğruydu.
 
 **Canlı smoke (gerçek Avid — ağ + credentials + operatör onayı):**
-`DC00036170` ile gerçek IPWS'e search → `AWAITING_SELECTION`, `avid_assets` gerçek veriyle dolu. DNS yoksa IP (`172.26.33.87`). Açık belirsizlikler (#text, Duration) burada netleşir.
+`DC00036170` ile gerçek IPWS'e search → `AWAITING_SELECTION`, `avid_assets` gerçek veriyle dolu. DNS yoksa IP (`ipws-host.example.local`). Açık belirsizlikler (#text, Duration) burada netleşir.
 
 ---
 
@@ -237,13 +237,13 @@ verdi ama pollRestoreStatus zaten çalışıyor (gereksiz).
 
 ### ✅ K3.2 — Config (`avid.config.ts`) + FAILOVER (operasyon kararı + canlı keşif)
 **Hedef NETLEŞTİ + DEVICE İSİMLERİ CANLI DOĞRULANDI** (`GetTransferDevices`, read-only):
-- **Birincil: bsvmte01 / `MCR`** (canlı: bsvmte01 → PCR, MCR, GURME_PCR).
-- **Yedek: bsvmte02 / `MCR_YEDEK`** ⚠️ — bsvmte02'de "MCR" YOK; device adı `MCR_YEDEK`
+- **Birincil: playback-engine-01 / `MCR`** (canlı: playback-engine-01 → PCR, MCR, GURME_PCR).
+- **Yedek: playback-engine-02 / `MCR_YEDEK`** ⚠️ — playback-engine-02'de "MCR" YOK; device adı `MCR_YEDEK`
   (canlı: MCR_YEDEK, PCR_YEDEK, GURME_PCR_YEDEK, GURME_HD_DIGI…). Diğer engine'ler:
-  bsvmte04→MCR4, bsvmte05→MCR5 (bunlar kullanılmıyor).
+  playback-engine-04→MCR4, playback-engine-05→MCR5 (bunlar kullanılmıyor).
 - **SendToPlayback PROFİL-BAZLI DEĞİL, DEVICE-BAZLI** (rapor §13.1) → "profil ismi" yok,
   (engine + device) çifti var. Keşif script'i: `apps/api/scripts/avid-devices-smoke.ts`.
-- Config: `transferEngine`(bsvmte01) / `playbackDevice`(MCR) / `transferEngineFallback`(bsvmte02)
+- Config: `transferEngine`(playback-engine-01) / `playbackDevice`(MCR) / `transferEngineFallback`(playback-engine-02)
   / `playbackDeviceFallback`(MCR_YEDEK) / `transferPriority`(NORMAL).
 - **Failover (engine,device) çifti:** birincil hedef başarısızsa yedek **(engine,device)**
   çiftine dener (sadece engine değil — device adı da değişiyor). `buildSendToPlaybackBody`
@@ -260,7 +260,7 @@ Rollout testleri güncellendi (5 method da gerçek, notImpl yok).
 ### ✅ K3.4 — DRY-RUN smoke
 `apps/api/scripts/avid-transfer-smoke.ts <mobid>` (default dry-run). DC00042608
 mobid ile çalıştırıldı → envelope doğru: transfer/types ns, `SendToPlayback`
-TransferEngineHostName=bsvmte01, DestinationPlaybackDevice=PCR, Priority=NORMAL,
+TransferEngineHostName=playback-engine-01, DestinationPlaybackDevice=PCR, Priority=NORMAL,
 Overwrite=false, InterplayURI mobid'li, parola maskeli, **ağa gönderilmedi**.
 
 ### ⛔ K3.5 — GERÇEK execute — BİLİNÇLİ YAPILMADI
@@ -271,7 +271,7 @@ SendToPlayback canlı yayın havuzuna gönderir + hedef teyitsiz + WSDL-only.
 3. Açık kullanıcı onayı.
 
 ## Açık belirsizlikler (K3 — operasyon/araştırma bekliyor)
-- ~~**Hedef:**~~ ✅ NETLEŞTİ (2026-05-31): birincil bsvmte01/MCR, yedek bsvmte02/MCR.
+- ~~**Hedef:**~~ ✅ NETLEŞTİ (2026-05-31): birincil playback-engine-01/MCR, yedek playback-engine-02/MCR.
 - **.transfer companion:** STP kanonik olarak .transfer mixdown üzerinden (§10.5);
   V1 basit assetId kullanıyor.
 - **SendToPlayback [WSDL-only]:** canlı doğrulanmadı; gerçek execute'ta sürpriz olabilir.
@@ -292,8 +292,8 @@ SendToPlayback canlı yayın havuzuna gönderir + hedef teyitsiz + WSDL-only.
 - 2026-05-31: K2.3 DRY-RUN smoke ✓ (DC00042608, ağa göndermedi, envelope doğru).
 - 2026-05-31: **K2.4 GERÇEK EXECUTE ✓ TAM KANIT** — DC00042608 `--execute`. JobURI (`...?jobid=1780247955990.1`) → ~3dk sonra JobStatus **done** → K1 search DC00042608 **offline→online** (Media Status=online). Restore uçtan uca gerçek Avid'de çalıştı. **K2 RESTORE ENTEGRASYONU TAMAMLANDI.**
 - 2026-05-31: **K3 (transfer) kodu** — requestTransfer (SendToPlayback) + pollTransferStatus (Jobs.GetJobStatus paylaşımı) bağlandı. notImpl tamamen kalktı, **5 method da gerçek**. TSC EXIT=0. DRY-RUN smoke ✓. (Test sayısı sehven 48 yazıldı; doğrusu sonraki failover ekiyle 46→47.)
-- 2026-05-31: **K3 hedef + FAILOVER** (operasyon kararı) — birincil **bsvmte01/MCR**, yedek **bsvmte02/MCR**. requestTransfer birincil→yedek failover. Default device PCR→MCR. TSC EXIT=0. DRY-RUN envelope=bsvmte01/MCR doğrulandı. Commit `660c8a7`.
-- 2026-05-31: **K3 device keşfi + DÜZELTME** — `GetTransferDevices` ile canlı device isimleri çekildi (avid-devices-smoke.ts). Kritik bulgu: **bsvmte02'de "MCR" YOK, device adı `MCR_YEDEK`**. Failover (engine,device) çiftine çevrildi: birincil bsvmte01/MCR → yedek bsvmte02/MCR_YEDEK. `playbackDeviceFallback` + `AVID_PLAYBACK_DEVICE_FALLBACK` eklendi; `sendToPlaybackOnTarget`/`PlaybackTarget`. Testler **46/46**, TSC EXIT=0. (SendToPlayback profil değil DEVICE-bazlı.)
+- 2026-05-31: **K3 hedef + FAILOVER** (operasyon kararı) — birincil **playback-engine-01/MCR**, yedek **playback-engine-02/MCR**. requestTransfer birincil→yedek failover. Default device PCR→MCR. TSC EXIT=0. DRY-RUN envelope=playback-engine-01/MCR doğrulandı. Commit `660c8a7`.
+- 2026-05-31: **K3 device keşfi + DÜZELTME** — `GetTransferDevices` ile canlı device isimleri çekildi (avid-devices-smoke.ts). Kritik bulgu: **playback-engine-02'de "MCR" YOK, device adı `MCR_YEDEK`**. Failover (engine,device) çiftine çevrildi: birincil playback-engine-01/MCR → yedek playback-engine-02/MCR_YEDEK. `playbackDeviceFallback` + `AVID_PLAYBACK_DEVICE_FALLBACK` eklendi; `sendToPlaybackOnTarget`/`PlaybackTarget`. Testler **46/46**, TSC EXIT=0. (SendToPlayback profil değil DEVICE-bazlı.)
 
 ## KADEME 3 (TRANSFER) — YENİDEN: CTMS submitSTPJob (Cloud UX) — DOĞRU YOL ✅
 
@@ -310,7 +310,7 @@ SendToPlayback canlı yayın havuzuna gönderir + hedef teyitsiz + WSDL-only.
 - Body: `{"stpRequestDTO":{device,profile,burnGraphics:false,highPriority:false,overwrite:false,mobId,nodeId,processName,videoId}}`
   - `mobId` = **HAM sequence** mob ID (companion gerekmez — CDS üretir).
   - `nodeId` = `interplay:{realm}:sequence:{mobId}`; `processName` = asset display name; `videoId` = DC kodu (TapeID).
-- Yanıt 200: `{"errorSet":[],"responseData":"{\"jobId\":\"<uuid>\",\"mcdsStatusURL\":\"https://bsvmstp01:8443/STPService/jobs/status/\"}"}`
+- Yanıt 200: `{"errorSet":[],"responseData":"{\"jobId\":\"<uuid>\",\"mcdsStatusURL\":\"https://mcds-host:8443/STPService/jobs/status/\"}"}`
 
 ### Kod (2026-06-01)
 - **YENİ `avid.ctms.ts`:** `buildStpRequestBody`, `postSubmitStpJob` (cookie auth,
@@ -328,7 +328,7 @@ SendToPlayback canlı yayın havuzuna gönderir + hedef teyitsiz + WSDL-only.
   transfer ucu CTMS'e çevrildi. Worker/route/DB/frontend/interface değişmedi.
 
 ### Status izleme — V1 sınırı (optimistic-submit)
-Per-job REST status endpoint'i YOK: `bsvmstp01:8443` ubuntu-srv'den erişilemiyor;
+Per-job REST status endpoint'i YOK: `mcds-host:8443` ubuntu-srv'den erişilemiyor;
 CTMS'te REST job-status rel'i 404; UI status'u **websocket** (`broadcastNotifications`)
 ile alıyor. **V1: submitSTPJob 200 = job kabul → `pollTransferStatus` `done` döner**
 (transfer Avid'e teslim edildi semantiği). Nihai encode/playback sonucu operatör

@@ -255,7 +255,7 @@ describe('worker > startSsdbResolverWorker — feature flag + env guards', () =>
     process.env = {
       ...env,
       PROVYS_SSDB_RESOLVER: 'on',
-      SSDB_HOST: '172.28.208.20',
+      SSDB_HOST: 'ssdb-host.example.local',
       SSDB_PORT: '60813',
       SSDB_DATABASE: 'LIGTV-SSDB',
       SSDB_USER: 'read1',

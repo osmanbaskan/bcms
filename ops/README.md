@@ -86,9 +86,9 @@ curl -fsS http://127.0.0.1:3000/health
 
 ## Adresler
 
-- Web: `https://beinport` (nginx reverse proxy; LAN/host fallback `http://172.28.204.133:4200`)
+- Web: `https://beinport` (nginx reverse proxy; LAN/host fallback `http://server.example.local:4200`)
 - API: `http://127.0.0.1:3000` (host-local; LAN istemcileri web nginx `/api` proxy kullanır)
-- Swagger: `https://beinport/docs` (veya `http://172.28.204.133:4200/docs`)
+- Swagger: `https://beinport/docs` (veya `http://server.example.local:4200/docs`)
 - **Keycloak**: `https://beinport/realms/bcms` (nginx proxy üzerinden; direkt port 8080 binding YOK — audit CRIT-001 fix 2026-05-04)
   - Admin console: `https://beinport/admin/`
   - Internal (docker network): `http://keycloak:8080/realms/bcms` (container-içi)
@@ -285,13 +285,13 @@ Keycloak oturumu Docker restart sonrası geçersiz kalır. Tarayıcıda hard ref
 
 ## LAN / Ağ Erişimi (Farklı Bilgisayardan)
 
-`http://172.28.204.133:4200` adresine başka bir PC'den bağlanmak için iki yapılandırma:
+`http://server.example.local:4200` adresine başka bir PC'den bağlanmak için iki yapılandırma:
 
 ### 1. Keycloak redirect_uri
 `bcms-web` client'ına LAN IP eklenmiştir (`infra/keycloak/realm-export.json`).
 
 ### 2. Token Issuer (Çoklu Issuer Desteği)
-`KEYCLOAK_ALLOWED_ISSUERS=http://172.28.204.133:8080/realms/bcms,http://localhost:8080/realms/bcms`
+`KEYCLOAK_ALLOWED_ISSUERS=http://server.example.local:8080/realms/bcms,http://localhost:8080/realms/bcms`
 
 ### 3. Canlı realm güvenliği
 Startup import mevcut realm'i overwrite etmez. Çalışan realm'e `sslRequired=external` uygulamak için:
@@ -342,7 +342,7 @@ docker inspect bcms_web --format='{{.State.Health.Status}}'
 
 Uzaktan erişim için SSH tüneli:
 ```bash
-ssh -L 15673:localhost:15673 ubuntu@172.28.204.133
+ssh -L 15673:localhost:15673 ubuntu@server.example.local
 ```
 
 ### nginx Güvenlik Header'ları

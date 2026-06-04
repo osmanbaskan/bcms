@@ -13,7 +13,7 @@
  *                              videoId, burnGraphics:false, highPriority:false,
  *                              overwrite:false }}
  *   200:    {"errorSet":[], "responseData":"{\"jobId\":\"<uuid>\",
- *                              \"mcdsStatusURL\":\"https://bsvmstp01:8443/...\"}"}
+ *                              \"mcdsStatusURL\":\"https://mcds-host:8443/...\"}"}
  *
  * GÜVENLİK: `avidAccessToken` yalnız Cookie header'ına yazılır; hiçbir log/hata
  * mesajına sızmaz (redactToken). Self-signed TLS: yalnız bu modülün fetch

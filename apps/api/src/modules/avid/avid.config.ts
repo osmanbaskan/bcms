@@ -36,18 +36,18 @@ export interface AvidConfig {
   restoreService: string;
   /**
    * K3 (transfer) — Transfer.SendToPlayback birincil hedef engine (rapor §13.1).
-   * Asset'i Avid DIŞI yayın havuzuna gönderir. Operasyon kararı: bsvmte01 + MCR.
+   * Asset'i Avid DIŞI yayın havuzuna gönderir. Operasyon kararı: playback-engine-01 + MCR.
    */
   transferEngine: string;
   /**
    * K3 — Yedek (failover) engine. Birincil SendToPlayback başarısız olursa
-   * bu engine'e tekrar denenir. Operasyon kararı: bsvmte02. Boş ise failover yok.
+   * bu engine'e tekrar denenir. Operasyon kararı: playback-engine-02. Boş ise failover yok.
    */
   transferEngineFallback: string;
-  /** K3 — DestinationPlaybackDevice (birincil). Operasyon kararı: bsvmte01/MCR. */
+  /** K3 — DestinationPlaybackDevice (birincil). Operasyon kararı: playback-engine-01/MCR. */
   playbackDevice: string;
   /**
-   * K3 — Yedek engine'in device adı. ⚠️ bsvmte02'de device "MCR" DEĞİL,
+   * K3 — Yedek engine'in device adı. ⚠️ playback-engine-02'de device "MCR" DEĞİL,
    * "MCR_YEDEK" (canlı doğrulandı 2026-05-31). Boş ise playbackDevice kullanılır.
    */
   playbackDeviceFallback: string;
@@ -59,7 +59,7 @@ export interface AvidConfig {
    * Cloud UX'in `submitSTPJob` endpoint'ine gider (CDS mixdown+encode+playback'i
    * kendi orkestra eder). 2026-06-01 BCMS'ten canlı doğrulandı.
    */
-  /** Cloud UX taban URL (CTMS). Default https://172.26.33.57. */
+  /** Cloud UX taban URL (CTMS). Default https://cloudux-host.example.local. */
   clouduxUrl: string;
   /** CTMS realm = Interplay PAM systemID. Default saha değeri (BSVMIPE). */
   clouduxRealm: string;
@@ -110,15 +110,15 @@ export function loadAvidConfig(env: NodeJS.ProcessEnv = process.env): AvidConfig
     restoreProfile: env.AVID_RESTORE_PROFILE?.trim() || 'BeINSports - Partial Restore',
     restoreService: env.AVID_RESTORE_SERVICE?.trim() || 'com.avid.dms.restore',
     // K3 (transfer) — SendToPlayback hedefi (operasyon kararı 2026-05-31):
-    // birincil bsvmte01/MCR, yedek bsvmte02/MCR.
-    transferEngine: env.AVID_TRANSFER_ENGINE?.trim() || 'bsvmte01',
-    transferEngineFallback: env.AVID_TRANSFER_ENGINE_FALLBACK?.trim() || 'bsvmte02',
+    // birincil playback-engine-01/MCR, yedek playback-engine-02/MCR.
+    transferEngine: env.AVID_TRANSFER_ENGINE?.trim() || 'playback-engine-01',
+    transferEngineFallback: env.AVID_TRANSFER_ENGINE_FALLBACK?.trim() || 'playback-engine-02',
     playbackDevice: env.AVID_PLAYBACK_DEVICE?.trim() || 'MCR',
-    // bsvmte02'de device adı MCR_YEDEK (MCR değil — canlı doğrulandı).
+    // playback-engine-02'de device adı MCR_YEDEK (MCR değil — canlı doğrulandı).
     playbackDeviceFallback: env.AVID_PLAYBACK_DEVICE_FALLBACK?.trim() || 'MCR_YEDEK',
     transferPriority: env.AVID_TRANSFER_PRIORITY?.trim() || 'NORMAL',
     // K3 gerçek yolu — Cloud UX / CTMS submitSTPJob (2026-06-01 canlı doğrulandı).
-    clouduxUrl: (env.AVID_CLOUDUX_URL?.trim() || 'https://172.26.33.57').replace(/\/+$/, ''),
+    clouduxUrl: (env.AVID_CLOUDUX_URL?.trim() || 'https://cloudux-host.example.local').replace(/\/+$/, ''),
     clouduxRealm: env.AVID_CLOUDUX_REALM?.trim() || 'F580021A-2720-4117-B33C-A5B843A2B586',
     // Token trim YAPMA — opaque değer; boşsa null.
     clouduxToken: env.AVID_CLOUDUX_TOKEN && env.AVID_CLOUDUX_TOKEN !== '' ? env.AVID_CLOUDUX_TOKEN : null,

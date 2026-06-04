@@ -9,7 +9,7 @@
  *
  * ⚠️ MUTATING. VARSAYILAN DRY-RUN (gövdeyi basar, GÖNDERMEZ). --execute ile gerçek.
  *
- *   CLOUDUX_URL=https://172.26.33.57 \
+ *   CLOUDUX_URL=https://cloudux-host.example.local \
  *   CLOUDUX_REALM=F580021A-2720-4117-B33C-A5B843A2B586 \
  *   CLOUDUX_TOKEN=<avidAccessToken> \
  *   npx tsx apps/api/scripts/avid-ctms-stp-smoke.ts <mobId> <processName> <videoId> \
@@ -29,7 +29,7 @@ const videoId = rest[2];
 const device = argVal('device') || 'MCR';
 const profile = argVal('profile') || 'MCR';
 
-const url = (process.env.CLOUDUX_URL || 'https://172.26.33.57').replace(/\/$/, '');
+const url = (process.env.CLOUDUX_URL || 'https://cloudux-host.example.local').replace(/\/$/, '');
 const realm = process.env.CLOUDUX_REALM || 'F580021A-2720-4117-B33C-A5B843A2B586';
 const token = process.env.CLOUDUX_TOKEN || '';
 

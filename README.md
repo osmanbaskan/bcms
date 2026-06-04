@@ -97,10 +97,10 @@ docker compose down
 ```
 
 Adresler:
-- Web: `http://172.28.204.133:4200`
+- Web: `http://server.example.local:4200`
 - API: `http://127.0.0.1:3000` (host-local; LAN erişimi nginx `/api` proxy üzerinden)
-- Swagger: `http://172.28.204.133:4200/docs`
-- Keycloak: `http://172.28.204.133:8080`
+- Swagger: `http://server.example.local:4200/docs`
+- Keycloak: `http://server.example.local:8080`
 
 ## Geliştirme Akışı
 

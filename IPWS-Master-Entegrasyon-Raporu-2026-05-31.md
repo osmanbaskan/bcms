@@ -20,16 +20,16 @@
 
 | Parametre | Değer |
 |---|---|
-| **IPWS host (FQDN)** | `bsvmipws01.trbeinsports.local` |
-| **IPWS host (IP — DNS yoksa)** | `172.26.33.87` |
+| **IPWS host (FQDN)** | `ipws-host.corp.example.local` |
+| **IPWS host (IP — DNS yoksa)** | `ipws-host.example.local` |
 | **Protokol / port** | HTTP / `80` |
-| **Base URL** | `http://bsvmipws01.trbeinsports.local/services` |
-| **Base URL (IP)** | `http://172.26.33.87/services` |
+| **Base URL** | `http://ipws-host.corp.example.local/services` |
+| **Base URL (IP)** | `http://ipws-host.example.local/services` |
 | **Workgroup** | `BSVMWG` |
 | **URI prefix** | `interplay://BSVMWG/` |
 | **Interplay Engine** | `bsvmipe` |
-| **Archive Engine** | `bsvmam` |
-| **Media Service Engine** | `bsvmms01` |
+| **Archive Engine** | `asset-manager-host` |
+| **Media Service Engine** | `media-host-01` |
 | **Kullanıcı adı** | `Presenter01` *(domain prefix YOK)* |
 | **Parola** | `Avid2019` *(read-only test; rotate edilecek)* |
 | **Auth yöntemi** | SOAP Header `UserCredentials` (Basic/token yok) |
@@ -37,24 +37,24 @@
 
 **Endpoint'ler:**
 ```
-http://bsvmipws01.trbeinsports.local/services/Assets
-http://bsvmipws01.trbeinsports.local/services/Archive
-http://bsvmipws01.trbeinsports.local/services/Transfer
-http://bsvmipws01.trbeinsports.local/services/Jobs
-http://bsvmipws01.trbeinsports.local/services/Infrastructure
-http://bsvmipws01.trbeinsports.local/services/UserManagement
+http://ipws-host.corp.example.local/services/Assets
+http://ipws-host.corp.example.local/services/Archive
+http://ipws-host.corp.example.local/services/Transfer
+http://ipws-host.corp.example.local/services/Jobs
+http://ipws-host.corp.example.local/services/Infrastructure
+http://ipws-host.corp.example.local/services/UserManagement
 ```
 
 **Shell / env (script'lerin okuduğu değişkenler):**
 ```bash
-export IPWS_HOST="http://bsvmipws01.trbeinsports.local"   # DNS yoksa: http://172.26.33.87
+export IPWS_HOST="http://ipws-host.corp.example.local"   # DNS yoksa: http://ipws-host.example.local
 export IPWS_USER="Presenter01"
 export IPWS_PASS="Avid2019"
 ```
 
 **Hızlı smoke test (zarar vermez, read-only):**
 ```bash
-curl -sI "http://172.26.33.87/services/Infrastructure?wsdl"   # HTTP 200 beklenir
+curl -sI "http://ipws-host.example.local/services/Infrastructure?wsdl"   # HTTP 200 beklenir
 ```
 
 ---
@@ -120,38 +120,38 @@ Playout (PCR / MCR / GURME_PCR ... — Avid DIŞI havuz)
 
 | Bileşen | Değer |
 |---|---|
-| IPWS host (FQDN) | `bsvmipws01.trbeinsports.local` |
-| IPWS host (IP) | `172.26.33.87` |
+| IPWS host (FQDN) | `ipws-host.corp.example.local` |
+| IPWS host (IP) | `ipws-host.example.local` |
 | HTTP port | 80 (TCP açık, ~0.2 ms latency — aynı LAN) |
 | Workgroup | `BSVMWG` |
 | URI prefix | `interplay://BSVMWG/` |
 | Interplay Engine | `bsvmipe` |
-| Archive Engine | `bsvmam` |
-| Media Service Engine | `bsvmms01` |
-| Avid domain | `trbeinsports.local` |
+| Archive Engine | `asset-manager-host` |
+| Media Service Engine | `media-host-01` |
+| Avid domain | `corp.example.local` |
 | Corp domain | `DIGITURK.LOCAL` |
-| Corp DNS | `172.26.33.3` (primary), `172.28.205.3` (secondary) |
+| Corp DNS | `dns1.example.local` (primary), `dns2.example.local` (secondary) |
 
 ### 2.2 SOAP endpoint'leri
 
 ```
-http://bsvmipws01.trbeinsports.local/services/Assets
-http://bsvmipws01.trbeinsports.local/services/Archive
-http://bsvmipws01.trbeinsports.local/services/Transfer
-http://bsvmipws01.trbeinsports.local/services/Jobs
-http://bsvmipws01.trbeinsports.local/services/Infrastructure
-http://bsvmipws01.trbeinsports.local/services/UserManagement
+http://ipws-host.corp.example.local/services/Assets
+http://ipws-host.corp.example.local/services/Archive
+http://ipws-host.corp.example.local/services/Transfer
+http://ipws-host.corp.example.local/services/Jobs
+http://ipws-host.corp.example.local/services/Infrastructure
+http://ipws-host.corp.example.local/services/UserManagement
 ```
 
 - WSDL almak için `?wsdl` eki: `…/services/Assets?wsdl`.
-- **[DOĞRULANDI]** Sunucu host-header binding zorlamıyor: IP üzerinden de çalışıyor (`http://172.26.33.87/services/Transfer?wsdl` → HTTP 200). DNS çözülemediğinde IP ile bypass mümkün.
+- **[DOĞRULANDI]** Sunucu host-header binding zorlamıyor: IP üzerinden de çalışıyor (`http://ipws-host.example.local/services/Transfer?wsdl` → HTTP 200). DNS çözülemediğinde IP ile bypass mümkün.
 
 ### 2.3 DNS tuzağı (Ubuntu geliştirme makinesi) — [DOĞRULANDI]
 
-systemd-resolved default'ta `.local`'i mDNS'e yönlendirir; `trbeinsports.local` için **REFUSED** döner. Runtime fix:
+systemd-resolved default'ta `.local`'i mDNS'e yönlendirir; `corp.example.local` için **REFUSED** döner. Runtime fix:
 
 ```bash
-sudo resolvectl domain eno1 DIGITURK.LOCAL '~trbeinsports.local'
+sudo resolvectl domain eno1 DIGITURK.LOCAL '~corp.example.local'
 ```
 
 `~` prefix = routing domain (eno1'in unicast DNS'ine bu zone için sorgu gider). **Network restart sonrası NetworkManager sıfırlar** — kalıcı için NetworkManager profilinde tanımlanmalı. Geçici alternatif: `IPWS_HOST` env var'ını IP'ye set et (aşağıda).
@@ -584,7 +584,7 @@ Transfer hedefleri `Jobs.GetProfiles`'tan **gelmez** (restore/archive gibi deği
 **Girdi [WSDL]:**
 ```xml
 <t:SendToPlayback>
-  <t:TransferEngineHostName>bsvmte01</t:TransferEngineHostName>
+  <t:TransferEngineHostName>playback-engine-01</t:TransferEngineHostName>
   <t:InterplayURI>interplay://BSVMWG?mobid=...</t:InterplayURI>   <!-- canonical .transfer -->
   <t:DestinationPlaybackDevice>PCR</t:DestinationPlaybackDevice>  <!-- = device/profil adı -->
   <t:Priority>NORMAL</t:Priority>                                  <!-- NORMAL | PWT | UNASSIGNED -->
@@ -595,10 +595,10 @@ Yanıt: `JobURI` (XFER segment) → `GetJobStatus` ile izlenir.
 
 ### 13.2 Altyapı envanteri — [DOĞRULANDI]
 
-- **5 Transfer Engine** (`ListTransferEngines`): `bsvmte01`, `bsvmte02`, `bsvmte03`, `bsvmte04`, `bsvmte05`.
-- **47 PLAYBACK cihazı** (`GetTransferDevices(host, PLAYBACK)`): bsvmte01→3 (PCR, MCR, GURME_PCR), 02→7, 03→10, 04→12, 05→15.
+- **5 Transfer Engine** (`ListTransferEngines`): `playback-engine-01`, `playback-engine-02`, `playback-engine-03`, `playback-engine-04`, `playback-engine-05`.
+- **47 PLAYBACK cihazı** (`GetTransferDevices(host, PLAYBACK)`): playback-engine-01→3 (PCR, MCR, GURME_PCR), 02→7, 03→10, 04→12, 05→15.
 - **FTP lokasyonu profilin içinde gömülü — ve bilmeye gerek yok.** API cihaz başına sadece `Name` + `Type` döner; FTP yolunu engine kendi resolve eder. Göndermek için sadece **(engine + device adı)** çifti yeter.
-- Yayın hedefi tahmini **[OP-TEYİDİ]:** bsvmte01 + PCR/MCR.
+- Yayın hedefi tahmini **[OP-TEYİDİ]:** playback-engine-01 + PCR/MCR.
 
 ---
 
@@ -623,7 +623,7 @@ Başka bir programa entegre ederken bunları **baştan** doğru yap:
 15. **[Güvenlik/idempotency] Side-effect şüphesi olan op'ta preflight yap:** Modified Date/By'ı önce/sonra karşılaştır; değişirse abort. (`CheckSequenceIs*` için yaptık, temiz çıktı.)
 16. **[Op semantiği] İsim aldatıcı:** `CheckIn*` = WRITE (commit), `CheckSequenceIs*` = READ. `GetLatest` read-only görünüyor ama checkout/lock riski var — test etmeden production'da kullanma.
 17. **[Path] Klasör isimlerinde çoklu boşluk var** (`01   MAC`). URI string'lerini trim etme/normalize etme.
-18. **[Bağlantı] DNS yoksa IP ile bypass** (`IPWS_HOST=http://172.26.33.87`) — sunucu host-header zorlamıyor.
+18. **[Bağlantı] DNS yoksa IP ile bypass** (`IPWS_HOST=http://ipws-host.example.local`) — sunucu host-header zorlamıyor.
 19. **[Eşleşme] Playlist↔Avid = Video ID**, Display Name değil.
 20. **[Rate limit] SubmitJob* = dakikada 20 job** (WSDL doc). Toplu restore'da throttle.
 
@@ -646,7 +646,7 @@ Konum: `~/Project/ipws-restore/poc/python/`. **Bağımlılık yok — sadece Pyt
 
 ```bash
 # Kalıcı DNS yoksa IP bypass:
-export IPWS_HOST="http://172.26.33.87"
+export IPWS_HOST="http://ipws-host.example.local"
 
 # Kimlik (hardcoded default'a güvenme — rotate edilecek):
 export IPWS_USER="Presenter01"
@@ -706,7 +706,7 @@ python3 poc/python/ipws_lookup.py DC00036170 --root "interplay://BSVMWG/Projects
 
 ```bash
 # Tek sequence, preflight ile (Modified Date/By önce-sonra karşılaştırır, değişirse ABORT):
-IPWS_HOST="http://172.26.33.87" python3 poc/python/ipws_check_ready.py DC00036170
+IPWS_HOST="http://ipws-host.example.local" python3 poc/python/ipws_check_ready.py DC00036170
 
 # Video ID ile:
 python3 poc/python/ipws_check_ready.py M_KOREN_MANISA_37H_1D --by video_id --cond Equals
@@ -956,7 +956,7 @@ PoC = stdlib Python script'leri. Production monitor için minimum entegrasyon is
 [Playlist/Rundown kaynağı]
         │  (Video ID listesi)
         ▼
-[Readiness Monitor servisi]  ── IPWS SOAP (read-only) ──►  bsvmipws01
+[Readiness Monitor servisi]  ── IPWS SOAP (read-only) ──►  ipws-host
         │   1. Search(Video ID, Group=USER, Equals)  → DC + .transfer bul (MOB-dedup)
         │   2. GetAttributes                          → metadata
         │   3. .transfer CheckSequenceIsReadyForXfer  → otoriter readiness

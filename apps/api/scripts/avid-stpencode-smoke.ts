@@ -8,13 +8,13 @@
  *
  *   AVID_INTERPLAY_URL=... AVID_USER=... AVID_PASSWORD=... AVID_WORKSPACE=... \
  *   npx tsx apps/api/scripts/avid-stpencode-smoke.ts <mobid> <TapeID> \
- *       [--workspace=\\avidnexis\online] [--engine=bsvmte01] [--device=MCR] [--execute]
+ *       [--workspace=\\avidnexis\online] [--engine=playback-engine-01] [--device=MCR] [--execute]
  *
  * Servis sabit com.avid.dms.longgopexport, profil "new".
  *
  * jobInfo → IPWS longgopexport param eşlemesi (canlı GetProfiles param adları):
  *   tapeId               → TapeID
- *   teHostName           → TM_Server          (TE host, ör. bsvmte01)
+ *   teHostName           → TM_Server          (TE host, ör. playback-engine-01)
  *   teDestination        → TM Profile         (hedef device/DET mapping, ör. MCR)  [BELİRSİZ — teyit gerek]
  *   longGopOutputFileDir → Output Filepath    (workspace\Avid MediaFiles\MXF\temp)
  *   longGopOutputFileName→ Output Filename    (<tapeId>_<uuid>)
@@ -87,7 +87,7 @@ async function main() {
   // Başarılı export'ta vardı, bizde yoktu (canlı log farkı):
   const startTc = argVal(args, 'starttc') || '01:00:00:00';
   const duration = argVal(args, 'duration') || '';   // frame sayısı; boşsa gönderme
-  // TEK KALAN FARK: çalışan job Source_Server = FQDN bsvmipe.trbeinsports.local,
+  // TEK KALAN FARK: çalışan job Source_Server = FQDN bsvmipe.corp.example.local,
   // bizim default kısa ad bsvmipe → STP host'unda DNS çözülemeyince AAF gelmiyor
   // → "Cannot import / file not found". FQDN ver. Boş = gönderme (default davranış).
   const sourceServer = argVal(args, 'sourceserver') || '';

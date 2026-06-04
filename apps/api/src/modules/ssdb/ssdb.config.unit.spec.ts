@@ -9,7 +9,7 @@ import {
 function fullEnv(over: Partial<NodeJS.ProcessEnv> = {}): NodeJS.ProcessEnv {
   return {
     PROVYS_SSDB_RESOLVER: 'on',
-    SSDB_HOST: '172.28.208.20',
+    SSDB_HOST: 'ssdb-host.example.local',
     SSDB_PORT: '60813',
     SSDB_DATABASE: 'LIGTV-SSDB',
     SSDB_USER: 'read1',
@@ -113,8 +113,8 @@ describe('ssdb.config > loadSsdbConfig — defaults', () => {
 
 describe('ssdb.config > loadSsdbConfig — trim & password preservation', () => {
   it('host/user/database trim edilir', () => {
-    const c = loadSsdbConfig(fullEnv({ SSDB_HOST: '  172.28.208.20  ', SSDB_USER: '  read1  ' }));
-    expect(c.host).toBe('172.28.208.20');
+    const c = loadSsdbConfig(fullEnv({ SSDB_HOST: '  ssdb-host.example.local  ', SSDB_USER: '  read1  ' }));
+    expect(c.host).toBe('ssdb-host.example.local');
     expect(c.user).toBe('read1');
   });
 

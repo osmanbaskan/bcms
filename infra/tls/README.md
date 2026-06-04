@@ -89,7 +89,7 @@ Her erişen makinede:
 127.0.0.1     beinport
 
 # LAN'daki başka makineden erişim
-172.28.204.133  beinport
+server.example.local  beinport
 ```
 
 ### Test

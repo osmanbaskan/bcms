@@ -21,17 +21,17 @@ kurmak yeterlidir. Sunucuda bir şey yapmaya gerek yok.
 ## 0. Ön koşul — erişim adresi (her iki OS)
 
 beINport'a **`https://beinport`** ile erişeceksen, client'ın hosts dosyasına şu satırı ekle
-(sunucu IP'si **172.28.204.96**):
+(sunucu IP'si **server.example.local**):
 
 - **Windows:** `C:\Windows\System32\drivers\etc\hosts` (Not Defteri'ni *yönetici* aç)
 - **Ubuntu/Linux:** `/etc/hosts` (`sudo`)
 
 ```
-172.28.204.96   beinport
+server.example.local   beinport
 ```
 
-> hosts satırı eklemek istemezsen doğrudan **`https://172.28.204.96`** de açabilirsin — sertifika SAN'ı
-> hem `beinport` hem `172.28.204.96` içerir.
+> hosts satırı eklemek istemezsen doğrudan **`https://server.example.local`** de açabilirsin — sertifika SAN'ı
+> hem `beinport` hem `server.example.local` içerir.
 
 ---
 
@@ -91,7 +91,7 @@ certutil -d sql:"$HOME/.pki/nssdb" -L | grep BCMS
 
 ## 3. Doğrulama
 
-1. Chrome'da `https://beinport` (veya `https://172.28.204.96`) aç.
+1. Chrome'da `https://beinport` (veya `https://server.example.local`) aç.
 2. Adres çubuğunda **kilit** simgesi olmalı, "Güvenli değil" uyarısı OLMAMALI.
 3. Kilit → sertifika → **Veren (Issuer): BCMS Internal Intermediate CA**, kök **BCMS Internal Root CA**;
    parmak izi yukarıdaki SHA-256 ile aynı olmalı.
@@ -99,7 +99,7 @@ certutil -d sql:"$HOME/.pki/nssdb" -L | grep BCMS
 ## Sık sorunlar
 - **Hâlâ uyarı var:** Chrome tam kapanmadı (arka planda açık). `chrome://restart` ya da tüm pencereleri kapat.
 - **`ERR_CERT_COMMON_NAME_INVALID`:** Adresi SAN'da olmayan bir isimle açıyorsun. Yalnız `beinport`,
-  `localhost`, `127.0.0.1`, `172.28.204.96` geçerli.
+  `localhost`, `127.0.0.1`, `server.example.local` geçerli.
 - **Ubuntu'da kurdum ama olmuyor:** Muhtemelen sadece sistem deposuna (A) eklendi; Chrome için **B (NSS)**
   adımı şart.
 

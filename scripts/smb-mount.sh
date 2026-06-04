@@ -12,8 +12,8 @@
 # Kullanım:  ./scripts/smb-mount.sh        (sudo İÇERDE çağrılır; docker user ile)
 #
 # Kaynaklar (info_smb.txt + /etc/fstab):
-#   provys: //172.26.33.245/mcr/PROVYS/MANUEL/Playout/Inbox/Success -> /mnt/provys
-#   asrun : //172.26.33.245/mcr/PROVYS/FTP-PROVYS/Playout/Outbox/Ok -> /mnt/asrun-ok
+#   provys: //smb-host.example.local/mcr/PROVYS/MANUEL/Playout/Inbox/Success -> /mnt/provys
+#   asrun : //smb-host.example.local/mcr/PROVYS/FTP-PROVYS/Playout/Outbox/Ok -> /mnt/asrun-ok
 # Credential: /home/ubuntu/.bcms-245.cred (chmod 600, repo dışı).
 #
 set -euo pipefail

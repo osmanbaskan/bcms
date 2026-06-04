@@ -5,10 +5,10 @@
  * (TransferEngineHostName + DestinationPlaybackDevice). Bu script:
  *   1. ListTransferEngines → tüm transfer engine'leri
  *   2. her engine için GetTransferDevices(PLAYBACK) → device isimleri
- * → bsvmte01/bsvmte02'de "MCR" gerçekten var mı + tam yazımı doğrulanır.
+ * → playback-engine-01/playback-engine-02'de "MCR" gerçekten var mı + tam yazımı doğrulanır.
  *
  * Çalıştırma (credentials env'den; repoya YAZILMAZ):
- *   AVID_INTERPLAY_URL="http://172.26.33.87/services" AVID_USER="..." \
+ *   AVID_INTERPLAY_URL="http://ipws-host.example.local/services" AVID_USER="..." \
  *   AVID_PASSWORD="..." AVID_WORKSPACE="interplay://BSVMWG/" \
  *   npx tsx apps/api/scripts/avid-devices-smoke.ts [engine1 engine2 ...]
  */
@@ -55,7 +55,7 @@ async function main() {
   } catch (e) {
     console.log('  ListTransferEngines hata:', (e as Error).message);
   }
-  if (!engines.length) engines = ['bsvmte01', 'bsvmte02'];
+  if (!engines.length) engines = ['playback-engine-01', 'playback-engine-02'];
 
   // 2) Her engine için PLAYBACK device'ları
   for (const engine of engines) {

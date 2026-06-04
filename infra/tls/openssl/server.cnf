@@ -32,4 +32,4 @@ authorityKeyIdentifier = keyid:always
 DNS.1 = beinport
 DNS.2 = localhost
 IP.1  = 127.0.0.1
-IP.2  = 172.28.204.96
+# IP.2 = <sunucu-LAN-IP>   # cert üretiminde gerçek LAN IP'si burada verilir; repoya KONMAZ

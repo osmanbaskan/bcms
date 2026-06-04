@@ -51,7 +51,7 @@ else
 fi
 
 printf '\nLAN URLs:\n'
-printf '  Web: http://172.28.204.133:4200\n'
-printf '  API: http://172.28.204.133:3000\n'
+printf '  Web: http://server.example.local:4200\n'
+printf '  API: http://server.example.local:3000\n'
 printf '\nLogs:\n'
 printf '  %s/ops/scripts/bcms-logs.sh\n' "${ROOT_DIR}"

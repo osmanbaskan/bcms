@@ -127,7 +127,7 @@ type SettingsSection = 'connections' | 'ports' | 'leagues' | 'notifications';
                       <mat-form-field>
                         <mat-label>Share Yolu</mat-label>
                         <input matInput [(ngModel)]="cfg.share" placeholder="//sunucu/klasör">
-                        <mat-hint>Örn: //beinfilesrv/BACKUPS</mat-hint>
+                        <mat-hint>Örn: //fileserver/BACKUPS</mat-hint>
                       </mat-form-field>
 
                       <mat-form-field>
@@ -235,7 +235,7 @@ type SettingsSection = 'connections' | 'ports' | 'leagues' | 'notifications';
                     <div class="form-grid">
                       <mat-form-field class="full">
                         <mat-label>Cloud UX URL</mat-label>
-                        <input matInput [(ngModel)]="avid.clouduxUrl" placeholder="https://172.26.33.57">
+                        <input matInput [(ngModel)]="avid.clouduxUrl" placeholder="https://cloudux-host.example.local">
                       </mat-form-field>
 
                       <mat-form-field>
