@@ -171,6 +171,8 @@ const STUDIO_EDIT_GROUPS = [GROUP.Admin, GROUP.StudyoSefi];
 export class StudioPlanComponent implements OnInit, OnDestroy {
   private readonly saveTrigger$ = new Subject<void>();
   private saveSub?: Subscription;
+  /** Bekleyen (henüz kalıcılaşmamış) değişiklik var mı — navigasyonda flush için. */
+  private dirty = false;
   private readonly studioPlanService = inject(StudioPlanService);
   private readonly api = inject(ApiService);
   private readonly keycloak = inject(KeycloakService);
@@ -338,6 +340,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
       )
       .subscribe({
         next: (plan) => {
+          this.dirty = false;
           if (plan.weekStart === this.weekStart) {
             this.lastSavedAt.set(this.formatSaveTime(plan.updatedAt));
           }
@@ -347,6 +350,18 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // 2026-06-05 VERİ KAYBI FIX: Bekleyen değişiklik varsa component yok edilmeden
+    // önce SON bir kez kaydet. Aksi halde paint sonrası ~400ms debounce dolmadan
+    // (ya da save in-flight iken) başka sayfaya geçilince saveSub.unsubscribe()
+    // debounce'lu/uçuştaki PUT'u iptal ediyor → son boyamalar hiç kaydedilmiyordu
+    // ("dashboard'a bakıp dönünce datalar silindi"). savePlan HttpClient üzerinden
+    // gider, component'e bağlı değildir → destroy'dan sonra da tamamlanır.
+    if (this.dirty) {
+      this.studioPlanService
+        .savePlan(this.weekStart, { slots: this.slotsForWeek(this.weekStart) })
+        .subscribe({ next: () => { /* flush ok */ }, error: () => { /* sessiz */ } });
+      this.dirty = false;
+    }
     this.saveSub?.unsubscribe();
     this.saveTrigger$.complete();
     // 2026-05-14: auto-pan RAF loop'u memory leak bırakmasın.
@@ -1357,6 +1372,7 @@ export class StudioPlanComponent implements OnInit, OnDestroy {
   }
 
   private saveCurrentWeek(): void {
+    this.dirty = true;
     this.saveTrigger$.next();
   }
 

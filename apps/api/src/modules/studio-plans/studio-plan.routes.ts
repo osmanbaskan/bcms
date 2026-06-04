@@ -18,7 +18,10 @@ const timeSchema = z.string().regex(/^\d{2}:\d{2}$/);
 // `start_minute INT` zaten 15 dk için uygundu. Frontend grid 80 slot
 // (06:00-02:00, 15 dk × 80 = 1200 dk = 20 saat).
 const STUDIO_PLAN_SLOT_MINUTES = 15;
-const STUDIO_PLAN_SLOTS_PER_DAY = 80;
+// 2026-06-05: 80 (20 saat) → 96 (24 saat / 15 dk). Admin "Stüdyo Planı Edit"ten
+// start===end ile 24 saatlik aralık seçebilir; dolu hafta eski 80'lik array
+// üst sınırını (7×5×80=2800) aşıp save'i 400'lüyordu. 96 → 7×5×96=3360 pay.
+const STUDIO_PLAN_SLOTS_PER_DAY = 96;
 const STUDIO_PLAN_MAX_STUDIOS = 5;
 const STUDIO_PLAN_MAX_DAYS = 7;
 
@@ -26,7 +29,12 @@ const slotSchema = z.object({
   day: dateSchema,
   studio: z.string().min(1).max(100),
   time: timeSchema,
-  startMinute: z.number().int().min(0).max(24 * 60 + 120).optional(),
+  // 2026-06-05 FIX: max 24*60+120 (=1560=02:00) idi; ama grid 07:00-03:00 (1620)
+  // ve admin "Stüdyo Planı Edit"ten 24 SAATLİK aralık seçebilir (start===end).
+  // En geç senaryo: start 23:00 + 24h → uzatılmış son slot 2805. Bu sınırı aşan
+  // tek slot tüm haftanın save'ini 400'lüyordu. 48:00 (=2880) → her konfigüre
+  // edilebilir gece-sarması aralığını rahat kapsar, yine de garbage'ı sınırlar.
+  startMinute: z.number().int().min(0).max(48 * 60).optional(),
   program: z.string().min(1).max(300),
   color: z.string().min(1).max(20),
 });
@@ -441,14 +449,21 @@ export async function studioPlanRoutes(app: FastifyInstance) {
           if (!programSet.has(slot.program)) unknownPrograms.push(slot.program);
           if (!colorSet.has(slot.color)) unknownColors.push(slot.color);
         }
+        // 2026-06-05 FIX: Katalog-dışı (drift) program/renk artık save'i REDDETMEZ.
+        // Önceki davranış: PUT tüm haftayı değiştirdiği için, tek bir drifted slot
+        // (ör. sonradan pasifleştirilen program ya da kataloğa hiç eklenmemiş bir
+        // değer) bütün haftanın kaydını 400 ile kilitleyip kullanıcının YENİ
+        // verisini de sessizce kaybediyordu (Tablo'da görünür, Liste/dashboard'a
+        // gitmez). Slot program/color düz string'dir (FK değil) ve UI tanınmayan
+        // değeri grayscale fallback ile gösterir → reddetmek yerine uyar + kaydet.
         if (unknownPrograms.length > 0 || unknownColors.length > 0) {
-          throw Object.assign(
-            new Error('Slot katalog dışı program veya renk içeriyor'),
+          request.log.warn(
             {
-              statusCode: 400,
+              weekStart,
               unknownPrograms: [...new Set(unknownPrograms)],
               unknownColors: [...new Set(unknownColors)],
             },
+            'studio-plan: katalog dışı (drift) program/renk içeren slotlar kaydedildi',
           );
         }
       }
