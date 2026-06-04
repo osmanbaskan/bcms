@@ -9,7 +9,8 @@ import { KpiComponent } from '../../core/ui/kpi.component';
 import { CardComponent } from '../../core/ui/card.component';
 import { PageHeaderComponent } from '../../core/ui/page-header.component';
 import { ApiService } from '../../core/services/api.service';
-import { STUDIO_PLAN_SLOT_MINUTES } from '../studio-plan/studio-plan.component';
+import { formatIstanbulTime } from '../../core/time/tz.helpers';
+import { STUDIO_PLAN_SLOT_MINUTES, STUDIO_PLAN_START_MINUTE } from '../studio-plan/studio-plan.component';
 import { ProvysService } from '../provys-content-control/provys.service';
 import {
   PROVYS_CHANNELS,
@@ -32,6 +33,18 @@ interface StudioSlot {
   programName: string;
   startTime: string;
   endTime: string;
+  startMinute: number;
+  endMinute: number;
+  color: string;
+}
+
+/** Hex zemin rengine göre okunur metin rengi (luminance eşiği). */
+function contrastText(hex: string): string {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex);
+  if (!m) return '#ffffff';
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#16161a' : '#ffffff';
 }
 
 /**
@@ -219,33 +232,55 @@ function isProgramLike(c: ProvysCategory): boolean {
                  [class.is-expanded]="expandedPanel() === 'studio'"
                  (expandClick)="togglePanel('studio')">
           <a card-action class="link-action" routerLink="/studio-plan">Tümü →</a>
-          <div class="studio-list">
+          <div class="studio-tl" [class.tl-expanded]="expandedPanel() === 'studio'">
             @if (loadingStudios()) {
               <div class="empty">Yükleniyor…</div>
+            } @else if (studioTimeline().length === 0) {
+              <div class="empty">Bugün için stüdyo programı yok.</div>
             } @else {
-              @for (p of todayStudios().slice(0, 7); track p.id) {
-                <a class="studio-row"
-                   [routerLink]="['/studio-plan']"
-                   [queryParams]="{ day: isoToday(), studio: p.studio, time: p.startTime }">
-                  <div class="studio-bar"></div>
-                  <div class="studio-text">
-                    <div class="studio-name">{{ p.programName || '(boş slot)' }}</div>
-                    <div class="studio-meta">{{ p.studio }}</div>
+              <!-- Saat ekseni -->
+              <div class="tl-head">
+                @for (h of timelineHours(); track h.min) {
+                  <span class="tl-hour" [style.left.%]="h.pct">{{ h.label }}</span>
+                }
+              </div>
+              <!-- Izgara + şimdi çizgisi + stüdyo satırları -->
+              <div class="tl-body">
+                <div class="tl-grid" aria-hidden="true">
+                  @for (h of timelineHours(); track h.min) {
+                    <span class="tl-gl" [style.left.%]="h.pct"></span>
+                  }
+                </div>
+                @for (row of studioTimeline(); track row.studio) {
+                  <div class="tl-row">
+                    <span class="tl-studio" [title]="row.studio">{{ row.studio }}</span>
+                    <div class="tl-track">
+                      @for (b of row.blocks; track b.id) {
+                        <a class="tl-block" [class.live]="b.live"
+                           [style.left.%]="b.left" [style.width.%]="b.width"
+                           [style.background]="b.color" [style.color]="b.text"
+                           [title]="b.program + ' · ' + b.startTime + '–' + b.endTime"
+                           [routerLink]="['/studio-plan']"
+                           [queryParams]="{ day: isoToday(), studio: row.studio, time: b.startTime }">
+                          <span class="tl-blabel">{{ b.program }}</span>
+                        </a>
+                      } @empty {
+                        <span class="tl-row-empty">—</span>
+                      }
+                    </div>
                   </div>
-                  <div class="studio-time">
-                    <div class="studio-start">{{ p.startTime }}</div>
-                    <div class="studio-end">{{ p.endTime }}</div>
-                  </div>
-                </a>
-              } @empty {
-                <div class="empty">Bugün için stüdyo programı yok.</div>
-              }
+                }
+                <div class="tl-nowwrap" aria-hidden="true">
+                  <div class="tl-now" [style.left.%]="nowPct()"></div>
+                </div>
+              </div>
             }
           </div>
         </bp-card>
 
         <bp-card [title]="'Ingest portları'"
                  [count]="kpiActivePorts() + '/' + kpiTotalPorts() + ' aktif'"
+                 [accent]="true"
                  [expandable]="true"
                  [expanded]="expandedPanel() === 'ports'"
                  [class.is-expanded]="expandedPanel() === 'ports'"
@@ -587,32 +622,47 @@ function isProgramLike(c: ProvysCategory): boolean {
     @keyframes ch-pop { from { transform: scale(0.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
     /* ─── Studio list ─────────────────────────────────────────────── */
-    .studio-list { display: flex; flex-direction: column; }
-    .studio-row {
-      display: flex;
-      gap: 12px;
-      padding: 11px 18px;
-      align-items: center;
-      border-bottom: 1px solid var(--bp-line-2);
-      text-decoration: none;
-      color: inherit;
-      transition: background var(--bp-dur-fast);
+    /* ─── Stüdyo timeline (stüdyo × saat, "şimdi" çizgisi) — kutuyu doldurur ── */
+    .studio-tl {
+      padding: 12px 18px 14px; --tl-label: 82px;
+      display: flex; flex-direction: column; flex: 1 1 auto; min-height: 248px;
     }
-    .studio-row:hover { background: var(--bp-row-hover); }
-    .studio-row:last-child { border-bottom: 0; }
-    .studio-bar { width: 3px; height: 32px; border-radius: 2px; flex-shrink: 0; background: var(--bp-purple-400); }
-    .studio-text { flex: 1; min-width: 0; }
-    .studio-name {
-      font-size: 13px;
-      font-weight: var(--bp-fw-medium);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+    .studio-tl.tl-expanded { min-height: 64vh; }
+    .studio-tl .empty { padding: 16px 2px; }
+    .tl-head { position: relative; height: 18px; flex: 0 0 auto; margin-left: var(--tl-label); }
+    .tl-hour {
+      position: absolute; top: 0; transform: translateX(-50%);
+      font-family: var(--bp-font-mono); font-size: 12px; color: var(--bp-fg-3); white-space: nowrap;
     }
-    .studio-meta { font-size: 11px; color: var(--bp-fg-3); margin-top: 2px; }
-    .studio-time { text-align: right; }
-    .studio-start { font-family: var(--bp-font-mono); font-size: 12px; color: var(--bp-acc-purple); }
-    .studio-end { font-family: var(--bp-font-mono); font-size: 10px; color: var(--bp-fg-4); margin-top: 2px; }
+    .tl-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+    .tl-grid { position: absolute; left: var(--tl-label); right: 0; top: 0; bottom: 0; pointer-events: none; }
+    .tl-gl { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--bp-line-2); }
+    .tl-nowwrap { position: absolute; left: var(--tl-label); right: 0; top: 0; bottom: 0; pointer-events: none; }
+    .tl-now { position: absolute; top: -3px; bottom: -1px; width: 2px; background: #ef4444; box-shadow: 0 0 7px rgba(239,68,68,.7); }
+    .tl-now::before {
+      content: ''; position: absolute; top: -4px; left: -4px;
+      width: 10px; height: 10px; border-radius: 50%; background: #ef4444;
+    }
+    .tl-row { display: flex; align-items: stretch; flex: 1 1 0; min-height: 36px; }
+    .tl-studio {
+      flex: 0 0 var(--tl-label); width: var(--tl-label);
+      display: flex; align-items: center;
+      font-size: 13px; color: var(--bp-fg-2);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px;
+    }
+    .tl-track { position: relative; flex: 1; }
+    .tl-block {
+      position: absolute; top: 4px; bottom: 4px;
+      display: flex; align-items: center; padding: 0 9px;
+      border-radius: 5px; overflow: hidden; text-decoration: none;
+      font-size: 13px; font-weight: var(--bp-fw-medium);
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,.14);
+      transition: filter var(--bp-dur-fast);
+    }
+    .tl-block:hover { filter: brightness(1.08); }
+    .tl-block.live { box-shadow: inset 0 0 0 1px rgba(255,255,255,.55), 0 0 0 1.5px var(--bp-bg-1), 0 0 8px rgba(255,255,255,.22); }
+    .tl-blabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tl-row-empty { display: flex; align-items: center; font-size: 12px; color: var(--bp-fg-4); padding-left: 4px; }
 
     /* ─── Ports grid ──────────────────────────────────────────────── */
     .ports-grid {
@@ -726,8 +776,61 @@ export class DashboardComponent implements OnInit, OnDestroy {
   kpiShiftCount = signal('—');
   kpiAlerts = signal('—');
 
+  // ─── Stüdyo timeline (dashboard kartı) ─────────────────────────────────────
+  /** Görünür pencere: normal kart [şimdi−1s, +5s]=6s; büyük görünüm
+   *  (expandedPanel==='studio') [şimdi−2s, +8s]=10s. */
+  private readonly tlBefore = computed(() => this.expandedPanel() === 'studio' ? 120 : 60);
+  private readonly tlTotal = computed(() => this.expandedPanel() === 'studio' ? 600 : 360);
+  /** Plan çerçevesinde "şimdi" dakikası (07:00 öncesi gece-yarısı sonrası → +1440). */
+  readonly nowMinute = computed(() => {
+    const [h, m] = formatIstanbulTime(new Date(this.nowMs())).split(':').map(Number);
+    const mins = h * 60 + m;
+    return mins < STUDIO_PLAN_START_MINUTE ? mins + 24 * 60 : mins;
+  });
+  private readonly tlStart = computed(() => this.nowMinute() - this.tlBefore());
+  readonly nowPct = computed(() => ((this.nowMinute() - this.tlStart()) / this.tlTotal()) * 100);
+
+  /** Pencere içindeki tam-saat ızgara çizgileri + etiketleri. */
+  readonly timelineHours = computed(() => {
+    const start = this.tlStart(), total = this.tlTotal();
+    const out: Array<{ min: number; pct: number; label: string }> = [];
+    for (let mm = Math.ceil(start / 60) * 60; mm <= start + total; mm += 60) {
+      out.push({ min: mm, pct: ((mm - start) / total) * 100, label: this.minuteToTime(mm) });
+    }
+    return out;
+  });
+
+  /** Stüdyo başına satır + pencereye göre konumlanmış program blokları. */
+  readonly studioTimeline = computed(() => {
+    const start = this.tlStart(), total = this.tlTotal(), now = this.nowMinute();
+    const byStudio = new Map<string, StudioSlot[]>();
+    for (const s of this.todayStudios()) {
+      if (!byStudio.has(s.studio)) byStudio.set(s.studio, []);
+      byStudio.get(s.studio)!.push(s);
+    }
+    return [...byStudio.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+      .map(([studio, slots]) => ({
+        studio,
+        blocks: slots
+          .filter((s) => s.endMinute > start && s.startMinute < start + total)
+          .map((s) => {
+            const l = Math.max(s.startMinute, start), r = Math.min(s.endMinute, start + total);
+            const color = /^#?[0-9a-fA-F]{6}$/.test(s.color) ? s.color : '#7c3aed';
+            return {
+              id: s.id, program: s.programName, startTime: s.startTime, endTime: s.endTime,
+              color, text: contrastText(color),
+              left: ((l - start) / total) * 100,
+              width: Math.max(((r - l) / total) * 100, 1.4),
+              live: now >= s.startMinute && now < s.endMinute,
+            };
+          }),
+      }));
+  });
+
   private clockSub?: Subscription;
   private nowSub?: Subscription;
+  private refreshSub?: Subscription;
 
   ngOnInit() {
     this.updateDate();
@@ -745,11 +848,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadLiveToday();
     this.loadStudios();
     this.loadPorts();
+
+    // 2026-06-05: Operasyonel veriyi periyodik SESSİZ tazele — stüdyo planı,
+    // canlı yayın ya da portlar başka ekranda değişince dashboard açıkken
+    // reload gerekmeden ~30 sn içinde güncellensin ("anlık düşsün" isteği).
+    this.refreshSub = interval(120_000).subscribe(() => {
+      this.loadStudios(true);
+      this.loadLiveToday(true);
+      this.loadPorts(true);
+    });
   }
 
   ngOnDestroy() {
     this.clockSub?.unsubscribe();
     this.nowSub?.unsubscribe();
+    this.refreshSub?.unsubscribe();
     this.provys.stopStreaming();
   }
 
@@ -848,15 +961,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
 
-  private loadLiveToday() {
-    this.loadingLive.set(true);
+  private loadLiveToday(silent = false) {
+    if (!silent) this.loadingLive.set(true);
     this.api.get<ProvysLiveTodayDto[]>('/provys/live-today').subscribe({
       next: (res) => {
         this.liveToday.set(res ?? []);
         this.loadingLive.set(false);
       },
       error: () => {
-        this.liveToday.set([]);
+        if (!silent) this.liveToday.set([]);
         this.loadingLive.set(false);
       },
     });
@@ -867,11 +980,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return tc && tc.length >= 5 ? tc.slice(0, 5) : '—';
   }
 
-  private loadStudios() {
-    this.loadingStudios.set(true);
+  private loadStudios(silent = false) {
+    if (!silent) this.loadingStudios.set(true);
     const today = this.isoToday();
     const weekStart = this.mondayOf(today);
-    this.api.get<{ slots?: Array<{ id: number; day: string; studio: string; startMinute: number; program: string }> }>(
+    this.api.get<{ slots?: Array<{ id: number; day: string; studio: string; startMinute: number; program: string; color: string }> }>(
       `/studio-plans/${weekStart}`,
     ).subscribe({
       next: (plan) => {
@@ -881,7 +994,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           if (!byStudio.has(s.studio)) byStudio.set(s.studio, []);
           byStudio.get(s.studio)!.push(s);
         }
-        const merged: Array<{ id: number; studio: string; program: string; startMinute: number; endMinute: number }> = [];
+        const merged: Array<{ id: number; studio: string; program: string; startMinute: number; endMinute: number; color: string }> = [];
         for (const [studio, slots] of byStudio) {
           slots.sort((a, b) => a.startMinute - b.startMinute);
           for (const s of slots) {
@@ -895,6 +1008,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
                 program: s.program,
                 startMinute: s.startMinute,
                 endMinute: s.startMinute + STUDIO_PLAN_SLOT_MINUTES,
+                color: s.color,
               });
             }
           }
@@ -906,19 +1020,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
           programName: m.program,
           startTime: this.minuteToTime(m.startMinute),
           endTime: this.minuteToTime(m.endMinute),
+          startMinute: m.startMinute,
+          endMinute: m.endMinute,
+          color: m.color,
         }));
         this.todayStudios.set(todaySlots);
         this.loadingStudios.set(false);
       },
       error: () => {
-        this.todayStudios.set([]);
+        if (!silent) this.todayStudios.set([]);
         this.loadingStudios.set(false);
       },
     });
   }
 
-  private loadPorts() {
-    this.loadingPorts.set(true);
+  private loadPorts(silent = false) {
+    if (!silent) this.loadingPorts.set(true);
     this.api.get<IngestPort[]>(`/ingest/recording-ports`).subscribe({
       next: (res) => {
         const arr = (res ?? []).map((p) => ({ ...p, active: p.active ?? true }));
@@ -926,7 +1043,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.loadingPorts.set(false);
       },
       error: () => {
-        this.ports.set([]);
+        if (!silent) this.ports.set([]);
         this.loadingPorts.set(false);
       },
     });

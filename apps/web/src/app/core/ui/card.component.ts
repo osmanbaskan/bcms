@@ -50,7 +50,8 @@ import { CommonModule } from '@angular/common';
   `,
   styles: [`
     :host {
-      display: block;
+      display: flex;
+      flex-direction: column;
       background: var(--bp-bg-2);
       border-radius: var(--bp-r-xl);
       border: 1px solid var(--bp-line-2);
@@ -87,6 +88,10 @@ import { CommonModule } from '@angular/common';
     .head-right { display: inline-flex; align-items: center; gap: 8px; }
     .title { margin: 0; font-size: var(--bp-text-md); font-weight: var(--bp-fw-semibold); color: var(--bp-fg-1); }
     .count { font-size: var(--bp-text-xs); color: var(--bp-fg-3); }
+    /* 2026-06-05: body kartın kalan yüksekliğini doldurur (flex:1) + flex-column —
+       böylece içerik (ör. dashboard stüdyo timeline) kutuyu tam doldurabilir.
+       Diğer kartların içeriği tek flex-item olarak üstte kalır (regresyon yok). */
+    .body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
     .body.padded { padding: 18px; }
     .card-expand {
       width: 24px; height: 24px;
