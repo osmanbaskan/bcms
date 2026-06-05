@@ -1720,3 +1720,212 @@ model NotificationSubscription {
   @@index([userId])
   @@map("notification_subscriptions")
 }
+
+// ============================================================
+// HABER (NewsWorks / NRCS) modülü — EGS NewsWorks 2000 ("TV200P", v5.8.432)
+// yerine native newsroom. v1: Çekirdek + Ajans + KJ/SPOT MOS/Vizrt çıkışı.
+// EGS terimleri korunur: Bülten (rundown), Haber (story), Spiker, KJ, SPOT.
+// Tüm yazımlar audit extension ($allModels) ile denetlenir; soft-delete
+// servis katmanında (deletedAt set). TZ-lock: tarih @db.Date + gün-dakikası.
+// ============================================================
+
+/// Bülten = günlük yayın akışı / rundown (EGS: "Günlük Yayın Akışları",
+/// ör. SPGENE2100). Eşzamanlı editör erişimi → optimistic lock (version).
+model NewsBulletin {
+  id           Int                @id @default(autoincrement())
+  name         String             @db.VarChar(200)
+  bulletinCode String?            @map("bulletin_code") @db.VarChar(40)
+  bulletinDate DateTime           @map("bulletin_date") @db.Date
+  onAirMinute  Int                @map("on_air_minute") // Türkiye-naive gün-dakikası (TZ-lock)
+  anchorName   String?            @map("anchor_name") @db.VarChar(200) // Spiker
+  newsGroup    String?            @map("news_group") @db.VarChar(80) // Haber Hattı Grubu
+  status       NewsBulletinStatus @default(DRAFT)
+  version      Int                @default(1)
+  createdBy    String             @map("created_by") @db.VarChar(100)
+  updatedBy    String?            @map("updated_by") @db.VarChar(100)
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?          @map("deleted_at") @db.Timestamptz(6)
+  stories      NewsStory[]
+
+  @@index([bulletinDate, onAirMinute])
+  @@index([newsGroup])
+  @@index([status])
+  @@map("news_bulletins")
+}
+
+/// Haber = story (EGS: "Haber"). bulletinId null → Haber Havuzu (story pool).
+/// orderIndex = bülten içi akış sırası. locked/lockedBy = "Haberi Koru/Kilitle".
+model NewsStory {
+  id              Int              @id @default(autoincrement())
+  bulletinId      Int?             @map("bulletin_id")
+  orderIndex      Int              @default(0) @map("order_index")
+  title           String           @db.VarChar(300) // Haber Adı
+  displayName     String?          @map("display_name") @db.VarChar(300) // Haber Görüntü Adı
+  storyType       NewsStoryType    @default(READER) @map("story_type") // Haberin Türü
+  clipDurationSec Int              @default(0) @map("clip_duration_sec") // Haber Bant Süresi (sn)
+  anchorName      String?          @map("anchor_name") @db.VarChar(200) // Spiker
+  description     String?          @db.Text // Açıklama
+  prompterText    String?          @map("prompter_text") @db.Text // Prompter / spiker metni
+  newsGroup       String?          @map("news_group") @db.VarChar(80)
+  locked          Boolean          @default(false) // Haberi Koru
+  lockedBy        String?          @map("locked_by") @db.VarChar(100)
+  version         Int              @default(1)
+  createdBy       String           @map("created_by") @db.VarChar(100)
+  updatedBy       String?          @map("updated_by") @db.VarChar(100)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  bulletin        NewsBulletin?    @relation(fields: [bulletinId], references: [id], onDelete: SetNull)
+  lowerThirds     NewsLowerThird[]
+  mosJobs         NewsMosJob[]
+
+  @@index([bulletinId, orderIndex])
+  @@index([newsGroup])
+  @@map("news_stories")
+}
+
+/// KJ (chyron/lower-third) ve SPOT (altyazı) — EGS: "KJ'ler", "Spotlar-Altyazı".
+/// Başlık + 2 satır; MOS/Vizrt XML'e map edilir.
+model NewsLowerThird {
+  id         Int                @id @default(autoincrement())
+  storyId    Int                @map("story_id")
+  kind       NewsLowerThirdKind @default(KJ)
+  orderIndex Int                @default(0) @map("order_index")
+  title      String?            @db.VarChar(300) // KJ/Spot Başlığı
+  line1      String?            @db.VarChar(300) // 1. Satır
+  line2      String?            @db.VarChar(300) // 2. Satır
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  story      NewsStory          @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  mosJobs    NewsMosJob[]
+
+  @@index([storyId, orderIndex])
+  @@map("news_lower_thirds")
+}
+
+/// Ajans haberi (EGS: "Ajans Penceresi", "Tüm Ajanslar"). source: AA/IHA/DHA/RSS/MANUAL.
+/// "Story'ye Çevir" → usedStoryId işaretlenir.
+model NewsWireItem {
+  id          Int              @id @default(autoincrement())
+  source      String           @db.VarChar(40)
+  externalId  String?          @map("external_id") @db.VarChar(200)
+  category    String?          @db.VarChar(120)
+  priority    NewsWirePriority @default(NORMAL)
+  headline    String           @db.VarChar(500)
+  body        String?          @db.Text
+  receivedAt  DateTime         @default(now()) @map("received_at") @db.Timestamptz(6)
+  usedStoryId Int?             @map("used_story_id")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([source, externalId])
+  @@index([receivedAt])
+  @@index([source, priority])
+  @@map("news_wire_items")
+}
+
+/// MOS/Vizrt çıkış cihazı (admin lookup). kind: MOS_TCP | VIZRT_REST | XML_FILE.
+model NewsMosDevice {
+  id          Int               @id @default(autoincrement())
+  name        String            @unique @db.VarChar(120)
+  kind        NewsMosDeviceKind @default(VIZRT_REST)
+  host        String?           @db.VarChar(200)
+  port        Int?
+  mosId       String?           @map("mos_id") @db.VarChar(120)
+  ncsId       String?           @map("ncs_id") @db.VarChar(120)
+  templateMap Json?             @map("template_map")
+  active      Boolean           @default(true)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?         @map("deleted_at") @db.Timestamptz(6)
+  jobs        NewsMosJob[]
+
+  @@map("news_mos_devices")
+}
+
+/// KJ/SPOT/CRAWL/ROLL "Yayına Gönder" işi → worker news-mos-sender gönderir.
+/// EGS karşılığı: "KJ ve SPOT'lar VizRT'ye XML olarak gönderilebilsin" + MOS.
+model NewsMosJob {
+  id           Int              @id @default(autoincrement())
+  storyId      Int?             @map("story_id")
+  lowerThirdId Int?             @map("lower_third_id")
+  deviceId     Int?             @map("device_id")
+  action       NewsMosAction
+  payloadXml   String?          @map("payload_xml") @db.Text
+  status       NewsMosJobStatus @default(PENDING)
+  attempts     Int              @default(0)
+  error        String?          @db.Text
+  sentAt       DateTime?        @map("sent_at") @db.Timestamptz(6)
+  createdBy    String           @map("created_by") @db.VarChar(100)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  story        NewsStory?       @relation(fields: [storyId], references: [id], onDelete: SetNull)
+  lowerThird   NewsLowerThird?  @relation(fields: [lowerThirdId], references: [id], onDelete: SetNull)
+  device       NewsMosDevice?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([storyId])
+  @@map("news_mos_jobs")
+}
+
+enum NewsBulletinStatus {
+  DRAFT
+  READY
+  ON_AIR
+  DONE
+  ARCHIVED
+
+  @@map("news_bulletin_status")
+}
+
+enum NewsStoryType {
+  PKG // Paket (montajlı haber)
+  VO // Voice-over
+  VOSOT // VO + SOT
+  READER // Spiker okur (kuru anlatım)
+  LIVE // Canlı
+  PHONE // Telefon
+  CRAWL // Akan yazı (ticker)
+  ROLL // Jenerik / roll
+
+  @@map("news_story_type")
+}
+
+enum NewsLowerThirdKind {
+  KJ
+  SPOT
+
+  @@map("news_lower_third_kind")
+}
+
+enum NewsWirePriority {
+  FLASH
+  NORMAL
+
+  @@map("news_wire_priority")
+}
+
+enum NewsMosDeviceKind {
+  MOS_TCP
+  VIZRT_REST
+  XML_FILE
+
+  @@map("news_mos_device_kind")
+}
+
+enum NewsMosAction {
+  KJ
+  SPOT
+  CRAWL
+  ROLL
+
+  @@map("news_mos_action")
+}
+
+enum NewsMosJobStatus {
+  PENDING
+  SENT
+  FAILED
+
+  @@map("news_mos_job_status")
+}

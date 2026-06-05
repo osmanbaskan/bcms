@@ -16,6 +16,10 @@ export const BCMS_GROUPS = [
   // tek-grup izolasyonu uygulanır; backend "auth only" endpoint'ler V1'de
   // kapsanmaz (V2 RBAC hardening).
   'ProvysViewer',
+  // Haber (NewsWorks NRCS, 2026-06-05): EGS NewsWorks 2000 ("TV200P") yerine
+  // native newsroom modülü editörleri. /news sekmesi (bülten/story/prompter/
+  // KJ-SPOT) yetkisi; Admin auto-bypass korunur.
+  'Haber',
 ] as const;
 
 export type BcmsGroup = typeof BCMS_GROUPS[number];
@@ -35,6 +39,7 @@ export const GROUP = {
   Ses: 'Ses',
   StudyoSefi: 'StudyoSefi',
   ProvysViewer: 'ProvysViewer',
+  Haber: 'Haber',
 } as const satisfies Record<BcmsGroup, BcmsGroup>;
 
 export interface JwtPayload {
@@ -230,5 +235,17 @@ export const PERMISSIONS = {
   watchers: {
     read:  [GROUP.SystemEng] as BcmsGroup[],
     write: [GROUP.SystemEng] as BcmsGroup[],
+  },
+  /** Haber (NewsWorks NRCS, 2026-06-05): EGS NewsWorks 2000 yerine native
+   *  newsroom. read/write/delete = Haber editörleri (Admin auto-bypass);
+   *  send = KJ/SPOT/CRAWL/ROLL yayına gönder (MOS job enqueue); admin = MOS
+   *  cihaz + ajans kaynak config (yalnız Admin). Backend route'ları bu seti
+   *  `requireGroup(...PERMISSIONS.news.*)` ile kullanır; literal grup yazılmaz. */
+  news: {
+    read:   [GROUP.Haber] as BcmsGroup[],
+    write:  [GROUP.Haber] as BcmsGroup[],
+    delete: [GROUP.Haber] as BcmsGroup[],
+    send:   [GROUP.Haber] as BcmsGroup[],
+    admin:  [GROUP.Admin] as BcmsGroup[],
   },
 } as const;

@@ -14,3 +14,4 @@ export * from './types/asrun.js';
 export * from './types/search.js';
 export * from './types/restore.js';
 export * from './types/transfer.js';
+export * from './types/news.js';
