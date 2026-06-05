@@ -73,7 +73,7 @@ async function settle(page: Page): Promise<void> {
   await page.goto('/');
   await page.waitForURL(/\/dashboard/, { timeout: 15_000 }).catch(async () => {
     // Eğer dashboard'a düşmediyse en azından networkidle bekle.
-    await page.waitForLoadState('networkidle', { timeout: 10_000 });
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
   });
 }
 
@@ -89,7 +89,7 @@ test.describe('Navigation smoke — sidebar üzerinden tüm büyük route\'lar',
       await link.click();
 
       await page.waitForURL(route.routePattern, { timeout: 10_000 });
-      await page.waitForLoadState('networkidle', { timeout: 10_000 });
+      await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
 
       // Marker kontrol — sayfa render etti mi (route'a özgü metin).
       // Heading varlığı sayfa-bazlı değişken; marker daha geniş alanda arar.

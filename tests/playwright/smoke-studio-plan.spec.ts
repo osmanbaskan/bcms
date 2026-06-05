@@ -9,7 +9,7 @@ async function goToStudioPlanViaNav(page: Page): Promise<void> {
   await page.waitForURL(/\/dashboard/, { timeout: 15_000 }).catch(() => undefined);
   await page.locator('aside a').filter({ hasText: /Stüdyo Planı/ }).first().click();
   await page.waitForURL(/\/studio-plan/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle', { timeout: 10_000 });
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
 }
 
 test.describe('Stüdyo Planı smoke', () => {

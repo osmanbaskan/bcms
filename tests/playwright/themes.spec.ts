@@ -52,7 +52,7 @@ for (const theme of ['dark', 'light'] as const) {
     for (const route of ROUTES) {
       test(`${route.name} renders`, async ({ page }) => {
         await page.goto('/dashboard');
-        await page.waitForLoadState('networkidle').catch(() => {});
+        await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
         await setTheme(page, theme);
         if (route.path !== '/dashboard') await spaNav(page, route.path);
         await page.waitForTimeout(500);
@@ -84,7 +84,7 @@ for (const theme of ['dark', 'light'] as const) {
 test.describe('light mode özel kurallar', () => {
   test('schedule-list metin rengi sidebar mor (#4c1d95)', async ({ page }) => {
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
     await setTheme(page, 'light');
     await spaNav(page, '/schedules');
     await page.locator('app-schedule-list').waitFor({ state: 'attached', timeout: 10_000 });
@@ -113,7 +113,7 @@ test.describe('light mode özel kurallar', () => {
     // aktif (mat-input). Regression hâlâ geçerli: light mode'da time
     // input'un arka rengi beyaza yakın olmalı.
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
     await setTheme(page, 'light');
     await spaNav(page, '/yayin-planlama/new');
     const ti = page.locator('input[type="time"]').first();
@@ -133,7 +133,7 @@ test.describe('light mode özel kurallar', () => {
 
   test('ingest filter chip — light mode okunur (regression)', async ({ page }) => {
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
     await setTheme(page, 'light');
     await spaNav(page, '/ingest');
     const chip = page.locator('.plan-filter-button').first();
@@ -150,7 +150,7 @@ test.describe('light mode özel kurallar', () => {
 
   test('mat-form-field underline — light mode purple', async ({ page }) => {
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
     await setTheme(page, 'light');
     await spaNav(page, '/bookings');
     const ripple = page.locator('.mdc-line-ripple').first();

@@ -31,7 +31,7 @@ for (const theme of ['dark', 'light'] as const) {
   test.describe(`dialogs ${theme}`, () => {
     test('booking "Yeni İş" dialog screenshot', async ({ page }) => {
       await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle').catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
       await setTheme(page, theme);
       await spaNav(page, '/bookings');
 
@@ -52,7 +52,7 @@ for (const theme of ['dark', 'light'] as const) {
 
     test('booking düzenle dialog screenshot', async ({ page }) => {
       await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle').catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
       await setTheme(page, theme);
       await spaNav(page, '/bookings');
       await page.waitForTimeout(500);
@@ -78,7 +78,7 @@ for (const theme of ['dark', 'light'] as const) {
     test('dialog surface light mode — pastel-lavender değil net açık (regression)', async ({ page }) => {
       if (theme !== 'light') test.skip(true, 'sadece light mode için');
       await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle').catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
       await setTheme(page, 'light');
       await spaNav(page, '/bookings');
       const addBtn = page.getByRole('button', { name: /Yeni İş/i }).first();

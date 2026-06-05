@@ -9,7 +9,7 @@ test('app boot — dashboard yüklendi, runtime JS hatası yok', async ({ page }
   page.on('pageerror', (e) => pageErrors.push(e.message));
 
   await page.goto('/dashboard');
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
 
   // Sidebar markı + dashboard nav active
   await expect(page.locator('.brand')).toBeVisible();

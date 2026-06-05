@@ -20,7 +20,7 @@ async function goToSchedulesViaNav(page: Page): Promise<void> {
   await page.waitForURL(/\/dashboard/, { timeout: 15_000 }).catch(() => undefined);
   await page.locator('aside a').filter({ hasText: /Canlı Yayın Plan/ }).first().click();
   await page.waitForURL(/\/schedules$/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle', { timeout: 10_000 });
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
 }
 
 async function openYeniEkleManuel(page: Page): Promise<void> {

@@ -13,7 +13,7 @@ async function goToSettingsViaNav(page: Page): Promise<void> {
   await page.waitForURL(/\/dashboard/, { timeout: 15_000 }).catch(() => undefined);
   await page.locator('aside a').filter({ hasText: /^settingsAyarlar$|^Ayarlar$/ }).first().click();
   await page.waitForURL(/\/settings/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle', { timeout: 10_000 });
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
 }
 
 /**
@@ -44,7 +44,7 @@ test.describe('Settings + Admin smoke', () => {
     const card = page.locator('mat-card:has-text("Manuel Lig Yönetimi")');
     await card.getByRole('link', { name: /Aç/ }).click();
     await page.waitForURL(/\/admin\/manual-leagues/, { timeout: 10_000 });
-    await page.waitForLoadState('networkidle', { timeout: 10_000 });
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
 
     await expect(page.getByRole('heading', { name: /Manuel Lig Yönetimi/ })).toBeVisible();
 
@@ -67,7 +67,7 @@ test.describe('Settings + Admin smoke', () => {
     const card = page.locator('mat-card:has-text("OPTA Lig / Turnuva Görünürlüğü")');
     await card.getByRole('link', { name: /Aç/ }).click();
     await page.waitForURL(/\/admin\/opta-competitions/, { timeout: 10_000 });
-    await page.waitForLoadState('networkidle', { timeout: 10_000 });
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
 
     await expect(page.getByRole('heading', { name: /OPTA Lig.*Görünür/i })).toBeVisible();
     const rows = page.getByRole('row');

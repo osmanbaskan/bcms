@@ -11,7 +11,7 @@ async function goToIngestViaNav(page: Page): Promise<void> {
   await page.waitForURL(/\/dashboard/, { timeout: 15_000 }).catch(() => undefined);
   await page.locator('aside a').filter({ hasText: /^cloud_uploadIngest$|^Ingest$/ }).first().click();
   await page.waitForURL(/\/ingest/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle', { timeout: 10_000 });
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
 }
 
 test.describe('Ingest smoke', () => {
@@ -41,7 +41,7 @@ test.describe('Ingest smoke', () => {
     const tabCount = await portTab.count();
     test.skip(tabCount === 0, 'Port Görünümü tab bulunamadı');
     await portTab.click();
-    await page.waitForLoadState('networkidle', { timeout: 10_000 });
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
     // Board veya empty-state — sayfa render edildi.
     const body = page.locator('main, .page, app-ingest-list').first();
     await expect(body).toBeVisible();

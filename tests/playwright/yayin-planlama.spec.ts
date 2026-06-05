@@ -20,7 +20,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/dashboard');
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
 });
 
 // SPA-içi navigate helper (Angular Router). Direct page.goto yerine kullanılır.
@@ -34,7 +34,7 @@ async function navigate(page: Page, path: string): Promise<void> {
   }, path);
   await page.waitForURL((u) => u.pathname === path || u.pathname.startsWith(path), { timeout: 10000 })
     .catch(() => {});
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
 }
 
 test('nav: "Live-Plan (yeni)" YOK; "Canlı Yayın Plan" + "Yayın Planlama" görünür', async ({ page }) => {
@@ -72,7 +72,7 @@ test('Canlı Yayın Plan datasource: /schedules ekranı /api/v1/live-plan çağ�
   const livePlanRes = await livePlanResponsePromise;
   expect(livePlanRes.status(), `live-plan response status ${livePlanRes.status()}`).toBe(200);
 
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
   expect(legacyCalls, `legacy /schedules?usage=live-plan çağrıldı: ${legacyCalls.join(', ')}`).toEqual([]);
 });
 
@@ -82,7 +82,7 @@ test('Canlı Yayın Plan: mutation butonları görünür (canonical live-plan co
   // endpoint'lerine bağlı (legacy /schedules mutation YOK).
   await page.locator('a', { hasText: 'Canlı Yayın Plan' }).first().click();
   await page.waitForURL(/\/schedules$/);
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
 
   await expect(page.getByRole('button', { name: /Yeni Ekle/ })).toBeVisible();
   // Row aksiyonları ancak liste boş değilse görünür; permission açık olduğu
@@ -159,7 +159,7 @@ test('picker dialog: "Seç" butonu → dialog açılır + filtre alanları rende
 test('screenshot: list (project default viewport)', async ({ page }, testInfo) => {
   await page.locator('a', { hasText: 'Yayın Planlama' }).first().click();
   await page.waitForURL(/\/yayin-planlama/);
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
   await page.screenshot({
     path: `test-results/yayin-planlama-list-${testInfo.project.name}.png`,
     fullPage: true,

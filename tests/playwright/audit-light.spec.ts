@@ -285,7 +285,7 @@ test.describe('light mode audit', () => {
   for (const route of ROUTES) {
     test(`light mode audit — ${route.name}`, async ({ page }) => {
       await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle').catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
       await setTheme(page, 'light');
       await spaNav(page, route.path);
       await page.waitForTimeout(800);
