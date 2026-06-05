@@ -37,6 +37,7 @@
 | Canlı Yayın Plan | `/schedules` | [canli-yayin-plan.md](sekmeler/canli-yayin-plan.md) |
 | Yayın Planlama | `/yayin-planlama` | [yayin-planlama.md](sekmeler/yayin-planlama.md) |
 | Stüdyo Planı | `/studio-plan` | [studyo-plani.md](sekmeler/studyo-plani.md) |
+| Haber | `/news` | [haber.md](sekmeler/haber.md) |
 | Ingest | `/ingest` | [ingest.md](sekmeler/ingest.md) |
 | Provys | `/provys-content-control` | [provys.md](sekmeler/provys.md) |
 | Asrun | `/asrun` | [asrun.md](sekmeler/asrun.md) |

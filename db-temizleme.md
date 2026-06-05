@@ -40,6 +40,7 @@ Yedeğin oluştuğunu ve boyutunun makul olduğunu doğrula.
 | **Ingest** | `ingest_plan_items` (1), `ingest_plan_item_ports` (2), `ingest_jobs` (0), `qc_reports` (0) | ~3 | ports → item, qc → job |
 | **Haftalık Shift** | `shift_assignments` | 0 | — |
 | **İş Takip** | `bookings` (0) | 0 | `booking_comments` (0), `booking_status_history` (0) |
+| **Haber** (`/news` = NewsWorks NRCS) | `news_bulletins`, `news_stories` | demo | `news_lower_thirds`, `news_wire_items`, `news_mos_jobs` |
 
 ### 2.2 ⚠️ İsim tuzağı (canonical reversal)
 - **"Canlı Yayın Plan"** sekmesi → DB tablosu **`live_plan_entries`**.
@@ -55,6 +56,7 @@ Yedeğin oluştuğunu ve boyutunun makul olduğunu doğrula.
   - > Bunlara dokunmak teknik formdaki dropdown'ları ve mevcut kayıtların FK'lerini bozar.
 - `recording_ports` — Ayarlar > Kayıt Portları config'i (46 satır).
 - `studio_plan_programs` (29) + `studio_plan_colors` (11) — plana FK ile bağlı **değil**; program kataloğu + renk paleti (referans). **Bkz. Bölüm 4 açık karar.**
+- `news_mos_devices` — Haber > MOS/Vizrt çıkış cihazı config'i (admin-curated, lookup benzeri). Korunur.
 - `channels`, `leagues`, `teams`, kullanıcılar (Keycloak), `avid_settings`, `watcher_settings`, `notification_types`, `notification_subscriptions`.
 
 ---
@@ -81,7 +83,9 @@ TRUNCATE
   -- Haftalık Shift
   shift_assignments,
   -- İş Takip
-  bookings, booking_comments, booking_status_history
+  bookings, booking_comments, booking_status_history,
+  -- Haber (NewsWorks NRCS) — news_mos_devices (cihaz config) KORUNUR
+  news_bulletins, news_stories, news_lower_thirds, news_wire_items, news_mos_jobs
 RESTART IDENTITY;
 
 COMMIT;
@@ -113,7 +117,8 @@ WHERE relname IN (
   'studio_plans','studio_plan_slots',
   'ingest_jobs','ingest_plan_items','ingest_plan_item_ports','qc_reports',
   'shift_assignments',
-  'bookings','booking_comments','booking_status_history'
+  'bookings','booking_comments','booking_status_history',
+  'news_bulletins','news_stories','news_lower_thirds','news_wire_items','news_mos_jobs'
 )
 ORDER BY relname;
 ```
