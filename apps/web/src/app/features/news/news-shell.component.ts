@@ -19,6 +19,14 @@ function today(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** YYYY-MM-DD'yi gün bazında kaydırır (UTC takvim aritmetiği — DST/TZ etkisi yok). */
+function shiftDay(dateStr: string, delta: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
 /**
  * Haber (NewsWorks NRCS) — modül kabuğu (shell) / orchestrator.
  * 3-pane: sol (Bültenler + Haber Havuzu) · orta (Akış / Prompter) · sağ (Ajans).
@@ -36,7 +44,11 @@ function today(): string {
         <div class="nh-left">
           <mat-icon class="material-icons-outlined logo">feed</mat-icon>
           <h1>Haber</h1>
-          <input class="date" type="date" [ngModel]="filterDate()" (ngModelChange)="onDate($event)" />
+          <div class="date-nav">
+            <button type="button" class="day-arw" (click)="shiftDate(-1)" title="Önceki gün" aria-label="Önceki gün"><mat-icon class="material-icons-outlined">chevron_left</mat-icon></button>
+            <input class="date" type="date" [ngModel]="filterDate()" (ngModelChange)="onDate($event)" />
+            <button type="button" class="day-arw" (click)="shiftDate(1)" title="Sonraki gün" aria-label="Sonraki gün"><mat-icon class="material-icons-outlined">chevron_right</mat-icon></button>
+          </div>
         </div>
         <div class="nh-views">
           <button type="button" [class.on]="view() === 'rundown'" (click)="view.set('rundown')"><mat-icon class="material-icons-outlined">list_alt</mat-icon> Akış</button>
@@ -88,7 +100,11 @@ function today(): string {
     .nh-left { display: flex; align-items: center; gap: 12px; }
     .nh-left .logo { color: var(--bp-purple-300); }
     .nh-left h1 { margin: 0; font-size: 18px; font-weight: 600; color: var(--bp-fg-1); }
+    .date-nav { display: inline-flex; align-items: center; gap: 4px; }
     .date { background: var(--bp-bg-0); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+    .day-arw { display: inline-flex; align-items: center; justify-content: center; background: var(--bp-bg-0); color: var(--bp-fg-3); border: 1px solid var(--bp-line-2); border-radius: 6px; width: 30px; height: 30px; padding: 0; cursor: pointer; }
+    .day-arw:hover { color: var(--bp-fg-1); border-color: var(--bp-purple-500); background: rgba(124,58,237,0.12); }
+    .day-arw mat-icon { font-size: 20px; width: 20px; height: 20px; }
     .nh-views { display: inline-flex; gap: 6px; }
     .nh-views button { display: inline-flex; align-items: center; gap: 5px; background: var(--bp-bg-0); color: var(--bp-fg-3); border: 1px solid var(--bp-line-2); border-radius: 7px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
     .nh-views button.on { background: rgba(124,58,237,0.18); border-color: var(--bp-purple-500); color: var(--bp-fg-1); }
@@ -136,6 +152,7 @@ export class NewsShellComponent implements OnInit {
   reloadAll(): void { this.loadBulletins(); this.loadPool(); this.loadWires(); }
 
   onDate(date: string): void { this.filterDate.set(date); this.loadBulletins(); }
+  shiftDate(delta: number): void { this.onDate(shiftDay(this.filterDate(), delta)); }
 
   loadBulletins(): void {
     this.svc.listBulletins({ date: this.filterDate() }).subscribe({

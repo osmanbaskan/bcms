@@ -65,7 +65,7 @@ interface LtRow { kind: NewsLowerThirdKind; title: string; line1: string; line2:
           </label>
         </div>
         <label class="fl">Açıklama
-          <input class="in" [(ngModel)]="description" maxlength="20000" placeholder="Kısa açıklama" />
+          <textarea class="in desc" [(ngModel)]="description" maxlength="20000" rows="2" placeholder="Kısa açıklama"></textarea>
         </label>
       </div>
 
@@ -129,6 +129,7 @@ interface LtRow { kind: NewsLowerThirdKind; title: string; line1: string; line2:
     .col-kj { flex: 1 1 42%; min-height: 0; }
     .in { background: var(--bp-bg-0); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 8px; font-size: 13px; width: 100%; }
     .in.ta { resize: none; font-family: inherit; line-height: 1.55; flex: 1 1 auto; min-height: 0; }
+    .in.desc { resize: vertical; font-family: inherit; line-height: 1.5; min-height: 48px; }
     .with-btn.fill { align-items: stretch; flex: 1 1 auto; min-height: 0; }
     .with-btn.fill .case { align-self: flex-start; }
     .in.num { width: 56px; }
