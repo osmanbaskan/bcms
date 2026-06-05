@@ -1868,6 +1868,34 @@ model NewsMosJob {
   @@map("news_mos_jobs")
 }
 
+/// Haber > AA (Anadolu Ajansı) bağlantı ayarları — TEK satır (id=1).
+/// Ayarlar > Haber ekranından düzenlenir; boş/null alan runtime'da env'e
+/// (AA_API_*) düşer. Şifre düz metin (.env ile eş risk) ama GET'te maskeli
+/// ('********') döner, PUT'ta maske/boş yazılmaz. news-aa-fetcher worker'ı bu
+/// satırı her poll'de okur (restart gerektirmez). Yalnız Admin.
+model NewsSetting {
+  id                  Int      @id @default(1)
+  aaApiUser           String?  @map("aa_api_user") @db.VarChar(100)
+  aaApiPassword       String?  @map("aa_api_password")
+  aaApiBase           String?  @map("aa_api_base") @db.VarChar(300)
+  aaApiPollSeconds    Int?     @map("aa_api_poll_seconds")
+  aaApiFilterType     String?  @map("aa_api_filter_type") @db.VarChar(40)
+  aaApiFilterLanguage String?  @map("aa_api_filter_language") @db.VarChar(40)
+  aaApiFilterCategory String?  @map("aa_api_filter_category") @db.VarChar(120)
+  aaApiEnabled        Boolean? @map("aa_api_enabled")
+  // EGS bülten dışa-aktarım (out + xml → SMB). Prompter ve Vizrt yolu ayrı.
+  egsExportEnabled    Boolean? @map("egs_export_enabled")
+  egsPrompterPath     String?  @map("egs_prompter_path") @db.VarChar(400) // smb://host/share/dir
+  egsXmlPath          String?  @map("egs_xml_path") @db.VarChar(400)
+  egsSmbUser          String?  @map("egs_smb_user") @db.VarChar(100)
+  egsSmbPassword      String?  @map("egs_smb_password")
+  egsSmbDomain        String?  @map("egs_smb_domain") @db.VarChar(100)
+  updatedBy           String?  @map("updated_by") @db.VarChar(100)
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("news_settings")
+}
+
 enum NewsBulletinStatus {
   DRAFT
   READY

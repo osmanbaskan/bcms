@@ -61,8 +61,30 @@ interface WatcherStatus {
   watching:      boolean | null;
 }
 
+/** Haber > AA bağlantı ayarları DTO'su (backend news-settings.ts ile eş).
+ *  aaApiPassword GET'te '********' maske ya da '' gelir. */
+interface NewsSettings {
+  aaApiUser:           string;
+  aaApiPassword:       string;
+  aaApiBase:           string;
+  aaApiPollSeconds:    number;
+  aaApiFilterType:     string;
+  aaApiFilterLanguage: string;
+  aaApiFilterCategory: string;
+  aaApiEnabled:        boolean;
+  // EGS bülten dışa-aktarım (out + xml → SMB)
+  egsExportEnabled:    boolean;
+  egsPrompterPath:     string;
+  egsXmlPath:          string;
+  egsSmbUser:          string;
+  egsSmbPassword:      string;
+  egsSmbDomain:        string;
+  updatedBy:           string | null;
+  updatedAt:           string | null;
+}
+
 /** Sol menü bölümleri. */
-type SettingsSection = 'connections' | 'ports' | 'leagues' | 'notifications';
+type SettingsSection = 'connections' | 'ports' | 'leagues' | 'notifications' | 'haber';
 
 @Component({
   selector: 'app-settings',
@@ -371,6 +393,151 @@ type SettingsSection = 'connections' | 'ports' | 'leagues' | 'notifications';
               }
             }
 
+            <!-- ───────────── Haber (AA bağlantısı) ───────────── -->
+            @case ('haber') {
+              <mat-card class="settings-card">
+                <mat-card-header>
+                  <mat-icon mat-card-avatar>feed</mat-icon>
+                  <mat-card-title>Haber — AA (Anadolu Ajansı) Bağlantısı</mat-card-title>
+                  <mat-card-subtitle>
+                    AA Media API doğrudan çekim. Boş alan ortam değişkeninden (AA_API_*) okunur;
+                    şifre maskeli gelir, boş bırakılırsa mevcut korunur. Değişiklik restart'sız etki eder.
+                  </mat-card-subtitle>
+                </mat-card-header>
+                <mat-card-content>
+                  @if (newsLoading()) {
+                    <div class="center-spinner"><mat-spinner diameter="32"></mat-spinner></div>
+                  } @else {
+                    <div class="form-grid">
+                      <mat-form-field class="full">
+                        <mat-label>API URL</mat-label>
+                        <input matInput [(ngModel)]="news.aaApiBase" placeholder="https://api.aa.com.tr">
+                      </mat-form-field>
+
+                      <mat-form-field>
+                        <mat-label>Kullanıcı Adı (abone no)</mat-label>
+                        <input matInput [(ngModel)]="news.aaApiUser" autocomplete="off" placeholder="3000770">
+                      </mat-form-field>
+
+                      <mat-form-field>
+                        <mat-label>Şifre</mat-label>
+                        <input matInput [(ngModel)]="newNewsPassword" [ngModelOptions]="{standalone:true}"
+                               [type]="showNewsPass ? 'text' : 'password'"
+                               autocomplete="new-password"
+                               [placeholder]="news.aaApiPassword === '********' ? 'Mevcut şifre değişmesin' : ''">
+                        <button matSuffix mat-icon-button type="button" (click)="showNewsPass = !showNewsPass">
+                          <mat-icon>{{ showNewsPass ? 'visibility_off' : 'visibility' }}</mat-icon>
+                        </button>
+                      </mat-form-field>
+
+                      <mat-form-field>
+                        <mat-label>Poll Aralığı (sn)</mat-label>
+                        <input matInput type="number" min="60" [(ngModel)]="news.aaApiPollSeconds">
+                      </mat-form-field>
+
+                      <mat-form-field>
+                        <mat-label>Filtre: Tür</mat-label>
+                        <input matInput [(ngModel)]="news.aaApiFilterType" placeholder="1 = metin">
+                      </mat-form-field>
+
+                      <mat-form-field>
+                        <mat-label>Filtre: Dil</mat-label>
+                        <input matInput [(ngModel)]="news.aaApiFilterLanguage" placeholder="1 = Türkçe">
+                      </mat-form-field>
+
+                      <mat-form-field>
+                        <mat-label>Filtre: Kategori (ops.)</mat-label>
+                        <input matInput [(ngModel)]="news.aaApiFilterCategory" placeholder="boş = tümü">
+                      </mat-form-field>
+                    </div>
+
+                    <label class="news-toggle">
+                      <input type="checkbox" [(ngModel)]="news.aaApiEnabled" [ngModelOptions]="{standalone:true}">
+                      AA çekimi aktif
+                    </label>
+
+                    @if (news.updatedAt) {
+                      <p class="meta">
+                        Son güncelleme: {{ news.updatedAt | date:'dd.MM.yyyy HH:mm' }}@if (news.updatedBy) { · {{ news.updatedBy }}}
+                      </p>
+                    }
+                  }
+                </mat-card-content>
+                <mat-card-actions align="end">
+                  <button mat-raised-button color="primary"
+                          [disabled]="newsSaving() || newsLoading()" (click)="saveNews()">
+                    @if (newsSaving()) {
+                      <mat-spinner diameter="18" style="display:inline-block;margin-right:6px"></mat-spinner>
+                      Kaydediliyor…
+                    } @else {
+                      <ng-container><mat-icon>save</mat-icon> Kaydet</ng-container>
+                    }
+                  </button>
+                </mat-card-actions>
+              </mat-card>
+
+              <!-- ───────────── Haber — EGS Bülten Dışa-Aktarım ───────────── -->
+              <mat-card class="settings-card">
+                <mat-card-header>
+                  <mat-icon mat-card-avatar>outbox</mat-icon>
+                  <mat-card-title>Haber — EGS Bülten Gönderimi (Prompter + Vizrt)</mat-card-title>
+                  <mat-card-subtitle>
+                    "Bülteni Gönder" prompter <code>_out.WIN</code> ve Vizrt <code>.xml</code> dosyalarını
+                    SMB hedeflere yazar. Prompter ve XML yolu ayrı verilebilir. Şifre maskeli gelir,
+                    boş bırakılırsa mevcut korunur.
+                  </mat-card-subtitle>
+                </mat-card-header>
+                <mat-card-content>
+                  @if (!newsLoading()) {
+                    <div class="form-grid">
+                      <mat-form-field class="full">
+                        <mat-label>Prompter (_out.WIN) yolu</mat-label>
+                        <input matInput [(ngModel)]="news.egsPrompterPath" placeholder="smb://172.26.33.245/mcr/EGS/">
+                      </mat-form-field>
+                      <mat-form-field class="full">
+                        <mat-label>Vizrt (.xml) yolu</mat-label>
+                        <input matInput [(ngModel)]="news.egsXmlPath" placeholder="smb://172.26.33.245/mcr/EGS/">
+                      </mat-form-field>
+
+                      <mat-form-field>
+                        <mat-label>SMB Kullanıcı</mat-label>
+                        <input matInput [(ngModel)]="news.egsSmbUser" autocomplete="off" placeholder="kullanıcı">
+                      </mat-form-field>
+                      <mat-form-field>
+                        <mat-label>SMB Şifre</mat-label>
+                        <input matInput [(ngModel)]="newEgsPassword" [ngModelOptions]="{standalone:true}"
+                               [type]="showEgsPass ? 'text' : 'password'" autocomplete="new-password"
+                               [placeholder]="news.egsSmbPassword === '********' ? 'Mevcut şifre değişmesin' : ''">
+                        <button matSuffix mat-icon-button type="button" (click)="showEgsPass = !showEgsPass">
+                          <mat-icon>{{ showEgsPass ? 'visibility_off' : 'visibility' }}</mat-icon>
+                        </button>
+                      </mat-form-field>
+                      <mat-form-field>
+                        <mat-label>SMB Domain</mat-label>
+                        <input matInput [(ngModel)]="news.egsSmbDomain" placeholder="trbeinsports">
+                      </mat-form-field>
+                    </div>
+
+                    <label class="news-toggle">
+                      <input type="checkbox" [(ngModel)]="news.egsExportEnabled" [ngModelOptions]="{standalone:true}">
+                      EGS bülten gönderimi aktif
+                    </label>
+                  }
+                </mat-card-content>
+                <mat-card-actions align="end">
+                  <button mat-raised-button color="primary"
+                          [disabled]="newsSaving() || newsLoading()" (click)="saveNews()">
+                    @if (newsSaving()) {
+                      <mat-spinner diameter="18" style="display:inline-block;margin-right:6px"></mat-spinner>
+                      Kaydediliyor…
+                    } @else {
+                      <ng-container><mat-icon>save</mat-icon> Kaydet</ng-container>
+                    }
+                  </button>
+                </mat-card-actions>
+              </mat-card>
+            }
+
             <!-- ───────────── Kayıt Portları ───────────── -->
             @case ('ports') {
               <mat-card class="settings-card">
@@ -550,6 +717,8 @@ type SettingsSection = 'connections' | 'ports' | 'leagues' | 'notifications';
 
     mat-form-field { width: 100%; }
     .meta { margin: 10px 0 0; font-size: 0.8rem; opacity: 0.7; }
+    .news-toggle { display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 2px; font-size: 0.9rem; cursor: pointer; }
+    .news-toggle input { width: 16px; height: 16px; cursor: pointer; }
     code { font-size: 0.8rem; background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 3px; }
 
     /* ── İzleyici (BXF/ASRUN) bilgi kartları — salt-okunur + durum rozeti ── */
@@ -628,6 +797,7 @@ export class SettingsComponent implements OnInit {
   section = signal<SettingsSection>('connections');
   readonly sections: ReadonlyArray<{ id: SettingsSection; label: string; icon: string }> = [
     { id: 'connections',   label: 'Bağlantılar',    icon: 'cable' },
+    { id: 'haber',         label: 'Haber',           icon: 'feed' },
     { id: 'ports',         label: 'Kayıt Portları',  icon: 'settings_input_component' },
     { id: 'leagues',       label: 'Lig / İçerik',    icon: 'sports_soccer' },
     { id: 'notifications', label: 'Bildirimler',     icon: 'notifications' },
@@ -661,6 +831,22 @@ export class SettingsComponent implements OnInit {
   showAvidPass = false;
   showClouduxToken = false;
 
+  /** Haber > AA ayarları — Avid ile aynı ephemeral-sır deseni (şifre maske '********'). */
+  news: NewsSettings = {
+    aaApiUser: '', aaApiPassword: '', aaApiBase: '', aaApiPollSeconds: 300,
+    aaApiFilterType: '', aaApiFilterLanguage: '', aaApiFilterCategory: '',
+    aaApiEnabled: true,
+    egsExportEnabled: false, egsPrompterPath: '', egsXmlPath: '',
+    egsSmbUser: '', egsSmbPassword: '', egsSmbDomain: '',
+    updatedBy: null, updatedAt: null,
+  };
+  newNewsPassword = '';
+  newEgsPassword = '';
+  newsLoading = signal(true);
+  newsSaving  = signal(false);
+  showNewsPass = false;
+  showEgsPass = false;
+
   /** BXF/Provys + ASRUN izleyici bilgi + canlı durum (salt-okunur).
    *  reachable=false → worker'a ulaşılamadı, durum 'unknown'. */
   watchers = signal<WatcherStatus[]>([]);
@@ -685,6 +871,7 @@ export class SettingsComponent implements OnInit {
     });
     this.loadPorts();
     this.loadAvid();
+    this.loadNews();
     this.loadWatchers();
   }
 
@@ -787,6 +974,52 @@ export class SettingsComponent implements OnInit {
         this.newClouduxToken = '';
         this.avidSaving.set(false);
         this.snack.open(`Avid ayarları kaydedilemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+      },
+    });
+  }
+
+  loadNews() {
+    this.newsLoading.set(true);
+    this.api.get<NewsSettings>('/news/settings').subscribe({
+      next: (n) => { this.news = n; this.newsLoading.set(false); },
+      error: () => { this.newsLoading.set(false); this.snack.open('Haber ayarları alınamadı', 'Kapat', { duration: 4000 }); },
+    });
+  }
+
+  saveNews() {
+    this.newsSaving.set(true);
+    // Düz alanlar her zaman gönderilir (boş → env'e düşer). Şifre yalnız yeni
+    // değer girildiyse — maske/boş gönderilmez (backend mevcudu korur).
+    const payload: Partial<NewsSettings> = {
+      aaApiUser:           this.news.aaApiUser,
+      aaApiBase:           this.news.aaApiBase,
+      aaApiPollSeconds:    Number(this.news.aaApiPollSeconds) || 300,
+      aaApiFilterType:     this.news.aaApiFilterType,
+      aaApiFilterLanguage: this.news.aaApiFilterLanguage,
+      aaApiFilterCategory: this.news.aaApiFilterCategory,
+      aaApiEnabled:        this.news.aaApiEnabled,
+      egsExportEnabled:    this.news.egsExportEnabled,
+      egsPrompterPath:     this.news.egsPrompterPath,
+      egsXmlPath:          this.news.egsXmlPath,
+      egsSmbUser:          this.news.egsSmbUser,
+      egsSmbDomain:        this.news.egsSmbDomain,
+    };
+    if (this.newNewsPassword.trim()) payload.aaApiPassword = this.newNewsPassword;
+    if (this.newEgsPassword.trim()) payload.egsSmbPassword = this.newEgsPassword;
+
+    this.api.put<NewsSettings>('/news/settings', payload).subscribe({
+      next: (n) => {
+        this.news = n;
+        this.newNewsPassword = '';
+        this.newEgsPassword = '';
+        this.newsSaving.set(false);
+        this.snack.open('Haber ayarları kaydedildi', 'Tamam', { duration: 3000 });
+      },
+      error: (err) => {
+        this.newNewsPassword = '';
+        this.newEgsPassword = '';
+        this.newsSaving.set(false);
+        this.snack.open(`Haber ayarları kaydedilemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
       },
     });
   }

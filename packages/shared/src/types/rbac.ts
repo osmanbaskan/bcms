@@ -247,5 +247,7 @@ export const PERMISSIONS = {
     delete: [GROUP.Haber] as BcmsGroup[],
     send:   [GROUP.Haber] as BcmsGroup[],
     admin:  [GROUP.Admin] as BcmsGroup[],
+    /** AA bağlantı ayarları (Ayarlar > Haber) — Avid/watcher gibi SystemEng. */
+    settings: [GROUP.SystemEng] as BcmsGroup[],
   },
 } as const;

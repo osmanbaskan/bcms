@@ -1,51 +1,31 @@
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
 import { parseNewsMlG2 } from './newsml-g2.parser.js';
+import { getEffectiveAaConfig, type AaEffectiveConfig } from './news-settings.js';
 
 /**
  * news-aa-fetcher — worker background servisi (2026-06-05).
  *
- * AA (Anadolu Ajansı) Media API'sinden DOĞRUDAN haber çeker (IOSTEK'ten bağımsız;
- * IOSTEK ürün lisansı ölü → baypas). Akış:
+ * AA (Anadolu Ajansı) Media API'sinden DOĞRUDAN haber çeker (IOSTEK baypas).
  *   POST /abone/search/  (filter_type=1 metin, filter_language=1 TR)  → id listesi
- *   GET  /abone/document/{id}/newsml29  → NewsML-G2  → parse  → NewsWireItem (source=AA)
- * Dedup: (source, externalId) unique — zaten var olanı atla (cursor'a gerek yok).
+ *   GET  /abone/document/{id}/newsml29  → NewsML-G2 → parse → NewsWireItem (source=AA)
+ * Dedup: (source, externalId) unique. Self-heal: gövdesiz item sonraki poll'de doldurulur.
  *
- * Config (env): AA_API_USER / AA_API_PASS (Basic auth) yoksa servis kapalı.
- *   AA_API_BASE(=https://api.aa.com.tr) AA_API_POLL_SECONDS(=300)
- *   AA_API_FILTER_TYPE(=1) AA_API_FILTER_LANGUAGE(=1) AA_API_FILTER_CATEGORY
- *   AA_API_SEARCH_LIMIT(=30) AA_API_DOC_FORMAT(=newsml29)
+ * Konfig **DB + env merge** (Ayarlar > Haber → news_settings tablosu) — her tick'te
+ * okunur, **restart gerekmez**. Boş alan env'e (AA_API_*) düşer. enabled=false ya da
+ * kullanıcı/şifre yoksa çekim atlanır. Poll aralığı (pollSec) DB'den dinamik.
  */
 
 const FETCH_TIMEOUT_MS = 15_000;
+const BASE_TICK_MS = 60_000; // sabit taban; gerçek çekim cfg.pollSec'e göre "due" olunca
 
-interface AaConfig {
-  base: string; user: string; pass: string; pollSec: number;
-  filterType: string; filterLang: string; filterCategory: string;
-  limit: number; docFormat: string;
-}
-
-function readConfig(): AaConfig {
-  return {
-    base: (process.env.AA_API_BASE ?? 'https://api.aa.com.tr').replace(/\/$/, ''),
-    user: process.env.AA_API_USER ?? '',
-    pass: process.env.AA_API_PASS ?? '',
-    pollSec: Math.max(60, parseInt(process.env.AA_API_POLL_SECONDS ?? '300', 10)),
-    filterType: process.env.AA_API_FILTER_TYPE ?? '1',
-    filterLang: process.env.AA_API_FILTER_LANGUAGE ?? '1',
-    filterCategory: process.env.AA_API_FILTER_CATEGORY ?? '',
-    limit: Math.min(100, Math.max(1, parseInt(process.env.AA_API_SEARCH_LIMIT ?? '30', 10))),
-    docFormat: process.env.AA_API_DOC_FORMAT ?? 'newsml29',
-  };
-}
-
-function authHeader(c: AaConfig): string {
+function authHeader(c: AaEffectiveConfig): string {
   return 'Basic ' + Buffer.from(`${c.user}:${c.pass}`).toString('base64');
 }
 
 interface SearchItem { id: string; type?: string; date?: string; title?: string; }
 
-async function aaSearch(c: AaConfig): Promise<SearchItem[]> {
+async function aaSearch(c: AaEffectiveConfig): Promise<SearchItem[]> {
   const body = new URLSearchParams();
   body.set('filter_type', c.filterType);
   body.set('filter_language', c.filterLang);
@@ -77,7 +57,7 @@ async function aaSearch(c: AaConfig): Promise<SearchItem[]> {
   }
 }
 
-async function aaDocument(c: AaConfig, id: string): Promise<string> {
+async function aaDocument(c: AaEffectiveConfig, id: string): Promise<string> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -92,67 +72,65 @@ async function aaDocument(c: AaConfig, id: string): Promise<string> {
   }
 }
 
-export function startNewsAaFetcher(app: FastifyInstance): void {
-  const c = readConfig();
-  if (!c.user || !c.pass) {
-    app.log.info('news-aa-fetcher: AA_API_USER/PASS tanımsız — AA çekimi kapalı');
-    return;
-  }
+async function runFetch(app: FastifyInstance, c: AaEffectiveConfig): Promise<void> {
+  const items = await aaSearch(c);
+  let added = 0;
+  for (const it of items) {
+    if (!it.id) continue;
 
+    const existing = await app.prisma.newsWireItem.findUnique({
+      where: { source_externalId: { source: 'AA', externalId: it.id } },
+      select: { id: true, body: true },
+    });
+    if (existing?.body) continue; // tam → atla; gövdesiz/yeni → (yeniden) çek = self-heal
+
+    let parsed: ReturnType<typeof parseNewsMlG2>[number] | undefined;
+    try {
+      parsed = parseNewsMlG2(await aaDocument(c, it.id))[0];
+    } catch (err) {
+      app.log.warn({ err, id: it.id }, 'news-aa-fetcher: doküman alınamadı (metadata ile devam)');
+    }
+
+    if (existing) {
+      if (parsed) {
+        await app.prisma.newsWireItem.update({
+          where: { id: existing.id },
+          data: { category: parsed.category, body: parsed.body, priority: parsed.priority },
+        });
+        added += 1;
+      }
+    } else {
+      await app.prisma.newsWireItem.create({
+        data: {
+          source: 'AA',
+          externalId: it.id,
+          category: parsed?.category ?? null,
+          priority: parsed?.priority ?? 'NORMAL',
+          headline: (parsed?.headline ?? it.title ?? '(başlıksız)').slice(0, 500),
+          body: parsed?.body ?? null,
+          receivedAt: parsed?.receivedAt ?? (it.date ? new Date(it.date) : new Date()),
+        },
+      });
+      added += 1;
+    }
+  }
+  if (added) app.log.info({ added, scanned: items.length }, 'news-aa-fetcher: yeni AA haberleri eklendi');
+}
+
+export function startNewsAaFetcher(app: FastifyInstance): void {
   let stopping = false;
   let running = false;
+  let lastFetchAt = 0;
 
   const tick = async (): Promise<void> => {
     if (stopping || running) return;
     running = true;
     try {
-      const items = await aaSearch(c);
-      let added = 0;
-      for (const it of items) {
-        if (stopping) break;
-        if (!it.id) continue;
-
-        const existing = await app.prisma.newsWireItem.findUnique({
-          where: { source_externalId: { source: 'AA', externalId: it.id } },
-          select: { id: true, body: true },
-        });
-        // Gövdeli (tam) item → atla. Gövdesiz (önceki doküman çekimi başarısız)
-        // VEYA yeni → dokümanı (yeniden) çek = self-heal.
-        if (existing?.body) continue;
-
-        let parsed: ReturnType<typeof parseNewsMlG2>[number] | undefined;
-        try {
-          const xml = await aaDocument(c, it.id);
-          parsed = parseNewsMlG2(xml)[0];
-        } catch (err) {
-          app.log.warn({ err, id: it.id }, 'news-aa-fetcher: doküman alınamadı (metadata ile devam)');
-        }
-
-        if (existing) {
-          // Gövdesiz mevcut item → parse başarılıysa kategori/gövde doldur (self-heal).
-          if (parsed) {
-            await app.prisma.newsWireItem.update({
-              where: { id: existing.id },
-              data: { category: parsed.category, body: parsed.body, priority: parsed.priority },
-            });
-            added += 1;
-          }
-        } else {
-          await app.prisma.newsWireItem.create({
-            data: {
-              source: 'AA',
-              externalId: it.id,
-              category: parsed?.category ?? null,
-              priority: parsed?.priority ?? 'NORMAL',
-              headline: (parsed?.headline ?? it.title ?? '(başlıksız)').slice(0, 500),
-              body: parsed?.body ?? null,
-              receivedAt: parsed?.receivedAt ?? (it.date ? new Date(it.date) : new Date()),
-            },
-          });
-          added += 1;
-        }
-      }
-      if (added) app.log.info({ added, scanned: items.length }, 'news-aa-fetcher: yeni AA haberleri eklendi');
+      const { cfg } = await getEffectiveAaConfig(app.prisma);
+      if (!cfg.enabled || !cfg.user || !cfg.pass) return; // kapalı / kimliksiz → atla
+      if (Date.now() - lastFetchAt < cfg.pollSec * 1_000) return; // henüz vakti gelmedi
+      lastFetchAt = Date.now();
+      await runFetch(app, cfg);
     } catch (err) {
       app.log.warn({ err }, 'news-aa-fetcher tick hatası');
     } finally {
@@ -160,12 +138,11 @@ export function startNewsAaFetcher(app: FastifyInstance): void {
     }
   };
 
-  // İlk çekimi boot'u bloklamamak için 12 sn sonraya al.
   const kickoff = setTimeout(() => { tick().catch(() => {}); }, 12_000);
   kickoff.unref?.();
   const timer = setInterval(() => {
     tick().catch((err) => app.log.error({ err }, 'news-aa-fetcher tick hatası'));
-  }, c.pollSec * 1_000);
+  }, BASE_TICK_MS);
   timer.unref?.();
 
   app.addHook('onClose', async () => {
@@ -174,5 +151,5 @@ export function startNewsAaFetcher(app: FastifyInstance): void {
     clearInterval(timer);
   });
 
-  app.log.info({ pollSec: c.pollSec, filterType: c.filterType, lang: c.filterLang, limit: c.limit }, 'news-aa-fetcher başladı');
+  app.log.info('news-aa-fetcher başladı (konfig DB+env, her tick okunur)');
 }

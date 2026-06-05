@@ -3,6 +3,7 @@ import { bulletinRoutes } from './news-bulletin.routes.js';
 import { storyRoutes } from './news-story.routes.js';
 import { mosRoutes } from './news-mos.routes.js';
 import { wireRoutes } from './news-wire.routes.js';
+import { newsSettingsRoutes } from './news-settings.routes.js';
 
 /**
  * Haber (NewsWorks NRCS) modülü route aggregatörü — /api/v1/news.
@@ -16,4 +17,5 @@ export async function newsRoutes(app: FastifyInstance) {
   await storyRoutes(app);
   await mosRoutes(app);
   await wireRoutes(app);
+  await newsSettingsRoutes(app);
 }
