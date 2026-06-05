@@ -13,6 +13,7 @@ import { PrompterComponent } from './prompter.component';
 import { WiresComponent } from './wires.component';
 import { StoryEditorDialogComponent, type StoryEditorData } from './story-editor-dialog.component';
 import { SendToAirDialogComponent } from './send-to-air-dialog.component';
+import { BulletinExportDialogComponent, type BulletinExportData } from './bulletin-export-dialog.component';
 
 function today(): string {
   const d = new Date();
@@ -82,7 +83,8 @@ function shiftDay(dateStr: string, delta: number): string {
           @if (view() === 'rundown') {
             <bp-rundown [bulletin]="bulletin()"
               (addStory)="addStory()" (editStory)="editStory($event)" (reorder)="reorder($event)"
-              (deleteStory)="deleteStory($event)" (sendStory)="sendStory($event)" (lockToggle)="lockToggle($event)" />
+              (deleteStory)="deleteStory($event)" (sendStory)="sendStory($event)" (lockToggle)="lockToggle($event)"
+              (exportBulletin)="exportBulletin()" />
           } @else {
             <bp-prompter [bulletin]="bulletin()" />
           }
@@ -224,6 +226,13 @@ export class NewsShellComponent implements OnInit {
     this.svc.listMosDevices().pipe(catchError(() => of([]))).subscribe((devices) => {
       this.dialog.open(SendToAirDialogComponent, { data: { story, devices }, autoFocus: false });
     });
+  }
+
+  exportBulletin(): void {
+    const b = this.bulletin();
+    if (!b) { this.err('Önce bir bülten seçin'); return; }
+    const data: BulletinExportData = { bulletinId: b.id, bulletinName: b.name };
+    this.dialog.open(BulletinExportDialogComponent, { data, autoFocus: false, width: '820px', maxWidth: '94vw' });
   }
 
   wireToStory(id: number): void {

@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import type { Observable } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import type {
+  BulletinExportResult,
   CreateBulletinDto,
   CreateStoryDto,
   NewsBulletin,
@@ -41,6 +42,10 @@ export class NewsService {
   }
   reorderStories(id: number, orderedStoryIds: number[]): Observable<NewsBulletin> {
     return this.api.put<NewsBulletin>(`/news/bulletins/${id}/order`, { orderedStoryIds });
+  }
+  /** EGS dışa-aktarım: dryRun=önizleme (out+xml içerik), değilse SMB'ye gönder. */
+  exportBulletin(id: number, dryRun: boolean): Observable<BulletinExportResult> {
+    return this.api.post<BulletinExportResult>(`/news/bulletins/${id}/export${dryRun ? '?dryRun=true' : ''}`, {});
   }
 
   // ---- Haber (story) ----

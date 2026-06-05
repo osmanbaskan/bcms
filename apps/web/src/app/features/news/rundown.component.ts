@@ -27,6 +27,9 @@ import { STORY_TYPE_LABELS, minuteToHHMM, secToClock } from './news.service';
           </div>
           <div class="rh-actions">
             <span class="rh-total">Toplam: {{ dur(total()) }} · {{ stories().length }} haber</span>
+            <button class="btn-send" type="button" [disabled]="!stories().length" (click)="exportBulletin.emit()" title="EGS olarak gönder (_out.WIN + .xml → SMB)">
+              <mat-icon class="material-icons-outlined">send</mat-icon> Bülteni Gönder
+            </button>
             <button class="btn-add" type="button" (click)="addStory.emit()">
               <mat-icon class="material-icons-outlined">add</mat-icon> Yeni Haber
             </button>
@@ -78,6 +81,11 @@ import { STORY_TYPE_LABELS, minuteToHHMM, secToClock } from './news.service';
     .btn-add { display: inline-flex; align-items: center; gap: 5px; background: rgba(124,58,237,0.18); color: var(--bp-fg-1);
       border: 1px solid var(--bp-purple-500); border-radius: 7px; padding: 6px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
     .btn-add mat-icon { font-size: 17px; width: 17px; height: 17px; }
+    .btn-send { display: inline-flex; align-items: center; gap: 5px; background: var(--bp-bg-0); color: var(--bp-fg-1);
+      border: 1px solid var(--bp-line-2); border-radius: 7px; padding: 6px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+    .btn-send:hover:not(:disabled) { border-color: var(--bp-purple-500); background: rgba(124,58,237,0.12); }
+    .btn-send:disabled { opacity: 0.45; cursor: default; }
+    .btn-send mat-icon { font-size: 17px; width: 17px; height: 17px; }
     .rd-grid { flex: 1 1 auto; overflow: auto; min-height: 0; }
     .rg-headrow, .rg-row { display: grid; grid-template-columns: 52px 78px 1fr 130px 70px 60px 116px; align-items: center; gap: 8px; padding: 0 14px; }
     .rg-headrow { height: 32px; position: sticky; top: 0; background: var(--bp-bg-1); border-bottom: 1px solid var(--bp-line-2); font-size: 11px; color: var(--bp-fg-3); text-transform: uppercase; z-index: 1; }
@@ -105,6 +113,7 @@ export class RundownComponent {
   @Input() bulletin: NewsBulletin | null = null;
   @Output() editStory = new EventEmitter<NewsStory>();
   @Output() addStory = new EventEmitter<void>();
+  @Output() exportBulletin = new EventEmitter<void>();
   @Output() reorder = new EventEmitter<number[]>();
   @Output() deleteStory = new EventEmitter<number>();
   @Output() sendStory = new EventEmitter<NewsStory>();

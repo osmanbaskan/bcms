@@ -10,6 +10,9 @@ import {
   readIfMatch,
   serializeBulletin,
 } from './news.service.js';
+import { buildBulletinExport, toPrompterBuffer, toVizrtBuffer, type EgsBulletin } from './egs-export.js';
+import { smbPutFile, type SmbCreds } from './egs-smb.js';
+import { getEffectiveEgsConfig } from './news-settings.js';
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD bekleniyor');
 const statusSchema = z.enum(['DRAFT', 'READY', 'ON_AIR', 'DONE', 'ARCHIVED']);
@@ -193,5 +196,84 @@ export async function bulletinRoutes(app: FastifyInstance) {
 
     const updated = await app.prisma.newsBulletin.findUniqueOrThrow({ where: { id }, include: BULLETIN_DETAIL_INCLUDE });
     return serializeBulletin(updated);
+  });
+
+  // POST /bulletins/:id/export?dryRun=true — EGS (out + xml) üret; dryRun değilse SMB'ye yaz.
+  app.post<{ Params: { id: string } }>('/bulletins/:id/export', {
+    preHandler: app.requireGroup(...PERMISSIONS.news.send),
+    schema: { tags: ['News'], summary: 'Bülteni EGS (_out.WIN + .xml) olarak dışa aktar / SMB gönder' },
+  }, async (request) => {
+    const id = z.coerce.number().int().positive().parse(request.params.id);
+    const dryRun = (request.query as { dryRun?: string }).dryRun === 'true';
+
+    const bulletin = await app.prisma.newsBulletin.findFirst({ where: { id, ...NOT_DELETED }, include: BULLETIN_DETAIL_INCLUDE });
+    if (!bulletin) throw httpError(404, 'Bülten bulunamadı');
+
+    const egsBulletin: EgsBulletin = {
+      name: bulletin.name,
+      bulletinCode: bulletin.bulletinCode,
+      onAirMinute: bulletin.onAirMinute,
+      stories: bulletin.stories.map((s) => ({
+        displayName: s.displayName,
+        title: s.title,
+        prompterText: s.prompterText,
+        lowerThirds: s.lowerThirds.map((lt) => ({ title: lt.title, line1: lt.line1, line2: lt.line2 })),
+      })),
+    };
+    const built = buildBulletinExport(egsBulletin);
+
+    if (dryRun) {
+      return {
+        dryRun: true,
+        base: built.base,
+        storyCount: built.storyCount,
+        sceneCount: built.sceneCount,
+        prompter: { filename: built.prompterFilename, text: built.prompterText },
+        vizrt: { filename: built.vizrtFilename, text: built.vizrtText },
+        written: [],
+      };
+    }
+
+    const cfg = await getEffectiveEgsConfig(app.prisma);
+    if (!cfg.enabled) throw httpError(409, 'EGS dışa-aktarım kapalı (Ayarlar > Haber)');
+    if (!cfg.prompterPath || !cfg.xmlPath) throw httpError(400, 'EGS export yolları tanımsız (Ayarlar > Haber)');
+
+    const creds: SmbCreds = { user: cfg.smbUser, password: cfg.smbPassword, domain: cfg.smbDomain };
+    const jobs = [
+      { kind: 'prompter' as const, url: cfg.prompterPath, filename: built.prompterFilename, data: toPrompterBuffer(built.prompterText) },
+      { kind: 'vizrt' as const, url: cfg.xmlPath, filename: built.vizrtFilename, data: toVizrtBuffer(built.vizrtText) },
+    ];
+    const written: Array<{ kind: string; ok: boolean; target: string; bytes?: number; error?: string }> = [];
+    for (const j of jobs) {
+      try {
+        const r = await smbPutFile({ url: j.url, filename: j.filename, data: j.data, creds });
+        written.push({ kind: j.kind, ok: true, target: `${j.url.replace(/\/$/, '')}/${r.remotePath.split('/').pop()}`, bytes: r.bytes });
+      } catch (err) {
+        written.push({ kind: j.kind, ok: false, target: j.url, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    const okCount = written.filter((w) => w.ok).length;
+    if (okCount > 0) {
+      await app.prisma.auditLog.create({
+        data: {
+          entityType: 'NewsBulletin', entityId: id, action: 'UPDATE',
+          user: currentUser(request), ipAddress: request.ip,
+          afterPayload: { egsExport: true, base: built.base, written: written.map((w) => ({ kind: w.kind, ok: w.ok, bytes: w.bytes ?? null })) },
+        },
+      });
+    }
+    if (okCount === 0) throw httpError(502, `SMB gönderimi başarısız: ${written.map((w) => w.error).filter(Boolean).join(' | ')}`);
+
+    return {
+      dryRun: false,
+      base: built.base,
+      storyCount: built.storyCount,
+      sceneCount: built.sceneCount,
+      prompter: { filename: built.prompterFilename },
+      vizrt: { filename: built.vizrtFilename },
+      partial: okCount < written.length,
+      written,
+    };
   });
 }

@@ -1,7 +1,8 @@
 # ── Base ──────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache libc6-compat openssl
+# samba-client: Haber/EGS bülten dışa-aktarımı SMB hedefe `smbclient` ile yazar.
+RUN apk add --no-cache libc6-compat openssl samba-client
 
 # ── Dependencies ──────────────────────────────────────────────────────────────
 FROM base AS deps

@@ -176,3 +176,23 @@ export interface SendToAirResult {
 export interface WireToStoryDto {
   newsGroup?: string | null;
 }
+
+/** EGS bülten dışa-aktarım (out + xml → SMB) sonucu / önizleme. */
+export interface BulletinExportWritten {
+  kind: 'prompter' | 'vizrt';
+  ok: boolean;
+  target: string;
+  bytes?: number;
+  error?: string;
+}
+export interface BulletinExportResult {
+  dryRun: boolean;
+  base: string;
+  storyCount: number;
+  sceneCount: number;
+  /** dryRun=true ise text dolu; gönderimde yalnız filename. */
+  prompter: { filename: string; text?: string };
+  vizrt: { filename: string; text?: string };
+  partial?: boolean;
+  written: BulletinExportWritten[];
+}
