@@ -115,6 +115,25 @@ app-studio-plan-toolbar {
   position: relative;
 }
 
+// 2026-06-06: Tablo geniş/uzun, sağa-sola ve yukarı-aşağı kaydırma sık → global
+// 10px çubuk ince kalıyordu. Plan scroll konteynerlerinde (normal + fullscreen)
+// HEM yatay (height) HEM dikey (width) kaydırma çubuğu 20px. dark+light uyumlu.
+.plan-shell,
+.plan-shell-scroll {
+  scrollbar-width: auto; // Firefox: 'thin' değil, normal genişlik
+  scrollbar-color: var(--bp-bg-4) var(--bp-bg-1);
+
+  &::-webkit-scrollbar { width: 20px; height: 20px; }
+  &::-webkit-scrollbar-track { background: var(--bp-bg-1); }
+  &::-webkit-scrollbar-thumb {
+    background: var(--bp-bg-4);
+    border-radius: 10px;
+    border: 4px solid var(--bp-bg-1); // track ile arada boşluk → daha tutulur görünüm
+  }
+  &::-webkit-scrollbar-thumb:hover { background: var(--bp-purple-300); }
+  &::-webkit-scrollbar-corner { background: var(--bp-bg-1); }
+}
+
 @media print {
   .plan-shell {
     background: #fff;
