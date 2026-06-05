@@ -35,6 +35,10 @@ import { optaSyncRoutes } from './modules/opta/opta.sync.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
 import { broadcastTypeRoutes } from './modules/broadcast-types/broadcast-type.routes.js';
 import { studioPlanRoutes } from './modules/studio-plans/studio-plan.routes.js';
+import { newsRoutes } from './modules/news/news.routes.js';
+import { startNewsMosSender } from './modules/news/news-mos-sender.service.js';
+import { startNewsWireFetcher } from './modules/news/news-wire-fetcher.service.js';
+import { startNewsAaFetcher } from './modules/news/news-aa-fetcher.service.js';
 import { weeklyShiftRoutes } from './modules/weekly-shifts/weekly-shift.routes.js';
 import { startNotificationConsumer } from './modules/notifications/notification.consumer.js';
 import { startIngestWorker } from './modules/ingest/ingest.worker.js';
@@ -74,6 +78,9 @@ const BACKGROUND_SERVICES = [
   'search-worker',
   'restore-worker',
   'transfer-worker',
+  'news-mos-sender',
+  'news-wire-fetcher',
+  'news-aa-fetcher',
 ] as const;
 
 type BackgroundService = (typeof BACKGROUND_SERVICES)[number];
@@ -169,6 +176,11 @@ async function startBackgroundServices(app: FastifyInstance): Promise<void> {
   await run('search-worker',   () => { startSearchWorker(app); });
   await run('restore-worker',  () => { startRestoreWorker(app); });
   await run('transfer-worker', () => { startTransferWorker(app); });
+  // Haber (NewsWorks NRCS, 2026-06-05): KJ/SPOT MOS/Vizrt gönderici + ajans RSS
+  // çekici. Yalnız worker container'da (BCMS_BACKGROUND_SERVICES) çalışır.
+  await run('news-mos-sender',   () => { startNewsMosSender(app); });
+  await run('news-wire-fetcher', () => { startNewsWireFetcher(app); });
+  await run('news-aa-fetcher',   () => { startNewsAaFetcher(app); });
 }
 
 function errorResponse(error: Error & { statusCode?: number; code?: string }) {
@@ -462,6 +474,7 @@ export async function buildApp() {
   await app.register(usersRoutes,          { prefix: '/api/v1/users' });
   await app.register(broadcastTypeRoutes,  { prefix: '/api/v1/broadcast-types' });
   await app.register(studioPlanRoutes,     { prefix: '/api/v1/studio-plans' });
+  await app.register(newsRoutes,           { prefix: '/api/v1/news' });
   await app.register(weeklyShiftRoutes,    { prefix: '/api/v1/weekly-shifts' });
   await app.register(provysRoutes,         { prefix: '/api/v1/provys' });
   await app.register(asrunRoutes,          { prefix: '/api/v1/asrun' });

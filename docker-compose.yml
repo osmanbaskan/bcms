@@ -286,7 +286,18 @@ services:
       PRISMA_POOL_TIMEOUT:            ${PRISMA_POOL_TIMEOUT:-5}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       NODE_ENV: production
-      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller,provys-watcher,asrun-watcher,ssdb-resolver,search-worker,restore-worker,transfer-worker
+      BCMS_BACKGROUND_SERVICES: notifications,ingest-worker,ingest-watcher,audit-retention,audit-partition,outbox-poller,provys-watcher,asrun-watcher,ssdb-resolver,search-worker,restore-worker,transfer-worker,news-mos-sender,news-wire-fetcher,news-aa-fetcher
+      # Haber > Ajans: AA (Anadolu Ajansı) Media API doğrudan çekim (IOSTEK baypas).
+      # Kimlikler .env'den; AA_API_USER/PASS yoksa news-aa-fetcher kendini kapatır.
+      AA_API_BASE:            ${AA_API_BASE:-https://api.aa.com.tr}
+      AA_API_USER:            ${AA_API_USER:-}
+      AA_API_PASS:            ${AA_API_PASS:-}
+      AA_API_POLL_SECONDS:    ${AA_API_POLL_SECONDS:-300}
+      AA_API_FILTER_TYPE:     ${AA_API_FILTER_TYPE:-1}
+      AA_API_FILTER_LANGUAGE: ${AA_API_FILTER_LANGUAGE:-1}
+      AA_API_FILTER_CATEGORY: ${AA_API_FILTER_CATEGORY:-}
+      AA_API_SEARCH_LIMIT:    ${AA_API_SEARCH_LIMIT:-30}
+      AA_API_DOC_FORMAT:      ${AA_API_DOC_FORMAT:-newsml29}
       OUTBOX_POLLER_ENABLED: ${OUTBOX_POLLER_ENABLED:-false}
       OUTBOX_POLLER_DRY_RUN: ${OUTBOX_POLLER_DRY_RUN:-false}
       # PR-C2 cut-over flag: true → poller authoritative (shadow=pending,
