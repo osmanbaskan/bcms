@@ -602,6 +602,9 @@ export class AppComponent implements OnInit, OnDestroy {
         { label: 'Canlı Yayın Plan',  icon: 'play_circle',         route: '/schedules',          groups: [] },
         { label: 'Yayın Planlama',    icon: 'event',               route: '/yayin-planlama',     groups: [] },
         { label: 'Stüdyo Planı',      icon: 'view_module',         route: '/studio-plan',        groups: [] },
+        // Haber (NewsWorks NRCS, 2026-06-05): EGS NewsWorks 2000 yerine native
+        // newsroom. Yalnız Haber grubu + Admin (route guard ile eş).
+        { label: 'Haber',             icon: 'feed',                route: '/news',               groups: [GROUP.Admin, GROUP.Haber] },
         { label: 'Ingest',            icon: 'cloud_upload',        route: '/ingest',             groups: [GROUP.Admin, GROUP.Ingest] },
         // 2026-05-25: Provys tüm Keycloak gruplarına açıldı (PERMISSIONS.provys.read
         // ile eş; PATCH userNote da read ile korunduğu için aynı kapsam not yazımı

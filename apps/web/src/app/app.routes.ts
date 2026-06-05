@@ -49,6 +49,16 @@ export const routes: Routes = [
     data: { groups: [] },
   },
   {
+    /** Haber (NewsWorks NRCS, 2026-06-05): EGS NewsWorks 2000 yerine native
+     *  newsroom. Yalnız Haber grubu + Admin auto-bypass. Alt görünümler
+     *  (rundown/editör/prompter/ajans) shell içinde sekme/route ile. */
+    path: 'news',
+    loadComponent: () =>
+      import('./features/news/news-shell.component').then((m) => m.NewsShellComponent),
+    canActivate: [AuthGuard],
+    data: { groups: [GROUP.Admin, GROUP.Haber] },
+  },
+  {
     /** 2026-05-25: Haftalık Vardiya UI nav ile eş — Admin+SystemEng. Backend
      *  PERMISSIONS.weeklyShifts.* + service `canEditGroup` grup-içi döngü
      *  korundu; bu kısıtlama yalnız route guard. */
