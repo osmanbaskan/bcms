@@ -328,6 +328,9 @@ function todayIstanbulMidnight(): Date {
     .ch-edit .ch-select { width: 100%; }
     .ch-edit .ch-select ::ng-deep .mat-mdc-form-field-infix { padding: 4px 0; min-height: 28px; }
     .ch-edit .ch-spinner { position: absolute; top: 2px; right: 2px; }
+    /* Zebra kuralı global styles.scss'te (.yp-table mat-mdc-row) — component
+       stilleri adoptedStyleSheets ile enjekte edildiğinden Material satırlarına
+       uygulanmıyordu; global düz stylesheet güvenilir. */
 
   `],
 })

@@ -69,6 +69,15 @@ app-root {
 ::-webkit-scrollbar-thumb { background: var(--bp-bg-3); border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--bp-bg-4); }
 
+// Yayın Planlama listesi — zebra. Global (component dışı): Angular 21 component
+// stilleri adoptedStyleSheets + Material satır re-stamp nedeniyle .yp-table
+// mat-mdc-row'a uygulanmıyordu. --bp-bg-3 tokens.scss'te "zebra-odd" rengi
+// (dark #383a42 / light #ddd3f0), tema-duyarlı. base satır = --bp-bg-2.
+// !important ŞART: Material'in satır arka plan kuralı (≥ bu spesifiklik) aksi
+// halde eziyor — runtime enjeksiyon testi !important'sız tutmadığını gösterdi.
+.yp-table tr.mat-mdc-row:nth-child(odd) { background: var(--bp-bg-3) !important; }
+.yp-table tr.mat-mdc-row:hover { background: var(--bp-bg-4) !important; }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Status badge — KORUMA: schedule list/booking için aynı kalıyor (renkler dark theme'e adapte)
 // ─────────────────────────────────────────────────────────────────────────────
