@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
@@ -71,7 +71,10 @@ function shiftDay(dateStr: string, delta: number): string {
                   <span class="pi-type">{{ typeLabel(s.storyType) }}</span>
                   <span class="pi-title" (dblclick)="editStory(s)">{{ s.title }}</span>
                   <span class="pi-dur">{{ dur(s.clipDurationSec) }}</span>
-                  <mat-icon class="material-icons-outlined add" title="Bültene ekle" [class.dis]="!selectedId()" (click)="poolToBulletin(s)">south</mat-icon>
+                  <mat-icon class="material-icons-outlined add"
+                    [class.dis]="!selectedId() && !inBulletin(s)" [class.added]="inBulletin(s)"
+                    [title]="inBulletin(s) ? 'Bu haber bültende zaten var' : 'Bültene ekle (kopya — havuzda kalır)'"
+                    (click)="poolToBulletin(s)">{{ inBulletin(s) ? 'done' : 'south' }}</mat-icon>
                 </div>
               } @empty { <div class="pool-empty">Havuz boş.</div> }
             </div>
@@ -128,6 +131,7 @@ function shiftDay(dateStr: string, delta: number): string {
     .pi-dur { color: var(--bp-fg-3); font-variant-numeric: tabular-nums; }
     .add { font-size: 16px; width: 16px; height: 16px; color: var(--bp-purple-300); cursor: pointer; }
     .add.dis { color: var(--bp-fg-3); opacity: 0.4; cursor: default; }
+    .add.added { color: #34d399; cursor: default; }
     .pool-empty { padding: 14px; font-size: 12px; color: var(--bp-fg-3); text-align: center; }
     .pool-new { margin: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; background: var(--bp-bg-0); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2); border-radius: 7px; padding: 7px; cursor: pointer; font-size: 12px; }
     .pool-new mat-icon { font-size: 16px; width: 16px; height: 16px; }
@@ -147,6 +151,13 @@ export class NewsShellComponent implements OnInit {
   readonly wires = signal<NewsWireItem[]>([]);
 
   ngOnInit(): void { this.reloadAll(); }
+
+  /** Seçili bültende bulunan havuz-haberi kökenleri (sourceStoryId set'i). */
+  readonly bulletinSourceIds = computed(
+    () => new Set((this.bulletin()?.stories ?? []).map((st) => st.sourceStoryId).filter((x): x is number => x != null)),
+  );
+  /** Havuz haberi seçili bültende zaten var mı (kökenine göre). */
+  inBulletin(s: NewsStory): boolean { return this.bulletinSourceIds().has(s.id); }
 
   typeLabel(t: string): string { return STORY_TYPE_LABELS[t] ?? t; }
   dur(sec: number): string { return secToClock(sec); }
@@ -219,7 +230,12 @@ export class NewsShellComponent implements OnInit {
   }
   poolToBulletin(s: NewsStory): void {
     const id = this.selectedId(); if (!id) { this.err('Önce bir bülten seçin'); return; }
-    this.svc.moveStory(s.id, id).subscribe({ next: () => { this.refreshBulletin(); this.loadPool(); }, error: (e) => this.err(e?.error?.message ?? 'Taşınamadı') });
+    if (this.inBulletin(s)) return; // aynı haber bir bültene tek kez
+    // Kopya: havuz haberi yerinde kalır, başka bültenlerde de kullanılabilir.
+    this.svc.copyStoryToBulletin(s.id, id).subscribe({
+      next: () => { this.refreshBulletin(); this.ok('Haber bültene eklendi (havuzda kaldı)'); },
+      error: (e) => this.err(e?.error?.message ?? 'Eklenemedi'),
+    });
   }
 
   sendStory(story: NewsStory): void {

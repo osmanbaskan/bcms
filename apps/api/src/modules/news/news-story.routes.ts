@@ -33,6 +33,10 @@ const moveSchema = z.object({
   bulletinId: z.number().int().positive().nullable(), // null → Haber Havuzu
 });
 
+const copyToBulletinSchema = z.object({
+  bulletinId: z.number().int().positive(), // hedef bülten (havuz haberi kopyalanır)
+});
+
 const lowerThirdSchema = z.object({
   kind: z.enum(['KJ', 'SPOT']),
   orderIndex: z.number().int().min(0).max(500).optional(),
@@ -275,6 +279,66 @@ export async function storyRoutes(app: FastifyInstance) {
       where: { id }, data: { bulletinId, orderIndex, updatedBy: currentUser(request) }, include: STORY_DETAIL_INCLUDE,
     });
     return serializeStory(updated);
+  });
+
+  // POST /stories/:id/copy-to-bulletin — havuz haberini bültene KOPYALA.
+  // Kaynak (havuzdaki) haber yerinde kalır → aynı haber birden çok bültende
+  // kullanılabilir. KJ/SPOT'lar da kopyalanır; kopya kilitsiz ve bağımsızdır.
+  app.post<{ Params: { id: string } }>('/stories/:id/copy-to-bulletin', {
+    preHandler: app.requireGroup(...PERMISSIONS.news.write),
+    schema: { tags: ['News'], summary: 'Haberi bültene kopyala (kaynak havuzda kalır)' },
+  }, async (request, reply) => {
+    const id = z.coerce.number().int().positive().parse(request.params.id);
+    const { bulletinId } = copyToBulletinSchema.parse(request.body);
+
+    const source = await app.prisma.newsStory.findFirst({
+      where: { id, ...NOT_DELETED },
+      include: { lowerThirds: { orderBy: { orderIndex: 'asc' } } },
+    });
+    if (!source) throw httpError(404, 'Haber bulunamadı');
+    const bulletin = await app.prisma.newsBulletin.findFirst({ where: { id: bulletinId, ...NOT_DELETED }, select: { id: true } });
+    if (!bulletin) throw httpError(404, 'Hedef bülten bulunamadı');
+
+    // Köken: kopyanın kopyası da nihai havuz haberini gösterir.
+    const originId = source.sourceStoryId ?? source.id;
+    // Aynı haber bir bültene yalnız bir kez: zaten varsa 409.
+    const dup = await app.prisma.newsStory.findFirst({
+      where: { bulletinId, sourceStoryId: originId, ...NOT_DELETED }, select: { id: true },
+    });
+    if (dup) throw httpError(409, 'Bu haber bu bültende zaten var');
+
+    const user = currentUser(request);
+    const created = await app.prisma.$transaction(async (tx) => {
+      const last = await tx.newsStory.aggregate({ where: { bulletinId, ...NOT_DELETED }, _max: { orderIndex: true } });
+      const story = await tx.newsStory.create({
+        data: {
+          bulletinId,
+          orderIndex: (last._max.orderIndex ?? -1) + 1,
+          sourceStoryId: originId,
+          title: source.title,
+          displayName: source.displayName,
+          storyType: source.storyType,
+          clipDurationSec: source.clipDurationSec,
+          anchorName: source.anchorName,
+          description: source.description,
+          prompterText: source.prompterText,
+          newsGroup: source.newsGroup,
+          createdBy: user,
+          updatedBy: user,
+        },
+      });
+      if (source.lowerThirds.length > 0) {
+        await tx.newsLowerThird.createMany({
+          data: source.lowerThirds.map((lt, i) => ({
+            storyId: story.id, kind: lt.kind, orderIndex: lt.orderIndex ?? i,
+            title: lt.title, line1: lt.line1, line2: lt.line2,
+          })),
+        });
+      }
+      return tx.newsStory.findUniqueOrThrow({ where: { id: story.id }, include: STORY_DETAIL_INCLUDE });
+    });
+    reply.status(201);
+    return serializeStory(created);
   });
 
   // PUT /stories/:id/lower-thirds — KJ/SPOT listesini topluca değiştir.

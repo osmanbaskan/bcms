@@ -91,6 +91,7 @@ export function serializeStory(story: DbStory): NewsStory {
     description: story.description,
     prompterText: story.prompterText,
     newsGroup: story.newsGroup,
+    sourceStoryId: story.sourceStoryId,
     locked: story.locked,
     lockedBy: story.lockedBy,
     version: story.version,

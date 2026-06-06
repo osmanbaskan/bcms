@@ -49,6 +49,7 @@ export interface NewsStory {
   description: string | null;    // Açıklama
   prompterText: string | null;   // Prompter / spiker metni
   newsGroup: string | null;      // Haber Hattı Grubu
+  sourceStoryId: number | null;  // köken havuz haberi (kopya ise)
   locked: boolean;               // Haberi Koru
   lockedBy: string | null;
   version: number;

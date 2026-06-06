@@ -1768,6 +1768,8 @@ model NewsStory {
   description     String?          @db.Text // Açıklama
   prompterText    String?          @map("prompter_text") @db.Text // Prompter / spiker metni
   newsGroup       String?          @map("news_group") @db.VarChar(80)
+  // Köken havuz haberi (kopya ise). Aynı havuz haberi bir bültene 1 kez eklenir.
+  sourceStoryId   Int?             @map("source_story_id")
   locked          Boolean          @default(false) // Haberi Koru
   lockedBy        String?          @map("locked_by") @db.VarChar(100)
   version         Int              @default(1)
@@ -1781,6 +1783,7 @@ model NewsStory {
   mosJobs         NewsMosJob[]
 
   @@index([bulletinId, orderIndex])
+  @@index([bulletinId, sourceStoryId])
   @@index([newsGroup])
   @@map("news_stories")
 }

@@ -73,6 +73,10 @@ export class NewsService {
   moveStory(id: number, bulletinId: number | null): Observable<NewsStory> {
     return this.api.post<NewsStory>(`/news/stories/${id}/move`, { bulletinId });
   }
+  /** Havuz haberini bültene kopyala — kaynak havuzda kalır (çok bültende kullanılır). */
+  copyStoryToBulletin(id: number, bulletinId: number): Observable<NewsStory> {
+    return this.api.post<NewsStory>(`/news/stories/${id}/copy-to-bulletin`, { bulletinId });
+  }
   replaceLowerThirds(id: number, items: UpsertLowerThirdDto[]): Observable<NewsStory> {
     return this.api.put<NewsStory>(`/news/stories/${id}/lower-thirds`, { items });
   }
