@@ -565,6 +565,8 @@ class TrDateAdapter extends NativeDateAdapter {
     .planning-head { color: var(--bp-fg-3); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
     .planning-row { font-size: 0.86rem; }
     .planning-row:nth-child(odd) { background: rgba(255,255,255,0.025); }
+    /* Light tema: beyaz overlay görünmez kalıyordu → koyu overlay ile zebra. */
+    :host-context(html[data-theme="light"]) .planning-row:nth-child(odd) { background: rgba(0,0,0,0.045); }
     .source-pill { display: inline-flex; justify-content: center; padding: 4px 8px; border-radius: 999px; color: #04233d; background: #9bd3ff; font-size: 0.72rem; font-weight: 800; }
     .source-pill.studio { color: #2b1700; background: #ffd166; }
     .time-range { font-variant-numeric: tabular-nums; }
