@@ -64,12 +64,14 @@ interface LtRow { kind: NewsLowerThirdKind; title: string; line1: string; line2:
             <input class="in" [(ngModel)]="newsGroup" maxlength="80" placeholder="Haber Hattı Grubu" />
           </label>
         </div>
-        <label class="fl">Açıklama
-          <textarea class="in desc" [(ngModel)]="description" maxlength="20000" rows="2" placeholder="Kısa açıklama"></textarea>
-        </label>
       </div>
 
-      <!-- ANA: Prompter | KJ/SPOT yan yana, kalan yüksekliği doldurur -->
+      <!-- AÇIKLAMA: artan dialog yüksekliğini bu alan yutar (flex-grow) -->
+      <label class="fl se-desc">Açıklama
+        <textarea class="in desc" [(ngModel)]="description" maxlength="20000" placeholder="Kısa açıklama"></textarea>
+      </label>
+
+      <!-- ANA: Prompter | KJ/SPOT yan yana, sabit yükseklik (büyümez) -->
       <div class="se-main">
         <label class="fl col-prompter">Prompter / Spiker Metni
           <div class="with-btn fill">
@@ -119,17 +121,19 @@ interface LtRow { kind: NewsLowerThirdKind; title: string; line1: string; line2:
   `,
   styles: [`
     /* MDC mat-dialog-content varsayılan max-height:65vh cap'ini kaldır; dialog
-       yüksekliğini (75vh) tam doldursun, alt boşluk kalmasın. */
+       yüksekliğini (96vh) tam doldursun, alt boşluk kalmasın. */
     .se { display: flex; flex-direction: column; gap: 12px; height: 100%; max-height: none; min-height: 0; overflow: hidden; }
     .fl { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--bp-fg-3); }
     .se-top { display: flex; flex-direction: column; gap: 10px; flex: 0 0 auto; }
     .se-fields { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-    .se-main { display: flex; gap: 14px; flex: 1 1 auto; min-height: 200px; }
+    /* Açıklama büyüyen alan; prompter/KJ bloğu sabit (artan yükseklik açıklamaya gider). */
+    .se-desc { flex: 1 1 auto; min-height: 80px; }
+    .se-main { display: flex; gap: 14px; flex: 0 0 48vh; min-height: 240px; }
     .col-prompter { flex: 1 1 58%; min-height: 0; }
     .col-kj { flex: 1 1 42%; min-height: 0; }
     .in { background: var(--bp-bg-0); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 8px; font-size: 13px; width: 100%; }
     .in.ta { resize: none; font-family: inherit; line-height: 1.55; flex: 1 1 auto; min-height: 0; }
-    .in.desc { resize: vertical; font-family: inherit; line-height: 1.5; min-height: 48px; }
+    .in.desc { resize: none; font-family: inherit; line-height: 1.5; flex: 1 1 auto; min-height: 0; }
     .with-btn.fill { align-items: stretch; flex: 1 1 auto; min-height: 0; }
     .with-btn.fill .case { align-self: flex-start; }
     .in.num { width: 56px; }

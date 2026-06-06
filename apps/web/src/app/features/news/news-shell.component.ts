@@ -211,7 +211,7 @@ export class NewsShellComponent implements OnInit {
   private openEditor(data: StoryEditorData): void {
     this.dialog.open(StoryEditorDialogComponent, {
       data, autoFocus: false, restoreFocus: false,
-      width: '75vw', height: '75vh', maxWidth: '75vw', maxHeight: '90vh',
+      width: '75vw', height: '96vh', maxWidth: '75vw', maxHeight: '96vh',
     })
       .afterClosed().subscribe((saved?: NewsStory) => {
         if (!saved) return;
