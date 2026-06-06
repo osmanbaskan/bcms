@@ -1460,7 +1460,7 @@ model RestoreJob {
   searchJobId     Int?             @map("search_job_id")
   status          RestoreJobStatus @default(QUEUED)
   attemptCount    Int              @default(0) @map("attempt_count")
-  maxAttempts     Int              @default(3) @map("max_attempts")
+  maxAttempts     Int              @default(2) @map("max_attempts")
   /// Search kademe 1 SELECTED'ten kopyalanır. Worker NULL ise terminal FAILED.
   avidAssetId     String?          @map("avid_asset_id") @db.VarChar(120)
   avidAssetName   String?          @map("avid_asset_name")

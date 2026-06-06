@@ -65,7 +65,7 @@ export function loadRestoreWorkerConfig(env: NodeJS.ProcessEnv = process.env): R
     intervalMs:          parsePositiveIntEnv(env.RESTORE_WORKER_INTERVAL_MS, 5_000),
     maxPerTick:          parsePositiveIntEnv(env.RESTORE_MAX_PER_TICK, 20),
     concurrency:         parseConcurrencyEnv(env.RESTORE_CONCURRENCY, 3, RESTORE_ABSOLUTE_CONCURRENCY_MAX),
-    maxAttempts:         parsePositiveIntEnv(env.RESTORE_MAX_ATTEMPTS, 3),
+    maxAttempts:         parsePositiveIntEnv(env.RESTORE_MAX_ATTEMPTS, 2),
     staleRunningGraceMs: parsePositiveIntEnv(env.RESTORE_STALE_RUNNING_GRACE_MS, 60_000),
   };
 }
@@ -138,6 +138,15 @@ async function processOneJob(
   // RUNNING + avidJobId NULL + startedAt eski → claim crash recovery.
   if (job.status === 'RUNNING' && !job.avidJobId && job.startedAt
       && Date.now() - job.startedAt.getTime() > cfg.staleRunningGraceMs) {
+    // Cap: recover yolu attemptCount'u artırmaz ama re-queue→claim döngüsü
+    // attemptCount'u şişirir. maxAttempts'e ulaşıldıysa re-queue yerine terminal
+    // FAILED → "en fazla N deneme" garantisi (350'lere tırmanmaz).
+    if (job.attemptCount >= cfg.maxAttempts) {
+      await transitionToTerminal(app, job, 'FAILED', `restore maks. deneme (${cfg.maxAttempts}) aşıldı — avid job başlatılamadı`);
+      result.failed += 1;
+      app.log.warn({ jobId: job.id, dcCode: job.dcCode, attemptCount: job.attemptCount, maxAttempts: cfg.maxAttempts }, 'restore worker stale RUNNING → terminal (cap)');
+      return;
+    }
     const recovered = await recoverStaleRunning(app, job);
     if (recovered) {
       result.recovered += 1;
@@ -194,7 +203,10 @@ async function processOneJob(
       return;
     }
 
-    await setAvidJobId(app, claimed.id, claimed.version + 1, avidJobId);
+    // claimQueuedJob zaten version'ı artırıp güncel satırı döndürür → claimed.version
+    // güncel sürümdür. Burada +1 vermek updateMany'i 0 satıra düşürür (avidJobId hiç
+    // set edilmez → sonsuz recover/claim döngüsü). Doğrusu: claimed.version.
+    await setAvidJobId(app, claimed.id, claimed.version, avidJobId);
     return;
   }
 
