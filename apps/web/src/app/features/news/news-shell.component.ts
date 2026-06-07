@@ -106,13 +106,13 @@ function shiftDay(dateStr: string, delta: number): string {
     .nh-left .logo { color: var(--bp-purple-300); }
     .nh-left h1 { margin: 0; font-size: 18px; font-weight: 600; color: var(--bp-fg-1); }
     .date-nav { display: inline-flex; align-items: center; gap: 4px; }
-    .date { background: var(--bp-bg-0); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 6px 8px; font-size: 13px; }
-    .day-arw { display: inline-flex; align-items: center; justify-content: center; background: var(--bp-bg-0); color: var(--bp-fg-3); border: 1px solid var(--bp-line-2); border-radius: 6px; width: 30px; height: 30px; padding: 0; cursor: pointer; }
+    .date { background: var(--bp-bg-2); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+    .day-arw { display: inline-flex; align-items: center; justify-content: center; background: var(--bp-bg-2); color: var(--bp-fg-3); border: 1px solid var(--bp-line-2); border-radius: 6px; width: 30px; height: 30px; padding: 0; cursor: pointer; }
     .day-arw:hover { color: var(--bp-fg-1); border-color: var(--bp-purple-500); background: rgba(124,58,237,0.12); }
     .day-arw mat-icon { font-size: 20px; width: 20px; height: 20px; }
     .nh-views { display: inline-flex; gap: 6px; }
-    .nh-views button { display: inline-flex; align-items: center; gap: 5px; background: var(--bp-bg-0); color: var(--bp-fg-3); border: 1px solid var(--bp-line-2); border-radius: 7px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
-    .nh-views button.on { background: rgba(124,58,237,0.18); border-color: var(--bp-purple-500); color: var(--bp-fg-1); }
+    .nh-views button { display: inline-flex; align-items: center; gap: 5px; background: rgba(124,58,237,0.18); color: var(--bp-fg-1); border: 1px solid var(--bp-purple-500); border-radius: 7px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+    .nh-views button.on { background: var(--bp-purple-500); border-color: var(--bp-purple-500); color: #fff; }
     .nh-views mat-icon { font-size: 18px; width: 18px; height: 18px; }
     .ns-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 300px 1fr 320px; }
     .pane { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
@@ -133,7 +133,7 @@ function shiftDay(dateStr: string, delta: number): string {
     .add.dis { color: var(--bp-fg-3); opacity: 0.4; cursor: default; }
     .add.added { color: #34d399; cursor: default; }
     .pool-empty { padding: 14px; font-size: 12px; color: var(--bp-fg-3); text-align: center; }
-    .pool-new { margin: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; background: var(--bp-bg-0); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2); border-radius: 7px; padding: 7px; cursor: pointer; font-size: 12px; }
+    .pool-new { margin: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; background: var(--bp-purple-500); color: #fff; border: 1px solid var(--bp-purple-500); border-radius: 7px; padding: 7px; cursor: pointer; font-size: 12px; }
     .pool-new mat-icon { font-size: 16px; width: 16px; height: 16px; }
   `],
 })

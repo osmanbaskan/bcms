@@ -59,16 +59,16 @@ import { BULLETIN_STATUS_LABELS, hhmmToMinute, minuteToHHMM, secToClock } from '
     .bl { display: flex; flex-direction: column; height: 100%; min-height: 0; }
     .bl-new { padding: 8px; border-bottom: 1px solid var(--bp-line-2); }
     .btn-new { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-      background: rgba(124,58,237,0.18); color: var(--bp-fg-1); border: 1px solid var(--bp-purple-500);
+      background: var(--bp-purple-500); color: #fff; border: 1px solid var(--bp-purple-500);
       border-radius: 7px; padding: 8px; cursor: pointer; font-size: 13px; }
     .btn-new mat-icon { font-size: 18px; width: 18px; height: 18px; }
     .new-form { display: flex; flex-direction: column; gap: 6px; }
     .new-form .row { display: flex; gap: 6px; }
-    .in { background: var(--bp-bg-0); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2);
+    .in { background: var(--bp-bg-2); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2);
       border-radius: 6px; padding: 7px 8px; font-size: 13px; width: 100%; }
     .in.code { flex: 1 1 auto; } .in.time { width: 110px; }
     .btn-ok { flex: 1; background: var(--bp-purple-500); color: #fff; border: none; border-radius: 6px; padding: 7px; cursor: pointer; }
-    .btn-cancel { flex: 1; background: transparent; color: var(--bp-fg-3); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 7px; cursor: pointer; }
+    .btn-cancel { flex: 1; background: var(--bp-bg-2); color: var(--bp-fg-3); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 7px; cursor: pointer; }
     .bl-items { flex: 1 1 auto; overflow: auto; min-height: 0; }
     .bl-item { width: 100%; text-align: left; background: transparent; border: none; border-bottom: 1px solid var(--bp-line-2);
       padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 5px; color: var(--bp-fg-1); }

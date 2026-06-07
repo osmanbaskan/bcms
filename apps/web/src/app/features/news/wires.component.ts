@@ -93,10 +93,10 @@ import type { NewsWireItem } from '@bcms/shared';
     .wh-tools .t:hover { color: var(--bp-fg-1); }
     .wr-new { padding: 8px; border-bottom: 1px solid var(--bp-line-2); display: flex; flex-direction: column; gap: 6px; }
     .wr-new .row { display: flex; gap: 6px; }
-    .in { background: var(--bp-bg-0); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 6px 8px; font-size: 12px; width: 100%; }
+    .in { background: var(--bp-bg-2); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 6px 8px; font-size: 12px; width: 100%; }
     .in.src { flex: 2; } .in.pri { flex: 1; } .in.body { resize: vertical; font-family: inherit; }
     .btn-ok { flex: 1; background: var(--bp-purple-500); color: #fff; border: none; border-radius: 6px; padding: 6px; cursor: pointer; }
-    .btn-cancel { flex: 1; background: transparent; color: var(--bp-fg-3); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 6px; cursor: pointer; }
+    .btn-cancel { flex: 1; background: var(--bp-bg-2); color: var(--bp-fg-3); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 6px; cursor: pointer; }
     /* 5/sayfa: liste içeriğe göre yükselsin (flex:1 ile gerilip altta boşluk
        bırakmasın); taşarsa kaydırır. Pager haberlerin hemen altına oturur. */
     .wr-items { flex: 0 1 auto; overflow: auto; min-height: 0; }
@@ -110,20 +110,20 @@ import type { NewsWireItem } from '@bcms/shared';
     .wi-head { font-size: 13px; font-weight: 500; color: var(--bp-fg-1); }
     .wi-body { font-size: 12px; color: var(--bp-fg-3); margin-top: 3px; max-height: 48px; overflow: hidden; }
     .wi-act { margin-top: 6px; }
-    .btn-conv { display: inline-flex; align-items: center; gap: 4px; background: var(--bp-bg-0); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
+    .btn-conv { display: inline-flex; align-items: center; gap: 4px; background: var(--bp-bg-2); color: var(--bp-fg-1); border: 1px solid var(--bp-line-2); border-radius: 6px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
     .btn-conv:hover { border-color: var(--bp-purple-500); }
     .btn-conv mat-icon, .usedtag mat-icon { font-size: 15px; width: 15px; height: 15px; }
     .usedtag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #34d399; }
     .empty { padding: 18px; color: var(--bp-fg-3); font-size: 12px; text-align: center; }
     .wr-filter { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 10px; border-bottom: 1px solid var(--bp-line-2); }
-    .chip-f { display: inline-flex; align-items: center; gap: 5px; background: var(--bp-bg-0); color: var(--bp-fg-3);
+    .chip-f { display: inline-flex; align-items: center; gap: 5px; background: var(--bp-bg-2); color: var(--bp-fg-3);
       border: 1px solid var(--bp-line-2); border-radius: 14px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
     .chip-f:hover { color: var(--bp-fg-1); }
     .chip-f.on { background: rgba(124,58,237,0.18); border-color: var(--bp-purple-500); color: var(--bp-fg-1); }
-    .chip-f .cn { font-size: 10px; background: var(--bp-bg-2); border-radius: 8px; padding: 0 5px; color: var(--bp-fg-3); }
+    .chip-f .cn { font-size: 10px; background: var(--bp-bg-3); border-radius: 8px; padding: 0 5px; color: var(--bp-fg-3); }
     .chip-f.on .cn { background: var(--bp-purple-500); color: #fff; }
     .wr-pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 7px; border-top: 1px solid var(--bp-line-2); }
-    .wr-pager button { background: var(--bp-bg-0); border: 1px solid var(--bp-line-2); color: var(--bp-fg-1); border-radius: 6px; width: 28px; height: 28px; display: grid; place-items: center; cursor: pointer; }
+    .wr-pager button { background: var(--bp-bg-2); border: 1px solid var(--bp-line-2); color: var(--bp-fg-1); border-radius: 6px; width: 28px; height: 28px; display: grid; place-items: center; cursor: pointer; }
     .wr-pager button:disabled { opacity: 0.35; cursor: default; }
     .wr-pager button mat-icon { font-size: 18px; width: 18px; height: 18px; }
     .wr-pager .pg { font-size: 12px; color: var(--bp-fg-3); font-variant-numeric: tabular-nums; min-width: 44px; text-align: center; }
