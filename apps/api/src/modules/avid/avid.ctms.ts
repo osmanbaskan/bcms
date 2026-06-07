@@ -195,37 +195,198 @@ export async function postSubmitStpJob(
 }
 
 // ============================================================================
-// Token yöneticisi — env'den alınan avidAccessToken'ı /extension ile canlı tutar.
+// ROPC login — kullanıcı/parola ile programatik avidAccessToken ÜRETİMİ.
+// Saha (172.26.33.56): OAuth2/AD, identity-provider "ropc-default". Web app
+// init.js'ten + canlı doğrulandı (2026-06-08):
+//   POST {cloudux}/auth/sso/login/oauth2/ad
+//   Authorization: Basic <clientBasic>          (web app'in gömülü public client'ı)
+//   Content-Type: application/x-www-form-urlencoded
+//   username&password&grant_type=password&no_refresh_token=true&scope=openid
+//   → 200 Set-Cookie: avidAccessToken=... (TTL ~15dk; /extension ile uzatılır)
+// ============================================================================
+
+export interface RopcLoginResult {
+  token: string;
+  /** iamToken.expiresAt epoch-ms; okunamadıysa null. */
+  expiresAtMs: number | null;
+}
+
+/** ROPC login endpoint'i (identity-provider "ropc-default" / "ropc-ad"). */
+export function ropcLoginEndpoint(clouduxUrl: string): string {
+  return `${clouduxUrl.replace(/\/+$/, '')}/auth/sso/login/oauth2/ad`;
+}
+
+/** Response Set-Cookie başlık(lar)ından avidAccessToken değerini çıkar. */
+function extractCookieToken(res: Response): string | null {
+  const getter = (res.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie;
+  const cookies = typeof getter === 'function'
+    ? getter.call(res.headers)
+    : (res.headers.get('set-cookie') ? [res.headers.get('set-cookie') as string] : []);
+  for (const c of cookies) {
+    const m = c.match(/avidAccessToken=([^;]+)/);
+    if (m && m[1]) return m[1];
+  }
+  return null;
+}
+
+/** Yanıt JSON'undan iamToken.expiresAt → epoch-ms (yoksa null). */
+function parseExpiryMs(j: unknown): number | null {
+  if (!j || typeof j !== 'object') return null;
+  const iam = (j as { iamToken?: { expiresAt?: string } }).iamToken;
+  if (iam && typeof iam.expiresAt === 'string') {
+    const ms = Date.parse(iam.expiresAt);
+    return Number.isFinite(ms) ? ms : null;
+  }
+  return null;
+}
+
+/** GET /auth/tokens/current → iamToken.expiresAt oku (token doğrulama da yapar). */
+async function fetchTokenExpiry(cfg: AvidConfig, token: string): Promise<number | null> {
+  try {
+    const res = await fetchInsecure(cfg, tokenCurrentEndpoint(cfg.clouduxUrl), {
+      method: 'GET',
+      headers: { Accept: 'application/json', Cookie: `avidAccessToken=${token}` },
+    });
+    if (!res.ok) return null;
+    return parseExpiryMs(await res.json());
+  } catch { return null; }
+}
+
+/**
+ * ROPC login → taze avidAccessToken üret. Başarıda {token, expiresAtMs}; 401/403
+ * veya token yoksa AvidCtmsError(AUTH). Parola/token log/hata mesajına SIZMAZ.
+ */
+export async function postRopcLogin(
+  cfg: AvidConfig,
+  opts: { username: string; password: string; clientBasic: string },
+): Promise<RopcLoginResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), cfg.requestTimeoutMs);
+  const form = new URLSearchParams({
+    username: opts.username,
+    password: opts.password,
+    grant_type: 'password',
+    no_refresh_token: 'true',
+    scope: 'openid',
+  });
+  let res: Response;
+  try {
+    res = await fetchInsecure(cfg, ropcLoginEndpoint(cfg.clouduxUrl), {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+        Authorization: `Basic ${opts.clientBasic}`,
+        Origin: cfg.clouduxUrl,
+      },
+      body: form.toString(),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === 'AbortError';
+    throw new AvidCtmsError(
+      isAbort ? 'TIMEOUT' : 'HTTP_ERROR',
+      isAbort
+        ? `CTMS login timed out after ${cfg.requestTimeoutMs}ms`
+        : `CTMS login request failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    throw new AvidCtmsError('AUTH', `CTMS login reddedildi (HTTP ${res.status}) — kullanıcı/parola veya client kimliği geçersiz`);
+  }
+
+  let token = extractCookieToken(res);
+  let expiresAtMs: number | null = null;
+  const text = await res.text().catch(() => '');
+  if (text) {
+    try {
+      const j = JSON.parse(text) as { accessToken?: string };
+      if (!token && typeof j.accessToken === 'string') token = j.accessToken;
+      expiresAtMs = parseExpiryMs(j);
+    } catch { /* gövde JSON değil — token cookie'den gelmiş olabilir */ }
+  }
+  if (!token) {
+    throw new AvidCtmsError('AUTH', `CTMS login yanıtında avidAccessToken yok (HTTP ${res.status})`);
+  }
+  if (expiresAtMs == null) {
+    expiresAtMs = await fetchTokenExpiry(cfg, token);
+  }
+  return { token, expiresAtMs };
+}
+
+// ============================================================================
+// Token yöneticisi — ROPC login ile token ÜRETİR + /extension ile canlı tutar +
+// süresi dolunca/401'de YENİDEN login (self-healing). Elle token yapıştırma yok.
 // ============================================================================
 
 export interface CtmsTokenManager {
-  /** Geçerli (canlı tutulan) token. */
+  /** Geçerli token (senkron, mevcut değer). */
   getToken(): string;
-  /** Periyodik uzatmayı başlat (idempotent). */
+  /** Geçerli+süresi olan token döndür; yoksa/expiring ise ROPC login eder. */
+  ensureToken(): Promise<string>;
+  /** Token'ı zorla yenile (401 sonrası): yeniden ROPC login. */
+  forceRelogin(): Promise<string>;
+  /** Periyodik uzatma/yenileme başlat (idempotent). */
   start(): void;
-  /** Uzatma timer'ını durdur (shutdown / test). */
+  /** Timer'ı durdur (shutdown / test). */
   stop(): void;
   /** Tek seferlik uzatma denemesi (test/manuel). */
   extendOnce(): Promise<boolean>;
 }
 
 /**
- * Token yöneticisi. Başlangıç token'ı `cfg.clouduxToken`'dan gelir; arka planda
- * `intervalMs` (default ~10 dk; HAR: expiresIn ~899s ≈ 15 dk) ile
- * `/auth/tokens/current/extension` POST ederek süreyi uzatır. Token DEĞERİ
- * değişmez (aynı opaque token, süresi uzar) — Cloud UX davranışı.
+ * Token yöneticisi (self-healing). Token ROPC login ile ÜRETİLİR
+ * (`postRopcLogin`, kullanıcı/parola → avidAccessToken). Arka planda `intervalMs`
+ * (default 10 dk; TTL ~15 dk) ile `/extension` POST eder; extension başarısız
+ * olur/token ölürse YENİDEN login eder. `cfg.clouduxToken` set ise başlangıçta
+ * seed olur (legacy/manuel); yine de 401'de re-login devreye girer.
  *
- * ⚠️ V1 sınırı: süreç yeniden başlar/token tamamen ölürse elle yenileme gerekir
- * (env güncelle). Prod için service account + OAuth2 login sonraki faz.
+ * Login creds: `cfg.clouduxUser/clouduxPassword` (yoksa IPWS `user/password`) +
+ * `cfg.clouduxClientBasic` (gömülü public OAuth client). Süreç restart / boşta
+ * kalma sonrası insan müdahalesi GEREKMEZ.
  */
 export function createCtmsTokenManager(
   cfg: AvidConfig,
   opts: { intervalMs?: number; logger?: { info: (o: unknown, m?: string) => void; warn: (o: unknown, m?: string) => void } } = {},
 ): CtmsTokenManager {
   let token = cfg.clouduxToken ?? '';
+  let expiresAtMs: number | null = null; // login/extend'den gelir; seed token için bilinmez
   const intervalMs = opts.intervalMs ?? 10 * 60 * 1000; // 10 dk
+  const skewMs = 60_000; // expiry'den 1 dk önce yenile
   const log = opts.logger;
   let timer: NodeJS.Timeout | null = null;
+  let loginInFlight: Promise<string> | null = null;
+
+  const canLogin = (): boolean =>
+    !!cfg.clouduxClientBasic && !!(cfg.clouduxUser ?? cfg.user) && !!(cfg.clouduxPassword ?? cfg.password);
+
+  async function doLogin(): Promise<string> {
+    if (!canLogin()) {
+      if (token) return token; // login yapılamıyor ama seed token var
+      throw new AvidCtmsError('AUTH', 'CTMS login config eksik (client Basic / kullanıcı / parola) ve token yok');
+    }
+    const r = await postRopcLogin(cfg, {
+      username: (cfg.clouduxUser ?? cfg.user) as string,
+      password: (cfg.clouduxPassword ?? cfg.password) as string,
+      clientBasic: cfg.clouduxClientBasic as string,
+    });
+    token = r.token;
+    expiresAtMs = r.expiresAtMs;
+    log?.info({ expiresAtMs }, 'CTMS ROPC login OK (token üretildi)');
+    return token;
+  }
+
+  /** Eşzamanlı login stampede'ini önle (tek uçuş). */
+  function loginSingleFlight(): Promise<string> {
+    if (!loginInFlight) {
+      loginInFlight = doLogin().finally(() => { loginInFlight = null; });
+    }
+    return loginInFlight;
+  }
 
   async function extendOnce(): Promise<boolean> {
     if (!token) return false;
@@ -246,10 +407,12 @@ export function createCtmsTokenManager(
         log?.warn({ status: res.status }, 'CTMS token extension failed');
         return false;
       }
-      // Yanıtta accessToken aynı kalır; yine de varsa güncelle (rotate ihtimaline karşı).
+      // accessToken rotate olabilir + expiresAt güncellenir.
       try {
-        const j = (await res.json()) as { accessToken?: string };
+        const j = (await res.json()) as { accessToken?: string; iamToken?: { expiresAt?: string } };
         if (typeof j.accessToken === 'string' && j.accessToken) token = j.accessToken;
+        const ms = parseExpiryMs(j);
+        if (ms != null) expiresAtMs = ms;
       } catch { /* gövde okunamadı — token aynı kalır */ }
       return true;
     } catch (err) {
@@ -263,15 +426,35 @@ export function createCtmsTokenManager(
 
   return {
     getToken: () => token,
+
+    async ensureToken(): Promise<string> {
+      const fresh = !!token && (expiresAtMs == null || Date.now() < expiresAtMs - skewMs);
+      if (fresh) return token;
+      return loginSingleFlight();
+    },
+
+    async forceRelogin(): Promise<string> {
+      token = '';
+      expiresAtMs = null;
+      return loginSingleFlight();
+    },
+
     start() {
       if (timer) return;
-      timer = setInterval(() => { void extendOnce(); }, intervalMs);
+      timer = setInterval(() => {
+        void (async () => {
+          const ok = await extendOnce();
+          if (!ok && canLogin()) { await loginSingleFlight().catch(() => {}); }
+        })();
+      }, intervalMs);
       timer.unref?.();
-      log?.info({ intervalMs }, 'CTMS token manager started');
+      log?.info({ intervalMs }, 'CTMS token manager started (login + extend self-heal)');
     },
+
     stop() {
       if (timer) { clearInterval(timer); timer = null; }
     },
+
     extendOnce,
   };
 }

@@ -23,7 +23,7 @@ import {
 } from './avid.config.js';
 import { readAvidSettings } from './avid.settings.js';
 import { postSoap, AVID_NS, escapeXml } from './avid.soap.js';
-import { postSubmitStpJob, createCtmsTokenManager, type CtmsTokenManager } from './avid.ctms.js';
+import { postSubmitStpJob, createCtmsTokenManager, AvidCtmsError, type CtmsTokenManager } from './avid.ctms.js';
 
 export type AvidJobPhaseStatus = 'pending' | 'running' | 'done' | 'failed';
 
@@ -620,15 +620,28 @@ async function ctmsRequestTransfer(
   tokenManager: CtmsTokenManager,
   input: AvidRestoreTransferInput,
 ): Promise<{ avidJobId: string }> {
-  const result = await postSubmitStpJob(cfg, tokenManager.getToken(), {
+  const stpInput = {
     realm: cfg.clouduxRealm,
     mobId: input.assetId,
     processName: input.assetName ?? input.dcCode,
     videoId: input.dcCode,
     device: cfg.stpDevice,
     profile: cfg.stpProfile,
-  });
-  return { avidJobId: result.jobId };
+  };
+  // 1) Geçerli token al (yoksa/expiring ise ROPC login eder).
+  // 2) submitSTPJob 401/AUTH dönerse → token ölmüş → forceRelogin + tek retry.
+  const token = await tokenManager.ensureToken();
+  try {
+    const result = await postSubmitStpJob(cfg, token, stpInput);
+    return { avidJobId: result.jobId };
+  } catch (err) {
+    if (err instanceof AvidCtmsError && err.code === 'AUTH') {
+      const fresh = await tokenManager.forceRelogin();
+      const result = await postSubmitStpJob(cfg, fresh, stpInput);
+      return { avidJobId: result.jobId };
+    }
+    throw err;
+  }
 }
 
 /**

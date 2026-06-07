@@ -68,6 +68,18 @@ export interface AvidConfig {
    * mesajlarına ASLA değeri girmez (sadece env adı). extension ile canlı tutulur.
    */
   clouduxToken: string | null;
+  /**
+   * Cloud UX ROPC login kullanıcı/parola. Boşsa IPWS `user`/`password`'a düşer
+   * (saha: aynı hesap her adımda). Token bununla programatik ÜRETİLİR (kalıcı).
+   */
+  clouduxUser: string | null;
+  clouduxPassword: string | null;
+  /**
+   * OAuth2 client Basic auth değeri = base64("client_id:client_secret").
+   * Web app'in gömülü public client'ı (`com.avid.mediacentralcloud-...`). ROPC
+   * login için ZORUNLU (Authorization: Basic <bu>). SIR — log'a girmez.
+   */
+  clouduxClientBasic: string | null;
   /** STP hedef device (submitSTPJob device alanı). Default MCR. */
   stpDevice: string;
   /** STP profil adı (submitSTPJob profile alanı). Default MCR. */
@@ -122,6 +134,10 @@ export function loadAvidConfig(env: NodeJS.ProcessEnv = process.env): AvidConfig
     clouduxRealm: env.AVID_CLOUDUX_REALM?.trim() || 'F580021A-2720-4117-B33C-A5B843A2B586',
     // Token trim YAPMA — opaque değer; boşsa null.
     clouduxToken: env.AVID_CLOUDUX_TOKEN && env.AVID_CLOUDUX_TOKEN !== '' ? env.AVID_CLOUDUX_TOKEN : null,
+    // ROPC login (kalıcı token). user/password trim YAPMA — boşluk içerebilir.
+    clouduxUser: env.AVID_CLOUDUX_USER?.trim() || null,
+    clouduxPassword: env.AVID_CLOUDUX_PASSWORD && env.AVID_CLOUDUX_PASSWORD !== '' ? env.AVID_CLOUDUX_PASSWORD : null,
+    clouduxClientBasic: env.AVID_CLOUDUX_CLIENT_BASIC?.trim() || null,
     stpDevice: env.AVID_STP_DEVICE?.trim() || 'MCR',
     stpProfile: env.AVID_STP_PROFILE?.trim() || 'MCR',
     clouduxInsecureTls: env.AVID_CLOUDUX_INSECURE_TLS === undefined
@@ -167,9 +183,15 @@ export function assertCtmsConfigReady(config: AvidConfig): void {
   const missing: string[] = [];
   if (!config.clouduxUrl)   missing.push('AVID_CLOUDUX_URL');
   if (!config.clouduxRealm) missing.push('AVID_CLOUDUX_REALM');
-  if (!config.clouduxToken) missing.push('AVID_CLOUDUX_TOKEN');
+  // Kalıcı yol: ROPC login (client Basic + kullanıcı/parola). Yoksa legacy manual token.
+  const canLogin = !!config.clouduxClientBasic
+    && !!(config.clouduxUser ?? config.user)
+    && !!(config.clouduxPassword ?? config.password);
+  if (!canLogin && !config.clouduxToken) {
+    missing.push('AVID_CLOUDUX_CLIENT_BASIC + AVID_CLOUDUX_USER(/AVID_USER) + AVID_CLOUDUX_PASSWORD(/AVID_PASSWORD)  — veya legacy AVID_CLOUDUX_TOKEN');
+  }
   if (missing.length > 0) {
-    throw new Error(`Avid CTMS (transfer) config missing required env: ${missing.join(', ')}`);
+    throw new Error(`Avid CTMS (transfer) config missing required: ${missing.join(', ')}`);
   }
 }
 
@@ -186,6 +208,8 @@ export interface AvidSettingsOverrides {
   clouduxUrl?: string;
   clouduxRealm?: string;
   clouduxToken?: string;
+  clouduxUser?: string;
+  clouduxPassword?: string;
 }
 
 /**
@@ -203,5 +227,7 @@ export function applyAvidOverrides(cfg: AvidConfig, ov?: AvidSettingsOverrides |
     clouduxUrl:   ov.clouduxUrl ? ov.clouduxUrl.replace(/\/+$/, '') : cfg.clouduxUrl,
     clouduxRealm: ov.clouduxRealm ?? cfg.clouduxRealm,
     clouduxToken: ov.clouduxToken ?? cfg.clouduxToken,
+    clouduxUser:  ov.clouduxUser ?? cfg.clouduxUser,
+    clouduxPassword: ov.clouduxPassword ?? cfg.clouduxPassword,
   };
 }
