@@ -127,6 +127,9 @@ function shiftDay(dateStr: string, delta: number): string {
     .ns-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 450px 6px 1fr 6px 320px; }
     .pane { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
     .pane.center { background: var(--bp-bg-2); }
+    /* Merkez pane bileşenleri pane'i doldursun → iç scroll (.pr-scroll / .rd-grid)
+       sayfayı değil kendi alanını kaydırsın (host flex:1 olmazsa içerik kesilir). */
+    .pane.center > bp-rundown, .pane.center > bp-prompter { flex: 1 1 auto; min-height: 0; display: block; }
     .pane.left { background: var(--bp-bg-1); }
     .splitter { background: var(--bp-line-2); cursor: col-resize; transition: background 0.15s ease; touch-action: none; }
     .splitter:hover { background: var(--bp-purple-500); }
