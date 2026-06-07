@@ -1,4 +1,5 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { IngestListComponent } from './ingest-list.component';
 import { ApiService } from '../../../core/services/api.service';
@@ -15,6 +16,7 @@ describe('IngestListComponent', () => {
     TestBed.configureTestingModule({
       imports: [IngestListComponent],
       providers: [
+        provideRouter([]),
         { provide: ApiService, useValue: apiSpy },
       ],
     }).overrideComponent(IngestListComponent, {

@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { KeycloakService } from 'keycloak-angular';
+import { provideRouter } from '@angular/router';
 import { of, Subject, delay } from 'rxjs';
 
 import { StudioPlanComponent } from './studio-plan.component';
@@ -89,6 +90,7 @@ describe('StudioPlanComponent', () => {
     TestBed.configureTestingModule({
       imports: [StudioPlanComponent],
       providers: [
+        provideRouter([]),
         { provide: StudioPlanService, useValue: studioPlanService },
         { provide: KeycloakService, useValue: keycloakService },
       ],
@@ -330,8 +332,13 @@ describe('StudioPlanComponent', () => {
     expect(childInstance.timeSlots[95]).toBe('23:45');
   });
 
+  // 2026-05-27: listEntries geçmiş günleri (day.id < today) filtreler (kullanıcı
+  // isteği). Testler bu yüzden gelecek tarihli gün kullanır.
+  const FUTURE_DAY = { id: '2099-01-06', label: 'Pzt', date: '2099-01-06' };
+
   it('listEntries tek atama → 15 dk durationMinutes + endTime 15 dk sonrası', () => {
     const comp = component as any;
+    comp.days.set([FUTURE_DAY]);
     const day = comp.days()[0];
     const studio = comp.studios[0];
     const t = comp.timeSlots()[0]; // 07:00
@@ -345,6 +352,7 @@ describe('StudioPlanComponent', () => {
 
   it('listEntries 4 ardışık aynı program → 1 saat (60 dk)', () => {
     const comp = component as any;
+    comp.days.set([FUTURE_DAY]);
     const day = comp.days()[0];
     const studio = comp.studios[0];
     const assignment = { program: 'X', color: '#111' };
@@ -358,14 +366,13 @@ describe('StudioPlanComponent', () => {
     expect(e.endTime).toBe('08:00');
   });
 
-  // ── 2026-05-14: listEntries canonical kaynak — tablo ↔ liste tutarlılığı ──
+  // ── listEntries canonical kaynak — tablo ↔ liste tutarlılığı ──
   //
-  // Bug: listEntries computed `if (day.id < today) continue;` filtresi ile
-  //      geçmiş günleri dışlıyordu; tabloda gözüken Pazartesi/Salı kayıtları
-  //      listede görünmüyordu. Fix: filtre kaldırıldı; tablo + liste aynı
-  //      `cells()` signal'inden besleniyor.
+  // 2026-05-14: geçmiş gün filtresi kaldırılmıştı. 2026-05-27: kullanıcı isteğiyle
+  // YALNIZCA liste görünümünde geçmiş gün filtresi (`day.id < today`) geri eklendi.
+  // Bu yüzden testler gelecek tarihli gün (FUTURE_DAY) kullanır.
 
-  it('listEntries: cells üzerinde herhangi bir günde atama varsa listede görünür', () => {
+  it('listEntries: güncel/gelecek günde atama listede görünür', () => {
     const comp = component as unknown as {
       days: () => { id: string }[];
       studios: string[];
@@ -374,6 +381,7 @@ describe('StudioPlanComponent', () => {
       listEntries: () => unknown[];
       cellKey: (d: string, s: string, t: string) => string;
     };
+    (component as any).days.set([FUTURE_DAY]);
     const day = comp.days()[0];
     const studio = comp.studios[0];
     const time = comp.timeSlots()[0];
@@ -396,6 +404,7 @@ describe('StudioPlanComponent', () => {
       timeSlots: () => string[];
       cellKey: (d: string, s: string, t: string) => string;
     };
+    (component as any).days.set([FUTURE_DAY]);
     const day = comp.days()[0];
     const studio = comp.studios[0];
     const t1 = comp.timeSlots()[0];
@@ -418,6 +427,7 @@ describe('StudioPlanComponent', () => {
       timeSlots: () => string[];
       cellKey: (d: string, s: string, t: string) => string;
     };
+    (component as any).days.set([FUTURE_DAY]);
     const day = comp.days()[0];
     const studio = comp.studios[0];
     const time = comp.timeSlots()[0];
