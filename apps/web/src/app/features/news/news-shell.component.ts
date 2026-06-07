@@ -58,15 +58,16 @@ function shiftDay(dateStr: string, delta: number): string {
         </div>
       </header>
 
-      <div class="ns-body">
+      <div class="ns-body" [style.grid-template-columns]="gridCols()">
         <aside class="pane left">
           <bp-bulletin-list
             [bulletins]="bulletins()" [selectedId]="selectedId()" [forDate]="filterDate()"
             (select)="selectBulletin($event)" (create)="createBulletin($event)" (remove)="deleteBulletin($event)" />
           <div class="pool">
             <div class="pool-h">Haber Havuzu <span>{{ pool().length }}</span></div>
+            <button type="button" class="pool-new" (click)="newPoolStory()"><mat-icon class="material-icons-outlined">add</mat-icon> Havuza Haber</button>
             <div class="pool-items">
-              @for (s of pool(); track s.id) {
+              @for (s of pagedPool(); track s.id) {
                 <div class="pool-item">
                   <span class="pi-type">{{ typeLabel(s.storyType) }}</span>
                   <span class="pi-title" (dblclick)="editStory(s)">{{ s.title }}</span>
@@ -78,9 +79,17 @@ function shiftDay(dateStr: string, delta: number): string {
                 </div>
               } @empty { <div class="pool-empty">Havuz boş.</div> }
             </div>
-            <button type="button" class="pool-new" (click)="newPoolStory()"><mat-icon class="material-icons-outlined">add</mat-icon> Havuza Haber</button>
+            @if (poolTotalPages() > 1) {
+              <div class="pool-pager">
+                <button type="button" [disabled]="poolPageClamped() === 1" (click)="poolPrev()" aria-label="Önceki sayfa"><mat-icon class="material-icons-outlined">chevron_left</mat-icon></button>
+                <span class="pg">{{ poolPageClamped() }} / {{ poolTotalPages() }}</span>
+                <button type="button" [disabled]="poolPageClamped() === poolTotalPages()" (click)="poolNext()" aria-label="Sonraki sayfa"><mat-icon class="material-icons-outlined">chevron_right</mat-icon></button>
+              </div>
+            }
           </div>
         </aside>
+
+        <div class="splitter" title="Sürükle: genişliği ayarla · Çift tık: sıfırla" (pointerdown)="startDrag($event, 'left')" (dblclick)="resetPane('left')"></div>
 
         <main class="pane center">
           @if (view() === 'rundown') {
@@ -93,6 +102,7 @@ function shiftDay(dateStr: string, delta: number): string {
           }
         </main>
 
+        <div class="splitter" title="Sürükle: genişliği ayarla · Çift tık: sıfırla" (pointerdown)="startDrag($event, 'right')" (dblclick)="resetPane('right')"></div>
         <aside class="pane right">
           <bp-wires [wires]="wires()" (toStory)="wireToStory($event)" (refresh)="loadWires()" (addManual)="addWire($event)" />
         </aside>
@@ -100,7 +110,7 @@ function shiftDay(dateStr: string, delta: number): string {
     </section>
   `,
   styles: [`
-    .ns { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bp-bg-0); }
+    .ns { display: flex; flex-direction: column; height: calc(100vh - 64px); min-height: 0; background: var(--bp-bg-0); }
     .ns-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--bp-line-2); background: var(--bp-bg-1); }
     .nh-left { display: flex; align-items: center; gap: 12px; }
     .nh-left .logo { color: var(--bp-purple-300); }
@@ -114,14 +124,14 @@ function shiftDay(dateStr: string, delta: number): string {
     .nh-views button { display: inline-flex; align-items: center; gap: 5px; background: rgba(124,58,237,0.18); color: var(--bp-fg-1); border: 1px solid var(--bp-purple-500); border-radius: 7px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
     .nh-views button.on { background: var(--bp-purple-500); border-color: var(--bp-purple-500); color: #fff; }
     .nh-views mat-icon { font-size: 18px; width: 18px; height: 18px; }
-    .ns-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 300px 1fr 320px; }
+    .ns-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 450px 6px 1fr 6px 320px; }
     .pane { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-    .pane.left { border-right: 1px solid var(--bp-line-2); }
-    .pane.right { border-left: 1px solid var(--bp-line-2); }
     .pane.center { background: var(--bp-bg-2); }
     .pane.left { background: var(--bp-bg-1); }
-    .left bp-bulletin-list { flex: 1 1 55%; min-height: 0; display: block; overflow: hidden; }
-    .pool { flex: 1 1 45%; min-height: 0; display: flex; flex-direction: column; border-top: 2px solid var(--bp-line-2); }
+    .splitter { background: var(--bp-line-2); cursor: col-resize; transition: background 0.15s ease; touch-action: none; }
+    .splitter:hover { background: var(--bp-purple-500); }
+    .left bp-bulletin-list { flex: 0 0 auto; min-height: 0; display: block; border-bottom: 1px solid var(--bp-line-2); }
+    .pool { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
     .pool-h { padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--bp-fg-1); display: flex; justify-content: space-between; }
     .pool-h span { color: var(--bp-fg-3); }
     .pool-items { flex: 1 1 auto; overflow: auto; min-height: 0; }
@@ -135,6 +145,11 @@ function shiftDay(dateStr: string, delta: number): string {
     .pool-empty { padding: 14px; font-size: 12px; color: var(--bp-fg-3); text-align: center; }
     .pool-new { margin: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; background: var(--bp-purple-500); color: #fff; border: 1px solid var(--bp-purple-500); border-radius: 7px; padding: 7px; cursor: pointer; font-size: 12px; }
     .pool-new mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .pool-pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 7px; border-top: 1px solid var(--bp-line-2); }
+    .pool-pager button { background: var(--bp-bg-2); border: 1px solid var(--bp-line-2); color: var(--bp-fg-1); border-radius: 6px; width: 28px; height: 28px; display: grid; place-items: center; cursor: pointer; }
+    .pool-pager button:disabled { opacity: 0.35; cursor: default; }
+    .pool-pager button mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .pool-pager .pg { font-size: 12px; color: var(--bp-fg-3); font-variant-numeric: tabular-nums; min-width: 44px; text-align: center; }
   `],
 })
 export class NewsShellComponent implements OnInit {
@@ -148,7 +163,75 @@ export class NewsShellComponent implements OnInit {
   readonly selectedId = signal<number | null>(null);
   readonly bulletin = signal<NewsBulletin | null>(null);
   readonly pool = signal<NewsStory[]>([]);
+  // Haber Havuzu sayfalama — 22 materyal/sayfa, fazlası sonraki sayfalarda.
+  private static readonly POOL_PAGE = 22;
+  readonly poolPage = signal(1);
+  readonly poolTotalPages = computed(() => Math.max(1, Math.ceil(this.pool().length / NewsShellComponent.POOL_PAGE)));
+  readonly poolPageClamped = computed(() => Math.min(this.poolPage(), this.poolTotalPages()));
+  readonly pagedPool = computed(() => {
+    const start = (this.poolPageClamped() - 1) * NewsShellComponent.POOL_PAGE;
+    return this.pool().slice(start, start + NewsShellComponent.POOL_PAGE);
+  });
   readonly wires = signal<NewsWireItem[]>([]);
+
+  // ── Bölme genişlikleri (resizable + kişiye özel, localStorage) ───────────
+  // Sol pane (bülten+havuz) ve sağ pane (Ajans) sürüklenerek genişletilebilir.
+  // Min 300px (kullanıcı isteği); orta (Akış) pane çökmesin diye MIN_CENTER
+  // koruması var. Genişlik kişiye özel localStorage'da tutulur (sunucuya/audit'e
+  // yük yok); çift tıkla varsayılana döner.
+  private static readonly LW_KEY = 'bp.news.leftW';
+  private static readonly RW_KEY = 'bp.news.rightW';
+  private static readonly MIN_PANE = 300;
+  private static readonly MIN_CENTER = 240;
+  private static readonly DEF_LEFT = 450;
+  private static readonly DEF_RIGHT = 320;
+
+  readonly leftW = signal(this.readW(NewsShellComponent.LW_KEY, NewsShellComponent.DEF_LEFT));
+  readonly rightW = signal(this.readW(NewsShellComponent.RW_KEY, NewsShellComponent.DEF_RIGHT));
+  readonly gridCols = computed(() => `${this.leftW()}px 6px 1fr 6px ${this.rightW()}px`);
+
+  private readW(key: string, def: number): number {
+    const v = Number(localStorage.getItem(key));
+    return Number.isFinite(v) && v >= NewsShellComponent.MIN_PANE ? v : def;
+  }
+
+  private dragState: { which: 'left' | 'right'; startX: number; startW: number; bodyW: number } | null = null;
+
+  startDrag(ev: PointerEvent, which: 'left' | 'right'): void {
+    ev.preventDefault();
+    const bodyW = (ev.currentTarget as HTMLElement).parentElement?.clientWidth ?? window.innerWidth;
+    this.dragState = { which, startX: ev.clientX, startW: which === 'left' ? this.leftW() : this.rightW(), bodyW };
+    document.addEventListener('pointermove', this.onDrag);
+    document.addEventListener('pointerup', this.endDrag, { once: true });
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  private readonly onDrag = (ev: PointerEvent): void => {
+    const d = this.dragState;
+    if (!d) return;
+    const dx = ev.clientX - d.startX;
+    const other = d.which === 'left' ? this.rightW() : this.leftW();
+    const max = d.bodyW - other - NewsShellComponent.MIN_CENTER - 12; // 12 = 2 × splitter
+    const raw = d.which === 'left' ? d.startW + dx : d.startW - dx;
+    const w = Math.max(NewsShellComponent.MIN_PANE, Math.min(raw, Math.max(NewsShellComponent.MIN_PANE, max)));
+    (d.which === 'left' ? this.leftW : this.rightW).set(Math.round(w));
+  };
+
+  private readonly endDrag = (): void => {
+    document.removeEventListener('pointermove', this.onDrag);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    localStorage.setItem(NewsShellComponent.LW_KEY, String(this.leftW()));
+    localStorage.setItem(NewsShellComponent.RW_KEY, String(this.rightW()));
+    this.dragState = null;
+  };
+
+  resetPane(which: 'left' | 'right'): void {
+    const def = which === 'left' ? NewsShellComponent.DEF_LEFT : NewsShellComponent.DEF_RIGHT;
+    (which === 'left' ? this.leftW : this.rightW).set(def);
+    localStorage.setItem(which === 'left' ? NewsShellComponent.LW_KEY : NewsShellComponent.RW_KEY, String(def));
+  }
 
   ngOnInit(): void { this.reloadAll(); }
 
@@ -178,6 +261,8 @@ export class NewsShellComponent implements OnInit {
     });
   }
   loadPool(): void { this.svc.listStories({ pool: true }).subscribe({ next: (s) => this.pool.set(s), error: () => {} }); }
+  poolPrev(): void { this.poolPage.set(Math.max(1, this.poolPageClamped() - 1)); }
+  poolNext(): void { this.poolPage.set(Math.min(this.poolTotalPages(), this.poolPageClamped() + 1)); }
   loadWires(): void { this.svc.listWires().subscribe({ next: (w) => this.wires.set(w), error: () => {} }); }
 
   selectBulletin(id: number): void {
