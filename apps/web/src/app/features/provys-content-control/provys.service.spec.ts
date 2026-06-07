@@ -161,37 +161,43 @@ describe('ProvysService (per-day snapshot)', () => {
     }
   });
 
-  it('exportExcel issues GET /provys/export/excel with channel + date + includeProgramHeaders=false default', async () => {
+  // 2026: export GET+param → POST+body'e geçti (downloadBlobPost + buildExportBody).
+  it('exportExcel POSTs /provys/export/excel with channel + date + includeProgramHeaders=false default', async () => {
     const promise = service.exportExcel('beinhaber' as any, '2026-05-22');
     const req = http.expectOne((r) => r.url === `${environment.apiUrl}/provys/export/excel`);
+    expect(req.request.method).toBe('POST');
     expect(req.request.responseType).toBe('blob');
-    expect(req.request.params.get('channel')).toBe('beinhaber');
-    expect(req.request.params.get('date')).toBe('2026-05-22');
-    expect(req.request.params.get('includeProgramHeaders')).toBe('false');
-    // Tüm kategoriler default → categories param yok
-    expect(req.request.params.get('categories')).toBeNull();
+    const body = req.request.body as Record<string, unknown>;
+    expect(body['channel']).toBe('beinhaber');
+    expect(body['date']).toBe('2026-05-22');
+    expect(body['includeProgramHeaders']).toBe('false');
+    // Tüm kategoriler default → categories yok
+    expect(body['categories']).toBeUndefined();
     req.flush(new Blob(['excel-bytes']));
     await promise;
   });
 
-  it('exportPdf issues GET /provys/export/pdf with channel + date + includeProgramHeaders=false', async () => {
+  it('exportPdf POSTs /provys/export/pdf with channel + date + includeProgramHeaders=false', async () => {
     const promise = service.exportPdf('beinsports1' as any, '2026-02-17');
     const req = http.expectOne((r) => r.url === `${environment.apiUrl}/provys/export/pdf`);
+    expect(req.request.method).toBe('POST');
     expect(req.request.responseType).toBe('blob');
-    expect(req.request.params.get('channel')).toBe('beinsports1');
-    expect(req.request.params.get('date')).toBe('2026-02-17');
-    expect(req.request.params.get('includeProgramHeaders')).toBe('false');
+    const body = req.request.body as Record<string, unknown>;
+    expect(body['channel']).toBe('beinsports1');
+    expect(body['date']).toBe('2026-02-17');
+    expect(body['includeProgramHeaders']).toBe('false');
     req.flush(new Blob(['pdf-bytes']));
     await promise;
   });
 
-  it('exportExcel attaches categories param when not all are selected (with headers off)', async () => {
+  it('exportExcel attaches categories in body when not all are selected (with headers off)', async () => {
     service.setSelectedCategories(new Set(['CANLI', 'PROGRAM']));
     const promise = service.exportExcel('beinhaber' as any, '2026-05-22');
     const req = http.expectOne((r) => r.url === `${environment.apiUrl}/provys/export/excel`);
+    const body = req.request.body as Record<string, unknown>;
     // PROVYS_CATEGORIES sırasıyla: REKLAM, KAMU_SPOTU, CANLI, PROGRAM, TANITIM, DIGER
-    expect(req.request.params.get('categories')).toBe('CANLI,PROGRAM');
-    expect(req.request.params.get('includeProgramHeaders')).toBe('false');
+    expect(body['categories']).toBe('CANLI,PROGRAM');
+    expect(body['includeProgramHeaders']).toBe('false');
     req.flush(new Blob(['excel-bytes']));
     await promise;
   });

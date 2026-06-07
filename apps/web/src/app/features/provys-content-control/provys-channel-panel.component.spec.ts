@@ -86,6 +86,11 @@ class FakeProvysService {
     if (this.updateNoteShouldThrow) throw new Error('PATCH fail');
     this.store.set(this.store().map((i) => (i.id === id ? { ...i, userNote: note } : i)));
   }
+
+  getNote(eventId: string): string {
+    const item = this.store().find((i) => i.eventId === eventId);
+    return item?.userNote ?? '';
+  }
 }
 
 describe('ProvysChannelPanelComponent', () => {
@@ -209,13 +214,14 @@ describe('ProvysChannelPanelComponent', () => {
   // endpoint'i korunur (gelecekte tekrar eklenebilir). Eski Not editör
   // testleri kapsam dışına alındı.
   describe('Kolon sırası — Süre + Not (2026-05-27 revize)', () => {
-    it('header sırası: # Başlangıç Kategori DC Kod NEXIO Başlık Süre Not', () => {
+    it('header sırası: # Başlangıç Kategori DC Kod Başlık NEXIO Süre Not', () => {
       fake.setItems([makeItem({ id: 1, dcCode: 'DC1' })]);
       fixture.detectChanges();
       const headers = Array.from(
         (fixture.nativeElement as HTMLElement).querySelectorAll('thead th'),
       ).map((th) => th.textContent?.trim());
-      expect(headers).toEqual(['#', 'Başlangıç', 'Kategori', 'DC Kod', 'NEXIO', 'Başlık', 'Süre', 'Not']);
+      // 2026-05-30: NEXIO kolonu Başlık ile Süre arasına taşındı (kullanıcı tercihi).
+      expect(headers).toEqual(['#', 'Başlangıç', 'Kategori', 'DC Kod', 'Başlık', 'NEXIO', 'Süre', 'Not']);
       expect(headers).not.toContain('Materyal');
     });
 
@@ -286,18 +292,19 @@ describe('ProvysChannelPanelComponent', () => {
       return cell?.getAttribute('title') ?? '';
     }
 
-    it('renders "NEXIO" header column between DC Kod and Başlık', () => {
+    it('renders "NEXIO" header column between Başlık and Süre', () => {
       setRowsWithSsdb([{ id: 1, ssdb: {} }]);
       const headers = Array.from(
         (fixture.nativeElement as HTMLElement).querySelectorAll('thead th'),
       ).map((th) => th.textContent?.trim());
       expect(headers).toContain('NEXIO');
       expect(headers).not.toContain('Materyal');
-      const dcIdx = headers.indexOf('DC Kod');
-      const nexioIdx = headers.indexOf('NEXIO');
+      // 2026-05-30: NEXIO, Başlık ile Süre arasına taşındı.
       const titleIdx = headers.indexOf('Başlık');
-      expect(nexioIdx).toBe(dcIdx + 1);
-      expect(titleIdx).toBe(nexioIdx + 1);
+      const nexioIdx = headers.indexOf('NEXIO');
+      const durIdx = headers.indexOf('Süre');
+      expect(nexioIdx).toBe(titleIdx + 1);
+      expect(durIdx).toBe(nexioIdx + 1);
     });
 
     it('8 status compact label correctly rendered', () => {
