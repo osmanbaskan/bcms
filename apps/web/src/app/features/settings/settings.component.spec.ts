@@ -59,13 +59,13 @@ describe('SettingsComponent', () => {
     }).compileComponents();
   });
 
-  it('sol menüde 3 bölüm linki render edilir', () => {
+  it('sol menüde 5 bölüm linki render edilir', () => {
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     const host = fixture.nativeElement as HTMLElement;
     const navIds = Array.from(host.querySelectorAll('.settings-nav [data-section]'))
       .map((b) => b.getAttribute('data-section'));
-    expect(navIds).toEqual(['connections', 'ports', 'leagues']);
+    expect(navIds).toEqual(['connections', 'haber', 'ports', 'leagues', 'notifications']);
   });
 
   it('Bağlantılar (varsayılan) — Avid kartı IPWS + Cloud UX alanlarıyla render edilir', () => {
