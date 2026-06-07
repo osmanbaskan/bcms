@@ -388,13 +388,41 @@ describe('K3 — requestTransfer (CTMS submitSTPJob, fetch stub, ağ YOK)', () =
     await expect(adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' })).rejects.toThrow(/CTMS submitSTPJob error/i);
   });
 
-  it('requestTransfer: 401 → AUTH hatası (token mesaja sızmaz)', async () => {
+  it('requestTransfer: 401 + login creds YOK → AUTH (token mesaja sızmaz)', async () => {
+    // Seed token (clouduxToken) ile submit 401 → forceRelogin denenir ama login
+    // creds yok → AUTH koduyla "config eksik" döner (token sızmaz).
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: false, status: 401, statusText: 'Unauthorized', text: async () => 'nope',
     })));
     const adapter = createInterplayAvidAdapter(makeConfig());
     await expect(adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' }))
-      .rejects.toThrow(/auth failed/i);
+      .rejects.toMatchObject({ code: 'AUTH' });
+  });
+
+  it('requestTransfer: 401 → forceRelogin + retry BAŞARILI (login creds varken self-heal)', async () => {
+    let submitN = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).includes('/auth/sso/login/oauth2/ad')) {
+        // ROPC login → taze token
+        return {
+          ok: true, status: 200,
+          headers: { getSetCookie: () => ['avidAccessToken=FRESH'], get: () => null },
+          text: async () => JSON.stringify({ iamToken: { expiresAt: '2099-01-01T00:00:00.000Z' } }),
+        };
+      }
+      // submitSTPJob: ilk çağrı 401 (token ölü), re-login sonrası 200
+      submitN += 1;
+      if (submitN === 1) return { ok: false, status: 401, statusText: 'U', text: async () => 'x' };
+      return {
+        ok: true, status: 200, statusText: 'OK',
+        text: async () => JSON.stringify({ errorSet: [], errors: [], responseData: JSON.stringify({ jobId: 'JOK' }) }),
+      };
+    }));
+    const adapter = createInterplayAvidAdapter(makeConfig({
+      clouduxToken: null, clouduxUser: 'u', clouduxPassword: 'pw', clouduxClientBasic: 'BASIC',
+    }));
+    const r = await adapter.requestTransfer({ assetId: 'M1', dcCode: 'DC1' });
+    expect(r.avidJobId).toBe('JOK');
   });
 
   it('requestTransfer: CLOUDUX_TOKEN yoksa assertCtmsConfigReady fırlatır', () => {

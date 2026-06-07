@@ -3,7 +3,9 @@ import {
   buildStpRequestBody,
   submitStpJobEndpoint,
   tokenExtensionEndpoint,
+  ropcLoginEndpoint,
   postSubmitStpJob,
+  postRopcLogin,
   createCtmsTokenManager,
   AvidCtmsError,
 } from './avid.ctms.js';
@@ -24,6 +26,7 @@ function makeConfig(overrides: Partial<AvidConfig> = {}): AvidConfig {
     transferEngine: 'playback-engine-01', transferEngineFallback: 'playback-engine-02',
     playbackDevice: 'MCR', playbackDeviceFallback: 'MCR_YEDEK', transferPriority: 'NORMAL',
     clouduxUrl: 'https://cloudux.test', clouduxRealm: 'REALM1', clouduxToken: 'tok-secret',
+    clouduxUser: null, clouduxPassword: null, clouduxClientBasic: null,
     stpDevice: 'MCR', stpProfile: 'MCR', clouduxInsecureTls: true,
     ...overrides,
   };
@@ -148,5 +151,73 @@ describe('createCtmsTokenManager', () => {
     const after = fetchFn.mock.calls.length;
     await vi.advanceTimersByTimeAsync(3000);
     expect(fetchFn.mock.calls.length).toBe(after); // stop sonrası artmaz
+  });
+});
+
+describe('ropcLoginEndpoint + postRopcLogin', () => {
+  it('endpoint = /auth/sso/login/oauth2/ad', () => {
+    expect(ropcLoginEndpoint('https://x.test/')).toBe('https://x.test/auth/sso/login/oauth2/ad');
+  });
+
+  it('login: Set-Cookie token + expiresAt parse; Basic + grant=password + scope=openid gönderir', async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      headers: { getSetCookie: () => ['avidAccessToken=TOK123; Path=/; HttpOnly'], get: () => null },
+      text: async () => JSON.stringify({ accessToken: 'TOK123', iamToken: { expiresAt: '2099-01-01T00:00:00.000Z' } }),
+    }));
+    vi.stubGlobal('fetch', fetchFn);
+    const r = await postRopcLogin(makeConfig({ clouduxClientBasic: 'BASICVAL' }), {
+      username: 'u', password: 'pw', clientBasic: 'BASICVAL',
+    });
+    expect(r.token).toBe('TOK123');
+    expect(r.expiresAtMs).toBe(Date.parse('2099-01-01T00:00:00.000Z'));
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit & { headers: Record<string, string>; body: string }];
+    expect(url).toBe('https://cloudux.test/auth/sso/login/oauth2/ad');
+    expect(init.headers.Authorization).toBe('Basic BASICVAL');
+    expect(init.body).toContain('grant_type=password');
+    expect(init.body).toContain('no_refresh_token=true');
+    expect(init.body).toContain('scope=openid');
+  });
+
+  it('401 → AUTH', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false, status: 401, statusText: 'Unauthorized',
+      headers: { getSetCookie: () => [], get: () => null }, text: async () => 'x',
+    })));
+    await expect(postRopcLogin(makeConfig({ clouduxClientBasic: 'B' }), { username: 'u', password: 'pw', clientBasic: 'B' }))
+      .rejects.toMatchObject({ code: 'AUTH' });
+  });
+});
+
+describe('token manager — self-heal (ensureToken / forceRelogin)', () => {
+  const loginCfg = () => makeConfig({ clouduxToken: null, clouduxUser: 'u', clouduxPassword: 'pw', clouduxClientBasic: 'BASIC' });
+  const loginFetch = (seq?: () => string) => vi.fn(async () => ({
+    ok: true, status: 200,
+    headers: { getSetCookie: () => [`avidAccessToken=${seq ? seq() : 'NEWTOK'}`], get: () => null },
+    text: async () => JSON.stringify({ iamToken: { expiresAt: '2099-01-01T00:00:00.000Z' } }),
+  }));
+
+  it('ensureToken: token yokken ROPC login eder', async () => {
+    vi.stubGlobal('fetch', loginFetch());
+    const m = createCtmsTokenManager(loginCfg());
+    expect(await m.ensureToken()).toBe('NEWTOK');
+    expect(m.getToken()).toBe('NEWTOK');
+  });
+
+  it('forceRelogin: yeni token üretir (401 retry senaryosu)', async () => {
+    let n = 0;
+    vi.stubGlobal('fetch', loginFetch(() => { n += 1; return `TOK${n}`; }));
+    const m = createCtmsTokenManager(loginCfg());
+    expect(await m.ensureToken()).toBe('TOK1');
+    expect(await m.forceRelogin()).toBe('TOK2');
+  });
+
+  it('ensureToken: süresi geçerli token tekrar login etmez', async () => {
+    const fetchFn = loginFetch();
+    vi.stubGlobal('fetch', fetchFn);
+    const m = createCtmsTokenManager(loginCfg());
+    await m.ensureToken();
+    await m.ensureToken();
+    expect(fetchFn.mock.calls.length).toBe(1);
   });
 });
