@@ -1,0 +1,41 @@
+# Ingress (k3s'in dahili Traefik'i). TLS burada sonlanır; nginx 443 yerini alır.
+# Yollar nginx.conf'tan türetildi: /api → api, / → web. Keycloak yolları Faz-3'te.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bcms
+  namespace: bcms
+  annotations:
+    # SSE (/api/v1/.../stream): Traefik varsayılan stream eder; buffering yok.
+    # cert-manager kullanıyorsan: cert-manager.io/cluster-issuer: "internal-ca"
+    kubernetes.io/ingress.class: traefik
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [ "beinport" ]
+      secretName: bcms-tls          # cert-manager üretir VEYA: kubectl create secret tls bcms-tls --cert=... --key=...
+  rules:
+    - host: beinport
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend: { service: { name: api, port: { number: 3000 } } }
+
+          # ── Faz-3 (Keycloak migrasyonu) ile aç ──
+          # - path: /realms
+          #   pathType: Prefix
+          #   backend: { service: { name: keycloak, port: { number: 8080 } } }
+          # - path: /resources
+          #   pathType: Prefix
+          #   backend: { service: { name: keycloak, port: { number: 8080 } } }
+          # - path: /admin/master
+          #   pathType: Prefix
+          #   backend: { service: { name: keycloak, port: { number: 8080 } } }
+          # - path: /admin/realms
+          #   pathType: Prefix
+          #   backend: { service: { name: keycloak, port: { number: 8080 } } }
+
+          - path: /                 # SPA fallback (en sona)
+            pathType: Prefix
+            backend: { service: { name: web, port: { number: 80 } } }

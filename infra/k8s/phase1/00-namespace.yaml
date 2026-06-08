@@ -1,0 +1,7 @@
+# BCMS k3s — Faz 1 (api + web). TASLAK.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bcms
+  labels:
+    app.kubernetes.io/part-of: bcms

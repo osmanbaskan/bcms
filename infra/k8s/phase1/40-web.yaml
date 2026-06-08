@@ -1,0 +1,45 @@
+# BCMS web — nginx + Angular (SPA). TLS Ingress'te sonlanır → web düz HTTP/80.
+# NOT: web imajındaki nginx şu an 80→443 redirect + /api,/realms reverse-proxy içeriyor.
+# k3s'te TLS ve yönlendirme Ingress'e taşındığı için web nginx'i SPA-only + port 80
+# (redirect'siz) olacak şekilde sadeleştir (ayrı küçük iş). Aşağısı sadeleşmiş hali varsayar.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bcms-web
+  namespace: bcms
+  labels: { app: bcms-web }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: bcms-web } }
+  template:
+    metadata:
+      labels: { app: bcms-web }
+    spec:
+      nodeSelector: { role: cpu }
+      containers:
+        - name: web
+          image: REGISTRY/bcms-web:TAG   # ← registry + tag
+          ports:
+            - containerPort: 80
+          env:
+            - name: BCMS_KEYCLOAK_PUBLIC_URL   # entrypoint runtime-config.js'e yazar
+              valueFrom:
+                configMapKeyRef: { name: bcms-config, key: BCMS_KEYCLOAK_PUBLIC_URL }
+          readinessProbe:
+            httpGet: { path: /health, port: 80 }   # nginx /health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "50m",  memory: "64Mi" }
+            limits:   { cpu: "250m", memory: "256Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: bcms
+spec:
+  selector: { app: bcms-web }
+  ports:
+    - port: 80
+      targetPort: 80

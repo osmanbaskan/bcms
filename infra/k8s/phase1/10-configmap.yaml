@@ -1,0 +1,21 @@
+# Non-secret config — .env'deki SIR OLMAYAN anahtarlar buraya taşınır.
+# (Parolalar/token'lar → 20-secret.example.yaml / Secret)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bcms-config
+  namespace: bcms
+data:
+  # ── api (HTTP-only) ──
+  NODE_ENV: "production"
+  PORT: "3000"
+  BCMS_BACKGROUND_SERVICES: "none"          # api = HTTP-only; worker Faz-2'de ayrı Deployment
+  KEYCLOAK_URL: "http://keycloak.bcms.svc.cluster.local:8080"   # Faz-3'te keycloak Service
+  KEYCLOAK_ALLOWED_ISSUERS: "https://beinport/realms/bcms"
+  RESTORE_AVID_ENABLED: "on"
+  RESTORE_AVID_MOCK: "false"
+  AVID_CLOUDUX_URL: "https://172.26.33.57"
+  AVID_CLOUDUX_REALM: "F580021A-2720-4117-B33C-A5B843A2B586"
+  # ... .env'deki diğer NON-SECRET anahtarları (feature flag, URL, port, interval) buraya ekle
+  # ── web ──
+  BCMS_KEYCLOAK_PUBLIC_URL: "https://beinport"
