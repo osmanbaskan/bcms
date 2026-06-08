@@ -99,6 +99,80 @@ type JobTone = 'idle' | 'queued' | 'running' | 'awaiting' | 'done' | 'failed' | 
         </div>
       </header>
 
+      <!-- Manuel Materyal Arama (elle DC kod) -->
+      <section class="section manual-search">
+        <h2 class="section-title">
+          Manuel Materyal Arama <span class="phase-chip">Elle DC Kod</span>
+        </h2>
+        <p class="manual-hint">
+          Programda olmayan bir materyali DC kodu ile Avid arşivinde aratın; sonuçtan asset seçince
+          Restore (K2) + Transfer (K3) zinciri buradan yürür.
+        </p>
+        <form class="manual-form" (ngSubmit)="onManualSearch()">
+          <input
+            type="text"
+            class="manual-input"
+            name="manualDc"
+            [ngModel]="manualDcCode()"
+            (ngModelChange)="manualDcCode.set($event)"
+            placeholder="DC kod (ör. 0BA12345)"
+            [disabled]="!canExecute() || manualBusy()"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Manuel arama DC kodu"
+          />
+          <button
+            type="submit"
+            class="manual-btn"
+            [disabled]="!canExecute() || manualBusy() || !manualDcCode().trim()"
+          >
+            <span class="icon">🔍</span> Ara
+          </button>
+        </form>
+        <div class="manual-noauth" *ngIf="!canExecute()">
+          Manuel arama için Admin veya SystemEng yetkisi gerekli.
+        </div>
+
+        <div class="table-wrap" *ngIf="manualRows().length > 0">
+          <table class="manual-list" role="grid" aria-label="Manuel arama satırları">
+            <thead>
+              <tr>
+                <th class="job-col-dc">DC Kod</th>
+                <th class="job-col-status">Arama</th>
+                <th class="manual-col-action">Ara / Seç</th>
+                <th class="manual-col-action">Restore</th>
+                <th class="manual-col-action">Transfer</th>
+                <th class="manual-col-x"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let r of manualRows(); trackBy: trackByEventId">
+                <td class="mono">{{ r.dcCode }}</td>
+                <td><span class="status-badge" [class]="'status-badge status-badge--' + searchToneFor(r)">{{ manualSearchStatusLabel(r) }}</span></td>
+                <td class="manual-col-action">
+                  <button type="button" class="job-btn" [class]="'job-btn job-btn--' + searchToneFor(r)"
+                    [disabled]="!canClickSearchFor(r)" [title]="searchTooltipFor(r)" (click)="onSearchClick(r)"
+                  >{{ searchLabelFor(r) }}</button>
+                </td>
+                <td class="manual-col-action">
+                  <button type="button" class="job-btn" [class]="'job-btn job-btn--' + restoreToneFor(r)"
+                    [disabled]="!canClickRestoreFor(r)" [title]="restoreTooltipFor(r)" (click)="onRestoreClick(r)"
+                  >{{ restoreLabelFor(r) }}</button>
+                </td>
+                <td class="manual-col-action">
+                  <button type="button" class="job-btn" [class]="'job-btn job-btn--' + transferToneFor(r)"
+                    [disabled]="!canClickTransferFor(r)" [title]="transferTooltipFor(r)" (click)="onTransferClick(r)"
+                  >{{ transferLabelFor(r) }}</button>
+                </td>
+                <td class="manual-col-x">
+                  <button type="button" class="manual-remove" title="Satırı kaldır" (click)="removeManualRow(r)">×</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- Section 1 — Eksik Materyaller -->
       <section class="section">
         <h2 class="section-title">
@@ -389,6 +463,33 @@ type JobTone = 'idle' | 'queued' | 'running' | 'awaiting' | 'done' | 'failed' | 
     .refresh:hover { background: rgba(124, 58, 237, 0.30); }
     .refresh:disabled { opacity: 0.6; cursor: not-allowed; }
     .refresh .icon { font-size: 14px; }
+
+    /* Manuel Materyal Arama (2026-06-08) */
+    .manual-hint { margin: 0; font-size: 12px; color: var(--bp-fg-3); }
+    .manual-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .manual-input {
+      flex: 0 1 280px; min-width: 180px; padding: 7px 10px; font-size: 13px;
+      background: var(--bp-bg-3); color: var(--bp-fg-1);
+      border: 1px solid var(--bp-line-2); border-radius: 6px;
+    }
+    .manual-btn {
+      padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+      background: rgba(124, 58, 237, 0.20); color: var(--bp-acc-purple);
+      border: 1px solid rgba(124, 58, 237, 0.50); border-radius: 6px;
+    }
+    .manual-input:disabled, .manual-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .manual-noauth { font-size: 12px; color: #fca5a5; }
+    table.manual-list {
+      width: 100%; border-collapse: collapse; table-layout: fixed;
+      font-size: 12.5px; background: var(--bp-bg-2);
+    }
+    .manual-col-action { width: 120px; text-align: center; padding: 4px 6px; }
+    .manual-col-x { width: 44px; text-align: center; }
+    .manual-remove {
+      width: 22px; height: 22px; padding: 0; font-size: 16px; cursor: pointer;
+      background: transparent; color: var(--bp-fg-3);
+      border: 1px solid var(--bp-line-2); border-radius: 50%;
+    }
 
     .section { display: flex; flex-direction: column; gap: 8px; }
     .section-title {
@@ -1075,6 +1176,86 @@ export class RestoreComponent implements OnInit, OnDestroy {
       finalSet.delete(r.dcCode);
       this.refreshingDcCodes.set(finalSet);
     }
+  }
+
+  // ============================================================
+  // Manuel Materyal Arama (elle DC kod) — 2026-06-08
+  // Programda olmayan bir materyali DC kod ile Avid'de aratıp K2+K3
+  // zincirini buradan yürütmek için. Mevcut 3 kademe motoru (search/
+  // restore/transfer servisleri + seçim dialog'u) AYNEN kullanılır; tek
+  // fark girdi: channelSlug='MANUAL', scheduleDate=bugün (Europe/Istanbul).
+  // Manuel satırlar session-bazlı; iş kayıtları Section 2/3/4'te kalıcı.
+  // ============================================================
+  /** Avid'de aratılacak DC kodu (input two-way binding). */
+  readonly manualDcCode = signal<string>('');
+  /** Elle eklenen arama satırları — mevcut RestoreRow buton mantığını besler. */
+  readonly manualRows = signal<RestoreRow[]>([]);
+  /** Enqueue sırasında input + buton disable. */
+  readonly manualBusy = signal<boolean>(false);
+
+  /** Manuel işlerin channelSlug'ı (program-tabanlı işlerden ayırt etmek için). */
+  private readonly MANUAL_CHANNEL = 'MANUAL';
+
+  /** Bugünün Europe/Istanbul tarihini YYYY-MM-DD olarak döner (backend scheduleDate ile aynı). */
+  private istanbulToday(): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date());
+  }
+
+  /** Manuel arama için sentetik RestoreRow (category=PROGRAM → mevcut butonlar aktif olur). */
+  private makeManualRow(dcCode: string, scheduleDate: string, eventId: string): RestoreRow {
+    return {
+      channelSlug: this.MANUAL_CHANNEL, channelDisplayName: 'Manuel', scheduleDate,
+      startTimecode: null, startAt: new Date().toISOString(), dcCode,
+      title: dcCode, seriesName: null, durationTimecode: null,
+      category: 'PROGRAM', rawKind: null, eventId,
+      ssdbStatus: 'manual', ssdbLabel: '—', lastCheckedAt: null,
+    };
+  }
+
+  /** Manuel satırın arama durumu etiketi (status badge). */
+  manualSearchStatusLabel(r: RestoreRow): string {
+    const s = this.searchJobOf(r)?.status;
+    return s ? this.searchStatusLabel(s) : 'Hazır';
+  }
+
+  /** "Ara" — satırı ekle + (gerekirse) search enqueue. Aktif/SELECTED işe
+   *  tekrar yazmaz (dedup); NOT_FOUND/FAILED ise yeniden aratır. */
+  async onManualSearch(): Promise<void> {
+    const code = this.manualDcCode().trim().toUpperCase(); // DC kodları BÜYÜK harf
+    if (!code) { this.snack.open('Önce DC kod girin.', 'Tamam', { duration: 2_500 }); return; }
+    if (!this.canExecute()) {
+      this.snack.open('Manuel arama yetkin yok (Admin/SystemEng).', 'Kapat', { duration: 3_000 });
+      return;
+    }
+
+    const today = this.istanbulToday();
+    const eventId = `manual:${code}|${today}`;
+    if (!this.manualRows().some((r) => r.eventId === eventId)) {
+      this.manualRows.update((arr) => [this.makeManualRow(code, today, eventId), ...arr]);
+    }
+
+    this.manualBusy.set(true);
+    try {
+      await this.pollJobs(); // mevcut iş var mı, taze bak
+      const existing = this.searchService.jobFor(code, today);
+      const reSearchable = !existing || existing.status === 'NOT_FOUND' || existing.status === 'FAILED';
+      if (reSearchable) {
+        await this.searchService.enqueue({ channelSlug: this.MANUAL_CHANNEL, scheduleDate: today, dcCode: code });
+        await this.pollJobs();
+      }
+      this.manualDcCode.set('');
+    } catch (err) {
+      this.snack.open(`Arama tetiklenemedi: ${this.errMsg(err)}`, 'Kapat', { duration: 4_000 });
+    } finally {
+      this.manualBusy.set(false);
+    }
+  }
+
+  /** Manuel satırı listeden kaldırır (backend iş kaydını etkilemez). */
+  removeManualRow(r: RestoreRow): void {
+    this.manualRows.update((arr) => arr.filter((x) => x.eventId !== r.eventId));
   }
 
   // ============================================================
