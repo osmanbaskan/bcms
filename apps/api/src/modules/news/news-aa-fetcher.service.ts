@@ -18,6 +18,16 @@ import { getEffectiveAaConfig, type AaEffectiveConfig } from './news-settings.js
 
 const FETCH_TIMEOUT_MS = 15_000;
 const BASE_TICK_MS = 60_000; // sabit taban; gerçek çekim cfg.pollSec'e göre "due" olunca
+// AA rate-limit (429) önleme: tick başına en çok N doküman + GET'ler arası gecikme.
+// Kalan gövdesiz haberler sonraki tick'lerde self-heal ile dolar.
+const MAX_DOCS_PER_TICK = 10;
+const DOC_DELAY_MS = 500;
+// Item başına gövde-çekme deneme sayacı (process-içi). 5 başarısız denemeden
+// sonra o belgeden vazgeçilir (kronik 429 log'u kirletmesin). Worker restart'ında
+// sıfırlanır → AA geçici 429 verdiyse belge sonradan yeniden denenir.
+const MAX_BODY_ATTEMPTS = 5;
+const bodyFailCounts = new Map<string, number>();
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 function authHeader(c: AaEffectiveConfig): string {
   return 'Basic ' + Buffer.from(`${c.user}:${c.pass}`).toString('base64');
@@ -75,6 +85,7 @@ async function aaDocument(c: AaEffectiveConfig, id: string): Promise<string> {
 async function runFetch(app: FastifyInstance, c: AaEffectiveConfig): Promise<void> {
   const items = await aaSearch(c);
   let added = 0;
+  let docFetches = 0;
   for (const it of items) {
     if (!it.id) continue;
 
@@ -83,12 +94,28 @@ async function runFetch(app: FastifyInstance, c: AaEffectiveConfig): Promise<voi
       select: { id: true, body: true },
     });
     if (existing?.body) continue; // tam → atla; gövdesiz/yeni → (yeniden) çek = self-heal
+    if ((bodyFailCounts.get(it.id) ?? 0) >= MAX_BODY_ATTEMPTS) continue; // 5 deneme doldu → vazgeç
 
     let parsed: ReturnType<typeof parseNewsMlG2>[number] | undefined;
-    try {
-      parsed = parseNewsMlG2(await aaDocument(c, it.id))[0];
-    } catch (err) {
-      app.log.warn({ err, id: it.id }, 'news-aa-fetcher: doküman alınamadı (metadata ile devam)');
+    // Doküman çekme: tick başına en çok MAX_DOCS_PER_TICK; GET'ler arası DOC_DELAY_MS
+    // gecikme → AA rate-limit (429) önlenir. Cap aşılırsa bu tur sadece metadata;
+    // gövdesiz satır sonraki tick'te yeniden denenir (self-heal).
+    if (docFetches < MAX_DOCS_PER_TICK) {
+      try {
+        if (docFetches > 0) await sleep(DOC_DELAY_MS);
+        parsed = parseNewsMlG2(await aaDocument(c, it.id))[0];
+        bodyFailCounts.delete(it.id); // başarı → sayaç sıfırla
+      } catch (err) {
+        const n = (bodyFailCounts.get(it.id) ?? 0) + 1;
+        bodyFailCounts.set(it.id, n);
+        app.log.warn(
+          { err, id: it.id, attempt: n, max: MAX_BODY_ATTEMPTS },
+          n >= MAX_BODY_ATTEMPTS
+            ? 'news-aa-fetcher: doküman alınamadı — 5 deneme doldu, bu belgeden vazgeçildi'
+            : 'news-aa-fetcher: doküman alınamadı (metadata ile devam)',
+        );
+      }
+      docFetches += 1;
     }
 
     if (existing) {
