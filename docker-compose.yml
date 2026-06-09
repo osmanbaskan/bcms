@@ -211,6 +211,10 @@ services:
       AVID_CLOUDUX_URL:        ${AVID_CLOUDUX_URL:-}
       AVID_CLOUDUX_REALM:      ${AVID_CLOUDUX_REALM:-}
       AVID_CLOUDUX_TOKEN:      ${AVID_CLOUDUX_TOKEN:-}
+      # ROPC self-healing token (no_refresh_token=true → re-login). TOKEN boşsa bunlar şart.
+      AVID_CLOUDUX_USER:         ${AVID_CLOUDUX_USER:-}
+      AVID_CLOUDUX_PASSWORD:     ${AVID_CLOUDUX_PASSWORD:-}
+      AVID_CLOUDUX_CLIENT_BASIC: ${AVID_CLOUDUX_CLIENT_BASIC:-}
       AVID_STP_DEVICE:         ${AVID_STP_DEVICE:-MCR}
       AVID_STP_PROFILE:        ${AVID_STP_PROFILE:-MCR}
       AVID_CLOUDUX_INSECURE_TLS: ${AVID_CLOUDUX_INSECURE_TLS:-true}
@@ -362,6 +366,10 @@ services:
       AVID_CLOUDUX_URL:        ${AVID_CLOUDUX_URL:-}
       AVID_CLOUDUX_REALM:      ${AVID_CLOUDUX_REALM:-}
       AVID_CLOUDUX_TOKEN:      ${AVID_CLOUDUX_TOKEN:-}
+      # ROPC self-healing token (no_refresh_token=true → re-login). TOKEN boşsa bunlar şart.
+      AVID_CLOUDUX_USER:         ${AVID_CLOUDUX_USER:-}
+      AVID_CLOUDUX_PASSWORD:     ${AVID_CLOUDUX_PASSWORD:-}
+      AVID_CLOUDUX_CLIENT_BASIC: ${AVID_CLOUDUX_CLIENT_BASIC:-}
       AVID_STP_DEVICE:         ${AVID_STP_DEVICE:-MCR}
       AVID_STP_PROFILE:        ${AVID_STP_PROFILE:-MCR}
       AVID_CLOUDUX_INSECURE_TLS: ${AVID_CLOUDUX_INSECURE_TLS:-true}
