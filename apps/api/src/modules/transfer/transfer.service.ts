@@ -188,11 +188,16 @@ export async function requeueAfterTransientFailure(
 export async function setAvidJobId(
   app: FastifyInstance,
   jobId: number,
-  version: number,
   avidJobId: string,
 ): Promise<TransferJob | null> {
+  // Version'dan BAĞIMSIZ yaz: RUNNING + avidJobId boş iken set et.
+  // Önceki `where version` koşulu off-by-one'la (worker `claimed.version + 1`
+  // gönderiyordu, DB ise `claimed.version`'da) HİÇ eşleşmiyordu → avidJobId
+  // asla yazılmıyor → poll başlamıyor → DONE görülmüyordu. Ayrıca yavaş submit
+  // sırasında stale-recovery version'ı kaydırsa bile jobId yine kaydedilir.
+  // `avidJobId: null` guard'ı çift/eski yazımı önler.
   const result = await app.prisma.transferJob.updateMany({
-    where: { id: jobId, version, status: 'RUNNING' },
+    where: { id: jobId, status: 'RUNNING', avidJobId: null },
     data: {
       avidJobId,
       version: { increment: 1 },

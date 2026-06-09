@@ -55,7 +55,9 @@ export function loadTransferWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     maxPerTick:          parsePositiveIntEnv(env.TRANSFER_MAX_PER_TICK, 20),
     concurrency:         parseConcurrencyEnv(env.TRANSFER_CONCURRENCY, 3, TRANSFER_ABSOLUTE_CONCURRENCY_MAX),
     maxAttempts:         parsePositiveIntEnv(env.TRANSFER_MAX_ATTEMPTS, 3),
-    staleRunningGraceMs: parsePositiveIntEnv(env.TRANSFER_STALE_RUNNING_GRACE_MS, 60_000),
+    // Transfer yavaş olabilir (CDS mixdown/encode); submit avidJobId'yi geç
+    // döndürürse erken "stale" sayıp yeniden submit etmeyelim → 10 dk.
+    staleRunningGraceMs: parsePositiveIntEnv(env.TRANSFER_STALE_RUNNING_GRACE_MS, 600_000),
   };
 }
 
@@ -130,6 +132,20 @@ async function processOneJob(
 ): Promise<void> {
   if (job.status === 'RUNNING' && !job.avidJobId && job.startedAt
       && Date.now() - job.startedAt.getTime() > cfg.staleRunningGraceMs) {
+    // maxAttempts cap: yoksa stale→requeue→(yeniden submit)→stale sonsuz döngüsü
+    // (avidJobId hiç gelmezse 10/3'e tırmanan canlı bug). Deneme dolduysa
+    // recover ETME → terminal FAILED. Aksi halde Avid'e tekrarlı transfer gider.
+    if (job.attemptCount >= cfg.maxAttempts) {
+      const failed = await transitionToTerminal(
+        app, job, 'FAILED',
+        `Stale RUNNING — ${cfg.maxAttempts} deneme doldu; submit avidJobId döndürmedi (Avid'de transfer gerçekleşmiş olabilir).`,
+      );
+      if (failed) {
+        result.failed += 1;
+        app.log.warn({ jobId: job.id, dcCode: job.dcCode }, 'transfer worker stale RUNNING → FAILED (max attempts)');
+      }
+      return;
+    }
     const recovered = await recoverStaleRunning(app, job);
     if (recovered) {
       result.recovered += 1;
@@ -175,7 +191,7 @@ async function processOneJob(
       return;
     }
 
-    await setAvidJobId(app, claimed.id, claimed.version + 1, avidJobId);
+    await setAvidJobId(app, claimed.id, avidJobId);
     return;
   }
 
