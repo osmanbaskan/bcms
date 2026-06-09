@@ -16,7 +16,37 @@ import { getEffectiveWatchFolders } from '../watchers/watcher.settings.js';
 const DEBOUNCE_MS      = Number(process.env.ASRUN_WATCHER_DEBOUNCE_MS ?? '1500');
 const CONCURRENCY      = Math.max(1, Number(process.env.ASRUN_WATCHER_CONCURRENCY ?? '3'));
 const USE_POLLING      = parseBoolEnv(process.env.ASRUN_WATCHER_USE_POLLING, false);
-const POLL_INTERVAL_MS = parsePollIntervalMs(process.env.ASRUN_WATCHER_POLL_INTERVAL_MS, 30_000);
+const POLL_INTERVAL_MS = parsePollIntervalMs(process.env.ASRUN_WATCHER_POLL_INTERVAL_MS, 60_000);
+
+// 2026-06-09: Aktif saat penceresi (Europe/Istanbul). Asrun .bxf dosyaları
+// genelde 00:00–01:00 düşer; gün boyu polling gereksiz. Pencere DIŞINDA
+// supervisor watcher'ı kapatır (polling/CPU durur), pencere açılınca yeniden
+// başlatır. Gece yarısı sarması (23:30→02:00) destekli.
+const ACTIVE_FROM_MIN = parseHmToMin(process.env.ASRUN_WATCHER_ACTIVE_FROM, 23 * 60 + 30); // 23:30
+const ACTIVE_TO_MIN   = parseHmToMin(process.env.ASRUN_WATCHER_ACTIVE_TO, 2 * 60);          // 02:00
+
+/** 'HH:MM' → gün-dakikası; geçersizse fallback. */
+function parseHmToMin(v: string | undefined, fallback: number): number {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((v ?? '').trim());
+  if (!m) return fallback;
+  const h = Number(m[1]), mi = Number(m[2]);
+  if (h > 23 || mi > 59) return fallback;
+  return h * 60 + mi;
+}
+
+/** Şu an Europe/Istanbul aktif pencere içinde mi (gece yarısı sarması destekli). */
+function isWithinActiveWindow(): boolean {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date());
+  const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? '0') % 24;
+  const mm = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+  const now = hh * 60 + mm;
+  const from = ACTIVE_FROM_MIN, to = ACTIVE_TO_MIN;
+  if (from === to) return true;                       // 24 saat
+  if (from < to)  return now >= from && now < to;     // aynı gün
+  return now >= from || now < to;                     // 23:30 → 02:00 sarması
+}
 
 /**
  * Asrun BXF dosya izleyici — worker container.
@@ -29,11 +59,22 @@ const POLL_INTERVAL_MS = parsePollIntervalMs(process.env.ASRUN_WATCHER_POLL_INTE
  */
 export function startAsrunWatcher(app: FastifyInstance): void {
   startHeartbeatTicker('asrun-watcher', app);
+  app.log.info(
+    {
+      activeFrom: process.env.ASRUN_WATCHER_ACTIVE_FROM ?? '23:30',
+      activeTo:   process.env.ASRUN_WATCHER_ACTIVE_TO ?? '02:00',
+      pollIntervalMs: POLL_INTERVAL_MS,
+      tz: 'Europe/Istanbul',
+    },
+    'Asrun watcher: aktif saat penceresi + polling aralığı',
+  );
   startWatcherSupervisor({
     service: 'asrun-watcher',
     app,
     resolveFolder: async () => (await getEffectiveWatchFolders(app.prisma)).asrun,
     createWatcher: (folder) => buildAsrunWatcher(app, folder),
+    // Pencere dışında watcher kapatılır (polling/CPU durur), açılınca yeniden başlar.
+    isActive: isWithinActiveWindow,
   });
 }
 
