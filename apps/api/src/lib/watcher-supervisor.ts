@@ -47,6 +47,10 @@ export interface SupervisorOptions {
   createWatcher: (folder: string) => SupervisedWatcher;
   /** DB/klasör re-check aralığı (ms). Default 30 sn. */
   recheckIntervalMs?: number;
+  /** Opsiyonel aktiflik kapısı (ör. asrun: 23:30–02:00 saat penceresi). false
+   *  iken watcher kapatılır (polling/CPU durur), true olunca yeniden açılır.
+   *  Verilmezse her zaman aktif (eski davranış — provys etkilenmez). */
+  isActive?: () => boolean | Promise<boolean>;
 }
 
 function isValidDir(folder: string): boolean {
@@ -109,24 +113,36 @@ export function startWatcherSupervisor(opts: SupervisorOptions): void {
     app.log.info({ folder, service }, `${service}: izlenen klasör güncellendi`);
   };
 
-  // İlk apply.
-  void (async () => {
-    try {
-      await apply(await resolveFolder());
-    } catch (err) {
-      app.log.error({ err, service }, `${service}: başlangıç apply hatası`);
-    }
-  })();
-
-  // Periyodik re-check (DB klasör değişimi + existence).
-  const timer = setInterval(() => {
-    void (async () => {
-      try {
-        await apply(await resolveFolder());
-      } catch (err) {
-        app.log.warn({ err, service }, `${service}: klasör re-check hatası`);
+  // isActive (aktif saat penceresi) + folder re-check ortak akışı.
+  let pausedLogged = false;
+  const runApply = async (): Promise<void> => {
+    if (opts.isActive) {
+      let active = true;
+      try { active = await opts.isActive(); } catch { active = true; } // hata → aktif say (güvenli)
+      if (!active) {
+        if (current) {
+          await stopCurrent();
+          app.log.info({ service }, `${service}: aktif pencere dışında — izleme duraklatıldı`);
+          pausedLogged = true;
+        } else if (!pausedLogged) {
+          app.log.info({ service }, `${service}: aktif pencere dışında — izleme başlamadı`);
+          pausedLogged = true;
+        }
+        const f = await resolveFolder().catch(() => '');
+        setState(f, isValidDir(f), false);
+        return;
       }
-    })();
+      pausedLogged = false; // pencereye girildi
+    }
+    await apply(await resolveFolder());
+  };
+
+  // İlk apply.
+  void runApply().catch((err) => app.log.error({ err, service }, `${service}: başlangıç apply hatası`));
+
+  // Periyodik re-check (aktif pencere + DB klasör değişimi + existence).
+  const timer = setInterval(() => {
+    void runApply().catch((err) => app.log.warn({ err, service }, `${service}: re-check hatası`));
   }, recheckMs);
   if (typeof timer.unref === 'function') timer.unref();
 
