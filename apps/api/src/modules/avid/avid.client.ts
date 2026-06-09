@@ -512,100 +512,10 @@ async function interplayPollJobStatus(
 }
 
 // ----------------------------------------------------------------------------
-// K3 — Transfer.SendToPlayback (transfer) — Jobs.GetJobStatus ile izlenir
-//      (rapor §13.1, §16.8). ⚠️ Avid DIŞI yayın havuzuna gönderir; hedef
-//      (engine+device) OP-TEYİDİ bekliyor. SendToPlayback canlı doğrulanMADI.
-// ----------------------------------------------------------------------------
-
-/**
- * SendToPlayback body (rapor §13.1/§16.8). Device-driven: hedef =
- * (TransferEngineHostName + DestinationPlaybackDevice). FTP yolu engine
- * config'inde gömülü, API'ye geçmez (rapor §13.2).
- *
- * `engine` + `device` parametre (failover için): birincil/yedek farklı
- * (engine, device) çiftine gönderir. ⚠️ Yedek engine'de device adı farklı
- * olabilir (playback-engine-02 → MCR_YEDEK, MCR değil). Verilmezse cfg birincil değerleri.
- */
-export function buildSendToPlaybackBody(
-  cfg: AvidConfig,
-  interplayUri: string,
-  engine: string = cfg.transferEngine,
-  device: string = cfg.playbackDevice,
-): string {
-  return (
-    `<b:SendToPlayback>` +
-    `<b:TransferEngineHostName>${escapeXml(engine)}</b:TransferEngineHostName>` +
-    `<b:InterplayURI>${escapeXml(interplayUri)}</b:InterplayURI>` +
-    `<b:DestinationPlaybackDevice>${escapeXml(device)}</b:DestinationPlaybackDevice>` +
-    `<b:Priority>${escapeXml(cfg.transferPriority)}</b:Priority>` +
-    `<b:Overwrite>false</b:Overwrite>` +
-    `</b:SendToPlayback>`
-  );
-}
-
-/** SendToPlayback hedefi — (engine, device) çifti. */
-interface PlaybackTarget { engine: string; device: string; }
-
-/** Tek bir (engine, device) hedefine SendToPlayback dener; JobURI döner veya throw. */
-async function sendToPlaybackOnTarget(
-  cfg: AvidConfig,
-  interplayUri: string,
-  target: PlaybackTarget,
-): Promise<string> {
-  const bodyXml = buildSendToPlaybackBody(cfg, interplayUri, target.engine, target.device);
-  const body = await postSoap(cfg, {
-    service: 'Transfer',
-    bodyNs: AVID_NS.transferTypes,
-    bodyXml,
-  });
-  const jobUri = textOf(findFirstKey(body, 'JobURI'));
-  if (!jobUri) {
-    throw new Error(`Avid SendToPlayback (${target.engine}/${target.device}) yanıtında JobURI yok`);
-  }
-  return jobUri;
-}
-
-async function interplayRequestTransfer(
-  cfg: AvidConfig,
-  input: AvidRestoreTransferInput,
-): Promise<{ avidJobId: string }> {
-  // V1 basit: restore'dan gelen assetId doğrudan kullanılır. Rapor §10.5
-  // ".transfer companion kanonik" notu ileride eklenebilir (ayrı iş).
-  const interplayUri = assetIdToInterplayUri(cfg, input.assetId);
-
-  // Failover hedefleri (operasyon kararı 2026-05-31, canlı doğrulandı):
-  //   birincil playback-engine-01/MCR → yedek playback-engine-02/MCR_YEDEK.
-  // ⚠️ Yedekte device adı FARKLI (MCR yok, MCR_YEDEK var).
-  const targets: PlaybackTarget[] = [
-    { engine: cfg.transferEngine, device: cfg.playbackDevice },
-  ];
-  if (cfg.transferEngineFallback && cfg.transferEngineFallback !== cfg.transferEngine) {
-    targets.push({
-      engine: cfg.transferEngineFallback,
-      device: cfg.playbackDeviceFallback || cfg.playbackDevice,
-    });
-  }
-
-  let lastErr: unknown;
-  for (const target of targets) {
-    try {
-      const jobUri = await sendToPlaybackOnTarget(cfg, interplayUri, target);
-      return { avidJobId: jobUri };
-    } catch (err) {
-      lastErr = err;
-      // Sonraki hedefe düş (varsa). Tümü tükenirse son hatayı fırlat.
-    }
-  }
-  throw lastErr instanceof Error
-    ? lastErr
-    : new Error('Avid SendToPlayback tüm hedeflerde başarısız');
-}
-
-// ----------------------------------------------------------------------------
-// K3 GERÇEK YOLU — CTMS submitSTPJob (Cloud UX). IPWS SendToPlayback "Cannot
-// import" verdiği için yukarıdaki kod KULLANILMIYOR (referans/rollback için
-// tutuluyor). CDS Service mixdown+encode+playback'i kendi orkestra eder.
-// 2026-06-01 BCMS'ten canlı doğrulandı.
+// K3 TRANSFER — Avid Cloud UX / CTMS submitSTPJob (gerçek ve tek yol).
+// Eski IPWS Transfer.SendToPlayback yolu "Cannot import" verdiği için terk
+// edildi ve KALDIRILDI (2026-06-09). Arkadaki CDS Service mixdown + encode +
+// playback'i kendi orkestra eder.
 // ----------------------------------------------------------------------------
 
 /**

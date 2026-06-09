@@ -5,7 +5,6 @@ import {
   buildSearchBody,
   buildRestoreSubmitBody,
   buildJobStatusBody,
-  buildSendToPlaybackBody,
   assetIdToInterplayUri,
   mapJobStatus,
   getAvidAdapter,
@@ -318,22 +317,6 @@ describe('K2 — requestRestore / pollRestoreStatus (fetch stub, ağ YOK)', () =
     })));
     const adapter = createInterplayAvidAdapter(makeConfig());
     expect(await adapter.pollRestoreStatus('j')).toEqual({ status: 'running' });
-  });
-});
-
-describe('K3 — buildSendToPlaybackBody (rapor §13.1/§16.8)', () => {
-  it('birincil hedef playback-engine-01 + MCR (operasyon kararı)', () => {
-    const xml = buildSendToPlaybackBody(makeConfig(), 'interplay://BSVMWG?mobid=M1');
-    expect(xml).toContain('<b:TransferEngineHostName>playback-engine-01</b:TransferEngineHostName>');
-    expect(xml).toContain('<b:InterplayURI>interplay://BSVMWG?mobid=M1</b:InterplayURI>');
-    expect(xml).toContain('<b:DestinationPlaybackDevice>MCR</b:DestinationPlaybackDevice>');
-    expect(xml).toContain('<b:Priority>NORMAL</b:Priority>');
-    expect(xml).toContain('<b:Overwrite>false</b:Overwrite>');
-  });
-  it('engine+device parametresi override eder (yedek playback-engine-02/MCR_YEDEK)', () => {
-    const xml = buildSendToPlaybackBody(makeConfig(), 'interplay://BSVMWG?mobid=M2', 'playback-engine-02', 'MCR_YEDEK');
-    expect(xml).toContain('<b:TransferEngineHostName>playback-engine-02</b:TransferEngineHostName>');
-    expect(xml).toContain('<b:DestinationPlaybackDevice>MCR_YEDEK</b:DestinationPlaybackDevice>');
   });
 });
 
