@@ -33,9 +33,14 @@ test('asrun-merge · CANLI kilitli + asrun dolgu render', async ({ page }) => {
   await expect(liveChip).toContainText(/Canlı/);
   await expect(root.locator('.chip-asrun').first()).toBeVisible();
 
-  // Canlı satır vurgusu (tr.live) + bitiş tespiti rozeti bu günde mevcut
+  // Canlı satır vurgusu (tr.live) mevcut
   await expect(root.locator('tr.live').first()).toBeVisible();
-  await expect(root.locator('.chip-ok').first()).toBeVisible(); // "bitiş ✓"
+
+  // Kolon düzeni (2026-06-10): Bitiş + Süre EN SAĞDA; Notlar kolonu YOK
+  const headers = await root.locator('table thead th').allTextContents();
+  expect(headers[headers.length - 2]).toMatch(/Bitiş/);
+  expect(headers[headers.length - 1]).toMatch(/Süre/);
+  expect(headers.join('|')).not.toMatch(/Notlar/);
 
   const rowCount = await root.locator('table tbody tr').count();
   expect(rowCount).toBeGreaterThan(50); // 281 satır beklenir; >50 sağlam alt sınır

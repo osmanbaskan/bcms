@@ -73,16 +73,14 @@ function addDaysIso(iso: string, days: number): string {
       <div class="table-wrap" *ngIf="!loading() && rows().length > 0">
         <table>
           <thead><tr>
-            <th class="c-time">Başlangıç</th><th class="c-time">Bitiş</th><th class="c-dur">Süre</th>
-            <th class="c-dc">DC Kod</th><th>Başlık</th><th class="c-cat">Kategori</th>
-            <th class="c-src">Kaynak</th><th class="c-flags">Notlar</th>
+            <th class="c-time">Başlangıç</th><th class="c-dc">DC Kod</th><th>Başlık</th>
+            <th class="c-cat">Kategori</th><th class="c-src">Kaynak</th>
+            <th class="c-time">Bitiş</th><th class="c-dur">Süre</th>
           </tr></thead>
           <tbody>
             @for (r of rows(); track r.id) {
               <tr [class.live]="r.origin === 'PROVYS_CANLI'">
-                <td class="mono">{{ fmtTime(r.startAt) }}</td>
-                <td class="mono">{{ fmtTime(r.endAt) }}</td>
-                <td class="mono">{{ fmtDur(r.durationMs) }}</td>
+                <td class="mono" [title]="hintStart(r)">{{ fmtTime(r.startAt) }}</td>
                 <td class="mono">{{ r.dcCode ?? '—' }}</td>
                 <td class="c-title">
                   {{ r.title }}
@@ -98,14 +96,8 @@ function addDaysIso(iso: string, days: number): string {
                     <span class="chip chip-live"><mat-icon inline>lock</mat-icon> Canlı (Provys)</span>
                   } @else { <span class="chip chip-asrun">Asrun</span> }
                 </td>
-                <td class="c-flags">
-                  @if (r.trimmed) { <span class="chip chip-trim" matTooltip="Canlı pencereyle çakışan kısım kırpıldı">✂ kırpıldı</span> }
-                  @if (r.origin === 'PROVYS_CANLI') {
-                    @if (r.startDetected) { <span class="chip chip-ok" matTooltip="Başlangıç asrun akışından tespit edildi">başl. ✓</span> }
-                    @if (r.endDetected)   { <span class="chip chip-ok" matTooltip="Bitiş asrun akışından tespit edildi">bitiş ✓</span> }
-                    @if (!r.startDetected && !r.endDetected) { <span class="chip chip-warn" matTooltip="Sınırlar plan bazlı (asrun akışı tespit edilemedi)">plan bazlı ⚠</span> }
-                  }
-                </td>
+                <td class="mono" [title]="hintEnd(r)">{{ fmtTime(r.endAt) }}</td>
+                <td class="mono" [title]="r.trimmed ? 'Canlı pencereyle çakışan kısım kırpıldı' : ''">{{ fmtDur(r.durationMs) }}</td>
               </tr>
             }
           </tbody>
@@ -135,18 +127,13 @@ function addDaysIso(iso: string, days: number): string {
     thead th { position: sticky; top: 0; background: var(--bp-bg-3); color: var(--bp-fg-2); text-align: left; padding: 7px 10px; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--bp-line); }
     tbody td { padding: 5px 10px; border-bottom: 1px solid var(--bp-line-2); white-space: nowrap; }
     .c-title { white-space: normal; min-width: 260px; }
-    .c-time { width: 88px; } .c-dur { width: 84px; } .c-dc { width: 110px; } .c-cat { width: 110px; } .c-src { width: 140px; } .c-flags { width: 190px; }
+    .c-time { width: 88px; } .c-dur { width: 84px; } .c-dc { width: 110px; } .c-cat { width: 110px; } .c-src { width: 140px; }
     .mono { font-family: var(--bp-font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; }
     tr.live td { background: rgba(220,38,38,.07); }
     .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; border: 1px solid transparent; margin-right: 4px; }
     .chip-live { background: rgba(220,38,38,.16); color: #fca5a5; border-color: rgba(220,38,38,.5); }
     :host-context(html[data-theme="light"]) .chip-live { color: #7f1d1d; }
     .chip-asrun { background: rgba(99,102,241,.14); color: var(--bp-acc-indigo); border-color: rgba(99,102,241,.4); }
-    .chip-trim { background: rgba(245,158,11,.16); color: #fcd34d; border-color: rgba(245,158,11,.5); }
-    :host-context(html[data-theme="light"]) .chip-trim { color: #92400e; }
-    .chip-ok { background: rgba(16,185,129,.14); color: var(--bp-acc-green); border-color: rgba(16,185,129,.45); }
-    .chip-warn { background: rgba(249,115,22,.16); color: #fdba74; border-color: rgba(249,115,22,.5); }
-    :host-context(html[data-theme="light"]) .chip-warn { color: #9a3412; }
     .chip-p { background: rgba(124,58,237,.16); color: var(--bp-acc-purple); border-color: rgba(124,58,237,.45); }
     .chip mat-icon { font-size: 12px; height: 12px; width: 12px; vertical-align: -1px; }
   `],
@@ -179,6 +166,16 @@ export class AsrunMergeComponent implements OnInit {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  /** CANLI satır sınır bilgisi — hover tooltip (Notlar kolonu kaldırıldı, 2026-06-10). */
+  hintStart(r: AsrunMergeItemDto): string {
+    if (r.origin !== 'PROVYS_CANLI') return '';
+    return r.startDetected ? 'Başlangıç asrun akışından tespit edildi' : 'Başlangıç plan bazlı';
+  }
+  hintEnd(r: AsrunMergeItemDto): string {
+    if (r.origin !== 'PROVYS_CANLI') return '';
+    return r.endDetected ? 'Bitiş asrun akışından tespit edildi' : 'Bitiş plan bazlı';
   }
 
   catStyle(cat: string) {
