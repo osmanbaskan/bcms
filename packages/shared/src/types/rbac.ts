@@ -187,6 +187,8 @@ export const PERMISSIONS = {
    *  Operasyonel ekipler + SystemEng allowlist'ten okur; Admin auto-bypass. */
   asrun: {
     read: [GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] as BcmsGroup[],
+    /** Asrun-Merge elle yeniden kurma (geçmiş gün backfill/tanılama). */
+    rebuild: [GROUP.SystemEng] as BcmsGroup[],
   },
   /** SSDB MAM resolver ops endpoint'leri (2026-05-27): /ssdb/health,
    *  /ssdb/cache/refresh. SystemEng allowlist + Admin auto-bypass. UI'a

@@ -58,6 +58,35 @@ export interface AsrunItemDto {
 }
 
 /**
+ * Asrun-Merge (2026-06-10) — "o gün GERÇEKTE ne yayınlandı" birleşik satırı.
+ * Provys CANLI blokları kilitli (origin=PROVYS_CANLI, locked=true; canlı
+ * pencerede playout logu yanıltıcıdır); asrun satırları boşluk dolgusu
+ * (origin=ASRUN; canlı pencereyle çakışanlar kırpılır → trimmed=true).
+ * start/endDetected: canlı sınırı asrun "zincir tespiti" ile düzeltildi
+ * (false = plan bazlı ⚠). titleSource=PROVYS → isimsiz DC kodu Provys'ten
+ * zenginleştirildi (DC unique → tek isim).
+ */
+export type AsrunMergeOrigin = 'PROVYS_CANLI' | 'ASRUN';
+
+export interface AsrunMergeItemDto {
+  id: number;
+  channelSlug: AsrunChannelSlug;
+  scheduleDate: string;
+  startAt: string;                       // ISO-8601 UTC instant
+  endAt: string;
+  durationMs: number;
+  dcCode: string | null;
+  title: string;
+  titleSource: 'ASRUN' | 'PROVYS';
+  category: AsrunCategory;
+  origin: AsrunMergeOrigin;
+  locked: boolean;
+  trimmed: boolean;
+  startDetected: boolean;
+  endDetected: boolean;
+}
+
+/**
  * PERMISSIONS.asrun.read — V1 allowlist. ProvysViewer **dahil edilmez**;
  * ProvysViewer rolü yalnız Provys (planlanan akış) içerir. As-run kaydı
  * operatör ekipleri ve sistem mühendisliği için. Admin auto-bypass route
