@@ -236,6 +236,15 @@ export const PERMISSIONS = {
     read:  [GROUP.SystemEng] as BcmsGroup[],
     write: [GROUP.SystemEng] as BcmsGroup[],
   },
+  /** Avid MediaCentral Capture entegrasyonu (2026-06-10 kararları):
+   *  - read: bağlantı durumu + ayar görüntüleme (SystemEng tanılama için dahil).
+   *  - settings: ws URL + connectionEnabled + writeEnabled (ON/OFF anahtarı) —
+   *    KARAR: yalnız Ingest (+ Admin auto-bypass). SystemEng anahtara DOKUNAMAZ.
+   *  Outbound yazma izinleri Faz 3'te ayrıca tanımlanır; bu fazda yazma kodu YOK. */
+  capture: {
+    read:     [GROUP.SystemEng, GROUP.Ingest] as BcmsGroup[],
+    settings: [GROUP.Ingest] as BcmsGroup[],
+  },
   /** Haber (NewsWorks NRCS, 2026-06-05): EGS NewsWorks 2000 yerine native
    *  newsroom. read/write/delete = Haber editörleri (Admin auto-bypass);
    *  send = KJ/SPOT/CRAWL/ROLL yayına gönder (MOS job enqueue); admin = MOS
