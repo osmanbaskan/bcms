@@ -1643,6 +1643,27 @@ model WatcherSetting {
   @@map("watcher_settings")
 }
 
+/// Avid MediaCentral Capture Web Service bağlantı ayarları — TEK satır (id=1).
+/// 2026-06-10 kararları: Capture ANA uygulamadır, BCMS onu bozamaz.
+///  - connectionEnabled: inbound (salt-okuma) bağlantı/poll anahtarı. Default false.
+///  - writeEnabled: BCMS→Capture YAZMA anahtarı (ON/OFF). Default false. Yalnız
+///    Admin+Ingest değiştirebilir (PERMISSIONS.capture.settings). Bu fazda yazma
+///    KODU yok; alan ileriye dönük (Faz 3) saklanır — false iken hiçbir koşulda
+///    outbound çağrı yapılamaz.
+///  - pollSeconds: inbound ayna (mirror) sorgu aralığı (Faz 1; default 60).
+/// Boş/null wsUrl → env CAPTURE_WS_URL'e düşer (avid_settings paterni).
+model CaptureSetting {
+  id                Int      @id @default(1)
+  wsUrl             String?  @map("ws_url") @db.VarChar(300)
+  connectionEnabled Boolean  @default(false) @map("connection_enabled")
+  writeEnabled      Boolean  @default(false) @map("write_enabled")
+  pollSeconds       Int      @default(60) @map("poll_seconds")
+  updatedBy         String?  @map("updated_by") @db.VarChar(100)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("capture_settings")
+}
+
 // ── Bildirim (in-app push) sistemi — KULLANICI-BAZLI abonelik ────────────────
 /// Olay olur -> Notification kaydı + pg_notify('bcms_notify') -> SSE ile bağlı
 /// kullanıcılara iletilir. Teslim: kullanıcı o TİPE abone (açık) ise gelir.
