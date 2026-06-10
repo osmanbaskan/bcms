@@ -1643,6 +1643,45 @@ model WatcherSetting {
   @@map("watcher_settings")
 }
 
+/// Asrun-Merge (2026-06-10): "o gün GERÇEKTE ne yayınlandı" birleşik listesi.
+/// Sorun: playout router ile konuşmaz → canlı yayın sırasında asrun yanıltıcıdır
+/// (canlı görünmez; playout'ta dönen başka materyal yayınlanmış sanılır).
+/// Çözüm: Provys CANLI blokları KİLİTLİ yazılır (origin=PROVYS_CANLI, locked);
+/// asrun satırları kalan boşluklara kırpılarak eklenir (origin=ASRUN).
+/// Canlı gerçek başlangıç/bitiş "zincir tespiti" ile asrun akışından bulunur
+/// (start_detected/end_detected=true) — bulunamazsa plan bazlı (false + UI rozeti).
+/// İsim zenginleştirme: asrun'da isimsiz DC → Provys'ten (title_source=PROVYS;
+/// DC kod unique → tek isim). Kilitli satırlara merge yeniden koşsa da DOKUNULMAZ.
+model AsrunMergeItem {
+  id             Int      @id @default(autoincrement())
+  channelSlug    String   @map("channel_slug") @db.VarChar(40)
+  scheduleDate   DateTime @map("schedule_date") @db.Date
+  startAt        DateTime @map("start_at") @db.Timestamptz(6)
+  endAt          DateTime @map("end_at") @db.Timestamptz(6)
+  durationMs     Int      @map("duration_ms")
+  dcCode         String?  @map("dc_code") @db.VarChar(40)
+  title          String   @db.VarChar(500)
+  /// ASRUN | PROVYS — başlık hangi kaynaktan (PROVYS = isimsiz DC zenginleştirildi).
+  titleSource    String   @default("ASRUN") @map("title_source") @db.VarChar(20)
+  category       String   @db.VarChar(20)
+  /// PROVYS_CANLI (kilitli canlı blok) | ASRUN (boşluk dolgusu).
+  origin         String   @db.VarChar(20)
+  locked         Boolean  @default(false)
+  /// 1-a politikası: canlı pencereyle çakışan asrun satırı kırpıldı.
+  trimmed        Boolean  @default(false)
+  /// CANLI blok sınırı asrun zincir tespitiyle düzeltildi mi (false=plan bazlı).
+  startDetected  Boolean  @default(false) @map("start_detected")
+  endDetected    Boolean  @default(false) @map("end_detected")
+  sourceAsrunId  Int?     @map("source_asrun_id")
+  sourceProvysId Int?     @map("source_provys_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([channelSlug, scheduleDate, startAt], map: "asrun_merge_channel_date_start_idx")
+  @@index([scheduleDate], map: "asrun_merge_schedule_date_idx")
+  @@map("asrun_merge_items")
+}
+
 /// Avid MediaCentral Capture Web Service bağlantı ayarları — TEK satır (id=1).
 /// 2026-06-10 kararları: Capture ANA uygulamadır, BCMS onu bozamaz.
 ///  - connectionEnabled: inbound (salt-okuma) bağlantı/poll anahtarı. Default false.
