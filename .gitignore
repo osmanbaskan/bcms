@@ -46,3 +46,8 @@ tests/playwright/playwright-report/
 # DB için migrate-öncesi snapshot). Production cloud DB backup kapsamı
 # infra/postgres/backups altında ayrı yönetilir.
 backups/
+
+# 2026-06-10: oturum artefaktları — Playwright/manuel ekran görüntüleri ve
+# logo kaynak dosyası. Repo public; artefaktlar commit edilmez.
+screenshots/
+teklogo.png
