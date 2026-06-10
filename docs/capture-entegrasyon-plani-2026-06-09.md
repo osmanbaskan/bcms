@@ -162,6 +162,72 @@ API gelmeden UI uçtan uca denenebilir.
 
 ---
 
+---
+
+# EK — Akış Mimarisi Kararları (2026-06-10, Osman)
+
+> Bu bölüm yukarıdaki taslağı **kesinleştirir**; çelişen yerlerde bu bölüm geçerlidir.
+> Temel ilke: **Capture ana uygulamadır — BCMS onu bozacak hiçbir şey yapamaz.**
+
+## E1. Yön kuralları (asimetrik güven)
+
+| Yön | Davranış | Tetik |
+|---|---|---|
+| **Capture → BCMS** (inbound) | **Sürekli + otomatik.** Bağlantı aktifken **60 sn'de bir** poll (salt-okuma); Capture'daki kayıtlar/değişiklikler BCMS DB'ye yazılır. Capture Client'tan elle yapılan değişiklikler de böylece BCMS'e yansır. | otomatik (worker) |
+| **BCMS → Capture** (outbound) | **ASLA otomatik değil.** İki kilit birden gerekir: (1) global **ON/OFF yazma anahtarı** AÇIK, (2) ilgili kayıt için **kullanıcı onayı** (satır bazlı "Capture'a Gönder"). | kullanıcı |
+
+- Poll **saf GET'tir** — hiçbir koşulda yazmaz.
+- Yazma anahtarı **default KAPALI**; açabilen: **yalnız Admin + Ingest** (karar 2026-06-10).
+- Anahtar KAPALI iken "Gönder" butonları pasif + tooltip ("Capture'a yazma kapalı").
+- **Çakışma kuralı:** Anahtar AÇIK olsa bile, gönderilecek kayıt Capture'daki mevcut bir kayıtla
+  (kanal + zaman penceresi) çakışıyorsa **yazma BLOKLANIR** — onaysız asla yazılmaz; kullanıcıya
+  çakışan kayıt gösterilir, çözüm (saat/kanal değişikliği veya bilinçli ekstra onay) kullanıcıya bırakılır.
+
+## E2. Plan → Ingest tab'ı akışı (kayıt adı değişken)
+
+1. Canlı Yayın Plan + Stüdyo Plan dataları Ingest Planlama'ya düşer (mevcut davranış).
+2. Operatör plan satırında **port seçer** → **Ingest tab'ı altındaki listeye** (mevcut "işler" alanı → "Capture Kayıtları" listesi) bir satır düşer.
+3. Satırın **kayıt adı düzenlenebilir** (değişken): varsayılan ad formatı **Osman belirleyecek (TBD, 2026-06-10)**; kullanıcı göndermeden önce değiştirebilir. Gönderildikten sonra ad değişikliği = modify → yine onay gerektirir.
+4. Satır durumları: `LOCAL` (sadece BCMS'te, gönderilmedi) → `ONAY BEKLİYOR` → `GÖNDERİLDİ` (captureRecordingId alındı) → `SENKRON` / `SAPMA (drift)` / Capture'dan gelen gerçek kayıt durumu.
+
+## E3. Veri modeli netleşmesi
+
+- **`capture_recordings`** (yeni tablo): `planItemId?`, **`name` (düzenlenebilir)**, `captureChannel`, `plannedStart/End`, `captureRecordingId?`, `origin` (`BCMS` | `CAPTURE` — poll'un keşfettiği, bizim oluşturmadığımız kayıtlar da listede görünsün), `syncState`, `lastSyncedAt`, `status` (Capture'daki gerçek durum), `version`, audit alanları.
+- **`recording_ports.capture_channel`** eşlemesi (mevcut karar K3 ile aynı).
+- **`capture_settings`** (tek satır): `wsUrl`, `connectionEnabled` (poll aç/kapa), **`writeEnabled` (ON/OFF yazma anahtarı)**, `pollSeconds` (default 60), `updatedBy`.
+
+## E4. Worker: `capture-sync` (salt-okuma) — **AYNA (mirror) semantiği**
+
+> **İlke (2026-06-10): "Biz aynı zamanda Capture'ın DB'siyiz."** Capture'da var olan her kayıt
+> için doğruluk kaynağı **Capture'dır**; BCMS kopyası onu izler.
+
+- 60 sn tick (yalnız `connectionEnabled=true` iken): Capture'dan kayıt listesi çekilir →
+  **Capture'daki HER kayıt** `capture_recordings`'e upsert edilir ve BCMS'te gösterilir
+  (bizim oluşturduklarımız + Capture Client'tan elle açılanlar — hepsi).
+- **Capture alanları bizim kopyayı GÜNCELLER** — kayıt BCMS-kökenli olsa bile: zamanlar,
+  durum, kanal vb. Capture'dan gelen değerle üzerine yazılır. (Capture'da saat değiştiyse
+  bizde de değişir.)
+- `SAPMA/drift` artık veri koruması değil **bilgi rozetidir**: "bu kaydı biz gönderdik ama
+  sonradan Capture tarafında değişti" — kullanıcı görür, veri yine Capture'ı izler.
+- **Tek BCMS-sahipli durum:** henüz gönderilmemiş `LOCAL` satırlar (Capture'da yok →
+  poll onlara dokunmaz).
+- Onaylı outbound yazımdan hemen önce **tazelik + çakışma kontrolü** (E1'deki çakışma kuralı):
+  son poll verisine göre kanal/zaman çakışması varsa yazma bloklanır.
+- Hata durumunda poll **sessizce bekler** (backoff), Capture'a baskı yapmaz; bağlantı durumu
+  UI'da rozet olarak görünür.
+
+## E5. Faz eşlemesi (mevcut fazlamaya ek)
+
+| Faz | İş | Yazma içerir mi? |
+|---|---|---|
+| **0 — Bağlantı** (runbook: `runbook-capture-baglanti-2026-06-10.md`) | TCP + WSDL + read keşfi | ❌ |
+| **1 — Inbound sync** | `capture_recordings` + `capture_settings` + 60 sn poll worker + Ingest tab listesi (görüntüleme) | ❌ (saf okuma) |
+| **2 — Plan → satır + ad düzenleme** | port seçimi → LOCAL satır + değişken ad + onay kuyruğu UI | ❌ (henüz Capture'a gitmez) |
+| **3 — Outbound (onaylı yazma)** | ON/OFF anahtarı + "Capture'a Gönder" + create/modify + tazelik kontrolü | ✅ (yalnız onaylı, kontrollü test gününde) |
+| **4 — Temizlik** | dosya-tabanlı ingest/QC kaldırma | ❌ |
+
+> Faz 1–2 tamamen okuma/yerel olduğundan canlı Capture için risksizdir; Faz 3 ayrı, kontrollü test penceresinde devreye alınır (kesin emir: kontrolsüz test yok).
+
 ## Kaynaklar
 - Kod: `apps/api/src/modules/ingest/*`, `apps/web/src/app/features/ingest/*`, `apps/api/prisma/schema.prisma`
 - Avid: *Capture_UG_v3_7.pdf*, *Capture_IA_3_6.pdf*, *interplay capture install.pdf* (`/home/ubuntu/Desktop/capture/`)
