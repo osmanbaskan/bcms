@@ -92,6 +92,15 @@ export const routes: Routes = [
     data: { groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] },
   },
   {
+    // Asrun-Merge (2026-06-10): "gerçek yayın" — Provys CANLI (kilitli) +
+    // asrun boşluk dolgusu. Asrun ile aynı erişim grupları (karar 3).
+    path: 'asrun-merge',
+    loadComponent: () =>
+      import('./features/asrun/asrun-merge.component').then((m) => m.AsrunMergeComponent),
+    canActivate: [AuthGuard],
+    data: { groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] },
+  },
+  {
     // 2026-05-27: Operasyon → Restore (V1: yalnız eksik materyal listesi).
     // Provys.read kapsamı ile erişilebilir; backend `/provys/restore-missing`
     // endpoint'ini çağırır.

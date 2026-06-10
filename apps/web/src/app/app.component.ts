@@ -620,6 +620,8 @@ export class AppComponent implements OnInit, OnDestroy {
         // Asrun = playout SONRASI gerçekleşen yayın kaydı. ProvysViewer
         // bu sekmeye erişmez (rol yalnız Provys'i içerir, V1 izolasyon).
         { label: 'Asrun',             icon: 'history',             route: '/asrun',                  groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] },
+        // Asrun-Merge (2026-06-10): gerçek yayın — Provys CANLI kilitli + asrun dolgu.
+        { label: 'Asrun-Merge',       icon: 'call_merge',          route: '/asrun-merge',            groups: [GROUP.Admin, GROUP.MCR, GROUP.PCR, GROUP.SystemEng, GROUP.YayınPlanlama] },
         // 2026-05-27: Restore (V1) — 6 kanal Provys eksik materyal operasyon
         // listesi. PROVYS.read kapsamı (ProvysViewer hariç, salt-okur operasyon).
         { label: 'Restore',           icon: 'restore_page',        route: '/restore',                groups: [
