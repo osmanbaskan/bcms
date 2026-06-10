@@ -57,6 +57,7 @@ import { restoreRoutes } from './modules/restore/restore.routes.js';
 import { startRestoreWorker } from './modules/restore/restore.worker.js';
 import { transferRoutes } from './modules/transfer/transfer.routes.js';
 import { avidRoutes } from './modules/avid/avid.routes.js';
+import { captureRoutes } from './modules/capture/capture.routes.js';
 import { watchersRoutes } from './modules/watchers/watchers.routes.js';
 import { notificationRoutes } from './modules/notifications/notification.routes.js';
 import { seedTypes as seedNotificationTypes } from './modules/notifications/notification.service.js';
@@ -483,6 +484,8 @@ export async function buildApp() {
   await app.register(restoreRoutes,        { prefix: '/api/v1/restore' });
   await app.register(transferRoutes,       { prefix: '/api/v1/transfer' });
   await app.register(avidRoutes,           { prefix: '/api/v1/avid' });
+  // Capture Faz 0 (2026-06-10): SALT-OKUMA bağlantı testi + ayarlar. Yazma kodu YOK.
+  await app.register(captureRoutes,        { prefix: '/api/v1/capture' });
   await app.register(watchersRoutes,       { prefix: '/api/v1/watchers' });
   await app.register(notificationRoutes,   { prefix: '/api/v1/notifications' });
 
