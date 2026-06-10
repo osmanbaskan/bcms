@@ -14,6 +14,8 @@ import {
   exportAsrunToPdfBuffer,
   type AsrunExportRow,
 } from './asrun.export.js';
+import type { AsrunMergeItemDto, AsrunMergeOrigin } from '@bcms/shared';
+import { buildAsrunMergeForDay } from './asrun-merge.service.js';
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const CATEGORY_ENUM = ['REKLAM', 'KAMU_SPOTU', 'CANLI', 'PROGRAM', 'TANITIM', 'DIGER'] as const;
@@ -213,5 +215,49 @@ export async function asrunRoutes(app: FastifyInstance) {
       orderBy: { scheduleDate: 'desc' },
     });
     return rows.map((r) => dateToIso(r.scheduleDate));
+  });
+
+  // ── Asrun-Merge (2026-06-10): gerçek yayın listesi ─────────────────────────
+
+  // GET /api/v1/asrun/merge?channel=<slug>&date=YYYY-MM-DD
+  app.get('/merge', {
+    preHandler: app.requireGroup(...PERMISSIONS.asrun.read),
+    schema: { tags: ['Asrun'], summary: 'Asrun-Merge — Provys CANLI (kilitli) + asrun boşluk dolgusu' },
+  }, async (request: FastifyRequest) => {
+    const parsed = channelDateQuerySchema.parse(request.query);
+    const date = parsed.date ?? istanbulTodayDate();
+    const rows = await app.prisma.asrunMergeItem.findMany({
+      where: { channelSlug: parsed.channel, scheduleDate: new Date(`${date}T00:00:00Z`) },
+      orderBy: { startAt: 'asc' },
+    });
+    return rows.map((r): AsrunMergeItemDto => ({
+      id: r.id,
+      channelSlug: r.channelSlug as AsrunChannelSlug,
+      scheduleDate: dateToIso(r.scheduleDate),
+      startAt: r.startAt.toISOString(),
+      endAt: r.endAt.toISOString(),
+      durationMs: r.durationMs,
+      dcCode: r.dcCode,
+      title: r.title,
+      titleSource: r.titleSource as 'ASRUN' | 'PROVYS',
+      category: r.category as AsrunCategory,
+      origin: r.origin as AsrunMergeOrigin,
+      locked: r.locked,
+      trimmed: r.trimmed,
+      startDetected: r.startDetected,
+      endDetected: r.endDetected,
+    }));
+  });
+
+  // POST /api/v1/asrun/merge/rebuild — geçmiş gün backfill / tanılama (SystemEng)
+  app.post('/merge/rebuild', {
+    preHandler: app.requireGroup(...PERMISSIONS.asrun.rebuild),
+    schema: { tags: ['Asrun'], summary: 'Asrun-Merge yeniden kur (kilitli CANLI satırlar korunur)' },
+  }, async (request: FastifyRequest) => {
+    const body = z.object({
+      channel: z.enum(ASRUN_CHANNEL_SLUGS as [string, ...string[]]),
+      date: z.string().regex(ISO_DATE_RE),
+    }).parse(request.body);
+    return buildAsrunMergeForDay(app.prisma, body.channel, body.date, app.log);
   });
 }

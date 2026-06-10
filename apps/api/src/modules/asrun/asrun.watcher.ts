@@ -4,6 +4,7 @@ import chokidar from 'chokidar';
 import type { FastifyInstance } from 'fastify';
 import { als } from '../../plugins/audit.js';
 import { ingestAsrunFile } from './asrun.service.js';
+import { buildAsrunMergeForDay } from './asrun-merge.service.js';
 import { parseAsrunFilename } from './asrun.filename.js';
 import { ConcurrencyLimiter } from '../provys/provys.concurrency.js';
 import { parseBoolEnv, parsePollIntervalMs } from '../provys/provys.watcher.js';
@@ -114,7 +115,19 @@ function buildAsrunWatcher(app: FastifyInstance, folder: string): SupervisedWatc
         return;
       }
       await runWithAuditContext(async () => {
-        await ingestAsrunFile(app.prisma, filePath, app.log);
+        const result = await ingestAsrunFile(app.prisma, filePath, app.log);
+        // Asrun-Merge (2026-06-10): asrun gün-sonu yazıldığında ilgili günlerin
+        // merge'i otomatik kurulur (2-b kararı: CANLI + asrun aynı işte).
+        // Merge hatası ingest'i DÜŞÜRMEZ — asrun kaydı asıl iştir.
+        if (result.channelSlug && result.reason === 'applied') {
+          for (const date of result.affectedDates) {
+            try {
+              await buildAsrunMergeForDay(app.prisma, result.channelSlug, date, app.log);
+            } catch (mergeErr) {
+              app.log.error({ err: mergeErr, channelSlug: result.channelSlug, date }, 'Asrun-Merge kurulum hatası');
+            }
+          }
+        }
       });
     } catch (err) {
       app.log.error({ err, filePath, op }, 'Asrun watcher: ingest hatası');
