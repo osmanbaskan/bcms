@@ -257,7 +257,6 @@ services:
       SMTP_PORT: 1025
       SMTP_SECURE: "false"
       SMTP_FROM: ${SMTP_FROM:-noreply@bcms.local}
-      STORAGE_HOST: ${STORAGE_HOST}
       OPTA_DIR: /opta
     volumes:
       - opta_data:/opta
@@ -401,7 +400,6 @@ services:
       SMTP_PORT: 1025
       SMTP_SECURE: "false"
       SMTP_FROM: ${SMTP_FROM:-noreply@bcms.local}
-      STORAGE_HOST: ${STORAGE_HOST}
       WATCH_FOLDER: /app/tmp/watch
       # Provys SMB akış izleyici — host CIFS mount + bind volume.
       # PROVYS_HOST_MOUNT host tarafında elle mount edilmiş cifs path olur
