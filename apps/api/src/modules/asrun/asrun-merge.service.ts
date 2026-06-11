@@ -287,6 +287,77 @@ async function buildInTx(
     windows = []; // canlı yok → merge = saf asrun kopyası (zenginleştirme yine çalışır)
   }
 
+  // 2b) GECE YARISI TAŞMASI (2026-06-11): D-1'in CANLI bloğu gece yarısını
+  // aşıyorsa (örn. F1 23:00→01:11), taşan kuyruk [00:00, bitiş) bu günün
+  // penceresi DEĞİLDİ → D gününün ilk dakikalarındaki yanıltıcı playout
+  // satırları kırpılmıyordu. Düzeltme: D-1 CANLI kümelerinden gece yarısını
+  // aşanların kuyruğu D'ye kilitli satır + pencere olarak eklenir; kuyruğun
+  // GERÇEK bitişi D'nin asrun zincirlerinden tespit edilir (start=00:00 sabit,
+  // canlı devam ediyor semantiği). Var olan kilitli satırla çakışıyorsa
+  // (önceki koşu yazmış) yeniden yazılmaz.
+  {
+    const midnightMs = new Date(`${dateIso}T00:00:00.000+03:00`).getTime(); // TR sabit UTC+3
+    const prevIso = new Date(new Date(`${dateIso}T12:00:00Z`).getTime() - 86_400_000)
+      .toISOString().slice(0, 10);
+    const prevCanli = await prisma.provysItem.findMany({
+      where: { channelSlug, scheduleDate: new Date(`${prevIso}T00:00:00.000Z`), category: 'CANLI' },
+      orderBy: { startAt: 'asc' },
+    });
+    if (prevCanli.length > 0) {
+      const prevClusters = clusterIntervals(
+        prevCanli.map((p) => ({
+          start: p.startAt.getTime(),
+          end: p.startAt.getTime() + Math.max(0, p.durationMs ?? 0),
+        })),
+        opts.clusterGapMs,
+      ).filter((c) => c.end > midnightMs);
+
+      const horizon = windows.length > 0 ? windows[0].start : Number.POSITIVE_INFINITY;
+      const lockedIv = existingLocked.map((r) => ({ start: r.startAt.getTime(), end: r.endAt.getTime() }));
+
+      for (const c of prevClusters) {
+        const plan: Interval = { start: midnightMs, end: c.end };
+        // Önceki koşu kuyruk satırını zaten yazdıysa (gece yarısında BAŞLAYAN
+        // kilitli satır) → penceresini kullan, yeniden yazma. Günün KENDİ
+        // canlı blokları (start > 00:00) bunu bastırmaz — det.end zaten
+        // horizon'la (ilk pencere başlangıcı) sınırlanır.
+        const existingTail = lockedIv.filter((l) => l.start <= midnightMs + 60_000 && l.end > midnightMs);
+        if (existingTail.length > 0) {
+          windows.unshift({ start: midnightMs, end: Math.max(...existingTail.map((l) => l.end)) });
+          continue;
+        }
+        const det = detectLiveWindow(plan, chains, horizon, opts);
+        const w: Interval = { start: midnightMs, end: det.end }; // start SABİT 00:00 (devam)
+        if (w.end <= w.start) continue; // canlı gece yarısından önce bitmiş (zincir 00:00'da)
+        windows.unshift(w);
+        res.liveBlocks += 1;
+        if (det.endDetected) res.liveDetectedEnds += 1;
+
+        // Kuyruğun kaynak satırı: kümedeki son D-1 provys satırı (başlık/DC ondan).
+        const src = [...prevCanli].reverse().find((p) => {
+          const s = p.startAt.getTime();
+          return s >= c.start - opts.clusterGapMs && s <= c.end + opts.clusterGapMs;
+        });
+        if (w.end > w.start) {
+          await prisma.asrunMergeItem.create({
+            data: {
+              channelSlug, scheduleDate: day,
+              startAt: new Date(w.start), endAt: new Date(w.end),
+              durationMs: w.end - w.start,
+              dcCode: src?.dcCode ?? null,
+              title: src?.title ?? 'Canlı (önceki günden devam)',
+              titleSource: 'PROVYS',
+              category: 'CANLI', origin: 'PROVYS_CANLI', locked: true,
+              startDetected: false, // 00:00 = devam noktası, tespit anlamı yok
+              endDetected: det.endDetected,
+              sourceProvysId: src?.id ?? null,
+            },
+          });
+        }
+      }
+    }
+  }
+
   // 3) ASRUN-kökenli satırları yeniden üret (kilitlilere dokunma)
   await prisma.asrunMergeItem.deleteMany({
     where: { channelSlug, scheduleDate: day, origin: 'ASRUN' },
