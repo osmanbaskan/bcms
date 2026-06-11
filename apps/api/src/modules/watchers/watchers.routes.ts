@@ -19,6 +19,7 @@ import { PERMISSIONS, type JwtPayload } from '@bcms/shared';
 import { getWatcherConfigs } from './watcher-info.js';
 import {
   getEffectiveWatchFolders,
+  getProvysSmbCreds,
   writeWatchFolders,
   type WatchFoldersPatch,
 } from './watcher.settings.js';
@@ -39,8 +40,15 @@ const folderPatchSchema = z
   .object({
     provysWatchFolder: z.string().max(500).optional(),
     asrunWatchFolder:  z.string().max(500).optional(),
+    // SMB-direct (2026-06-11): provys klasörü smb:// ise kullanılacak kimlik.
+    provysSmbUser:     z.string().max(100).optional(),
+    provysSmbPassword: z.string().max(300).optional(),
+    provysSmbDomain:   z.string().max(100).optional(),
   })
   .strict();
+
+/** GET'te şifre asla dönmez — yalnız set olup olmadığı bildirilir. */
+const MASK = '********';
 
 /** Worker /internal/watchers'tan service→runtime haritası. Ulaşılamazsa null. */
 async function fetchWorkerRuntime(
@@ -82,7 +90,16 @@ async function buildWatchersDto(app: FastifyInstance) {
     };
   });
 
-  return { reachable, watchers };
+  // SMB-direct kimlik durumu (yalnız provys; şifre MASKELİ).
+  const smb = await getProvysSmbCreds(app.prisma);
+  const provysSmb = {
+    user: smb.user || null,
+    domain: smb.domain || null,
+    passwordSet: smb.password !== '',
+    password: smb.password !== '' ? MASK : null,
+  };
+
+  return { reachable, watchers, provysSmb };
 }
 
 export async function watchersRoutes(app: FastifyInstance) {
@@ -98,6 +115,8 @@ export async function watchersRoutes(app: FastifyInstance) {
     schema: { tags: ['Watchers'], summary: 'Watcher izlenen klasörü güncelle' },
   }, async (request) => {
     const patch = folderPatchSchema.parse(request.body);
+    // UI maskeyi geri gönderirse şifreye DOKUNMA (news_settings paritesi).
+    if (patch.provysSmbPassword === MASK) delete patch.provysSmbPassword;
     const user = (request.user as JwtPayload | undefined)?.preferred_username ?? null;
     await writeWatchFolders(app.prisma, patch, user);
     return buildWatchersDto(app);

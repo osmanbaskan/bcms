@@ -61,6 +61,20 @@ interface WatcherStatus {
   watching:      boolean | null;
 }
 
+/** Provys SMB-direct kimlik durumu (şifre maskeli; backend /watchers). */
+interface ProvysSmbInfo {
+  user: string | null;
+  domain: string | null;
+  passwordSet: boolean;
+  password: string | null; // '********' | null
+}
+
+interface WatchersDto {
+  reachable: boolean;
+  watchers: WatcherStatus[];
+  provysSmb?: ProvysSmbInfo;
+}
+
 /** Haber > AA bağlantı ayarları DTO'su (backend news-settings.ts ile eş).
  *  aaApiPassword GET'te '********' maske ya da '' gelir. */
 interface NewsSettings {
@@ -347,8 +361,11 @@ type SettingsSection = 'connections' | 'ports' | 'leagues' | 'notifications' | '
                           <mat-label>İzlenen klasör</mat-label>
                           <input matInput [(ngModel)]="watcherFolderDraft[w.key]"
                                  [ngModelOptions]="{standalone:true}"
-                                 placeholder="/app/tmp/…" autocomplete="off" spellcheck="false">
-                          <mat-hint>Container içinde mount edilmiş olmalı · değişiklik ~30 sn içinde uygulanır</mat-hint>
+                                 [placeholder]="w.key === 'provys' ? '/app/tmp/… veya smb://sunucu/paylaşım/klasör/' : '/app/tmp/…'"
+                                 autocomplete="off" spellcheck="false">
+                          <mat-hint>{{ w.key === 'provys'
+                            ? 'smb:// girilirse mount GEREKMEZ (doğrudan SMB) · değişiklik ~30 sn içinde uygulanır'
+                            : 'Container içinde mount edilmiş olmalı · değişiklik ~30 sn içinde uygulanır' }}</mat-hint>
                         </mat-form-field>
                         <button mat-stroked-button type="button" class="folder-save"
                                 (click)="saveWatcherFolder(w.key)"
@@ -367,6 +384,37 @@ type SettingsSection = 'connections' | 'ports' | 'leagues' | 'notifications' | '
                           <mat-icon>folder_off</mat-icon>
                           Klasör worker container'ında bulunamadı — mount edilmiş mi kontrol edin (izleme durdu).
                         </p>
+                      }
+
+                      <!-- SMB-direct kimlikleri (yalnız Provys; smb:// klasör için) -->
+                      @if (w.key === 'provys') {
+                        <div class="watcher-folder smb-creds">
+                          <mat-form-field class="smb-field">
+                            <mat-label>SMB kullanıcı</mat-label>
+                            <input matInput [(ngModel)]="provysSmbDraft.user" [ngModelOptions]="{standalone:true}"
+                                   autocomplete="off" spellcheck="false">
+                          </mat-form-field>
+                          <mat-form-field class="smb-field">
+                            <mat-label>SMB domain</mat-label>
+                            <input matInput [(ngModel)]="provysSmbDraft.domain" [ngModelOptions]="{standalone:true}"
+                                   autocomplete="off" spellcheck="false">
+                          </mat-form-field>
+                          <mat-form-field class="smb-field">
+                            <mat-label>SMB şifre</mat-label>
+                            <input matInput type="password" [(ngModel)]="provysSmbDraft.password"
+                                   [ngModelOptions]="{standalone:true}" autocomplete="new-password">
+                            <mat-hint>{{ provysSmbDraft.password === '********' ? 'Kayıtlı — değiştirmek için yenisini yaz' : 'smb:// klasör için gerekli' }}</mat-hint>
+                          </mat-form-field>
+                          <button mat-stroked-button type="button" class="folder-save"
+                                  (click)="saveProvysSmb()" [disabled]="watcherSaving() === 'provys-smb'">
+                            @if (watcherSaving() === 'provys-smb') {
+                              <mat-spinner diameter="16" style="display:inline-block;margin-right:6px"></mat-spinner>
+                              Kaydediliyor…
+                            } @else {
+                              <ng-container><mat-icon>key</mat-icon> Kimliği Kaydet</ng-container>
+                            }
+                          </button>
+                        </div>
                       }
 
                       <div class="watcher-info">
@@ -762,6 +810,9 @@ type SettingsSection = 'connections' | 'ports' | 'leagues' | 'notifications' | '
     }
     .folder-field { flex: 1; min-width: 0; }
     .folder-save { flex-shrink: 0; margin-top: 6px; }
+    /* SMB-direct kimlik satırı (yalnız Provys kartı) */
+    .smb-creds { flex-wrap: wrap; }
+    .smb-field { flex: 1 1 160px; min-width: 140px; }
 
     /* ── LIGHT TEMA (2026-06-02): port chip'leri beyaz-alfa
        (rgba(255,255,255,.05/.12)) → açık zeminde "kutu = bg", kayboluyordu.
@@ -875,15 +926,23 @@ export class SettingsComponent implements OnInit {
     this.loadWatchers();
   }
 
+  /** Provys SMB-direct kimlik taslağı (şifre '********' = kayıtlı, dokunulmadı). */
+  provysSmbDraft: { user: string; domain: string; password: string } = { user: '', domain: '', password: '' };
+
   loadWatchers() {
     this.watchersLoading.set(true);
-    this.api.get<{ reachable: boolean; watchers: WatcherStatus[] }>('/watchers').subscribe({
+    this.api.get<WatchersDto>('/watchers').subscribe({
       next: (r) => {
         const list = Array.isArray(r?.watchers) ? r.watchers : [];
         this.watchers.set(list);
         // Editable taslakları efektif klasörle tazele (kullanıcı düzenlemesini
         // ezmemek için yalnız yükleme/yenileme anında).
         this.watcherFolderDraft = Object.fromEntries(list.map((w) => [w.key, w.watchFolder]));
+        this.provysSmbDraft = {
+          user: r?.provysSmb?.user ?? '',
+          domain: r?.provysSmb?.domain ?? '',
+          password: r?.provysSmb?.password ?? '',
+        };
         this.watchersReachable.set(!!r?.reachable);
         this.watchersLoading.set(false);
       },
@@ -900,7 +959,7 @@ export class SettingsComponent implements OnInit {
     const folder = (this.watcherFolderDraft[key] ?? '').trim();
     const field = key === 'provys' ? 'provysWatchFolder' : 'asrunWatchFolder';
     this.watcherSaving.set(key);
-    this.api.put<{ reachable: boolean; watchers: WatcherStatus[] }>('/watchers/folder', { [field]: folder })
+    this.api.put<WatchersDto>('/watchers/folder', { [field]: folder })
       .subscribe({
         next: (r) => {
           const list = Array.isArray(r?.watchers) ? r.watchers : [];
@@ -915,6 +974,30 @@ export class SettingsComponent implements OnInit {
           this.snack.open(`Klasör kaydedilemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
         },
       });
+  }
+
+  /** Provys SMB-direct kimliklerini kaydet ('********' şifre backend'de yok sayılır). */
+  saveProvysSmb() {
+    this.watcherSaving.set('provys-smb');
+    this.api.put<WatchersDto>('/watchers/folder', {
+      provysSmbUser: this.provysSmbDraft.user.trim(),
+      provysSmbDomain: this.provysSmbDraft.domain.trim(),
+      provysSmbPassword: this.provysSmbDraft.password,
+    }).subscribe({
+      next: (r) => {
+        this.provysSmbDraft = {
+          user: r?.provysSmb?.user ?? '',
+          domain: r?.provysSmb?.domain ?? '',
+          password: r?.provysSmb?.password ?? '',
+        };
+        this.watcherSaving.set(null);
+        this.snack.open('SMB kimliği kaydedildi', 'Tamam', { duration: 3500 });
+      },
+      error: (err) => {
+        this.watcherSaving.set(null);
+        this.snack.open(`Kimlik kaydedilemedi: ${err?.error?.message ?? err.message}`, 'Kapat', { duration: 5000 });
+      },
+    });
   }
 
   /** Watcher durum etiketi (rozet). */

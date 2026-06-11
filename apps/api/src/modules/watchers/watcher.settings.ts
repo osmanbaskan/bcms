@@ -38,10 +38,34 @@ export async function getEffectiveWatchFolders(
   };
 }
 
-/** PUT gövdesi — biri ya da ikisi; boş string → env'e dön (null'a çevrilir). */
+/**
+ * Provys SMB-direct kimliği (2026-06-11): provys_watch_folder `smb://` ise
+ * watcher bu kimlikle smbclient üzerinden okur. DB override → env fallback
+ * (PROVYS_SMB_USER/PASSWORD/DOMAIN). Watcher her smbclient çağrısında taze
+ * okur — ayar değişimi restart/rebuild gerektirmez.
+ */
+export interface ProvysSmbCreds {
+  user: string;
+  password: string;
+  domain: string;
+}
+
+export async function getProvysSmbCreds(prisma: PrismaClient): Promise<ProvysSmbCreds> {
+  const row = await prisma.watcherSetting.findUnique({ where: { id: 1 } });
+  return {
+    user:     nz(row?.provysSmbUser)     ?? process.env.PROVYS_SMB_USER?.trim()     ?? '',
+    password: nz(row?.provysSmbPassword) ?? process.env.PROVYS_SMB_PASSWORD         ?? '',
+    domain:   nz(row?.provysSmbDomain)   ?? process.env.PROVYS_SMB_DOMAIN?.trim()   ?? '',
+  };
+}
+
+/** PUT gövdesi — alanlardan herhangi biri; boş string → env'e dön (null'a çevrilir). */
 export interface WatchFoldersPatch {
   provysWatchFolder?: string;
   asrunWatchFolder?: string;
+  provysSmbUser?: string;
+  provysSmbPassword?: string;
+  provysSmbDomain?: string;
 }
 
 /**
@@ -60,6 +84,9 @@ export async function writeWatchFolders(
   };
   setPath('provysWatchFolder', patch.provysWatchFolder);
   setPath('asrunWatchFolder',  patch.asrunWatchFolder);
+  setPath('provysSmbUser',     patch.provysSmbUser);
+  setPath('provysSmbPassword', patch.provysSmbPassword);
+  setPath('provysSmbDomain',   patch.provysSmbDomain);
 
   await prisma.watcherSetting.upsert({
     where:  { id: 1 },
