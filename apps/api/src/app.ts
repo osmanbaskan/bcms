@@ -51,6 +51,7 @@ import { startProvysWatcher } from './modules/provys/provys.watcher.js';
 import { startAsrunWatcher } from './modules/asrun/asrun.watcher.js';
 import { startSsdbResolverWorker } from './modules/ssdb/ssdb-resolver.worker.js';
 import { ssdbRoutes } from './modules/ssdb/ssdb.routes.js';
+import { closeSsdbPool } from './modules/ssdb/ssdb.client.js';
 import { searchRoutes } from './modules/search/search.routes.js';
 import { startSearchWorker } from './modules/search/search.worker.js';
 import { restoreRoutes } from './modules/restore/restore.routes.js';
@@ -491,6 +492,12 @@ export async function buildApp() {
 
   // Bildirim tip katalogu — idempotent seed (mevcutlar korunur).
   await seedNotificationTypes(app).catch((err) => app.log.warn({ err }, 'notification seed atlandı'));
+
+  // AUDIT-2026-06-11 A1: SSDB (MSSQL) havuzu graceful shutdown'da kapatılır.
+  // closeSsdbPool idempotent + null-guard'lı; havuz hiç açılmadıysa no-op.
+  app.addHook('onClose', async () => {
+    await closeSsdbPool();
+  });
 
   return app;
 }
