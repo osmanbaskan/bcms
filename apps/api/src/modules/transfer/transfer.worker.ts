@@ -299,8 +299,3 @@ export function startTransferWorker(app: FastifyInstance): boolean {
 
   return true;
 }
-
-export function _resetTransferWorkerStateForTests(): void {
-  if (startupTimer) { clearTimeout(startupTimer); startupTimer = null; }
-  if (intervalTimer) { clearInterval(intervalTimer); intervalTimer = null; }
-}

@@ -231,8 +231,3 @@ export function startSearchWorker(app: FastifyInstance): boolean {
 
   return true;
 }
-
-export function _resetSearchWorkerStateForTests(): void {
-  if (startupTimer) { clearTimeout(startupTimer); startupTimer = null; }
-  if (intervalTimer) { clearInterval(intervalTimer); intervalTimer = null; }
-}

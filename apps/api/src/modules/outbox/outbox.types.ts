@@ -17,8 +17,6 @@ import { randomUUID } from 'node:crypto';
  * PR-B kapsamı; poller (publish behavior) PR-C kapsamı.
  */
 
-export type OutboxEventStatus = 'pending' | 'published' | 'failed' | 'dead';
-
 export interface OutboxEnvelope<P extends Record<string, unknown> = Record<string, unknown>> {
   eventId: string;
   eventType: string;

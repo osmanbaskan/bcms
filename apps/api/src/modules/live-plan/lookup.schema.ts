@@ -47,10 +47,6 @@ export const createEquipmentOptionSchema = createBaseLookupSchema.extend({
 /** Non-polymorphic create — type yok. */
 export const createLookupSchema = createBaseLookupSchema.strict();
 
-export type CreateLookupDto                 = z.input<typeof createLookupSchema>;
-export type CreateTechnicalCompanyDto       = z.input<typeof createTechnicalCompanySchema>;
-export type CreateEquipmentOptionDto        = z.input<typeof createEquipmentOptionSchema>;
-
 /**
  * Update (PATCH) — tüm fields optional; deletedAt SADECE null kabul (L10);
  * type yok (L11 immutable).
@@ -68,8 +64,6 @@ export const updateLookupSchema = z.object({
   { message: 'En az bir field güncellenmeli' },
 );
 
-export type UpdateLookupDto = z.input<typeof updateLookupSchema>;
-
 /**
  * List query — pagination + filter.
  * - activeOnly default true (L8)
@@ -83,5 +77,3 @@ export const listLookupQuerySchema = z.object({
   page:            z.coerce.number().int().positive().default(1),
   pageSize:        z.coerce.number().int().positive().max(200).default(50),
 });
-
-export type ListLookupQuery = z.infer<typeof listLookupQuerySchema>;

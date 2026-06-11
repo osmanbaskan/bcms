@@ -13,9 +13,6 @@ import { composeFinalSnapshot, type SnapshotRow, type SnapshotSource } from './p
 import { requestSsdbResolverTick } from '../ssdb/ssdb-resolver.worker.js';
 import type { ProvysChannelSlug } from '@bcms/shared';
 
-/** Worker bağlamında audit ext'in entityType olarak gördüğü model adı. */
-export const PROVYS_AUDIT_ENTITY = 'ProvysItem';
-
 /** pg_notify kanal adı (DB-side notification channel). */
 export const PG_NOTIFY_CHANNEL = 'provys_changed';
 
@@ -383,55 +380,6 @@ async function fileCodesForSlug(slug: ProvysChannelSlug): Promise<string[]> {
   const c = PROVYS_CHANNELS.find((x) => x.slug === slug);
   if (!c) return [];
   return [c.fileCode, ...(c.fileCodeAliases ?? [])];
-}
-
-/**
- * Eski API — file-scoped tek dosya sync. Composed-snapshot mantığına
- * yönlendiren ince wrapper: filePath'ten kanalı + dosya scheduleDate'ini
- * çıkarır, etkilenebilecek günler için (filename day + bir sonraki gün)
- * `syncChannelDate` çağırır. Watcher artık doğrudan `syncChannelDate`
- * kullanıyor; bu wrapper yalnız legacy çağrılar için tutuluyor.
- */
-export async function syncProvysFile(
-  prisma: PrismaClient,
-  filePath: string,
-  logger: FastifyBaseLogger,
-): Promise<ProvysSyncResult> {
-  const channelSlug = resolveChannelFromPath(filePath);
-  if (!channelSlug) {
-    logger.warn(
-      { filePath, fileCode: extractFileCode(filePath) },
-      'Provys: bilinmeyen file code, import edilmedi',
-    );
-    return { channelSlug: null, reason: 'unknown-channel', inserted: 0, updated: 0, deleted: 0, affectedDates: [] };
-  }
-  const filenameDate = extractScheduleDate(filePath);
-  if (!filenameDate) {
-    logger.warn({ filePath }, 'Provys: dosya adından tarih çıkartılamadı');
-    return { channelSlug, reason: 'parse-empty', inserted: 0, updated: 0, deleted: 0, affectedDates: [] };
-  }
-  const watchDir = path.dirname(filePath);
-  const nextDate = nextIsoDate(filenameDate);
-
-  let totalInserted = 0;
-  let totalUpdated = 0;
-  let totalDeleted = 0;
-  const affected: string[] = [];
-  for (const d of [filenameDate, nextDate]) {
-    const r = await syncChannelDate(prisma, channelSlug, d, watchDir, logger);
-    totalInserted += r.inserted;
-    totalUpdated += r.updated;
-    totalDeleted += r.deleted;
-    if (r.reason === 'applied' || r.reason === 'empty-cleared') affected.push(d);
-  }
-  return {
-    channelSlug,
-    reason: affected.length > 0 ? 'applied' : 'unchanged',
-    inserted: totalInserted,
-    updated: totalUpdated,
-    deleted: totalDeleted,
-    affectedDates: affected,
-  };
 }
 
 function nextIsoDate(date: string): string {

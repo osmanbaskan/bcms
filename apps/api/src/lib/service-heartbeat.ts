@@ -47,8 +47,6 @@ const SERVICE_CONFIGS: Record<string, ServiceHealthConfig> = {
   'transfer-worker':{ expectedIntervalMs:   5_000, staleThresholdMs:      60_000 },
 };
 
-export type ServiceName = keyof typeof SERVICE_CONFIGS;
-
 /** Module-scope: serviceName -> son tick ms. */
 const lastHeartbeats = new Map<string, number>();
 
@@ -66,13 +64,6 @@ export function recordHeartbeat(service: string): void {
  */
 export function getRegisteredServices(): string[] {
   return Object.keys(SERVICE_CONFIGS);
-}
-
-/**
- * Test için heartbeat state'i sıfırla.
- */
-export function _resetHeartbeatsForTests(): void {
-  lastHeartbeats.clear();
 }
 
 export interface ServiceHealthStatus {
@@ -108,15 +99,6 @@ export function getServiceHealthStatuses(
     });
   }
   return out;
-}
-
-/**
- * Tüm enabled servisler alive mı? Hiç heartbeat atmamış da "alive değil"
- * (boot anında recordHeartbeat çağrısı zorunlu).
- */
-export function isAllAlive(enabledServices: readonly string[], now: number = Date.now()): boolean {
-  const statuses = getServiceHealthStatuses(enabledServices, now);
-  return statuses.length > 0 && statuses.every((s) => s.alive);
 }
 
 /**

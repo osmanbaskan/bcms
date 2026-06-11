@@ -23,8 +23,6 @@ import type { AsrunChannelSlug } from '@bcms/shared';
  * `system:asrun-watcher` actor'üyle işaretlenecek (watcher tarafında).
  */
 
-export const ASRUN_AUDIT_ENTITY = 'AsrunItem';
-
 export interface AsrunSyncResult {
   channelSlug: AsrunChannelSlug | null;
   reason?: 'unknown-channel' | 'parse-empty' | 'unchanged' | 'applied';

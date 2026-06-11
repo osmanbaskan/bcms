@@ -35,7 +35,3 @@ export function resolveOutboxQueue(eventType: string): QueueName {
   }
   return queue;
 }
-
-export const KNOWN_OUTBOX_EVENT_TYPES = Object.freeze(
-  Object.keys(EVENT_TYPE_TO_QUEUE),
-) as readonly string[];

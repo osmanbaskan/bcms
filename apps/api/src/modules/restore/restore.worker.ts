@@ -335,9 +335,3 @@ export function startRestoreWorker(app: FastifyInstance): boolean {
 
   return true;
 }
-
-/** Test-only — module timer state reset. */
-export function _resetRestoreWorkerStateForTests(): void {
-  if (startupTimer) { clearTimeout(startupTimer); startupTimer = null; }
-  if (intervalTimer) { clearInterval(intervalTimer); intervalTimer = null; }
-}

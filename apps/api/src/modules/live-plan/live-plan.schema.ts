@@ -21,8 +21,6 @@ export const livePlanStatusSchema = z.enum([
   'CANCELLED',
 ]);
 
-export type LivePlanStatusValue = z.infer<typeof livePlanStatusSchema>;
-
 const dateOrderRefine = (d: { eventStartTime: string; eventEndTime?: string }) => {
   if (d.eventEndTime === undefined) return true;
   return new Date(d.eventEndTime) > new Date(d.eventStartTime);
@@ -137,8 +135,6 @@ export const createFromOptaSchema = z.object({
   optaMatchId: z.string().trim().min(1).max(80),
 });
 
-export type CreateFromOptaDto = z.infer<typeof createFromOptaSchema>;
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 2026-05-13: Yayın Planlama seçimli Excel export.
 //   POST /api/v1/live-plan/export
@@ -151,5 +147,3 @@ export const livePlanExportRequestSchema = z.object({
            .max(500, 'En fazla 500 kayıt seçilebilir'),
   title: z.string().trim().max(120).optional(),
 });
-
-export type LivePlanExportRequest = z.infer<typeof livePlanExportRequestSchema>;
