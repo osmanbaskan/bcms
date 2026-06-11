@@ -1,5 +1,12 @@
 # AUDIT — Ölü Kod & Kesin Buglar (2026-06-11)
 
+> **UYGULAMA DURUMU (aynı gün):**
+> ✅ **A1** → `168019b` (havuz onClose'a bağlandı) · ✅ **B1** 22 export → `df43d91` ·
+> ✅ **B2** 3 bileşen+liveCount → `bd25090` · ✅ **B3** SendToPlayback zinciri → `dafd094` ·
+> ✅ **B4** STORAGE_HOST → `f6dd9ac` · ✅ **B5 kararları uygulandı** (aşağıda).
+> Doğrulama: typecheck 0 hata · 616/616 unit test · build'ler temiz · api+worker+web healthy.
+> **Net ~730 satır silindi. AUDIT KAPANDI — 2026-06-11.**
+
 > Kapsam: tüm kod tabanı — api (194 dosya / 43.813 satır), web (140 / 34.678), shared (18 / 1.726).
 > İlke: **yalnız %100 doğrulanmış** bulgular. Her madde repo-geneli (spec + tests/ dahil)
 > sıfır-referans taramasıyla tek tek kanıtlandı; şüpheliler (parser sınırı, dinamik erişim,
@@ -81,15 +88,15 @@
 - **`STORAGE_HOST`** — compose'da api+worker'a geçiriliyor (satır ~260/404), repo genelinde
   (ts/py/sh) **hiçbir tüketici yok**.
 
-### B5. Çağrısız backend yüzeyleri (kod sağlam; UI/tüketici yok — silme değil KARAR konusu)
-| Yüzey | Durum |
-|---|---|
-| **incidents**: `GET /`, `POST /`, `DELETE /:id`, `PATCH /:id/resolve`, `GET+POST /timeline/:scheduleId` (+`TimelineEvent` modeli) | Web yalnız `POST /incidents/report` kullanıyor. **Timeline özelliği uçtan uca atıl** — UI hiç yazılmamış. Sil ya da UI planla. |
-| **news MOS admin**: `DELETE/PATCH /mos/devices/:id`, `GET /mos/jobs`, `GET /wires/sources` | `mos-config` UI hiç yazılmadı (Haber planında vardı). Backend hazır bekliyor. |
-| **opta**: `GET /league-teams`, `POST /cache/clear` | Web kullanmıyor; cache/clear ops-amaçlı olabilir → işaretle ya da kaldır. |
-| **bookings**: `POST /import` | Web/script kullanmıyor. |
-| **ingest**: `POST /callback` (HMAC webhook) | Dış worker hiç var olmadı ("Avid capture için planlanan"); yeni Capture tasarımı bunu kullanmayacak → capture Faz-4 ile kalkmalı. |
-| **ingest**: `POST /report-issue` | Web kullanmıyor (schedules kendi `/incidents/report`'unu kullanıyor). |
+### B5. Çağrısız backend yüzeyleri — **KARARLAR (Osman, 2026-06-11) ve uygulama**
+| Yüzey | Karar | Uygulama |
+|---|---|---|
+| **incidents**: `GET /`, `POST /`, `DELETE /:id`, `PATCH /:id/resolve`, `GET+POST /timeline/:scheduleId` (+`TimelineEvent`) | **KALSIN** | İleride olay-yönetimi UI'ı için backend hazır; web bugün yalnız `POST /incidents/report` kullanıyor. |
+| **news MOS admin**: `DELETE/PATCH /mos/devices/:id`, `GET /mos/jobs`, `GET /wires/sources` | **KALSIN** | Haber planındaki `mos-config` UI fazının backend'i (Vizrt/KJ çıkışı hedefte). |
+| **opta**: `GET /league-teams`, `POST /cache/clear` | **KALSIN** | Çağrısız ama zararsız; ops/ileri kullanım ihtimaline bırakıldı. |
+| **bookings**: `POST /import` | **SİLİNDİ** ✅ | Route + `importFromBuffer` (122 satır) + `ImportResult` + **`lib/excel.ts` (61 satır, tek tüketicisiydi)** + bozuk `booking.import.test.ts`. |
+| **ingest**: `POST /callback` (HMAC webhook) | **ERTELENDİ** → Capture **Faz-4** | Dış worker hiç olmadı; dosya-ingest temizliğiyle birlikte kalkacak (bkz. `capture-entegrasyon-plani` §12 Faz-4). |
+| **ingest**: `POST /report-issue` | **SİLİNDİ** ✅ | Route + `PERMISSIONS.ingest.reportIssue` (web schedules kendi `/incidents/report`'unu kullanıyor; `incidents.reportIssue` korunur). |
 
 **Bilinçli istisnalar (çağrısız ama ölü DEĞİL):** `POST /asrun/merge/rebuild` (ops/backfill — 2026-06-10'da 277 kez kullanıldı) · `GET /capture/*` (Faz-0, yarınki bağlantı günü) · `/opta/sync` (opta_smb_watcher.py çağırıyor) · `GET /asrun/channels|dates`, `GET /users/groups`, `GET /provys/channels`, `GET /schedules/export` vb. — web'de literal/parametrik kullanım teyitli olanlar bu rapora alınmadı.
 
@@ -109,10 +116,12 @@
 
 ---
 
-## D) Önerilen temizlik sırası
-1. **Sıfır-risk silme PR'ı:** B1 fonksiyon/sabitler (closeSsdbPool hariç) + B1 tip exportları + B2 üç
-   bileşen + `liveCount` + B3 zinciri (config alanları + env okumaları + `transferTypes` + spec fixture)
-   + B4 `STORAGE_HOST` satırları. Tahmini ~550+ satır net silme; davranış değişimi sıfır.
-2. **A1 fix:** `closeSsdbPool`'u `app.addHook('onClose')`'a bağla (3 satır).
-3. **Karar maddeleri (Osman):** B5 yüzeyleri — özellikle incidents/timeline (sil mi, UI mı?) ve
-   ingest `/callback`+`/report-issue` (capture Faz-4 temizliğine dahil edilsin mi?).
+## D) Temizlik sırası — TAMAMLANDI ✅
+1. ✅ Sıfır-risk silme: B1+B2+B3+B4 (`df43d91`, `bd25090`, `dafd094`, `f6dd9ac`).
+2. ✅ A1 fix: `closeSsdbPool` → `onClose` (`168019b`).
+3. ✅ B5 kararları alındı ve uygulandı (yukarıdaki tablo): bookings/import + ingest/report-issue
+   silindi; incidents/timeline, MOS admin, opta yüzeyleri bilinçli KALDI; ingest/callback
+   Capture Faz-4'e ertelendi.
+
+**Kapanış doğrulaması:** typecheck 0 hata · 616/616 unit test · api+worker+web healthy ·
+canlıda regresyon yok. Bu audit kapanmıştır; bir sonraki audit yeni dosya olarak açılır.
