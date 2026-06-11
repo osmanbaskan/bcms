@@ -12,11 +12,13 @@
  */
 import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
-import type { FSWatcher } from 'chokidar';
 
-/** createWatcher dönüşü — chokidar instance + cleanup (debounce timer'ları). */
+/**
+ * createWatcher dönüşü — izleyici (chokidar FSWatcher VEYA SMB poller gibi
+ * close() sunan herhangi bir şey) + cleanup (debounce timer'ları).
+ */
 export interface SupervisedWatcher {
-  watcher: FSWatcher;
+  watcher: { close(): Promise<unknown> | void };
   cleanup: () => void;
 }
 
@@ -54,6 +56,9 @@ export interface SupervisorOptions {
 }
 
 function isValidDir(folder: string): boolean {
+  // smb:// kaynakları fs ile doğrulanamaz — geçerli sayılır; erişim/sağlık
+  // sorumluluğu watcher'ın kendi poller'ındadır (2026-06-11 SMB-direct).
+  if (/^smb:\/\//i.test(folder)) return true;
   try {
     return fs.existsSync(folder) && fs.statSync(folder).isDirectory();
   } catch {
