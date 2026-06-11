@@ -6,7 +6,6 @@ import { QUEUES } from '../../plugins/rabbitmq.js';
 import { createEnvelope } from '../outbox/outbox.types.js';
 import { isOutboxPollerAuthoritative } from '../outbox/outbox.helpers.js';
 import type { EmailPayload } from '../notifications/notification.consumer.js';
-import { readFirstWorksheetRows, rowsToObjects } from '../../lib/excel.js';
 import { kcFetch } from '../../core/keycloak-admin.client.js';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -23,12 +22,6 @@ interface AssignableUser {
   email: string;
   userType: UserType;
   groups: string[];
-}
-
-export interface ImportResult {
-  created: number;
-  skipped: number;
-  errors: { row: number; reason: string }[];
 }
 
 function parseDateOnly(value?: string | null): Date | null | undefined {
@@ -488,128 +481,6 @@ export class BookingService {
     await this.app.prisma.booking.delete({ where: { id } });
   }
 
-  async importFromBuffer(buffer: Buffer, request: FastifyRequest): Promise<ImportResult> {
-    const user = (request.user as { preferred_username: string }).preferred_username;
-
-    const rows = rowsToObjects(await readFirstWorksheetRows(buffer));
-    if (rows.length === 0) throw Object.assign(new Error('Excel dosyası boş'), { statusCode: 400 });
-
-    const result: ImportResult = { created: 0, skipped: 0, errors: [] };
-
-    // MED-API-021 fix (2026-05-05): N satır × 1 findUnique + 1 create = 2N
-    // round-trip. Önce tüm valid scheduleId'leri tek query ile validate et,
-    // sonra geçerli row'ları toplu işle.
-    type Parsed = { rowNum: number; scheduleId: number; row: Record<string, unknown> };
-    const parsed: Parsed[] = [];
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const rowNum = i + 2;
-      const scheduleId = Number(row['scheduleId'] ?? row['schedule_id']);
-      if (!scheduleId || isNaN(scheduleId)) {
-        result.errors.push({ row: rowNum, reason: 'scheduleId eksik veya geçersiz' });
-        continue;
-      }
-      parsed.push({ rowNum, scheduleId, row });
-    }
-
-    if (parsed.length === 0) return result;
-
-    // Schedule existence: tek IN query
-    const ids = Array.from(new Set(parsed.map((p) => p.scheduleId)));
-    const existing = await this.app.prisma.schedule.findMany({
-      where: { id: { in: ids } },
-      select: { id: true },
-    });
-    const existingIds = new Set(existing.map((s) => s.id));
-
-    // Eksik schedule'ları errors'a yaz
-    for (const p of parsed) {
-      if (!existingIds.has(p.scheduleId)) {
-        result.errors.push({ row: p.rowNum, reason: `scheduleId=${p.scheduleId} bulunamadı` });
-      }
-    }
-
-    const validRows = parsed.filter((p) => existingIds.has(p.scheduleId));
-
-    // Booking create'ler tek transaction'da; her birinin ID'si lazım (RabbitMQ
-    // publish için), bu yüzden createMany yerine ardışık create.
-    //
-    // Madde 2+7 PR-B2 (audit doc): array-form $transaction → interactive form
-    // refactor. Sebep: outbox shadow write her booking'in id'sine ihtiyaç duyar;
-    // array form'da create dönüşü ile sonraki promise arasında dependency
-    // kurmak mümkün değil. Interactive form sequential await ile create+outbox
-    // pair'leri tek tx'te birleştirir. Wall time hafif artar (paralel→sequential)
-    // — Phase 2'de kabul edilebilir.
-    try {
-      const created = await this.app.prisma.$transaction(async (tx) => {
-        const rows: Array<{ id: number; scheduleId: number | null }> = [];
-        for (const { row, scheduleId } of validRows) {
-          const booking = await tx.booking.create({
-            data: {
-              scheduleId,
-              requestedBy: user,
-              teamId:  row['teamId']  ? Number(row['teamId'])  : undefined,
-              matchId: row['matchId'] ? Number(row['matchId']) : undefined,
-              notes:   row['notes']   ? String(row['notes'])   : undefined,
-            },
-          });
-
-          // Phase 2 shadow per-row outbox write (booking.created).
-          const env = createEnvelope({
-            eventType: 'booking.created',
-            aggregateType: 'Booking',
-            aggregateId: booking.id,
-            payload: {
-              bookingId:   booking.id,
-              scheduleId:  booking.scheduleId,
-              requestedBy: booking.requestedBy,
-              userGroup:   booking.userGroup,
-              status:      booking.status,
-            },
-          });
-          await tx.outboxEvent.create({
-            data: {
-              eventId:       env.eventId,
-              eventType:     env.eventType,
-              aggregateType: env.aggregateType,
-              aggregateId:   env.aggregateId,
-              schemaVersion: env.schemaVersion,
-              payload:       env.payload as Prisma.InputJsonValue,
-              occurredAt:    new Date(env.occurredAt),
-              status:        'published',
-              publishedAt:   new Date(),
-            },
-          });
-
-          rows.push({ id: booking.id, scheduleId: booking.scheduleId });
-        }
-        return rows;
-      });
-
-      // Direct publish — tx dışı (Phase 2 invariant). PR-C2 cut-over:
-      // OUTBOX_POLLER_AUTHORITATIVE=true ise poller authoritative; burası skip.
-      const authoritative = isOutboxPollerAuthoritative();
-      for (let i = 0; i < created.length; i++) {
-        if (!authoritative) {
-          await this.app.rabbitmq.publish(QUEUES.BOOKING_CREATED, {
-            bookingId: created[i].id,
-            scheduleId: validRows[i].scheduleId,
-          });
-        }
-        result.created++;
-      }
-      if (authoritative) {
-        this.app.log.debug(
-          { domain: 'booking', queue: QUEUES.BOOKING_CREATED, eventType: 'booking.created', count: created.length },
-          'direct publish skipped — outbox poller authoritative',
-        );
-      }
-    } catch (err) {
-      result.errors.push({ row: 0, reason: `Toplu işlem başarısız: ${(err as Error).message}` });
-    }
-
-    return result;
-  }
 
   // ── 2026-05-14: İş Takip — yorum + durum geçmişi (V1: create+list, edit/delete YOK)
   //

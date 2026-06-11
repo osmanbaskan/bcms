@@ -85,24 +85,4 @@ export async function bookingRoutes(app: FastifyInstance) {
     schema: { tags: ['Bookings'], summary: 'Durum geçmişi (kronolojik)' },
   }, async (request) => svc.listStatusHistory(idParam.parse(request.params.id), request));
 
-  // ── Excel toplu import ──────────────────────────────────────────────────────
-  app.post('/import', {
-    preHandler: app.requireGroup(...PERMISSIONS.bookings.write),
-    schema: { tags: ['Bookings'], consumes: ['multipart/form-data'] },
-  }, async (request, reply) => {
-    const data = await request.file();
-    if (!data) throw Object.assign(new Error('Dosya bulunamadı'), { statusCode: 400 });
-
-    const ext = data.filename.split('.').pop()?.toLowerCase();
-    if (ext !== 'xlsx') {
-      throw Object.assign(new Error('Sadece .xlsx dosyası kabul edilir'), { statusCode: 415 });
-    }
-
-    const chunks: Buffer[] = [];
-    for await (const chunk of data.file) chunks.push(chunk);
-    const buffer = Buffer.concat(chunks);
-
-    const result = await svc.importFromBuffer(buffer, request);
-    reply.status(200).send(result);
-  });
 }

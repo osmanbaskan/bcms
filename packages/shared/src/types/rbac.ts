@@ -116,7 +116,6 @@ export const PERMISSIONS = {
     read:         ['Ingest'] as BcmsGroup[],               // SystemEng OUT, Admin auto-bypass
     write:        ['Ingest'] as BcmsGroup[],
     delete:       ['Ingest'] as BcmsGroup[],
-    reportIssue:  [] as BcmsGroup[],                       // tüm authenticated — her rol yayın sorunu bildirebilir
   },
   channels: {
     read:   ['Admin'] as BcmsGroup[],                      // Admin-only (2026-05-01 SystemEng OUT)
