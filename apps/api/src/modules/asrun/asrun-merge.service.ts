@@ -168,6 +168,14 @@ export interface MergeBuildResult {
  *  - Kilitli CANLI satırlar varsa AYNEN korunur (pencereler onlardan okunur).
  *  - Yoksa: provys CANLI kümeleri + zincir tespiti → kilitli satırlar yazılır.
  *  - ASRUN-kökenli satırlar her koşulda silinip yeniden üretilir (idempotent).
+ *
+ * EŞZAMANLILIK (2026-06-11 fix): aynı (kanal,gün) için iki eşzamanlı çağrı
+ * delete+insert yarışıyla MÜKERRER satır üretiyordu (ilk gece koşusunda
+ * worker-recreate + dosya düşüşü çakışınca bs1/bs2/bs5'te yaşandı). Tüm iş
+ * artık tek $transaction içinde ve girişte (kanal|gün) anahtarlı
+ * pg_advisory_xact_lock alınır → çağrılar süreçler arası dahil SERİLEŞİR
+ * (API rebuild + worker auto aynı anda gelse bile). Lock tx commit'te
+ * kendiliğinden bırakılır.
  */
 export async function buildAsrunMergeForDay(
   prisma: PrismaClient,
@@ -176,6 +184,24 @@ export async function buildAsrunMergeForDay(
   log: FastifyBaseLogger,
   opts: MergeOptions = loadMergeOptions(),
 ): Promise<MergeBuildResult> {
+  return prisma.$transaction(
+    (tx) => buildInTx(tx as PrismaClient, channelSlug, dateIso, log, opts),
+    { maxWait: 15_000, timeout: 120_000 },
+  );
+}
+
+async function buildInTx(
+  prisma: PrismaClient,
+  channelSlug: string,
+  dateIso: string,
+  log: FastifyBaseLogger,
+  opts: MergeOptions,
+): Promise<MergeBuildResult> {
+  // Süreçler-arası serileştirme: aynı (kanal|gün) anahtarında tek inşaatçı.
+  // $executeRaw: pg_advisory_xact_lock 'void' döner; $queryRaw deserialize
+  // edemiyor (P2010) — executeRaw satır saymakla yetinir.
+  await prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`asrun-merge:${channelSlug}|${dateIso}`}))`;
+
   const day = new Date(`${dateIso}T00:00:00.000Z`);
   const res: MergeBuildResult = {
     channelSlug, date: dateIso, liveBlocks: 0, liveDetectedStarts: 0, liveDetectedEnds: 0,
