@@ -32,11 +32,6 @@ function makeConfig(overrides: Partial<AvidConfig> = {}): AvidConfig {
     workgroup: 'BSVMWG',
     restoreProfile: 'BeINSports - Partial Restore',
     restoreService: 'com.avid.dms.restore',
-    transferEngine: 'playback-engine-01',
-    transferEngineFallback: 'playback-engine-02',
-    playbackDevice: 'MCR',
-    playbackDeviceFallback: 'MCR_YEDEK',
-    transferPriority: 'NORMAL',
     // K3 CTMS (Cloud UX submitSTPJob).
     clouduxUrl: 'https://cloudux.test',
     clouduxRealm: 'REALM1',

@@ -23,8 +23,6 @@ function makeConfig(overrides: Partial<AvidConfig> = {}): AvidConfig {
     workspace: 'interplay://BSVMWG/', requestTimeoutMs: 5000,
     searchRootUri: 'interplay://BSVMWG/Projects/', workgroup: 'BSVMWG',
     restoreProfile: 'P', restoreService: 'com.avid.dms.restore',
-    transferEngine: 'playback-engine-01', transferEngineFallback: 'playback-engine-02',
-    playbackDevice: 'MCR', playbackDeviceFallback: 'MCR_YEDEK', transferPriority: 'NORMAL',
     clouduxUrl: 'https://cloudux.test', clouduxRealm: 'REALM1', clouduxToken: 'tok-secret',
     clouduxUser: null, clouduxPassword: null, clouduxClientBasic: null,
     stpDevice: 'MCR', stpProfile: 'MCR', clouduxInsecureTls: true,

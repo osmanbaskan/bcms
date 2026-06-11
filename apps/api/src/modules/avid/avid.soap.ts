@@ -28,7 +28,6 @@ export const AVID_NS = {
   /** UserCredentials HER ZAMAN burada (rapor §3). */
   assetsTypes: 'http://avid.com/interplay/ws/assets/types',
   jobsTypes: 'http://avid.com/interplay/ws/jobs/types',
-  transferTypes: 'http://avid.com/interplay/ws/transfer/types',
 } as const;
 
 /** IPWS servis adları — endpoint path'i (`/services/<Service>`). */

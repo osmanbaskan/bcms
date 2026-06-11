@@ -35,25 +35,6 @@ export interface AvidConfig {
   /** K2 hazırlığı — Jobs.SubmitJobUsingProfile Service. Default com.avid.dms.restore. */
   restoreService: string;
   /**
-   * K3 (transfer) — Transfer.SendToPlayback birincil hedef engine (rapor §13.1).
-   * Asset'i Avid DIŞI yayın havuzuna gönderir. Operasyon kararı: playback-engine-01 + MCR.
-   */
-  transferEngine: string;
-  /**
-   * K3 — Yedek (failover) engine. Birincil SendToPlayback başarısız olursa
-   * bu engine'e tekrar denenir. Operasyon kararı: playback-engine-02. Boş ise failover yok.
-   */
-  transferEngineFallback: string;
-  /** K3 — DestinationPlaybackDevice (birincil). Operasyon kararı: playback-engine-01/MCR. */
-  playbackDevice: string;
-  /**
-   * K3 — Yedek engine'in device adı. ⚠️ playback-engine-02'de device "MCR" DEĞİL,
-   * "MCR_YEDEK" (canlı doğrulandı 2026-05-31). Boş ise playbackDevice kullanılır.
-   */
-  playbackDeviceFallback: string;
-  /** K3 — SendToPlayback Priority. NORMAL | PWT | UNASSIGNED. Default NORMAL. */
-  transferPriority: string;
-  /**
    * K3 (transfer) GERÇEK YOLU — MediaCentral Cloud UX / CTMS REST.
    * IPWS SendToPlayback "Cannot import" verdiği için terk edildi; transfer artık
    * Cloud UX'in `submitSTPJob` endpoint'ine gider (CDS mixdown+encode+playback'i
@@ -121,14 +102,6 @@ export function loadAvidConfig(env: NodeJS.ProcessEnv = process.env): AvidConfig
     // K2 hazırlığı (bu PR'da kullanılmaz). Boşluk/tire farkı önemli (rapor §11.3).
     restoreProfile: env.AVID_RESTORE_PROFILE?.trim() || 'BeINSports - Partial Restore',
     restoreService: env.AVID_RESTORE_SERVICE?.trim() || 'com.avid.dms.restore',
-    // K3 (transfer) — SendToPlayback hedefi (operasyon kararı 2026-05-31):
-    // birincil playback-engine-01/MCR, yedek playback-engine-02/MCR.
-    transferEngine: env.AVID_TRANSFER_ENGINE?.trim() || 'playback-engine-01',
-    transferEngineFallback: env.AVID_TRANSFER_ENGINE_FALLBACK?.trim() || 'playback-engine-02',
-    playbackDevice: env.AVID_PLAYBACK_DEVICE?.trim() || 'MCR',
-    // playback-engine-02'de device adı MCR_YEDEK (MCR değil — canlı doğrulandı).
-    playbackDeviceFallback: env.AVID_PLAYBACK_DEVICE_FALLBACK?.trim() || 'MCR_YEDEK',
-    transferPriority: env.AVID_TRANSFER_PRIORITY?.trim() || 'NORMAL',
     // K3 gerçek yolu — Cloud UX / CTMS submitSTPJob (2026-06-01 canlı doğrulandı).
     clouduxUrl: (env.AVID_CLOUDUX_URL?.trim() || 'https://cloudux-host.example.local').replace(/\/+$/, ''),
     clouduxRealm: env.AVID_CLOUDUX_REALM?.trim() || 'F580021A-2720-4117-B33C-A5B843A2B586',
