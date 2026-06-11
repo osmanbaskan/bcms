@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -146,7 +146,6 @@ export class AsrunMergeComponent implements OnInit {
   readonly date = signal<string>(istanbulYesterdayDate());
   readonly rows = signal<AsrunMergeItemDto[]>([]);
   readonly loading = signal<boolean>(false);
-  readonly liveCount = computed(() => this.rows().filter((r) => r.origin === 'PROVYS_CANLI').length);
 
   async ngOnInit(): Promise<void> { await this.load(); }
 
