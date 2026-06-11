@@ -4,7 +4,7 @@ import type { ParsedItem } from './provys.parser.js';
 import type { SnapshotRow } from './provys.snapshot.js';
 import type { ProvysCategory } from '@bcms/shared';
 
-const { buildDiff, computeHash, selectCandidateFiles, previousIsoDate, nextIsoDate } = __internals__;
+const { buildDiff, computeHash, selectCandidateFiles, nextIsoDate } = __internals__;
 
 function p(overrides: Partial<ParsedItem>): ParsedItem {
   return {
@@ -117,10 +117,10 @@ describe('provys.service › buildDiff (composed-snapshot scope)', () => {
 
 describe('provys.service › selectCandidateFiles', () => {
   const files = [
-    { path: '/a/BXF_Playlist_LT4_20260523_x.bxf', fileCode: 'lt4', scheduleDate: '2026-05-23', mtime: new Date('2026-05-23T01:00:00Z') },
-    { path: '/a/BXF_Playlist_LT4_20260522_x.bxf', fileCode: 'lt4', scheduleDate: '2026-05-22', mtime: new Date('2026-05-22T01:00:00Z') },
-    { path: '/a/BXF_Playlist_LT4_20260521_x.bxf', fileCode: 'lt4', scheduleDate: '2026-05-21', mtime: new Date('2026-05-21T01:00:00Z') },
-    { path: '/a/BXF_Playlist_LT2_20260523_x.bxf', fileCode: 'lt2', scheduleDate: '2026-05-23', mtime: new Date('2026-05-23T01:00:00Z') },
+    { path: '/a/BXF_Playlist_LT4_20260523_x.bxf', fileCode: 'lt4', dateFrom: '2026-05-23', dateTo: '2026-05-23', mtime: new Date('2026-05-23T01:00:00Z') },
+    { path: '/a/BXF_Playlist_LT4_20260522_x.bxf', fileCode: 'lt4', dateFrom: '2026-05-22', dateTo: '2026-05-22', mtime: new Date('2026-05-22T01:00:00Z') },
+    { path: '/a/BXF_Playlist_LT4_20260521_x.bxf', fileCode: 'lt4', dateFrom: '2026-05-21', dateTo: '2026-05-21', mtime: new Date('2026-05-21T01:00:00Z') },
+    { path: '/a/BXF_Playlist_LT2_20260523_x.bxf', fileCode: 'lt2', dateFrom: '2026-05-23', dateTo: '2026-05-23', mtime: new Date('2026-05-23T01:00:00Z') },
   ];
 
   it('keeps only target-date and previous-day files for the requested fileCode', () => {
@@ -144,8 +144,8 @@ describe('provys.service › selectCandidateFiles', () => {
   it('accepts an array of fileCodes (canonical + aliases)', () => {
     const mixed = [
       ...files,
-      { path: '/a/BXF_Playlist_xLT4_20260523_x.bxf', fileCode: 'xlt4', scheduleDate: '2026-05-23', mtime: new Date('2026-05-23T02:00:00Z') },
-      { path: '/a/BXF_Playlist_xLT4_20260522_x.bxf', fileCode: 'xlt4', scheduleDate: '2026-05-22', mtime: new Date('2026-05-22T02:00:00Z') },
+      { path: '/a/BXF_Playlist_xLT4_20260523_x.bxf', fileCode: 'xlt4', dateFrom: '2026-05-23', dateTo: '2026-05-23', mtime: new Date('2026-05-23T02:00:00Z') },
+      { path: '/a/BXF_Playlist_xLT4_20260522_x.bxf', fileCode: 'xlt4', dateFrom: '2026-05-22', dateTo: '2026-05-22', mtime: new Date('2026-05-22T02:00:00Z') },
     ];
     const sel = selectCandidateFiles(mixed, ['lt4', 'xlt4'], '2026-05-23');
     expect(sel.map((c) => c.path).sort()).toEqual([
@@ -167,12 +167,32 @@ describe('provys.service › selectCandidateFiles', () => {
   });
 });
 
-describe('provys.service › previousIsoDate / nextIsoDate', () => {
-  it('previousIsoDate', () => {
-    expect(previousIsoDate('2026-05-23')).toBe('2026-05-22');
-    expect(previousIsoDate('2026-03-01')).toBe('2026-02-28');
-    expect(previousIsoDate('2026-01-01')).toBe('2025-12-31');
+
+describe('provys.service › selectCandidateFiles — ÇOK GÜNLÜK aralık (2026-06-11)', () => {
+  const range = [
+    // 7 günlük dosya: 06-08..06-14 (örnek: haber7gun)
+    { path: '/a/BXF_Playlist_SNW_202606080000_202606140000_x.bxf', fileCode: 'snw', dateFrom: '2026-06-08', dateTo: '2026-06-14', mtime: new Date('2026-06-11T17:00:00Z') },
+    { path: '/a/BXF_Playlist_SNW_20260611_x.bxf', fileCode: 'snw', dateFrom: '2026-06-11', dateTo: '2026-06-11', mtime: new Date('2026-06-11T01:00:00Z') },
+  ];
+  it('aralık içindeki her gün için adaydır (from ≤ D ≤ to)', () => {
+    for (const d of ['2026-06-08', '2026-06-11', '2026-06-14']) {
+      expect(selectCandidateFiles(range, 'snw', d).some((c) => c.path.includes('202606080000'))).toBe(true);
+    }
   });
+  it('to+1 günü de aday (son günün gece-yarısı taşması)', () => {
+    expect(selectCandidateFiles(range, 'snw', '2026-06-15').some((c) => c.path.includes('202606080000'))).toBe(true);
+  });
+  it('aralık dışı günler aday DEĞİL', () => {
+    expect(selectCandidateFiles(range, 'snw', '2026-06-07').some((c) => c.path.includes('202606080000'))).toBe(false);
+    expect(selectCandidateFiles(range, 'snw', '2026-06-16').some((c) => c.path.includes('202606080000'))).toBe(false);
+  });
+  it('tek-gün dosya + aralık dosyası aynı gün için birlikte aday (mtime önceliği compose tarafında)', () => {
+    const sel = selectCandidateFiles(range, 'snw', '2026-06-11');
+    expect(sel).toHaveLength(2);
+  });
+});
+
+describe('provys.service › nextIsoDate', () => {
   it('nextIsoDate', () => {
     expect(nextIsoDate('2026-05-22')).toBe('2026-05-23');
     expect(nextIsoDate('2026-02-28')).toBe('2026-03-01');

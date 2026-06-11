@@ -3,6 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
+  extractScheduleRange,
+  MAX_RANGE_DAYS,
   extractScheduleDate,
   listBxfFiles,
   listScheduleDatesForFileCode,
@@ -11,7 +13,8 @@ import {
 } from './provys.file-resolver.js';
 
 function f(p: string, fileCode: string, scheduleDate: string, mtime: number): BxfFileInfo {
-  return { path: p, fileCode, scheduleDate, mtime: new Date(mtime) };
+  // Tek-gün fixture: dateFrom = dateTo (eski sözleşmenin aralık karşılığı).
+  return { path: p, fileCode, dateFrom: scheduleDate, dateTo: scheduleDate, mtime: new Date(mtime) };
 }
 
 describe('provys.file-resolver › extractScheduleDate', () => {
@@ -81,7 +84,7 @@ describe('provys.file-resolver › pickLatestForFileCodeAndDate (pure)', () => {
       f('/dir/D2_a.bxf', 'lt2', '2026-02-18', 300),
     ];
     // 17 Şubat dosyaları temizlendiyse 18 Şubat group'u dokunulmamalı.
-    const onlyOtherDay = files.filter((x) => x.scheduleDate !== '2026-02-17');
+    const onlyOtherDay = files.filter((x) => x.dateFrom !== '2026-02-17');
     expect(pickLatestForFileCodeAndDate(onlyOtherDay, 'lt2', '2026-02-17')).toBeNull();
     expect(pickLatestForFileCodeAndDate(onlyOtherDay, 'lt2', '2026-02-18')?.path).toBe('/dir/D2_a.bxf');
   });
@@ -142,7 +145,7 @@ describe('provys.file-resolver › listBxfFiles (real fs, tmpdir)', () => {
     await writeWithMtime('BXF_Playlist_LT2_invalid.bxf', 9_999); // no date → skipped
 
     const files = await listBxfFiles(dir);
-    expect(files.map((f) => `${f.fileCode}@${f.scheduleDate}`).sort())
+    expect(files.map((f) => `${f.fileCode}@${f.dateFrom}`).sort())
       .toEqual(['lt2@2026-02-17', 'lt2@2026-02-17', 'lt2@2026-02-18', 'ltv@2026-06-01']);
 
     const lt2_17 = pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-17');
@@ -171,10 +174,46 @@ describe('provys.file-resolver › listBxfFiles (real fs, tmpdir)', () => {
 
     // 17 Şubat tüm dosyalar silindi; 18 Şubat dokunulmamalı.
     for (const f of files) {
-      if (f.scheduleDate === '2026-02-17') await fs.unlink(f.path);
+      if (f.dateFrom === '2026-02-17') await fs.unlink(f.path);
     }
     files = await listBxfFiles(dir);
     expect(pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-17')).toBeNull();
     expect(pickLatestForFileCodeAndDate(files, 'lt2', '2026-02-18')?.path).toBe(otherDay);
+  });
+});
+
+describe('provys.file-resolver › extractScheduleRange — ÇOK GÜNLÜK (2026-06-11)', () => {
+  it('aralık deseni: _YYYYMMDD0000_YYYYMMDD0000_ → {from, to} (gerçek örnek ad)', () => {
+    expect(extractScheduleRange('BXF_Playlist_SNW_202606080000_202606140000_0611165256_haber7gun.bxf'))
+      .toEqual({ from: '2026-06-08', to: '2026-06-14' });
+  });
+  it("kuyruk ≠ 0000 → REDDET (Osman kuralı: yalnız saat-sıfır 8 hane sayılır)", () => {
+    expect(extractScheduleRange('BXF_Playlist_SNW_202606081830_202606140000_x.bxf')).toBeNull();
+    expect(extractScheduleRange('BXF_Playlist_SNW_202606080000_202606142359_x.bxf')).toBeNull();
+  });
+  it('eski tek-gün desen DEĞİŞMEDİ → {from: D, to: D}', () => {
+    expect(extractScheduleRange('BXF_Playlist_LT2_20260217_20260217_20260216_195715_caf.bxf'))
+      .toEqual({ from: '2026-02-17', to: '2026-02-17' });
+  });
+  it('ters aralık (to < from) → null', () => {
+    expect(extractScheduleRange('BXF_Playlist_SNW_202606140000_202606080000_x.bxf')).toBeNull();
+  });
+  it(`tavan: ${MAX_RANGE_DAYS} günü aşan aralık → null`, () => {
+    expect(extractScheduleRange('BXF_Playlist_SNW_202601010000_202603150000_x.bxf')).toBeNull(); // 74 gün
+    expect(extractScheduleRange('BXF_Playlist_SNW_202601010000_202601310000_x.bxf'))
+      .toEqual({ from: '2026-01-01', to: '2026-01-31' }); // tam 31 gün OK
+  });
+  it('pickLatest: aralık dosyası kapsadığı günün adayıdır', () => {
+    const files = [
+      { path: '/d/range.bxf', fileCode: 'snw', dateFrom: '2026-06-08', dateTo: '2026-06-14', mtime: new Date(5000) },
+      { path: '/d/daily.bxf', fileCode: 'snw', dateFrom: '2026-06-12', dateTo: '2026-06-12', mtime: new Date(9000) },
+    ];
+    expect(pickLatestForFileCodeAndDate(files, 'snw', '2026-06-12')?.path).toBe('/d/daily.bxf'); // mtime kazanır
+    expect(pickLatestForFileCodeAndDate(files, 'snw', '2026-06-13')?.path).toBe('/d/range.bxf');
+    expect(pickLatestForFileCodeAndDate(files, 'snw', '2026-06-07')).toBeNull();
+  });
+  it('listScheduleDatesForFileCode: aralık her güne açılır', () => {
+    const files = [{ path: '/d/r.bxf', fileCode: 'snw', dateFrom: '2026-06-08', dateTo: '2026-06-10', mtime: new Date(1) }];
+    expect(listScheduleDatesForFileCode(files, 'snw')).toEqual(['2026-06-08', '2026-06-09', '2026-06-10']);
   });
 });

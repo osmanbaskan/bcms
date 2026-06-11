@@ -217,31 +217,36 @@ export async function emitNotify(
  * Aday BXF dosyalarını belirler — bir (channel, scheduleDate) için
  * compose etmesi gereken kaynak listesi.
  *
- * Provys exporter dosya adındaki `YYYYMMDD` yayın gününü belirtir; ancak
- * önceki gün dosyası gece yarısı sonrası event'leri ile bir sonraki güne
- * de katkı yapabilir (parser per-event `broadcastDate` ile o günü yazar).
- * Bu yüzden hedef günün dosyaları + bir önceki günün dosyaları aday
- * setidir. Daha geri tarihler genel olarak hedef güne katkı yapamaz
- * (broadcast day +1'den fazla taşmaz).
+ * Provys exporter dosya adında yayın gün(ler)ini belirtir — tek gün
+ * `YYYYMMDD` ya da aralık `YYYYMMDD0000_YYYYMMDD0000` (2026-06-11
+ * çoklu-gün desteği). Dosyanın SON günü, gece yarısı sonrası event'leriyle
+ * bir sonraki güne de katkı yapabilir (parser per-event `broadcastDate`
+ * o günü yazar). Adaylık formülü:
+ *
+ *     aday ⇔ dateFrom ≤ D ≤ dateTo + 1
+ *
+ * Tek-gün dosyada from=to olduğundan bu, eski {D, D-1} kuralıyla birebir
+ * özdeştir (regresyon yok). Daha geri tarihler hedef güne katkı yapamaz.
  */
 function selectCandidateFiles(
-  files: ReadonlyArray<{ path: string; fileCode: string; scheduleDate: string; mtime: Date }>,
+  files: ReadonlyArray<{ path: string; fileCode: string; dateFrom: string; dateTo: string; mtime: Date }>,
   fileCodeOrCodes: string | ReadonlyArray<string>,
   targetDate: string,
 ): Array<{ path: string; mtime: Date }> {
   const rawCodes = Array.isArray(fileCodeOrCodes) ? fileCodeOrCodes : [fileCodeOrCodes as string];
   const acceptedCodes = new Set(rawCodes.map((c) => c.trim().toLowerCase()).filter((c) => c.length > 0));
   if (acceptedCodes.size === 0) return [];
-  const prev = previousIsoDate(targetDate);
-  const acceptedDates = new Set([targetDate, prev]);
   return files
-    .filter((f) => acceptedCodes.has(f.fileCode) && acceptedDates.has(f.scheduleDate))
+    .filter((f) =>
+      acceptedCodes.has(f.fileCode)
+      && f.dateFrom <= targetDate
+      && targetDate <= nextIsoDate(f.dateTo)) // to+1: son günün gece-yarısı taşması
     .map((f) => ({ path: f.path, mtime: f.mtime }));
 }
 
-function previousIsoDate(date: string): string {
+function nextIsoDate(date: string): string {
   const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - 1);
+  d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
 
@@ -382,12 +387,6 @@ async function fileCodesForSlug(slug: ProvysChannelSlug): Promise<string[]> {
   return [c.fileCode, ...(c.fileCodeAliases ?? [])];
 }
 
-function nextIsoDate(date: string): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
 /**
  * `(channelSlug, scheduleDate)` snapshot'ını siler ve pg_notify yayar.
  * `syncChannelDate` aday/composed boş olduğunda otomatik çağırır; ayrıca
@@ -418,6 +417,5 @@ export const __internals__ = {
   buildDiff,
   computeHash,
   selectCandidateFiles,
-  previousIsoDate,
   nextIsoDate,
 };

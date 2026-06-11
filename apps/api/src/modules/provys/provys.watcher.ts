@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { als } from '../../plugins/audit.js';
 import { syncChannelDate } from './provys.service.js';
 import { extractFileCode, resolveChannel } from './provys.channel-mapping.js';
-import { extractScheduleDate } from './provys.file-resolver.js';
+import { extractScheduleRange } from './provys.file-resolver.js';
 import { startHeartbeatTicker } from '../../lib/service-heartbeat.js';
 import { ConcurrencyLimiter } from './provys.concurrency.js';
 import { startWatcherSupervisor, type SupervisedWatcher } from '../../lib/watcher-supervisor.js';
@@ -144,13 +144,19 @@ function buildProvysWatcher(app: FastifyInstance, folder: string): SupervisedWat
       app.log.warn({ filePath, fileCode }, 'Provys watcher: bilinmeyen file code, import edilmedi');
       return;
     }
-    const filenameDate = extractScheduleDate(filePath);
-    if (!filenameDate) {
-      app.log.warn({ filePath, fileCode }, 'Provys watcher: dosya adından tarih çıkartılamadı, atlandı');
+    const range = extractScheduleRange(filePath);
+    if (!range) {
+      app.log.warn({ filePath, fileCode }, 'Provys watcher: dosya adından tarih/aralık çıkartılamadı, atlandı');
       return;
     }
-    const nextDate = addDays(filenameDate, 1);
-    for (const scheduleDate of [filenameDate, nextDate]) {
+    // Çoklu-gün (2026-06-11): [from .. to+1] günleri senkronlanır. Tek-gün
+    // dosyada from=to → eski {adGünü, adGünü+1} davranışıyla birebir aynı.
+    // Aralık tavanı (31 gün) resolver'da garanti → en çok 32 gün-senkronu.
+    const affectedDates: string[] = [];
+    for (let d = range.from; d <= addDays(range.to, 1); d = addDays(d, 1)) {
+      affectedDates.push(d);
+    }
+    for (const scheduleDate of affectedDates) {
       const key = debounceKey(fileCode, scheduleDate);
       const existing = debounceTimers.get(key);
       if (existing) clearTimeout(existing);
