@@ -8,7 +8,8 @@ import { extractScheduleRange } from './provys.file-resolver.js';
 import { startHeartbeatTicker } from '../../lib/service-heartbeat.js';
 import { ConcurrencyLimiter } from './provys.concurrency.js';
 import { startWatcherSupervisor, type SupervisedWatcher } from '../../lib/watcher-supervisor.js';
-import { getEffectiveWatchFolders } from '../watchers/watcher.settings.js';
+import { getEffectiveWatchFolders, getProvysSmbCreds } from '../watchers/watcher.settings.js';
+import { LocalDirSource, SmbDirSource, isSmbUrl, type BxfSource } from '../../lib/bxf-source.js';
 
 const DEBOUNCE_MS = Number(process.env.PROVYS_WATCHER_DEBOUNCE_MS ?? '1500');
 const CONCURRENCY = Math.max(1, Number(process.env.PROVYS_WATCHER_CONCURRENCY ?? '3'));
@@ -61,18 +62,15 @@ export function startProvysWatcher(app: FastifyInstance): void {
   });
 }
 
-/** Verilen klasör için chokidar + handler'ları kurar (supervisor çağırır). */
+/**
+ * Verilen kaynak için izleyiciyi kurar (supervisor çağırır).
+ *  - `smb://...` → SMB-direct poller (2026-06-11; host mount bağımlılığı yok).
+ *  - aksi        → chokidar (yerel dizin; eski davranış birebir).
+ */
 function buildProvysWatcher(app: FastifyInstance, folder: string): SupervisedWatcher {
-  // CIFS/SMB mount'lar inotify event'lerini güvenilir taşımaz;
-  // PROVYS_WATCHER_USE_POLLING=true ile chokidar polling moduna alınır.
-  const watcher = chokidar.watch(folder, {
-    persistent: true,
-    ignoreInitial: false,
-    usePolling: USE_POLLING,
-    interval: POLL_INTERVAL_MS,
-    binaryInterval: POLL_INTERVAL_MS,
-    awaitWriteFinish: { stabilityThreshold: 3000, pollInterval: 500 },
-  });
+  const source: BxfSource = isSmbUrl(folder)
+    ? new SmbDirSource(folder, () => getProvysSmbCreds(app.prisma)) // kimlik canlı okunur
+    : new LocalDirSource(folder);
 
   const runWithAuditContext = async (fn: () => Promise<void>): Promise<void> => {
     await new Promise<void>((resolve, reject) => {
@@ -116,7 +114,7 @@ function buildProvysWatcher(app: FastifyInstance, folder: string): SupervisedWat
           app.prisma,
           channelSlug as Parameters<typeof syncChannelDate>[1],
           scheduleDate,
-          folder,
+          source,
           app.log,
         );
       });
@@ -176,6 +174,70 @@ function buildProvysWatcher(app: FastifyInstance, folder: string): SupervisedWat
     return d.toISOString().slice(0, 10);
   }
 
+  const cleanup = (): void => {
+    for (const t of debounceTimers.values()) clearTimeout(t);
+    debounceTimers.clear();
+  };
+
+  // ── Taşıma dalı 1: SMB-direct poller ───────────────────────────────────────
+  if (source.kind === 'smb') {
+    // İlk listede mevcut dosyalar 'add' alır (chokidar ignoreInitial:false
+    // paritesi). list() HATASINDA diff YAPILMAZ — yarım liste toplu-unlink
+    // üretmesin; mevcut DB verisi korunur.
+    let prev = new Map<string, string>(); // name -> `${mtimeMs}|${size}`
+    let primed = false;
+    let lastListOk = true;
+
+    const pollTick = async (): Promise<void> => {
+      let files;
+      try {
+        files = await source.list();
+        if (!lastListOk) app.log.info({ source: source.describe() }, 'Provys SMB: bağlantı geri geldi');
+        lastListOk = true;
+      } catch (err) {
+        if (lastListOk) app.log.warn({ err, source: source.describe() }, 'Provys SMB: listelenemedi (veri korunuyor)');
+        lastListOk = false;
+        return;
+      }
+      const next = new Map(files.map((f) => [f.name, `${f.mtime.getTime()}|${f.size}`]));
+      if (!primed) {
+        primed = true;
+        for (const f of files) handle(f.name, 'add');
+        prev = next;
+        return;
+      }
+      for (const [name, sig] of next) {
+        const old = prev.get(name);
+        if (old === undefined) handle(name, 'add');
+        else if (old !== sig) handle(name, 'change');
+      }
+      for (const name of prev.keys()) {
+        if (!next.has(name)) handle(name, 'unlink');
+      }
+      prev = next;
+    };
+
+    void pollTick();
+    const timer = setInterval(() => { void pollTick(); }, POLL_INTERVAL_MS);
+    if (typeof timer.unref === 'function') timer.unref();
+
+    app.log.info(
+      { source: source.describe(), pollIntervalMs: POLL_INTERVAL_MS, debounceMs: DEBOUNCE_MS, concurrency: CONCURRENCY },
+      'Provys watcher: SMB-direct poller kuruldu (mount yok)',
+    );
+    return { watcher: { close: () => clearInterval(timer) }, cleanup };
+  }
+
+  // ── Taşıma dalı 2: yerel dizin → chokidar (eski davranış) ──────────────────
+  const watcher = chokidar.watch(folder, {
+    persistent: true,
+    ignoreInitial: false,
+    usePolling: USE_POLLING,
+    interval: POLL_INTERVAL_MS,
+    binaryInterval: POLL_INTERVAL_MS,
+    awaitWriteFinish: { stabilityThreshold: 3000, pollInterval: 500 },
+  });
+
   watcher.on('add',    (p: string) => handle(p, 'add'));
   watcher.on('change', (p: string) => handle(p, 'change'));
   watcher.on('unlink', (p: string) => handle(p, 'unlink'));
@@ -183,11 +245,6 @@ function buildProvysWatcher(app: FastifyInstance, folder: string): SupervisedWat
   watcher.on('error', (err: unknown) => {
     app.log.error({ err }, 'Provys watcher: izleyici hatası');
   });
-
-  const cleanup = (): void => {
-    for (const t of debounceTimers.values()) clearTimeout(t);
-    debounceTimers.clear();
-  };
 
   app.log.info(
     { folder, usePolling: USE_POLLING, pollIntervalMs: POLL_INTERVAL_MS, debounceMs: DEBOUNCE_MS, concurrency: CONCURRENCY },

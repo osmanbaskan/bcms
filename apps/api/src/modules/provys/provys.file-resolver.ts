@@ -1,6 +1,6 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { extractFileCode } from './provys.channel-mapping.js';
+import { LocalDirSource, type BxfSource } from '../../lib/bxf-source.js';
 
 /**
  * BXF dosya seçimi — kanal + gün granülaritesinde "en güncel revision".
@@ -40,12 +40,17 @@ export interface BxfDateRange {
 }
 
 export interface BxfFileInfo {
+  /** İnsan-okur tam yol (local: fs yolu; smb: smb://.../ad) — sourceFile/log için. */
   path: string;
+  /** Kaynak içindeki çıplak dosya adı — source.read(name) ile okunur. */
+  name: string;
   fileCode: string;
   /** Dosyanın ad-aralığı (tek-gün dosyada from === to). */
   dateFrom: string;
   dateTo: string;
   mtime: Date;
+  /** İçerik LRU anahtarı için (SMB'de yeniden-okumayı önler). */
+  size?: number;
 }
 
 const FILENAME_RANGE_RE = /^BXF_Playlist_[A-Za-z0-9]+_(\d{4})(\d{2})(\d{2})0000_(\d{4})(\d{2})(\d{2})0000_/i;
@@ -99,32 +104,44 @@ export function extractScheduleDate(filePath: string): string | null {
   return extractScheduleRange(filePath)?.from ?? null;
 }
 
-/** Dizindeki tüm `.bxf` dosyalarını fileCode + scheduleDate + mtime ile listele. */
+/**
+ * Kaynaktaki (local dizin VEYA smb) tüm `.bxf` dosyalarını fileCode +
+ * tarih-aralığı + mtime ile listele. list() HATASI yukarı fırlar — caller
+ * (poller/sync) yarım liste üzerinden karar VERMEMELİ.
+ */
+export async function listBxfFilesFromSource(source: BxfSource): Promise<BxfFileInfo[]> {
+  const entries = await source.list();
+  const base = source.kind === 'smb' ? `${source.describe()}/` : '';
+  const out: BxfFileInfo[] = [];
+  for (const e of entries) {
+    if (path.extname(e.name).toLowerCase() !== '.bxf') continue;
+    const fileCode = extractFileCode(e.name);
+    if (!fileCode) continue;
+    const range = extractScheduleRange(e.name);
+    if (!range) continue; // dosya tarihi/aralığı yoksa group'lanamaz, atla
+    out.push({
+      path: base ? base + e.name : e.name,
+      name: e.name,
+      fileCode,
+      dateFrom: range.from,
+      dateTo: range.to,
+      mtime: e.mtime,
+      size: e.size,
+    });
+  }
+  return out;
+}
+
+/** Geri-uyum: yerel dizin yolu ile listeleme (testler + mevcut çağrılar). */
 export async function listBxfFiles(dir: string): Promise<BxfFileInfo[]> {
-  let entries: string[];
+  let files: BxfFileInfo[];
   try {
-    entries = await fs.readdir(dir);
+    files = await listBxfFilesFromSource(new LocalDirSource(dir));
   } catch {
     return [];
   }
-
-  const out: BxfFileInfo[] = [];
-  for (const name of entries) {
-    if (path.extname(name).toLowerCase() !== '.bxf') continue;
-    const fileCode = extractFileCode(name);
-    if (!fileCode) continue;
-    const range = extractScheduleRange(name);
-    if (!range) continue; // dosya tarihi/aralığı yoksa group'lanamaz, atla
-    const full = path.join(dir, name);
-    try {
-      const stat = await fs.stat(full);
-      if (!stat.isFile()) continue;
-      out.push({ path: full, fileCode, dateFrom: range.from, dateTo: range.to, mtime: stat.mtime });
-    } catch {
-      // Race: dosya enumerasyon sonrası silinmiş olabilir; sessiz atla.
-    }
-  }
-  return out;
+  // Local'de path tam fs yolu olmalı (sourceFile sözleşmesi).
+  return files.map((f) => ({ ...f, path: path.join(dir, f.name) }));
 }
 
 /** Dosyanın ad-aralığı verilen günü kapsıyor mu (uçlar dahil; ISO string karşılaştırma). */

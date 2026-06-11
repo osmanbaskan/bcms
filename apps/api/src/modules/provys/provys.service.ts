@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
@@ -8,7 +7,8 @@ import {
   extractFileCode,
   resolveChannelFromPath,
 } from './provys.channel-mapping.js';
-import { listBxfFiles, extractScheduleDate } from './provys.file-resolver.js';
+import { listBxfFilesFromSource } from './provys.file-resolver.js';
+import { LocalDirSource, type BxfSource } from '../../lib/bxf-source.js';
 import { composeFinalSnapshot, type SnapshotRow, type SnapshotSource } from './provys.snapshot.js';
 import { requestSsdbResolverTick } from '../ssdb/ssdb-resolver.worker.js';
 import type { ProvysChannelSlug } from '@bcms/shared';
@@ -229,10 +229,10 @@ export async function emitNotify(
  * özdeştir (regresyon yok). Daha geri tarihler hedef güne katkı yapamaz.
  */
 function selectCandidateFiles(
-  files: ReadonlyArray<{ path: string; fileCode: string; dateFrom: string; dateTo: string; mtime: Date }>,
+  files: ReadonlyArray<{ path: string; name?: string; fileCode: string; dateFrom: string; dateTo: string; mtime: Date; size?: number }>,
   fileCodeOrCodes: string | ReadonlyArray<string>,
   targetDate: string,
-): Array<{ path: string; mtime: Date }> {
+): Array<{ path: string; name: string; mtime: Date; size?: number }> {
   const rawCodes = Array.isArray(fileCodeOrCodes) ? fileCodeOrCodes : [fileCodeOrCodes as string];
   const acceptedCodes = new Set(rawCodes.map((c) => c.trim().toLowerCase()).filter((c) => c.length > 0));
   if (acceptedCodes.size === 0) return [];
@@ -241,7 +241,7 @@ function selectCandidateFiles(
       acceptedCodes.has(f.fileCode)
       && f.dateFrom <= targetDate
       && targetDate <= nextIsoDate(f.dateTo)) // to+1: son günün gece-yarısı taşması
-    .map((f) => ({ path: f.path, mtime: f.mtime }));
+    .map((f) => ({ path: f.path, name: f.name ?? f.path, mtime: f.mtime, size: f.size }));
 }
 
 function nextIsoDate(date: string): string {
@@ -252,7 +252,9 @@ function nextIsoDate(date: string): string {
 
 /**
  * Adı verilen kanal + gün için final composed snapshot'ı hesaplar, DB'ye
- * uygular ve pg_notify yayar. `watchDir` watcher'ın izlediği dizin (mount).
+ * uygular ve pg_notify yayar. `source` watcher'ın izlediği kaynak —
+ * yerel dizin VEYA doğrudan SMB (2026-06-11; mount bağımlılığı kalktı).
+ * Geri-uyum: string verilirse yerel dizin kabul edilir.
  *
  * Aday dosyalar parse edilir, `composeFinalSnapshot` ile latest-wins merge
  * çalıştırılır, sonuç DB'deki mevcut satırlarla diff'lenir.
@@ -261,28 +263,39 @@ function nextIsoDate(date: string): string {
  * - Aksi halde diff applied + notify.
  *
  * Aynı dosya birden çok scheduleDate'e katkı yapıyorsa caller her hedef
- * gün için ayrı çağırır (watcher böyle yapıyor).
+ * gün için ayrı çağırır (watcher böyle yapıyor); içerik LRU'su (SMB)
+ * sayesinde dosya gün-başına yeniden OKUNMAZ.
  */
 export async function syncChannelDate(
   prisma: PrismaClient,
   channelSlug: ProvysChannelSlug,
   scheduleDate: string,
-  watchDir: string,
+  sourceOrDir: BxfSource | string,
   logger: FastifyBaseLogger,
 ): Promise<ProvysSyncResult> {
+  const source: BxfSource = typeof sourceOrDir === 'string'
+    ? new LocalDirSource(sourceOrDir)
+    : sourceOrDir;
   const fileCodes = await fileCodesForSlug(channelSlug);
   if (fileCodes.length === 0) {
     logger.warn({ channelSlug }, 'Provys: slug için fileCode çözülemedi');
     return { channelSlug, reason: 'unknown-channel', inserted: 0, updated: 0, deleted: 0, affectedDates: [] };
   }
-  const allFiles = await listBxfFiles(watchDir);
+  let allFiles;
+  try {
+    allFiles = await listBxfFilesFromSource(source);
+  } catch (err) {
+    // Liste alınamadı (örn. SMB kopuk) → MEVCUT veriyi koru, gün TEMİZLENMEZ.
+    logger.warn({ err, source: source.describe(), channelSlug, scheduleDate }, 'Provys: kaynak listelenemedi, sync atlandı');
+    return { channelSlug, reason: 'unchanged', inserted: 0, updated: 0, deleted: 0, affectedDates: [] };
+  }
 
   const candidates = selectCandidateFiles(allFiles, fileCodes, scheduleDate);
   const sources: SnapshotSource[] = [];
   for (const c of candidates) {
     let content: string;
     try {
-      content = await fs.readFile(c.path, 'utf-8');
+      content = await source.read(c.name, c.mtime, c.size);
     } catch (err) {
       logger.warn({ err, path: c.path }, 'Provys: aday dosya okunamadı, atlanıyor');
       continue;
